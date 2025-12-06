@@ -44,3 +44,6 @@ coverage/
 api_response.json
 get_room_code.js
 gcloud init/
+.DS_Store
+.DS_Store
+.DS_Store
