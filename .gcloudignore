@@ -1,0 +1,17 @@
+# Ignore everything except sockets directory
+*
+!sockets/
+!sockets/**
+
+# Don't ignore these critical files in sockets
+!sockets/package.json
+!sockets/package-lock.json
+!sockets/server.js
+!sockets/Dockerfile
+!sockets/cloudbuild.yaml
+
+# But still ignore these in sockets
+sockets/node_modules/
+sockets/.env*
+sockets/logs/
+sockets/gcloud*

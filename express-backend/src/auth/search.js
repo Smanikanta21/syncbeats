@@ -1,60 +1,23 @@
-const { PrismaClient } = require('../generated/prisma');
+const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
 
-const searchUsers = async (req, res) => {
-    try {
-        const { q, roomId } = req.query;
-        const userId = req.user.id;
-
-        if (!q || q.length < 2) {
-            return res.status(200).json({ users: [] });
-        }
-
-        const searchTerm = q.toLowerCase();
-
-        const whereClause = {
-            OR: [
-                { username: { contains: searchTerm, mode: 'insensitive' } },
-                { name: { contains: searchTerm, mode: 'insensitive' } }
-            ],
-            NOT: {
-                id: userId
-            }
-        };
-
-        if (roomId) {
-            const roomParticipants = await prisma.roomUsers.findMany({
-                where: { roomId },
-                select: { userId: true }
-            });
-            const participantIds = roomParticipants.map(p => p.userId);
-            whereClause.NOT = {
-                OR: [
-                    { id: userId },
-                    { id: { in: participantIds } }
-                ]
-            };
-        }
-
+async function searchUser(req, res) {
+    try{
+        const {q} = req.query;
         const users = await prisma.users.findMany({
-            where: whereClause,
-            select: {
-                id: true,
-                name: true,
-                username: true
+            where:{
+                OR:[
+                    {username:{contains:q, mode:'insensitive'}},
+                    {name:{contains:q, mode:'insensitive'}}
+                ]
             },
-            take: 20,
-            orderBy: [
-                { username: 'asc' },
-                { name: 'asc' }
-            ]
-        });
-
-        res.status(200).json({ users });
+            take:10,
+        })
+        return res.json(users);
     } catch (error) {
-        console.error('Search users error:', error);
-        res.status(500).json({ error: 'Failed to search users' });
+        console.error(error);
+        return res.status(500).json({ error: "Internal server error" });
     }
-};
+}
 
-module.exports = { searchUsers };
+module.exports = { searchUser };
