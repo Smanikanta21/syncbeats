@@ -25,6 +25,7 @@ model Users {
   googleId           String?       @unique
   googleRefreshToken String?
   AccountType        String?
+  storageUsed        Int           @default(0)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   devices            Device[]

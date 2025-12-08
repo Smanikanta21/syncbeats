@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Music, UserCircle, LogOut, ArrowRight, Play, Radio, RefreshCw, Cast, Users, Wifi, Clock, Activity, Moon, Sun } from 'lucide-react';
+import { Music, UserCircle, LogOut, ArrowRight, Play, Radio, RefreshCw, Cast, Users, Wifi, Clock, Activity, Moon, Sun, Pencil, Trash2, X, Check } from 'lucide-react';
 import Link from 'next/link';
 import { CreateRoom, JoinRoom } from '../components/RoomModal'
 import { toast } from 'react-toastify';
@@ -47,6 +47,55 @@ export default function DashBoard() {
         }
     }
 
+
+    const [editingRoom, setEditingRoom] = useState<{ code: string, name: string } | null>(null);
+    const [deletingRoomCode, setDeletingRoomCode] = useState<string | null>(null);
+
+    const handleUpdateRoom = async (code: string, newName: string) => {
+        try {
+            SetLoader(true);
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newName })
+            });
+            if (res.ok) {
+                toast.success("Room updated successfully");
+                setRecentRooms(prev => prev.map(r => r.code === code ? { ...r, name: newName } : r));
+                setEditingRoom(null);
+            } else {
+                const data = await res.json();
+                toast.error(data.message || "Failed to update room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to update room");
+        } finally {
+            SetLoader(false);
+        }
+    };
+
+    const handleDeleteRoom = async (code: string) => {
+        try {
+            SetLoader(true);
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("Room deleted successfully");
+                setRecentRooms(prev => prev.filter(r => r.code !== code));
+                setDeletingRoomCode(null);
+            } else {
+                const data = await res.json();
+                toast.error(data.message || "Failed to delete room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to delete room");
+        } finally {
+            SetLoader(false);
+        }
+    };
 
     useEffect(() => {
         // Check for token in URL (from Google Auth redirect)
@@ -482,16 +531,54 @@ export default function DashBoard() {
                         ) : (
                             <ul className="space-y-3">
                                 {recentRooms.slice(0, 5).map((room) => (
+
                                     <li key={room.code} className="bg-[var(--sb-surface-1)] hover:bg-[var(--sb-surface-2)] p-4 rounded-2xl border border-[var(--sb-border)] transition-all flex items-center justify-between group">
-                                        <div>
-                                            <p className="font-bold text-sm text-[var(--sb-text-main)] group-hover:text-[var(--sb-accent)] transition-colors">{room.name}</p>
-                                            <p className="text-xs font-mono text-[var(--sb-text-muted)] mt-1">{room.code}</p>
+                                        <div className="flex-1 mr-4">
+                                            {editingRoom?.code === room.code ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editingRoom.name}
+                                                        onChange={(e) => setEditingRoom({ ...editingRoom, name: e.target.value })}
+                                                        className="bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded px-2 py-1 text-sm text-white w-full focus:outline-none focus:border-[var(--sb-primary)]"
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={() => handleUpdateRoom(room.code, editingRoom.name)} className="p-1 text-green-400 hover:bg-green-500/10 rounded"><Check size={16} /></button>
+                                                    <button onClick={() => setEditingRoom(null)} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><X size={16} /></button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="font-bold text-sm text-[var(--sb-text-main)] group-hover:text-[var(--sb-accent)] transition-colors">{room.name}</p>
+                                                    <p className="text-xs font-mono text-[var(--sb-text-muted)] mt-1">{room.code}</p>
+                                                </>
+                                            )}
                                         </div>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-[var(--sb-text-muted)] hidden sm:block">{formatLastSeen(room.joinedAt)}</span>
-                                            <Link href={`/dashboard/room/${room.code}`} className="p-2 rounded-full bg-[var(--sb-surface-2)] hover:bg-[var(--sb-primary)] text-[var(--sb-text-main)] hover:text-white transition-colors">
-                                                <ArrowRight size={16} />
-                                            </Link>
+                                        <div className="flex items-center gap-2">
+                                            {!editingRoom && (
+                                                <>
+                                                    <button onClick={() => setEditingRoom({ code: room.code, name: room.name })} className="p-2 text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] hover:bg-[var(--sb-surface-3)] rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Edit Name">
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                    {deletingRoomCode === room.code ? (
+                                                        <div className="flex items-center gap-2 bg-[var(--sb-surface-2)] p-2 rounded-lg border border-red-500/20 shadow-lg animate-in fade-in slide-in-from-right-4 duration-200">
+                                                            <span className="text-xs text-red-400 font-bold whitespace-nowrap">Delete?</span>
+                                                            <button onClick={() => handleDeleteRoom(room.code)} className="p-1 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded transition-colors"><Check size={14} /></button>
+                                                            <button onClick={() => setDeletingRoomCode(null)} className="p-1 bg-[var(--sb-surface-3)] text-white hover:bg-white/10 rounded transition-colors"><X size={14} /></button>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => setDeletingRoomCode(room.code)} className="p-2 text-[var(--sb-text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Delete Room">
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                            <div className="h-4 w-px bg-[var(--sb-border)] mx-1" />
+                                                            <span className="text-xs text-[var(--sb-text-muted)] hidden sm:block mr-2">{formatLastSeen(room.joinedAt)}</span>
+                                                            <Link href={`/dashboard/room/${room.code}`} className="p-2 rounded-full bg-[var(--sb-surface-2)] hover:bg-[var(--sb-primary)] text-[var(--sb-text-main)] hover:text-white transition-colors">
+                                                                <ArrowRight size={16} />
+                                                            </Link>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </li>
                                 ))}

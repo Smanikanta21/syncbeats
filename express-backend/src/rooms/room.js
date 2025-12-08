@@ -373,4 +373,104 @@ async function getNearbyRooms(req, res) {
 
 
 
-module.exports = { createRoom, joinRoom, verifyRoom, getRoomDetails, getRecentRooms, getNearbyRooms }
+
+async function updateRoom(req, res) {
+    const { code } = req.params;
+    const { name } = req.body;
+    const user_id = req.user?.id;
+
+    if (!user_id) return res.status(401).json({ message: "Unauthorised" });
+    if (!name) return res.status(400).json({ message: "Room name is required" });
+
+    try {
+        const room = await prisma.room.findUnique({ where: { code } });
+        if (!room) return res.status(404).json({ message: "Room not found" });
+
+        if (room.hostId !== user_id) {
+            return res.status(403).json({ message: "Only the host can update the room" });
+        }
+
+        const updatedRoom = await prisma.room.update({
+            where: { code },
+            data: { name }
+        });
+
+        return res.status(200).json({ message: "Room updated successfully", room: updatedRoom });
+    } catch (err) {
+        console.log(`UpdateRoom Err: ${err}`);
+        return res.status(500).json({ message: "Failed to update room" });
+    }
+}
+
+async function deleteRoom(req, res) {
+    const { code } = req.params;
+    const user_id = req.user?.id;
+
+    if (!user_id) return res.status(401).json({ message: "Unauthorised" });
+
+    try {
+        const room = await prisma.room.findUnique({ where: { code } });
+        if (!room) return res.status(404).json({ message: "Room not found" });
+
+        if (room.hostId !== user_id) {
+            return res.status(403).json({ message: "Only the host can delete the room" });
+        }
+
+
+        await prisma.roomUsers.deleteMany({
+            where: { roomId: room.id }
+        });
+
+        await prisma.roomDevices.deleteMany({
+            where: { roomId: room.id }
+        });
+
+
+        await prisma.room.delete({ where: { code } });
+
+        return res.status(200).json({ message: "Room deleted successfully" });
+    } catch (err) {
+        console.log(`DeleteRoom Err: ${err}`);
+        return res.status(500).json({ message: "Failed to delete room" });
+    }
+}
+
+async function leaveRoom(req, res) {
+    const { code } = req.params;
+    const user_id = req.user?.id;
+
+    if (!user_id) return res.status(401).json({ message: "Unauthorised" });
+
+    try {
+        const room = await prisma.room.findUnique({ where: { code } });
+        if (!room) return res.status(404).json({ message: "Room not found" });
+
+
+        await prisma.roomUsers.deleteMany({
+            where: {
+                roomId: room.id,
+                userId: user_id
+            }
+        });
+
+
+        const userDevices = await prisma.device.findMany({
+            where: { DeviceUserId: user_id }
+        });
+        const deviceIds = userDevices.map(d => d.id);
+
+        await prisma.roomDevices.deleteMany({
+            where: {
+                roomId: room.id,
+                deviceId: { in: deviceIds }
+            }
+        });
+
+        return res.status(200).json({ message: "Left room successfully" });
+    } catch (err) {
+        console.log(`LeaveRoom Err: ${err}`);
+        return res.status(500).json({ message: "Failed to leave room" });
+    }
+}
+
+module.exports = { createRoom, joinRoom, verifyRoom, getRoomDetails, getRecentRooms, getNearbyRooms, updateRoom, deleteRoom, leaveRoom }

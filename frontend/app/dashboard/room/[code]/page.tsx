@@ -2,25 +2,18 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import {
-    Volume2,
-    Monitor,
-    Smartphone,
-    Laptop,
-    Users,
-    ListMusic,
-    Copy,
-    QrCode,
-    UserPlus,
-    X,
-    Search
-} from "lucide-react";
+import { Volume2, Monitor, Smartphone, Laptop, Users, ListMusic, Copy, QrCode, UserPlus, X, Search, LogOut, Trash2, Pencil, Check } from "lucide-react";
 import Image from "next/image";
 import toast from "react-hot-toast";
 import MusicPlayer from "@/app/components/MusicPlayer";
 import { io, Socket } from "socket.io-client";
+import { motion, AnimatePresence } from "framer-motion";
+import { authFetch } from "@/lib/authFetch";
+import RoomParticipants from "./components/RoomParticipants";
+import SongQueue from "./components/SongQueue";
+import FileUpload from "@/components/FileUpload";
 
-const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+const url = process.env.NEXT_PUBLIC_API_URL;
 interface Device {
     id: string;
     name: string;
@@ -59,36 +52,83 @@ export default function RoomPlayerPage() {
     const socketRef = useRef<Socket | null>(null);
     const [clockOffset, setClockOffset] = useState(0);
     const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const [rttMs, setRttMs] = useState<number>(0); 
+    const [rttMs, setRttMs] = useState<number>(0);
     const [avgRttMs, setAvgRttMs] = useState<number>(0);
     const [latencyMs, setLatencyMs] = useState<number>(0);
+    const [storageUsed, setStorageUsed] = useState(0);
+    const [hasStarted, setHasStarted] = useState(false);
 
-    const PLAYLIST = [
-        {
-            title: '/audio/Blinding%20Lights.mp3',
-            artist: 'The Weeknd',
-            album: 'After Hours',
-            cover: 'https://upload.wikimedia.org/wikipedia/en/e/e6/The_Weeknd_-_Blinding_Lights.png',
-        },
-        {
-            title: '/audio/Double%20Take.mp3',
-            artist: 'Dhruv',
-            album: 'Double Take',
-            cover: 'https://i.scdn.co/image/ab67616d0000b27341e31d6ea1d493dd77933ee5',
-        },
-        {
-            title: '/audio/Starboy.mp3',
-            artist: 'The Weeknd',
-            album: 'Starboy',
-            cover: 'https://upload.wikimedia.org/wikipedia/en/3/39/The_Weeknd_-_Starboy.png',
-        },
-        {
-            title: '/audio/Sunflower.mp3',
-            artist: 'Post Malone & Swae Lee',
-            album: 'Spider-Man: Into the Spider-Verse',
-            cover: 'https://upload.wikimedia.org/wikipedia/en/2/22/Post_Malone_and_Swae_Lee_-_Sunflower.png',
+    interface Song {
+        title: string;
+        artist: string;
+        album: string;
+        cover: string;
+    }
+
+    const [playlist, setPlaylist] = useState<Song[]>([]);
+
+    const handleSongAdded = (song: Song) => {
+        socketRef.current?.emit('playlist:add', { roomId: code, song });
+    };
+
+
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [newRoomName, setNewRoomName] = useState("");
+    const [showLeaveModal, setShowLeaveModal] = useState(false);
+
+    const handleUpdateRoomName = async () => {
+        try {
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newRoomName })
+            });
+            if (res.ok) {
+                setRoomName(newRoomName);
+                setIsEditingName(false);
+                toast.success("Room name updated");
+            } else {
+                toast.error("Failed to update room name");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to update room name");
         }
-    ];
+    };
+
+    const handleLeaveRoom = async () => {
+        try {
+            const res = await authFetch(`${url}/api/room/${code}/leave`, {
+                method: "POST"
+            });
+            if (res.ok) {
+                toast.success("Left room successfully");
+                window.location.href = "/dashboard";
+            } else {
+                toast.error("Failed to leave room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to leave room");
+        }
+    };
+
+    const handleDeleteRoom = async () => {
+        try {
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("Room deleted successfully");
+                window.location.href = "/dashboard";
+            } else {
+                toast.error("Failed to delete room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to delete room");
+        }
+    };
 
     useEffect(() => {
 
@@ -107,7 +147,7 @@ export default function RoomPlayerPage() {
                     const offset = serverTime - (t0 + rtt / 2);
                     samples.push(offset);
                     rtts.push(rtt);
-                    
+
                     if (samples.length === 5) {
                         samples.sort((a, b) => a - b);
                         const medianOffset = samples[2];
@@ -125,19 +165,20 @@ export default function RoomPlayerPage() {
         socketRef.current.on('connect', () => {
             syncTime();
             syncTimeoutRef.current = setInterval(syncTime, 10000);
-            
+
             if (code) {
                 socketRef.current?.emit('join-room', code);
             }
         });
 
         socketRef.current.on('music:play', ({ currentTime, serverTime }) => {
+            setHasStarted(true);
             if (serverTime) {
                 const localStartTime = serverTime - clockOffset;
                 const delay = localStartTime - Date.now();
-                
+
                 // scheduled play details suppressed
-                
+
                 if (delay > 5) {
                     setTimeout(() => {
                         setIsPlaying(true);
@@ -162,7 +203,7 @@ export default function RoomPlayerPage() {
             if (serverTime) {
                 const localStartTime = serverTime - clockOffset;
                 const delay = localStartTime - Date.now();
-                
+
                 if (delay > 5) {
                     setTimeout(() => setCurrentTime(currentTime), delay);
                 } else {
@@ -175,10 +216,11 @@ export default function RoomPlayerPage() {
         });
 
         socketRef.current.on('music:change', ({ songIndex, serverTime }) => {
+            setHasStarted(true);
             if (serverTime) {
                 const localStartTime = serverTime - clockOffset;
                 const delay = localStartTime - Date.now();
-                
+
                 if (delay > 5) {
                     setTimeout(() => {
                         setCurrentSongIndex(songIndex);
@@ -201,6 +243,15 @@ export default function RoomPlayerPage() {
             if (state.isPlaying !== undefined) setIsPlaying(state.isPlaying);
             if (state.currentTime !== undefined) setCurrentTime(state.currentTime);
             if (state.currentSongIndex !== undefined) setCurrentSongIndex(state.currentSongIndex);
+            if (state.playlist) setPlaylist(state.playlist);
+
+            if (state.isPlaying || (state.currentTime && state.currentTime > 0)) {
+                setHasStarted(true);
+            }
+        });
+
+        socketRef.current.on('playlist:add', (song: Song) => {
+            setPlaylist(prev => [...prev, song]);
         });
 
         socketRef.current.on('connect_error', () => {
@@ -238,6 +289,19 @@ export default function RoomPlayerPage() {
                     setRoomName(data.room.name);
                     if (data.room.hostId === currentUserId) {
                         setIsHost(true);
+                    }
+
+                    // Fetch user profile for storage usage
+                    try {
+                        const profileRes = await authFetch(`${url}/auth/getprofiledata`, {
+                            method: "GET"
+                        });
+                        if (profileRes.ok) {
+                            const profileData = await profileRes.json();
+                            setStorageUsed(profileData.user.storageUsed || 0);
+                        }
+                    } catch (err) {
+                        console.error("Failed to fetch profile:", err);
                     }
 
                     const roomDevices = data.room.connectedDevices.map((rd: { devices: { id: string } }) => rd.devices.id);
@@ -339,14 +403,14 @@ export default function RoomPlayerPage() {
     };
 
     const handleNext = () => {
-        if (!isHost) return;
-        const nextIndex = (currentSongIndex + 1) % PLAYLIST.length;
+        if (!isHost || playlist.length === 0) return;
+        const nextIndex = (currentSongIndex + 1) % playlist.length;
         socketRef.current?.emit('music:change', { roomId: code, songIndex: nextIndex });
     };
 
     const handlePrev = () => {
-        if (!isHost) return;
-        const prevIndex = (currentSongIndex - 1 + PLAYLIST.length) % PLAYLIST.length;
+        if (!isHost || playlist.length === 0) return;
+        const prevIndex = (currentSongIndex - 1 + playlist.length) % playlist.length;
         socketRef.current?.emit('music:change', { roomId: code, songIndex: prevIndex });
     };
 
@@ -364,16 +428,39 @@ export default function RoomPlayerPage() {
         socketRef.current?.emit('music:seek', { roomId: code, currentTime: time });
     };
 
-    const currentSong = PLAYLIST[currentSongIndex];
+    const currentSong = playlist[currentSongIndex];
 
     return (
-        <div className="min-h-screen w-full bg-[#121212] text-white overflow-hidden relative font-sans selection:bg-pink-500/30 pb-32">
+        <div className="h-screen w-full bg-[#121212] text-white overflow-hidden relative font-sans selection:bg-pink-500/30 flex flex-col">
             <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none" />
             <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-            <div className="relative z-10 max-w-4xl mx-auto p-6 pt-12">
+
+            {/* Header Section - Fixed Height */}
+            <div className="relative z-10 w-full max-w-7xl mx-auto p-6 md:p-8 shrink-0">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight mb-1">{roomName || "Loading..."}</h1>
+                    <div className="flex-1">
+                        {isEditingName ? (
+                            <div className="flex items-center gap-2 mb-1">
+                                <input
+                                    type="text"
+                                    value={newRoomName}
+                                    onChange={(e) => setNewRoomName(e.target.value)}
+                                    className="text-3xl font-bold bg-white/10 border border-white/20 rounded px-2 py-1 text-white focus:outline-none focus:border-[var(--sb-primary)] w-full max-w-sm"
+                                    autoFocus
+                                />
+                                <button onClick={handleUpdateRoomName} className="p-2 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30"><Check size={24} /></button>
+                                <button onClick={() => setIsEditingName(false)} className="p-2 bg-white/10 text-white rounded hover:bg-white/20"><X size={24} /></button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-3 mb-1 group">
+                                <h1 className="text-3xl font-bold tracking-tight">{roomName || "Loading..."}</h1>
+                                {isHost && (
+                                    <button onClick={() => { setNewRoomName(roomName); setIsEditingName(true); }} className="p-1.5 text-white/30 hover:text-white hover:bg-white/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                                        <Pencil size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                         <div className="flex items-center gap-2 text-white/50 text-sm">
                             <span>Code: <span className="font-mono text-white/80">{code}</span></span>
                             <button onClick={copyToClipboard} className="hover:text-white transition-colors p-1 rounded-md hover:bg-white/10" title="Copy Code">
@@ -384,6 +471,10 @@ export default function RoomPlayerPage() {
                     <div className="flex items-center gap-3">
                         <button onClick={() => setShowQrModal(true)} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm font-medium transition-all"><QrCode size={16} /><span>QR Code</span></button>
                         <button onClick={() => setShowInviteModal(true)} className="flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-white/90 rounded-full text-sm font-medium transition-all shadow-lg shadow-white/5"><UserPlus size={16} /><span>Add Member</span></button>
+                        <button onClick={() => setShowLeaveModal(true)} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-full text-sm font-medium transition-all">
+                            <LogOut size={16} />
+                            <span>Leave</span>
+                        </button>
                     </div>
                 </div>
                 <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -404,78 +495,151 @@ export default function RoomPlayerPage() {
                     </div>
                 </div>
 
-                {loading ? (
-                    <div className="flex justify-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                    </div>
-                ) : (
-                    <div className="space-y-6">
-                        {participants.map((participant) => (
-                            <div key={participant.id} className="bg-white/5 rounded-2xl p-4 border border-white/5 hover:bg-white/10 transition-colors group">
-                                <div className="flex items-center gap-4 mb-3">
-                                    <div className="relative">
-                                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/10 group-hover:border-white/20 transition-colors">
-                                            <Image src={participant.avatar} alt={participant.name} width={48} height={48} className="object-cover" unoptimized />
-                                        </div>
-                                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-[#121212] rounded-full" />
+                {/* Main Content Area - Fills remaining height */}
+                <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-8 flex-1 min-h-0 flex flex-col pb-32">
+                    <AnimatePresence mode="wait">
+                        {!hasStarted ? (
+                            <motion.div
+                                key="dashboard-view"
+                                initial={{ opacity: 0, x: -50 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -50 }}
+                                transition={{ duration: 0.4, ease: "circOut" }}
+                                className="flex-1 flex flex-col items-center justify-center"
+                            >
+                                <div className="w-full max-w-2xl bg-white/5 rounded-[2.5rem] p-10 border border-white/5 backdrop-blur-md shadow-2xl">
+                                    <div className="text-center mb-8">
+                                        <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500 mb-3">
+                                            Upload Your Vibe
+                                        </h2>
+                                        <p className="text-white/40 text-lg">
+                                            Drop a track to get the party started.
+                                        </p>
                                     </div>
-                                    <div>
-                                        <p className="font-semibold text-lg text-white/90">{participant.name}</p>
-                                        {participant.isHost ? <p className="text-sm text-white/40">Host • Online</p> : <p className="text-sm text-white/40">Online</p>}
+
+                                    <div className="mb-8">
+                                        <FileUpload
+                                            storageUsed={storageUsed}
+                                            onUploadSuccess={(data) => {
+                                                toast.success("Song uploaded! Waiting for host to queue it.");
+
+                                                handleSongAdded({
+                                                    title: data.url,
+                                                    artist: 'Unknown Artist',
+                                                    album: 'Upload',
+                                                    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=50'
+                                                });
+
+                                                const fetchProfile = async () => {
+                                                    try {
+                                                        const res = await authFetch(`${url}/auth/getprofiledata`, { method: "GET" });
+                                                        if (res.ok) {
+                                                            const data = await res.json();
+                                                            setStorageUsed(data.user.storageUsed || 0);
+                                                        }
+                                                    } catch (err) { console.error(err); }
+                                                };
+                                                fetchProfile();
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="text-center">
+                                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/5 text-xs font-medium text-white/30 uppercase tracking-widest animate-pulse">
+                                            <ListMusic size={12} /> Waiting for host
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="pl-6 md:pl-8 relative">
-                                    <div className="absolute left-6 md:left-8 top-0 bottom-4 w-px bg-white/10" />
-                                    {participant.devices.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {participant.devices.map((device) => (
-                                                <div
-                                                    key={device.id}
-                                                    className={`relative flex items-center gap-4 p-3 rounded-xl text-sm transition-all ml-4 ${device.isActive
-                                                        ? "bg-white/10 text-white shadow-sm border border-white/5"
-                                                        : "text-white/50 hover:bg-white/5 hover:text-white/80"
-                                                        }`}
-                                                >
-                                                    <div className="absolute -left-4 top-1/2 w-4 h-px bg-white/10" />
-                                                    <span className={device.isActive ? "text-green-400" : "opacity-60"}>
-                                                        {getDeviceIcon(device.type)}
-                                                    </span>
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                key="focus-view"
+                                initial={{ opacity: 0, x: 50 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 50 }}
+                                transition={{ duration: 0.4, ease: "circOut" }}
+                                className="grid grid-cols-1 md:grid-cols-12 gap-6 h-full"
+                            >
+                                {/* Queue (Left Side) */}
+                                <div className="md:col-span-3 h-full hidden md:block min-h-0">
+                                    <SongQueue
+                                        queue={playlist}
+                                        currentIndex={currentSongIndex}
+                                        isPlaying={isPlaying}
+                                        storageUsed={storageUsed}
+                                        onSongAdded={(song) => {
+                                            handleSongAdded(song);
+                                            // Refresh storage
+                                            const fetchProfile = async () => {
+                                                try {
+                                                    const res = await authFetch(`${url}/auth/getprofiledata`, { method: "GET" });
+                                                    if (res.ok) {
+                                                        const data = await res.json();
+                                                        setStorageUsed(data.user.storageUsed || 0);
+                                                    }
+                                                } catch (err) { console.error(err); }
+                                            };
+                                            fetchProfile();
+                                        }}
+                                        onStorageUpdate={() => { }}
+                                    />
+                                </div>
 
-                                                    <div className="flex-1 flex flex-col">
-                                                        <span className="font-medium">{device.name}</span>
-                                                        {device.isActive && <span className="text-[10px] uppercase tracking-wider text-green-400/80 font-bold">Syncing</span>}
+                                {/* Center Stage (Participants) */}
+                                <div className="md:col-span-6 h-full flex flex-col min-h-0">
+                                    <div className="bg-gradient-to-b from-white/5 to-white/0 p-1 rounded-[2rem] h-full border border-white/5 relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-0" />
+                                        <div className="relative z-10 h-full p-6 overflow-hidden flex flex-col">
+                                            <div className="text-center mb-6 shrink-0">
+                                                <h2 className="text-2xl font-bold text-white/90 group-hover:scale-105 transition-transform duration-500">
+                                                    Live Session
+                                                </h2>
+                                                <div className="flex justify-center mt-2">
+                                                    <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2 border border-green-500/20">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> On Air
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        {device.isActive && (
-                                                            <div className={`flex flex-col items-end gap-0.5 px-2 py-1 rounded-lg bg-white/5 border ${getLatencyColor(latencyMs)} border-current/20`}>
-                                                                <span className="text-[9px] uppercase tracking-wider opacity-60 font-bold">Latency</span>
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="text-xs font-mono font-bold">{latencyMs}ms</span>
-                                                                    <div className={device.latency < 50 ? "text-green-400" : device.latency < 100 ? "text-yellow-400" : "text-red-400"}>
-                                                                        {getSignalIcon(device.signal)}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {device.isActive && (
-                                                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
-                                                    )}
                                                 </div>
-                                            ))}
+                                            </div>
+                                            <div className="flex-1 min-h-0">
+                                                <RoomParticipants participants={participants} latencyMs={latencyMs} />
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="ml-4 pl-4 py-2 text-sm text-white/20 italic relative">
-                                            <div className="absolute -left-0 top-1/2 w-4 h-px bg-white/10" />
-                                            No active devices
-                                        </div>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+
+                                {/* Right Side / Mobile Queue */}
+                                <div className="md:col-span-3 h-full md:hidden min-h-0">
+                                    <SongQueue
+                                        queue={playlist}
+                                        currentIndex={currentSongIndex}
+                                        isPlaying={isPlaying}
+                                        storageUsed={storageUsed}
+                                        onSongAdded={(song) => {
+                                            handleSongAdded(song);
+                                            const fetchProfile = async () => {
+                                                try {
+                                                    const res = await authFetch(`${url}/auth/getprofiledata`, { method: "GET" });
+                                                    if (res.ok) {
+                                                        const data = await res.json();
+                                                        setStorageUsed(data.user.storageUsed || 0);
+                                                    }
+                                                } catch (err) { console.error(err); }
+                                            };
+                                            fetchProfile();
+                                        }}
+                                        onStorageUpdate={() => { }}
+                                    />
+                                </div>
+                                <div className="md:col-span-3 h-full hidden md:block min-h-0">
+                                    {/* Placeholder for Chat or Lyrics */}
+                                    <div className="bg-white/5 rounded-3xl p-6 border border-white/5 h-full flex items-center justify-center text-white/20">
+                                        <p>Chat / Lyrics Coming Soon</p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </div>
 
             {showQrModal && (
@@ -538,13 +702,41 @@ export default function RoomPlayerPage() {
                 </div>
             )}
 
+            {showLeaveModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowLeaveModal(false)}>
+                    <div className="bg-[#1c1c1e] border border-white/10 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-6 mx-auto text-red-500">
+                            <LogOut size={32} />
+                        </div>
+                        <h3 className="text-2xl font-bold mb-2">Leave Room?</h3>
+                        <p className="text-white/50 mb-8">
+                            Are you sure you want to leave <span className="text-white font-medium">{roomName}</span>?
+                        </p>
+
+                        <div className="flex flex-col gap-3">
+                            {isHost && (
+                                <button onClick={handleDeleteRoom} className="w-full py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold text-white transition-colors flex items-center justify-center gap-2">
+                                    <Trash2 size={18} /> Delete Room
+                                </button>
+                            )}
+                            <button onClick={handleLeaveRoom} className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-white transition-colors">
+                                Just Leave
+                            </button>
+                            <button onClick={() => setShowLeaveModal(false)} className="w-full py-3 text-white/50 hover:text-white transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 z-50 bg-gradient-to-t from-[#121212] via-[#121212]/90 to-transparent">
                 <div className="max-w-4xl mx-auto w-full">
                     <MusicPlayer
-                        src={currentSong.title}
-                        title={currentSong.title.split('/').pop()?.replace('.mp3', '') || "Unknown Song"}
-                        artist={currentSong.artist}
-                        cover={currentSong.cover}
+                        src={currentSong?.title || undefined}
+                        title={currentSong ? decodeURIComponent(currentSong.title.split('/').pop() || "").replace('.mp3', '') : "No Song Selected"}
+                        artist={currentSong?.artist || "Unknown Artist"}
+                        cover={currentSong?.cover || "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=50"}
                         latency={latencyMs}
                         onNext={handleNext}
                         onPrev={handlePrev}

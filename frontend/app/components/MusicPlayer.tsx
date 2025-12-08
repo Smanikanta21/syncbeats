@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Activity, ChevronDown } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown } from 'lucide-react';
 
 interface MusicPlayerProps {
     latency?: number;
@@ -42,7 +42,6 @@ export default function MusicPlayer({
     const [isVolumeDragging, setIsVolumeDragging] = useState(false);
     const [audioUnlocked, setAudioUnlocked] = useState(false);
 
-    // Unlock audio on first user interaction (anywhere on page)
     useEffect(() => {
         const unlockAudio = () => {
             if (!audioUnlocked && audioRef.current) {
@@ -54,7 +53,7 @@ export default function MusicPlayer({
                     setAudioUnlocked(true);
                     console.log('Audio unlocked via user interaction');
                 }).catch(() => {
-                    // Will try again on next interaction
+                    console.log('Audio unlock failed - user interaction required');
                 });
             }
         };
@@ -206,13 +205,7 @@ export default function MusicPlayer({
 
                 <div className="flex-1 flex flex-col items-center justify-center gap-8">
                     <div className={`relative w-64 h-64 overflow-hidden shadow-2xl border-2 rounded-full border-white/10 ${localIsPlaying ? 'animate-[spin_20s_linear_infinite]' : ''}`}>
-                        {cover ? (
-                            <img src={cover} alt={title} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-[var(--sb-primary)] to-[var(--sb-secondary)] flex items-center justify-center">
-                                <span className="text-4xl">🎵</span>
-                            </div>
-                        )}
+                        {cover ? (<img src={cover} alt={title} className="w-full h-full object-cover" />) : (<div className="w-full h-full bg-gradient-to-br from-[var(--sb-primary)] to-[var(--sb-secondary)] flex items-center justify-center"><span className="text-4xl">🎵</span></div>)}
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-[#1C1C1E] rounded-full border border-white/10" />
                     </div>
 
@@ -222,32 +215,10 @@ export default function MusicPlayer({
                     </div>
                     <div className="w-full px-2">
                         <div className="relative w-full h-10 flex items-center group/expanded-progress touch-none">
-                            <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                value={progress || 0}
-                                onChange={handleSeek}
-                                onMouseDown={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }}
-                                onTouchStart={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }}
-                                onMouseUp={handleSeekEnd}
-                                onTouchEnd={handleSeekEnd}
-                                disabled={!isHost}
-                                className={`absolute inset-0 w-full h-full opacity-0 z-[100] pointer-events-auto ${isHost ? 'cursor-pointer' : 'cursor-default'}`}
-                            />
+                            <input type="range" min="0" max="100" step="0.1" value={progress || 0} onChange={handleSeek} onMouseDown={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }} onTouchStart={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd} disabled={!isHost} className={`absolute inset-0 w-full h-full opacity-0 z-[100] pointer-events-auto ${isHost ? 'cursor-pointer' : 'cursor-default'}`}/>
                             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2 bg-white/10 rounded-full pointer-events-none" />
-                            <div
-                                className="absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-[var(--sb-primary)] rounded-full pointer-events-none"
-                                style={{ width: `${progress}%` }}
-                            />
-                            <div
-                                className="absolute top-1/2 h-4 w-6 bg-white rounded-full shadow-lg pointer-events-none z-10"
-                                style={{
-                                    left: `${progress}%`,
-                                    transform: 'translate(-50%, -50%)'
-                                }}
-                            />
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-[var(--sb-primary)] rounded-full pointer-events-none" style={{ width: `${progress}%` }}/>
+                            <div className="absolute top-1/2 h-4 w-6 bg-white rounded-full shadow-lg pointer-events-none z-10" style={{ left: `${progress}%`, transform: 'translate(-50%, -50%)' }}/>
                         </div>
                         <div className="flex justify-between text-xs font-mono text-white/40 mt-2">
                             <span>{formatTime(localCurrentTime)}</span>
@@ -269,14 +240,9 @@ export default function MusicPlayer({
                 </div>
             </div>
 
-            <div
-                className="bg-transparent backdrop-blur-2xl md:p-6 md:pb-8 p-2 pr-6 rounded-[2.5rem] flex flex-row gap-2 md:gap-6 items-center relative shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/5 w-full group cursor-pointer md:cursor-default"
-                onClick={() => setIsExpanded(true)}
-            >
+            <div className="bg-transparent backdrop-blur-2xl md:p-6 md:pb-8 p-2 pr-6 rounded-[2.5rem] flex flex-row gap-2 md:gap-6 items-center relative shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/5 w-full group cursor-pointer md:cursor-default" onClick={() => setIsExpanded(true)}>
                 <div className={`relative w-12 h-12 md:w-16 md:h-16 rounded-full overflow-hidden shadow-lg flex-shrink-0 border-2 border-[#2C2C2E] ${localIsPlaying ? 'animate-[spin_10s_linear_infinite]' : ''}`}>
-                    {cover ? (
-                        <img src={cover} alt={title} className="w-full h-full object-cover" />
-                    ) : (
+                    {cover ? (<img src={cover} alt={title} className="w-full h-full object-cover" />) : (
                         <div className="w-full h-full bg-gradient-to-br from-[var(--sb-primary)] to-[var(--sb-secondary)] flex items-center justify-center">
                             <span className="text-xl">🎵</span>
                         </div>
@@ -304,81 +270,25 @@ export default function MusicPlayer({
                         <Volume2 size={16} className="text-white/40 group-hover/vol:text-white transition-colors" />
 
                         <div className="relative flex-1 h-6 flex items-center">
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={volume}
-                                onChange={handleVolumeChange}
-                                onMouseDown={() => setIsVolumeDragging(true)}
-                                onMouseUp={() => setIsVolumeDragging(false)}
-                                onTouchStart={() => setIsVolumeDragging(true)}
-                                onTouchEnd={() => setIsVolumeDragging(false)}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                            />
+                            <input type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolumeChange} onMouseDown={() => setIsVolumeDragging(true)} onMouseUp={() => setIsVolumeDragging(false)} onTouchStart={() => setIsVolumeDragging(true)} onTouchEnd={() => setIsVolumeDragging(false)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"/>
                             <div className="absolute left-0 right-0 h-1 bg-white/10 rounded-full overflow-hidden">
                                 <div className="h-full bg-[var(--sb-primary)]" style={{ width: `${volume * 100}%` }} />
                             </div>
-                            <div className={`absolute h-5 px-2 ${isVolumeDragging ? 'bg-white text-black' : 'bg-[var(--sb-primary)] text-white'} rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg pointer-events-none transition-transform duration-100 z-10`}
-                                style={{
-                                    left: `${volume * 100}%`,
-                                    transform: `translateX(-50%) scale(${volume > 0 ? 1 : 0})`
-                                }}
-                            >
+                            <div className={`absolute h-5 px-2 ${isVolumeDragging ? 'bg-white text-black' : 'bg-[var(--sb-primary)] text-white'} rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg pointer-events-none transition-transform duration-100 z-10`} style={{left: `${volume * 100}%`,transform: `translateX(-50%) scale(${volume > 0 ? 1 : 0})`}}>
                                 {Math.round(volume * 100)}%
                             </div>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/5 border border-white/5 text-[10px] font-mono text-white/40">
-                        <Activity size={10} className={latency < 100 ? "text-green-500" : "text-yellow-500"} />
-                        {latency}ms
-                    </div>
                 </div>
-
                 <div className="hidden absolute bottom-0 left-0 right-0 h-10 group/progress touch-none md:flex items-center px-6 z-30">
                     <div className="relative w-full h-full flex items-center">
-                        <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            value={progress || 0}
-                            onChange={handleSeek}
-                            onMouseDown={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }}
-                            onTouchStart={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }}
-                            onMouseUp={(e) => { e.stopPropagation(); handleSeekEnd(); }}
-                            onTouchEnd={(e) => { e.stopPropagation(); handleSeekEnd(); }}
-                            disabled={!isHost}
-                            className={`absolute inset-0 w-full h-full opacity-0 z-[100] pointer-events-auto ${isHost ? 'cursor-pointer' : 'cursor-default'}`}
-                        />
-
+                        <input type="range" min="0" max="100" step="0.1" value={progress || 0} onChange={handleSeek} onMouseDown={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }} onTouchStart={(e) => { e.stopPropagation(); if (isHost) setIsDragging(true); }} onMouseUp={(e) => { e.stopPropagation(); handleSeekEnd(); }} onTouchEnd={(e) => { e.stopPropagation(); handleSeekEnd(); }} disabled={!isHost} className={`absolute inset-0 w-full h-full opacity-0 z-[100] pointer-events-auto ${isHost ? 'cursor-pointer' : 'cursor-default'}`}/>
                         <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1.5 bg-white/10 rounded-full pointer-events-none" />
-                        <div
-                            className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 bg-[var(--sb-primary)] rounded-full transition-all duration-100 ease-linear pointer-events-none"
-                            style={{ width: `${progress}%` }}
-                        />
-                        <div
-                            className="absolute top-1/2 -translate-y-1/2 h-6 px-3 bg-[var(--sb-primary)] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg pointer-events-none transition-all duration-100 z-10 opacity-0 group-hover/progress:opacity-100"
-                            style={{
-                                left: `${progress}%`,
-                                transform: 'translate(-50%, -50%)'
-                            }}
-                        >
-                            {formatTime(localCurrentTime)}
-                        </div>
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 bg-[var(--sb-primary)] rounded-full transition-all duration-100 ease-linear pointer-events-none" style={{ width: `${progress}%` }}/>
+                        <div className="absolute top-1/2 -translate-y-1/2 h-6 px-3 bg-[var(--sb-primary)] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg pointer-events-none transition-all duration-100 z-10 opacity-0 group-hover/progress:opacity-100" style={{left: `${progress}%`,transform: 'translate(-50%, -50%)'}}>{formatTime(localCurrentTime)}</div>
                     </div>
                 </div>
-
-                <audio
-                    ref={audioRef}
-                    src={src}
-                    preload="metadata"
-                    onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={handleEnded}
-                />
+                <audio ref={audioRef} src={src} preload="metadata" onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded}/>
             </div>
         </>
     );
