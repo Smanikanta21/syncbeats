@@ -54,7 +54,4 @@ async function handleFileUpload(req, res) {
     }
 }
 
-module.exports = {
-    handleFileUpload,
-    uploadMiddleware: upload.single('file')
-};
+module.exports = { handleFileUpload, uploadMiddleware: upload.single('file') };

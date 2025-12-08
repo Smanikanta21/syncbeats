@@ -355,4 +355,79 @@ async function changePassword(req, res, next) {
     }
 }
 
-module.exports = { signup, login, logout, getDeviceName, googleAuthCallback, getUserProfile, updateUserProfile, deleteDevice, changePassword };
+async function deleteUser(req, res, next) {
+    try {
+        const userId = req.user.id;
+
+        // Delete all related data transactions
+        // 1. Delete RoomUsers
+        await prisma.roomUsers.deleteMany({ where: { userId } });
+
+        // 2. Delete Devices & RoomDevices
+        const userDevices = await prisma.device.findMany({ where: { DeviceUserId: userId } });
+        const deviceIds = userDevices.map(d => d.id);
+
+        await prisma.roomDevices.deleteMany({ where: { deviceId: { in: deviceIds } } });
+        await prisma.device.deleteMany({ where: { DeviceUserId: userId } });
+
+        // 3. Delete RefreshTokens
+        await prisma.refreshToken.deleteMany({ where: { userId } });
+
+        // 4. Delete Rooms hosted by user
+        // First delete participants/devices in those rooms to avoid FK constraint errors if any remain
+        const userHostedRooms = await prisma.room.findMany({ where: { hostId: userId } });
+        const roomIds = userHostedRooms.map(r => r.id);
+
+        await prisma.roomUsers.deleteMany({ where: { roomId: { in: roomIds } } });
+        await prisma.roomDevices.deleteMany({ where: { roomId: { in: roomIds } } });
+        await prisma.room.deleteMany({ where: { hostId: userId } });
+
+        // 5. Finally delete user
+        await prisma.users.delete({ where: { id: userId } });
+
+        res.clearCookie("token").json({ message: "User account deleted successfully" });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function updateDevice(req, res, next) {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+        const { name } = req.body;
+
+        if (!name) return res.status(400).json({ message: "Device name is required" });
+
+        const device = await prisma.device.findFirst({
+            where: { id: deviceId, DeviceUserId: userId }
+        });
+
+        if (!device) return res.status(404).json({ message: "Device not found" });
+
+        const updatedDevice = await prisma.device.update({
+            where: { id: deviceId },
+            data: { name }
+        });
+
+        res.json({ message: "Device updated successfully", device: updatedDevice });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function clearUserStorage(req, res) {
+    try {
+        const userId = req.user.id;
+        await prisma.users.update({
+            where: { id: userId },
+            data: { storageUsed: 0 }
+        });
+        return res.status(200).json({ message: "Storage cleared" });
+    } catch (error) {
+        console.error("Clear Storage Error:", error);
+        return res.status(500).json({ message: "Failed to clear storage" });
+    }
+}
+
+module.exports = { signup, login, logout, getDeviceName, googleAuthCallback, getUserProfile, updateUserProfile, deleteDevice, changePassword, deleteUser, updateDevice, clearUserStorage };

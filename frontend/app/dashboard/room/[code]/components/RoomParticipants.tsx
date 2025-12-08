@@ -1,6 +1,6 @@
 import React from 'react';
 import Image from 'next/image';
-import { Monitor, Smartphone, Laptop } from 'lucide-react';
+import { Monitor, Smartphone, Laptop, Pencil, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface Device {
@@ -24,7 +24,12 @@ interface Participant {
 interface RoomParticipantsProps {
     participants: Participant[];
     latencyMs: number;
+    onDeviceUpdate?: () => void;
 }
+
+import { authFetch } from '@/lib/authFetch';
+import { toast } from 'react-hot-toast';
+import { useState } from 'react';
 
 const getDeviceIcon = (type: string | undefined | null) => {
     if (!type) return <Monitor size={16} />;
@@ -59,7 +64,31 @@ const getLatencyColor = (ms: number) => {
     return "text-red-400";
 };
 
-export default function RoomParticipants({ participants, latencyMs }: RoomParticipantsProps) {
+export default function RoomParticipants({ participants, latencyMs, onDeviceUpdate }: RoomParticipantsProps) {
+    const [editingDevice, setEditingDevice] = useState<{ id: string, name: string } | null>(null);
+    const url = process.env.NEXT_PUBLIC_API_URL;
+
+    const handleRenameDevice = async (deviceId: string, newName: string) => {
+        try {
+            const res = await authFetch(`${url}/auth/device/${deviceId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newName })
+            });
+
+            if (res.ok) {
+                toast.success("Device renamed");
+                setEditingDevice(null);
+                if (onDeviceUpdate) onDeviceUpdate();
+            } else {
+                toast.error("Failed to rename device");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to rename device");
+        }
+    };
+
     if (participants.length === 0) {
         return <div className="text-white/30 text-center py-8">No participants yet</div>;
     }
@@ -98,13 +127,37 @@ export default function RoomParticipants({ participants, latencyMs }: RoomPartic
                                             : "text-white/50 hover:bg-white/5 hover:text-white/80"
                                             }`}
                                     >
-                                        <div className="absolute -left-4 top-1/2 w-4 h-px bg-white/10" />
+                                        <div className="absolute -left-4 top-1/2 w-4 h-4 rounded-bl-xl border-b-2 border-l-2 border-white/10" />
                                         <span className={device.isActive ? "text-green-400" : "opacity-60"}>
                                             {getDeviceIcon(device.type)}
                                         </span>
 
-                                        <div className="flex-1 flex flex-col">
-                                            <span className="font-medium">{device.name}</span>
+                                        <div className="flex-1 flex flex-col group/device">
+                                            {editingDevice?.id === device.id ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editingDevice.name}
+                                                        onChange={(e) => setEditingDevice({ ...editingDevice, name: e.target.value })}
+                                                        className="bg-black/20 border border-white/10 rounded px-2 py-0.5 text-sm text-white w-full focus:outline-none focus:border-white/30"
+                                                        autoFocus
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <button onClick={(e) => { e.stopPropagation(); handleRenameDevice(device.id, editingDevice.name); }} className="p-1 text-green-400 hover:bg-green-500/10 rounded"><Check size={14} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingDevice(null); }} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><X size={14} /></button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{device.name}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setEditingDevice({ id: device.id, name: device.name }); }}
+                                                        className="p-1 text-white/20 hover:text-white opacity-0 group-hover/device:opacity-100 transition-opacity"
+                                                        title="Rename Device"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                </div>
+                                            )}
                                             {device.isActive && <span className="text-[10px] uppercase tracking-wider text-green-400/80 font-bold">Syncing</span>}
                                         </div>
                                         <div className="flex items-center gap-2">

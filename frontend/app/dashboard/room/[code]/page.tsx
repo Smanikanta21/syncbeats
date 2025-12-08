@@ -336,6 +336,26 @@ export default function RoomPlayerPage() {
         }
     }, [code]);
 
+    // Check for storage consistency
+    useEffect(() => {
+        if (playlist.length === 0 && storageUsed > 0) {
+            const clearStorage = async () => {
+                try {
+                    const res = await authFetch(`${url}/api/storage/clear`, {
+                        method: "POST"
+                    });
+                    if (res.ok) {
+                        setStorageUsed(0);
+                        console.log("Storage auto-cleared due to empty playlist");
+                    }
+                } catch (err) {
+                    console.error("Failed to clear storage:", err);
+                }
+            };
+            clearStorage();
+        }
+    }, [playlist.length, storageUsed]);
+
     const copyToClipboard = () => {
         navigator.clipboard.writeText(code);
         toast.success("Room code copied!");
@@ -601,7 +621,60 @@ export default function RoomPlayerPage() {
                                                 </div>
                                             </div>
                                             <div className="flex-1 min-h-0">
-                                                <RoomParticipants participants={participants} latencyMs={latencyMs} />
+                                                <RoomParticipants
+                                                    participants={participants}
+                                                    latencyMs={latencyMs}
+                                                    onDeviceUpdate={() => {
+                                                        // Re-fetch room data to reflect changes
+                                                        if (code) {
+                                                            const fetchRoom = async () => {
+                                                                try {
+                                                                    const token = localStorage.getItem('authToken');
+                                                                    let currentUserId = "";
+                                                                    if (token) {
+                                                                        try {
+                                                                            const payload = JSON.parse(atob(token.split('.')[1]));
+                                                                            currentUserId = payload.id;
+                                                                        } catch (e) {
+                                                                            console.error("Failed to decode token", e);
+                                                                        }
+                                                                    }
+
+                                                                    const res = await fetch(`${url}/api/room/${code}`, {
+                                                                        headers: {
+                                                                            'Authorization': `Bearer ${token}`
+                                                                        }
+                                                                    });
+                                                                    const data = await res.json();
+
+                                                                    if (data.room) {
+                                                                        const roomDevices = data.room.connectedDevices.map((rd: { devices: { id: string } }) => rd.devices.id);
+
+                                                                        const mappedParticipants = data.room.participants.map((p: { user: { id: string; name: string; devices: Device[] } }) => ({
+                                                                            id: p.user.id,
+                                                                            name: p.user.name,
+                                                                            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user.name)}&background=random`,
+                                                                            isHost: p.user.id === data.room.hostId,
+                                                                            devices: p.user.devices.map((d: Device) => ({
+                                                                                id: d.id,
+                                                                                name: d.name,
+                                                                                type: d.type,
+                                                                                status: d.status,
+                                                                                isActive: roomDevices.includes(d.id),
+                                                                                latency: Math.floor(Math.random() * 150) + 10,
+                                                                                signal: Math.floor(Math.random() * 4) + 1,
+                                                                            }))
+                                                                        }));
+                                                                        setParticipants(mappedParticipants);
+                                                                    }
+                                                                } catch (error) {
+                                                                    console.error("Failed to fetch room:", error);
+                                                                }
+                                                            };
+                                                            fetchRoom();
+                                                        }
+                                                    }}
+                                                />
                                             </div>
                                         </div>
                                     </div>

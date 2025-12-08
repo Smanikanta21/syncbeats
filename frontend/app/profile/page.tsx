@@ -492,18 +492,46 @@ export default function ProfilePage() {
                     {/* Danger Zone */}
                     <motion.div variants={itemVariants} className="glass-card bg-[var(--sb-surface-1)] rounded-3xl p-6 border border-red-500/20">
                         <h3 className="text-lg font-bold mb-4 text-red-400">Danger Zone</h3>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-4">
                             <div>
                                 <p className="font-medium text-[var(--sb-text-main)]">Sign Out</p>
                                 <p className="text-sm text-[var(--sb-text-muted)]">Securely log out of your account on this device</p>
                             </div>
-
-
                             <button
                                 onClick={handleLogout}
                                 className="px-6 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors font-medium flex items-center gap-2"
                             >
                                 <LogOut size={18} /> Log Out
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="font-medium text-red-400">Delete Account</p>
+                                <p className="text-sm text-[var(--sb-text-muted)]">Permanently delete your account and all data</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+                                        try {
+                                            const res = await authFetch(`${url}/auth/profile`, {
+                                                method: 'DELETE'
+                                            });
+                                            if (res.ok) {
+                                                toast.success("Account deleted successfully");
+                                                clearAuthToken();
+                                                router.push('/');
+                                            } else {
+                                                toast.error("Failed to delete account");
+                                            }
+                                        } catch (error) {
+                                            console.error('Delete account failed:', error);
+                                            toast.error("Failed to delete account");
+                                        }
+                                    }
+                                }}
+                                className="px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors font-medium flex items-center gap-2"
+                            >
+                                <Trash2 size={18} /> Delete
                             </button>
                         </div>
                     </motion.div>
