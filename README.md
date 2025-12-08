@@ -52,29 +52,6 @@ Auth-related
 - DELETE `/device/:id`
 - Google OAuth callback: `/callback/google`
 
-## Environment
-Backend `.env` (local example):
-```
-PORT=5001
-JWT=your_jwt_secret
-SESSION_SECRET=your_session_secret
-DATABASE_URL=postgres_connection_string
-BACKEND_URL=http://localhost:5001
-FRONTEND_DEV_URL=http://localhost:3000
-FRONTEND_URL=https://your-frontend-domain
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALLBACK_URL=http://localhost:5001/auth/callback/google
-GCS_BUCKET_NAME=sync-beats-audio
-GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/gcs-key.json
-```
-Frontend `.env.local` (example):
-```
-NEXT_PUBLIC_API_URL=http://localhost:5001
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5002
-```
-Set `NEXT_PUBLIC_SOCKET_URL` to the Cloud Run URL in production.
-
 ## Local Development
 ```
 # Terminal 1: sockets
@@ -92,6 +69,3 @@ cd frontend && npm install && npm run dev
 - Sockets: build & deploy container to Cloud Run (use region near users); bind to 0.0.0.0 and use PORT env.
 - Storage: use GCS bucket `sync-beats-audio`; service account with Storage Object Admin for uploads.
 - Frontend: deploy to Vercel; set `NEXT_PUBLIC_SOCKET_URL` to Cloud Run sockets URL and `NEXT_PUBLIC_API_URL` to backend URL.
-
-## Proposal Reference
-See `Syncbeats Proposal AP Capstone Project.pdf` for the full project proposal and problem statement.
