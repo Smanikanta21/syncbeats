@@ -1,137 +1,97 @@
-1. Project Title
-Sync Beats – A Cross-Platform Music Synchronization System
-2. Problem Statement
-Existing music synchronization systems like Apple’s AirPlay are restricted to their ecosystems
-(Apple-only), which prevents seamless use across devices from different platforms. There is
-currently no universal system that allows synchronized playback of music across Android, iOS,
-Windows, and macOS devices.
-Sync Beats solves this by providing a platform-independent music synchronization system
-that ensures perfect playback alignment across all connected devices using network-based
-clock synchronization and drift correction.
-3. System Architecture
-Architecture:
-Frontend → Backend (API) → Database
-Stack Overview:
-●   Frontend: Next.js (React-based framework) with TailwindCSS
-●   Backend: Node.js + Express.js (hosted on Vercel as serverless functions)
-●   Database: PostgreSQL(prisma) via Neon.tech
-●   Authentication: JWT-based authentication stored in HttpOnly cookies
-●   Hosting:
+# Sync Beats
 
+Cross-platform synchronized music playback with rooms, sockets, realtime clock sync, and shared storage.
 
-○   Frontend → Vercel: 
-○   Backend → Vercel and render
-○   Database → Neon.tech
+## Problem Statement
+Ecosystem-locked solutions (e.g., AirPlay) cannot sync audio across heterogeneous devices. Sync Beats provides platform-neutral, network-based clock sync and playback coordination for Android, iOS, macOS, and Windows.
 
+## Architecture
+- Frontend: Next.js (App Router), Tailwind CSS — hosted on Vercel
+- Backend API: Express (Vercel serverless)
+- Sockets: Socket.IO on Google Cloud Run (asia-south1) — https://sync-beats-sockets-india-1006171035854.asia-south1.run.app
+- Database: PostgreSQL (Neon via Prisma)
+- Storage: Google Cloud Storage bucket `sync-beats-audio` for uploaded tracks
 
-5. Key Features
-Category Features
+## Hosting URLs
+- Frontend (Vercel): https://syncbeats.app
+- Backend API (Vercel serverless): https://api.syncbeats.app
+- Sockets (Cloud Run, asia-south1): https://sync-beats-sockets-india-1006171035854.asia-south1.run.app
 
-Authentication & Authorization Secure JWT login/signup system
-Session Persistence Keeps user logged in until JWT expires
-Device Management Detect and display online/offline devices
-Music Playback(comming Soon) Upload and play local songs directly from the app
-Synchronization(comming Soon)
+## Features
+- JWT auth (email/password + Google OAuth)
+- Room management (create, join, verify, recent rooms)
+- Device tracking per user
+- Time-synced playback over Socket.IO with server clock offset + RTT compensation
+- Mobile audio unlock flow
+- User search (case-insensitive)
+- File upload endpoint for songs to GCS (returns a URL)
 
-Real-time music playback synchronization across
-connected devices
-Dashboard Shows connected devices, playback info, recent tracks
-Streaming Integrations (Coming
-Soon)
-Spotify & Apple Music authorization and sync
-Responsive UI Fully responsive interface
-Hosting Entire system (frontend + backend) deployed on
-Vercel
+## API (non-auth highlights)
+- POST `/signup`, `/login`, `/logout` — auth
+- GET `/getprofiledata`, `/profile` — profile fetch
+- PATCH `/profile` — profile update
+- POST `/change-password` — change password
+- DELETE `/profile` — delete account
+- PUT `/device/:id`, DELETE `/device/:id` — manage devices
+- POST `/createroom` — create room
+- POST `/joinroom` — join room
+- GET `/verifyroom/:code` — verify room
+- GET `/room/:code` — room details
+- GET `/recent-rooms` — recent rooms (pagination/sort/filter)
+- PUT `/room/:code` — update room
+- DELETE `/room/:code` — delete room
+- POST `/room/:code/leave` — leave room
+- POST `/upload` — upload audio to GCS
+- GET `/users/search` — search users (returns `{ users: [...] }`)
+- OAuth: `/google`, `/callback/google`
 
+Auth-related
+- POST `/signup`, `/login`, `/logout`
+- GET `/getprofiledata`
+- PATCH `/profile`
+- DELETE `/device/:id`
+- Google OAuth callback: `/callback/google`
 
-6. Tech Stack
-
-Layer Technologies
-Frontend Next.js, React.js, TailwindCSS
-Backend Node.js, Express.js (Serverless on
-Vercel),websockets
-Database PostgreSQL (Neon.tech via Prisma ORM)
-Authentication JWT with HttpOnly cookies
-Networking WebSocket-based synchronization
-(Planned)
-Hosting Vercel,Render (frontend + backend + Sockets), Neon.tech (DB)
-
-7. API Overview
-
-Endpoint Method Description Access
-/auth/signup POST Register a new user Public
-/auth/login POST Authenticate user and issue JWT Public
-/auth/logout POST Logout user and clear cookie Authenticated
-/auth/dashboard GET Fetch user data & connected
-devices
-
-Authenticated
-/auth/dashboard/devices
-POST Register a device to user session Authenticated
-/auth/profile POST Fetches profiles Authenticated
-/dashboard/createroom
-POST Creates room Authenticated
-/dashboard/room/id:
-
-8. WebSocket Sync Environment
-- Set `NEXT_PUBLIC_SOCKET_HOST` to your LAN IP (e.g. `192.168.1.23:6001`) for mobile device testing.
-- Optionally set `NEXT_PUBLIC_SOCKET_PORT` if not embedded in host.
-- In production use a wss host (e.g. `wss://your-render-service.onrender.com`). Ensure Render service allows WebSockets.
-- Frontend passes `roomCode`, `userId`, and `hostId` when joining; server assigns host from `hostId` (never by first connection).
-
-9. Playback Sync Handshake
-- Host issues `PLAY` -> server starts handshake: broadcasts `PREPARE_TRACK` then `device_health_check`.
-- Each client preloads audio then responds with `device_health_check_response` including `audioLoaded`, `deviceReady`, `rttMs`.
-- Server waits (timeout fallback 5s) then broadcasts authoritative `PLAY` with `masterClockMs` (monotonic) & `startDelayMs`.
-- Late joiners receive `PLAY_SYNC` with current `playbackPosition`.
-
-10. Precise Scheduling
-- Clients use WebAudioScheduler to schedule playback against `masterClockMs` plus latency compensation.
-- Drift correction: small drift -> temporary playbackRate tweak; large drift -> micro re-seek.
-- Periodic `sync_check` lets server issue `RESYNC` if drift > threshold.
-
-11. Mobile Audio Unlock
-- iOS/Android require a user gesture before audio can start. First tap triggers context `initialize()` and `resumeContext()`.
-- If autoplay blocked, UI shows toast prompting user to tap again.
-
-12. Local Development Run
-```bash
-# Terminal 1 - Sockets server (Render equivalent)
-node sockets/server.js   # or npm run dev inside sockets
-
-# Terminal 2 - Express API
-cd express-backend && npm run dev
-
-# Terminal 3 - Frontend
-cd frontend && npm run dev
+## Environment
+Backend `.env` (local example):
 ```
-Set `.env.local` for frontend:
+PORT=5001
+JWT=your_jwt_secret
+SESSION_SECRET=your_session_secret
+DATABASE_URL=postgres_connection_string
+BACKEND_URL=http://localhost:5001
+FRONTEND_DEV_URL=http://localhost:3000
+FRONTEND_URL=https://your-frontend-domain
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_CALLBACK_URL=http://localhost:5001/auth/callback/google
+GCS_BUCKET_NAME=sync-beats-audio
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/gcs-key.json
+```
+Frontend `.env.local` (example):
 ```
 NEXT_PUBLIC_API_URL=http://localhost:5001
-NEXT_PUBLIC_SOCKET_HOST=localhost:6001
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5002
+```
+Set `NEXT_PUBLIC_SOCKET_URL` to the Cloud Run URL in production.
+
+## Local Development
+```
+# Terminal 1: sockets
+cd sockets && npm install && node server.js
+
+# Terminal 2: backend
+cd express-backend && npm install && npm run dev
+
+# Terminal 3: frontend
+cd frontend && npm install && npm run dev
 ```
 
-Endpoints note: Express mounts all routes under both `/api` and `/auth`. Use `/api/room/:code` or `/auth/room/:code` (not bare `/room/:code`). Example room details fetch:
-```bash
-curl -i http://localhost:5001/api/room/12345 -H "Cookie: token=..."
-```
+## Deployment Notes
+- Backend: deploy to Vercel; set env vars (JWT, DB URL, Google OAuth, GCS) in Vercel dashboard.
+- Sockets: build & deploy container to Cloud Run (use region near users); bind to 0.0.0.0 and use PORT env.
+- Storage: use GCS bucket `sync-beats-audio`; service account with Storage Object Admin for uploads.
+- Frontend: deploy to Vercel; set `NEXT_PUBLIC_SOCKET_URL` to Cloud Run sockets URL and `NEXT_PUBLIC_API_URL` to backend URL.
 
-13. Manual Test Plan
-1. Host creates room on desktop; verify room loads.
-2. Open same room on phone (same LAN) – ensure `NEXT_PUBLIC_SOCKET_HOST` points to desktop IP.
-3. Click Play on host: observe server logs: handshake start, `PREPARE_TRACK`, device health responses, final `PLAY`.
-4. Phone logs show `PREPARE_TRACK` then `PLAY`; audio starts in sync (compare timestamps / ears).
-5. Pause/Resume/Seek from host; phone reflects changes within drift tolerance (<60ms ideal).
-6. Late join a new client; receives `PLAY_SYNC` and schedules midpoint correctly.
-7. Induce artificial delay (e.g., throttle network); confirm `sync_check` can trigger `RESYNC`.
-8. Verify QR join code works and copying room code shares properly.
-
-14. Deployment Notes (Render)
-- Point Render service start command to `node sockets/server.js`.
-- Ensure `PORT` environment variable is respected by the HTTP server you pass into `createSyncEngine`.
-- Use health checks or logs to confirm WebSocket upgrade success.
-
-15. Troubleshooting
-- Stuck on "Loading room...": confirm `/room/:code` API reachable and JWT valid.
-- No audio on mobile: ensure a tap occurred to unlock AudioContext; check console for `AudioContext state: suspended`.
-- Desync > 500ms repeatedly: inspect network RTT (`playbackState.rttMs`) and verify scheduler logs; consider increasing handshake `startDelayMs`.
+## Proposal Reference
+See `Syncbeats Proposal AP Capstone Project.pdf` for the full project proposal and problem statement.
