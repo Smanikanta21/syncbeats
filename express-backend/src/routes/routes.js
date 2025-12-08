@@ -1,11 +1,16 @@
 const express = require('express')
-const { signup, login, logout, googleAuthCallback, profilefetcher, profileeditor, deleteDevice } = require('../auth/auth')
+const { signup, login, logout, googleAuthCallback, getUserProfile, updateUserProfile, deleteDevice, changePassword, deleteUser, updateDevice, clearUserStorage } = require('../auth/auth')
 const { authMiddleWare } = require('../middleware/middleware')
 const { getDashboardData } = require('../dashboard/route')
-const { createRoom, joinRoom, verifyRoom, getRoomDetails, getRecentRooms, getNearbyRooms } = require('../rooms/room')
+const { createRoom, joinRoom, verifyRoom, getRoomDetails, getRecentRooms, updateRoom, deleteRoom, leaveRoom } = require('../rooms/room')
 const { searchUser } = require('../auth/search')
+const { handleFileUpload, uploadMiddleware } = require('./upload');
 const passport = require('passport')
 const router = express.Router()
+
+router.post('/storage/clear', authMiddleWare, clearUserStorage);
+
+router.post('/upload', authMiddleWare, uploadMiddleware, handleFileUpload);
 
 router.post('/signup', signup);
 
@@ -13,15 +18,21 @@ router.post('/login', login);
 
 router.post('/logout', logout);
 
-router.get('/getprofiledata', authMiddleWare, profilefetcher);
+router.get('/getprofiledata', authMiddleWare, getUserProfile);
 
-router.patch('/profile', authMiddleWare, profileeditor);
+router.patch('/profile', authMiddleWare, updateUserProfile);
+
+router.post('/change-password', authMiddleWare, changePassword);
+
+router.delete('/profile', authMiddleWare, deleteUser);
+
+router.put('/device/:id', authMiddleWare, updateDevice);
 
 router.delete('/device/:id', authMiddleWare, deleteDevice);
 
 router.get('/dashboard', authMiddleWare, getDashboardData);
 
-router.get('/profile', authMiddleWare, profilefetcher);
+router.get('/profile', authMiddleWare, getUserProfile);
 
 router.post('/createroom', authMiddleWare, createRoom);
 
@@ -33,12 +44,16 @@ router.get('/room/:code', authMiddleWare, getRoomDetails);
 
 router.get('/recent-rooms', authMiddleWare, getRecentRooms);
 
+router.put('/room/:code', authMiddleWare, updateRoom);
+
+router.delete('/room/:code', authMiddleWare, deleteRoom);
+
+router.post('/room/:code/leave', authMiddleWare, leaveRoom);
+
 router.get('/users/search', authMiddleWare, searchUser);
 
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get('/callback/google', passport.authenticate('google', { failureRedirect: '/' }), googleAuthCallback);
-
-
 
 module.exports = router;

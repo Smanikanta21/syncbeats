@@ -35,8 +35,18 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('playlist:add', ({ roomId, song }) => {
+    if (!roomStates[roomId]) roomStates[roomId] = { playlist: [] };
+    if (!roomStates[roomId].playlist) roomStates[roomId].playlist = [];
+
+    roomStates[roomId].playlist.push(song);
+
+    io.to(roomId).emit('playlist:add', song);
+    console.log(`Room ${roomId} added song: ${song.title}`);
+  });
+
   socket.on('music:play', ({ roomId, currentTime }) => {
-    if (!roomStates[roomId]) roomStates[roomId] = {};
+    if (!roomStates[roomId]) roomStates[roomId] = { playlist: [] };
     const serverTime = Date.now();
     roomStates[roomId].isPlaying = true;
     roomStates[roomId].currentTime = currentTime;
@@ -47,7 +57,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('music:pause', ({ roomId }) => {
-    if (!roomStates[roomId]) roomStates[roomId] = {};
+    if (!roomStates[roomId]) roomStates[roomId] = { playlist: [] };
     roomStates[roomId].isPlaying = false;
 
     io.to(roomId).emit('music:pause');
@@ -55,7 +65,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('music:seek', ({ roomId, currentTime }) => {
-    if (!roomStates[roomId]) roomStates[roomId] = {};
+    if (!roomStates[roomId]) roomStates[roomId] = { playlist: [] };
     const serverTime = Date.now();
     roomStates[roomId].currentTime = currentTime;
 
@@ -64,7 +74,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('music:change', ({ roomId, songIndex }) => {
-    if (!roomStates[roomId]) roomStates[roomId] = {};
+    if (!roomStates[roomId]) roomStates[roomId] = { playlist: [] };
     const serverTime = Date.now();
     roomStates[roomId].currentSongIndex = songIndex;
     roomStates[roomId].currentTime = 0;

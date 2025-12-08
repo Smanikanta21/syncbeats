@@ -13,7 +13,7 @@ async function searchUser(req, res) {
             },
             take:10,
         })
-        return res.json(users);
+        return res.json({ users });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: "Internal server error" });

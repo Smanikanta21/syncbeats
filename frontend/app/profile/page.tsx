@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Shield, Bell, Moon, LogOut, Camera, ChevronRight, Laptop, Smartphone, Save, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Mail, Shield, Bell, Moon, LogOut, Camera, ChevronRight, Laptop, Smartphone, Save, X, Trash2, Cloud, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
 import { authFetch, clearAuthToken } from '@/lib/authFetch'
@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 
 import { useTheme } from '../context/ThemeContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import FileUpload from '@/components/FileUpload';
 
 interface Device {
     id: string;
@@ -23,6 +24,7 @@ interface UserProfile {
     username: string;
     email: string;
     devices: Device[];
+    storageUsed: number;
 }
 
 export default function ProfilePage() {
@@ -30,12 +32,20 @@ export default function ProfilePage() {
     const { theme, toggleTheme } = useTheme();
     const [user, setUser] = useState<UserProfile | null>(null)
     const [loading, setLoading] = useState(true);
-    const [isEditing, setIsEditing] = useState(false);
+
+    // New granular edit state
+    const [activeSection, setActiveSection] = useState<'none' | 'details' | 'email' | 'password'>('none');
+
+    // Form data for Details (Name/Username) and Email
     const [formData, setFormData] = useState({
         name: '',
         username: '',
         email: ''
     });
+
+    // Separate state for password change
+    const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '' });
+
     const url = process.env.NEXT_PUBLIC_API_URL
 
     useEffect(() => {
@@ -48,21 +58,25 @@ export default function ProfilePage() {
         }
     }, [user]);
 
-    const handleSave = async () => {
+    const handleSave = async (section: 'details' | 'email') => {
         if (!user) return;
         try {
+            const body = section === 'details'
+                ? { name: formData.name, username: formData.username }
+                : { email: formData.email };
+
             const res = await authFetch(`${url}/auth/profile`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(body)
             });
 
             if (res.ok) {
                 const data = await res.json();
                 setUser({ ...user, ...data.user });
-                setIsEditing(false);
+                setActiveSection('none');
                 toast.success("Profile updated successfully");
             } else {
                 toast.error("Failed to update profile");
@@ -70,6 +84,28 @@ export default function ProfilePage() {
         } catch (error) {
             console.error('Update failed:', error);
             toast.error("Update failed");
+        }
+    };
+
+    const handlePasswordChange = async () => {
+        try {
+            const res = await authFetch(`${url}/auth/change-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(passwordData)
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                toast.success("Password updated successfully");
+                setActiveSection('none');
+                setPasswordData({ oldPassword: '', newPassword: '' });
+            } else {
+                toast.error(data.message || "Failed to update password");
+            }
+        } catch (error) {
+            console.error('Password update failed:', error);
+            toast.error("Failed to update password");
         }
     };
 
@@ -82,7 +118,6 @@ export default function ProfilePage() {
 
                 if (res.ok) {
                     const data = await res.json();
-                    // console.log(data.user.name);
                     setUser(data.user);
                 } else {
                     router.push('/');
@@ -175,7 +210,7 @@ export default function ProfilePage() {
                         <span className="font-medium">Back to Dashboard</span>
                     </Link>
                     <h1 className="text-xl font-bold hidden md:block">My Profile</h1>
-                    <div className="w-10"></div> {/* Spacer for balance */}
+                    <div className="w-10"></div>
                 </motion.header>
 
                 <motion.div
@@ -186,7 +221,6 @@ export default function ProfilePage() {
                 >
                     {/* Profile Card */}
                     <motion.div variants={itemVariants} className="glass-card bg-[var(--sb-surface-1)] rounded-3xl p-8 border border-[var(--sb-border)] relative overflow-hidden">
-                        {/* <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-[var(--sb-primary)]/20 to-[var(--sb-secondary)]/20"></div> */}
                         <div className="relative flex flex-col md:flex-row items-center gap-6 mt-12">
                             <div className="relative">
                                 <div className="w-32 h-32 rounded-full bg-[var(--sb-surface-2)] border-4 border-[var(--sb-bg)] flex items-center justify-center text-[var(--sb-text-muted)] shadow-xl">
@@ -196,26 +230,24 @@ export default function ProfilePage() {
                                     <Camera size={16} />
                                 </button>
                             </div>
-                            <div className="text-center md:text-left flex-1 w-full">
+
+                            <div className="text-center md:text-left flex-1 w-full relative">
                                 {loading ? (
                                     <div className="space-y-3 w-full">
                                         <Skeleton className="h-10 w-48 bg-[var(--sb-surface-2)]" />
                                         <Skeleton className="h-5 w-32 bg-[var(--sb-surface-2)]" />
-                                        <div className="flex gap-2 mt-2">
-                                            <Skeleton className="h-6 w-24 rounded-full bg-[var(--sb-surface-2)]" />
-                                            <Skeleton className="h-6 w-24 rounded-full bg-[var(--sb-surface-2)]" />
-                                        </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
-                                        {isEditing ? (
-                                            <div className="space-y-3 max-w-md">
+                                        {activeSection === 'details' ? (
+                                            <div className="space-y-3 max-w-md animate-in fade-in slide-in-from-bottom-2">
                                                 <input
                                                     type="text"
                                                     value={formData.name}
                                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                                     className="w-full bg-[var(--sb-surface-2)] border border-[var(--sb-border)] rounded-xl px-4 py-2 text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
                                                     placeholder="Full Name"
+                                                    autoFocus
                                                 />
                                                 <input
                                                     type="text"
@@ -224,6 +256,10 @@ export default function ProfilePage() {
                                                     className="w-full bg-[var(--sb-surface-2)] border border-[var(--sb-border)] rounded-xl px-4 py-2 text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
                                                     placeholder="Username"
                                                 />
+                                                <div className="flex gap-2 justify-center md:justify-start pt-2">
+                                                    <button onClick={() => setActiveSection('none')} className="px-4 py-2 rounded-xl bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] font-medium flex items-center gap-2"><X size={16} /> Cancel</button>
+                                                    <button onClick={() => handleSave('details')} className="btn-primary px-6 py-2 rounded-xl font-medium flex items-center gap-2"><Save size={16} /> Save</button>
+                                                </div>
                                             </div>
                                         ) : (
                                             <>
@@ -233,43 +269,14 @@ export default function ProfilePage() {
                                         )}
                                     </div>
                                 )}
-                                {!isEditing && <p className="text-[var(--sb-text-muted)] mb-4 mt-2">Music Enthusiast • Free Plan</p>}
+                                {activeSection !== 'details' && <p className="text-[var(--sb-text-muted)] mb-4 mt-2">Music Enthusiast • Free Plan</p>}
 
-                                {!isEditing && (
-                                    <div className="flex flex-wrap justify-center md:justify-start gap-2">
-                                        <span className="px-3 py-1 rounded-full bg-[var(--sb-surface-2)] border border-[var(--sb-border)] text-xs font-medium text-[var(--sb-text-muted)]">
-                                            Early Adopter
-                                        </span>
-                                        <span className="px-3 py-1 rounded-full bg-[var(--sb-success)]/10 border border-[var(--sb-success)]/30 text-xs font-medium text-[var(--sb-success)]">
-                                            Active Now
-                                        </span>
+                                {activeSection !== 'details' && (
+                                    <div className="absolute top-0 right-0">
+                                        <button onClick={() => setActiveSection('details')} className="p-2 text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] hover:bg-[var(--sb-surface-2)] rounded-lg transition-colors" title="Edit Profile Details">
+                                            <Pencil size={18} />
+                                        </button>
                                     </div>
-                                )}
-                            </div>
-
-                            <div className="flex gap-2">
-                                {isEditing ? (
-                                    <>
-                                        <button
-                                            onClick={() => setIsEditing(false)}
-                                            className="px-4 py-2 rounded-xl bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] font-medium flex items-center gap-2 transition-colors"
-                                        >
-                                            <X size={18} /> Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            className="btn-primary px-6 py-2 rounded-xl font-medium flex items-center gap-2"
-                                        >
-                                            <Save size={18} /> Save
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button
-                                        onClick={() => setIsEditing(true)}
-                                        className="btn-secondary px-6 py-2 rounded-xl font-medium"
-                                    >
-                                        Edit Profile
-                                    </button>
                                 )}
                             </div>
                         </div>
@@ -283,39 +290,85 @@ export default function ProfilePage() {
                                 <Shield size={20} className="text-[var(--sb-primary)]" /> Account
                             </h3>
                             <div className="space-y-1">
-                                <button className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-[var(--sb-surface-2)] transition-colors group">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] group-hover:text-[var(--sb-text-main)] transition-colors">
-                                            <Mail size={18} />
+                                {/* Email Logic */}
+                                <div className={`p-4 rounded-xl transition-all ${activeSection === 'email' ? 'bg-[var(--sb-surface-2)] border border-[var(--sb-primary)]/50' : 'hover:bg-[var(--sb-surface-2)]'}`}>
+                                    {activeSection === 'email' ? (
+                                        <div className="space-y-3 animate-in fade-in zoom-in-95">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="p-2 rounded-lg bg-[var(--sb-surface-3)] text-[var(--sb-text-main)]"><Mail size={18} /></div>
+                                                <p className="font-medium">Edit Email</p>
+                                            </div>
+                                            <input
+                                                type="email"
+                                                value={formData.email}
+                                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                className="w-full bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded-lg px-3 py-2 text-sm text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
+                                                autoFocus
+                                            />
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => setActiveSection('none')} className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-[var(--sb-surface-3)]">Cancel</button>
+                                                <button onClick={() => handleSave('email')} className="px-3 py-1.5 text-xs font-medium bg-[var(--sb-primary)] text-white rounded-lg hover:bg-[var(--sb-primary)]/90">Save</button>
+                                            </div>
                                         </div>
-                                        <div className="text-left w-full">
-                                            <p className="font-medium">Email Address</p>
-                                            {isEditing ? (
-                                                <input
-                                                    type="email"
-                                                    value={formData.email}
-                                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                    className="w-full mt-1 bg-[var(--sb-surface-2)] border border-[var(--sb-border)] rounded-lg px-3 py-1 text-sm text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
-                                                />
-                                            ) : (
-                                                <p className="text-xs text-[var(--sb-text-muted)]">{user?.email}</p>
-                                            )}
+                                    ) : (
+                                        <button onClick={() => setActiveSection('email')} className="w-full flex items-center justify-between group">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] group-hover:text-[var(--sb-text-main)] transition-colors">
+                                                    <Mail size={18} />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-medium">Email Address</p>
+                                                    <p className="text-xs text-[var(--sb-text-muted)]">{user?.email}</p>
+                                                </div>
+                                            </div>
+                                            <Pencil size={14} className="text-[var(--sb-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Password Logic */}
+                                <div className={`p-4 rounded-xl transition-all ${activeSection === 'password' ? 'bg-[var(--sb-surface-2)] border border-[var(--sb-primary)]/50' : 'hover:bg-[var(--sb-surface-2)]'}`}>
+                                    {activeSection === 'password' ? (
+                                        <div className="space-y-3 animate-in fade-in zoom-in-95">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="p-2 rounded-lg bg-[var(--sb-surface-3)] text-[var(--sb-text-main)]"><Shield size={18} /></div>
+                                                <p className="font-medium">Change Password</p>
+                                            </div>
+                                            <input
+                                                type="password"
+                                                placeholder="Old Password"
+                                                value={passwordData.oldPassword}
+                                                onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                                className="w-full bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded-lg px-3 py-2 text-sm text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
+                                                autoFocus
+                                            />
+                                            <input
+                                                type="password"
+                                                placeholder="New Password"
+                                                value={passwordData.newPassword}
+                                                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                                className="w-full bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded-lg px-3 py-2 text-sm text-[var(--sb-text-main)] focus:border-[var(--sb-primary)] focus:outline-none"
+                                            />
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => { setActiveSection('none'); setPasswordData({ oldPassword: '', newPassword: '' }); }} className="px-3 py-1.5 text-xs font-medium rounded-lg hover:bg-[var(--sb-surface-3)]">Cancel</button>
+                                                <button onClick={handlePasswordChange} className="px-3 py-1.5 text-xs font-medium bg-[var(--sb-primary)] text-white rounded-lg hover:bg-[var(--sb-primary)]/90">Update</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <ChevronRight size={16} className="text-[var(--sb-text-muted)]" />
-                                </button>
-                                <button className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-[var(--sb-surface-2)] transition-colors group">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] group-hover:text-[var(--sb-text-main)] transition-colors">
-                                            <Shield size={18} />
-                                        </div>
-                                        <div className="text-left">
-                                            <p className="font-medium">Password & Security</p>
-                                            <p className="text-xs text-[var(--sb-text-muted)]">Last changed 30 days ago</p>
-                                        </div>
-                                    </div>
-                                    <ChevronRight size={16} className="text-[var(--sb-text-muted)]" />
-                                </button>
+                                    ) : (
+                                        <button onClick={() => setActiveSection('password')} className="w-full flex items-center justify-between group">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-text-muted)] group-hover:text-[var(--sb-text-main)] transition-colors">
+                                                    <Shield size={18} />
+                                                </div>
+                                                <div className="text-left">
+                                                    <p className="font-medium">Password & Security</p>
+                                                    <p className="text-xs text-[var(--sb-text-muted)]">Tap to change password</p>
+                                                </div>
+                                            </div>
+                                            <ChevronRight size={16} className="text-[var(--sb-text-muted)]" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </motion.div>
 
@@ -439,13 +492,11 @@ export default function ProfilePage() {
                     {/* Danger Zone */}
                     <motion.div variants={itemVariants} className="glass-card bg-[var(--sb-surface-1)] rounded-3xl p-6 border border-red-500/20">
                         <h3 className="text-lg font-bold mb-4 text-red-400">Danger Zone</h3>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-4">
                             <div>
                                 <p className="font-medium text-[var(--sb-text-main)]">Sign Out</p>
                                 <p className="text-sm text-[var(--sb-text-muted)]">Securely log out of your account on this device</p>
                             </div>
-
-
                             <button
                                 onClick={handleLogout}
                                 className="px-6 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors font-medium flex items-center gap-2"
@@ -453,7 +504,68 @@ export default function ProfilePage() {
                                 <LogOut size={18} /> Log Out
                             </button>
                         </div>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="font-medium text-red-400">Delete Account</p>
+                                <p className="text-sm text-[var(--sb-text-muted)]">Permanently delete your account and all data</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+                                        try {
+                                            const res = await authFetch(`${url}/auth/profile`, {
+                                                method: 'DELETE'
+                                            });
+                                            if (res.ok) {
+                                                toast.success("Account deleted successfully");
+                                                clearAuthToken();
+                                                router.push('/');
+                                            } else {
+                                                toast.error("Failed to delete account");
+                                            }
+                                        } catch (error) {
+                                            console.error('Delete account failed:', error);
+                                            toast.error("Failed to delete account");
+                                        }
+                                    }
+                                }}
+                                className="px-6 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors font-medium flex items-center gap-2"
+                            >
+                                <Trash2 size={18} /> Delete
+                            </button>
+                        </div>
                     </motion.div>
+
+                    {/* Cloud Storage Section */}
+                    {user && (
+                        <motion.div variants={itemVariants} className="glass-card bg-[var(--sb-surface-1)] rounded-3xl p-6 border border-[var(--sb-border)]">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Cloud size={20} className="text-[var(--sb-primary)]" /> Cloud Storage
+                            </h3>
+                            <div className="p-4 rounded-xl bg-[var(--sb-surface-2)] border border-[var(--sb-border)]">
+                                <FileUpload
+                                    storageUsed={user.storageUsed || 0}
+                                    onUploadSuccess={() => {
+                                        // Trigger a re-fetch of the profile to update storage usage
+                                        const fetchProfile = async () => {
+                                            try {
+                                                const res = await authFetch(`${url}/auth/getprofiledata`, {
+                                                    method: "GET"
+                                                });
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    setUser(data.user);
+                                                }
+                                            } catch (err) {
+                                                console.error(err);
+                                            }
+                                        };
+                                        fetchProfile();
+                                    }}
+                                />
+                            </div>
+                        </motion.div>
+                    )}
                 </motion.div>
             </div>
         </div>

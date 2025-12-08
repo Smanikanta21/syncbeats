@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Music, UserCircle, LogOut, ArrowRight, Play, Radio, RefreshCw, Cast, Users, Wifi, Clock, Activity, Moon, Sun } from 'lucide-react';
+import { Music, UserCircle, LogOut, ArrowRight, Play, Radio, RefreshCw, Cast, Users, Wifi, Clock, Activity, Moon, Sun, Pencil, Trash2, X, Check, Search, ChevronLeft, ChevronRight, Filter, ArrowUpDown } from 'lucide-react';
 import Link from 'next/link';
 import { CreateRoom, JoinRoom } from '../components/RoomModal'
 import { toast } from 'react-toastify';
@@ -28,6 +28,50 @@ export default function DashBoard() {
     const [loader, SetLoader] = useState<boolean>(false)
     const [recentRooms, setRecentRooms] = useState<Array<{ code: string; name: string; joinedAt: string }>>([]);
 
+    // Pagination, Sorting, Filtering State
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(5);
+    const [search, setSearch] = useState("");
+    const [sortBy, setSortBy] = useState("joinedAt");
+    const [order, setOrder] = useState("desc");
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalRooms, setTotalRooms] = useState(0);
+
+    // Debounce search
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            fetchRecentRooms();
+        }, 300);
+        return () => clearTimeout(handler);
+    }, [search, page, sortBy, order]);
+
+    const fetchRecentRooms = async () => {
+        try {
+            const query = new URLSearchParams({
+                page: page.toString(),
+                limit: limit.toString(),
+                sortBy,
+                order,
+                ...(search && { search })
+            });
+
+            const res = await authFetch(`${url}/api/recent-rooms?${query}`, {
+                method: "GET"
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setRecentRooms(Array.isArray(data.rooms) ? data.rooms : []);
+                if (data.pagination) {
+                    setTotalPages(data.pagination.pages);
+                    setTotalRooms(data.pagination.total);
+                }
+            }
+        } catch (err) {
+            console.warn("Failed to fetch recent rooms:", err);
+        }
+    };
+
     const HandleDeviceRefresher = async () => {
         try {
             SetLoader(true)
@@ -47,6 +91,80 @@ export default function DashBoard() {
         }
     }
 
+
+    const [editingRoom, setEditingRoom] = useState<{ code: string, name: string } | null>(null);
+    const [deletingRoomCode, setDeletingRoomCode] = useState<string | null>(null);
+    const [editingDevice, setEditingDevice] = useState<{ id: string, name: string } | null>(null);
+
+    const handleUpdateDevice = async (id: string, newName: string) => {
+        try {
+            SetLoader(true);
+            const res = await authFetch(`${url}/auth/device/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newName })
+            });
+
+            if (res.ok) {
+                toast.success("Device updated successfully");
+                setDevices(prev => prev.map(d => d.id === id ? { ...d, name: newName } : d));
+                setEditingDevice(null);
+            } else {
+                toast.error("Failed to update device");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to update device");
+        } finally {
+            SetLoader(false);
+        }
+    };
+
+    const handleUpdateRoom = async (code: string, newName: string) => {
+        try {
+            SetLoader(true);
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newName })
+            });
+            if (res.ok) {
+                toast.success("Room updated successfully");
+                setRecentRooms(prev => prev.map(r => r.code === code ? { ...r, name: newName } : r));
+                setEditingRoom(null);
+            } else {
+                const data = await res.json();
+                toast.error(data.message || "Failed to update room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to update room");
+        } finally {
+            SetLoader(false);
+        }
+    };
+
+    const handleDeleteRoom = async (code: string) => {
+        try {
+            SetLoader(true);
+            const res = await authFetch(`${url}/api/room/${code}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("Room deleted successfully");
+                setRecentRooms(prev => prev.filter(r => r.code !== code));
+                setDeletingRoomCode(null);
+            } else {
+                const data = await res.json();
+                toast.error(data.message || "Failed to delete room");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to delete room");
+        } finally {
+            SetLoader(false);
+        }
+    };
 
     useEffect(() => {
         // Check for token in URL (from Google Auth redirect)
@@ -87,6 +205,8 @@ export default function DashBoard() {
                     console.log(`[Dashboard] Successfully authenticated as ${data.message}`)
                     setName(data.message || "");
                     setDevices(Array.isArray(data.devices) ? data.devices : []);
+                    // Recent rooms fetched via useEffect dependency on state
+                    /*
                     try {
                         const roomRes = await authFetch(`${url}/api/recent-rooms`, {
                             method: "GET"
@@ -98,6 +218,7 @@ export default function DashBoard() {
                     } catch (err) {
                         console.warn("Failed to fetch recent rooms:", err);
                     }
+                    */
                 } else {
                     console.error(`[Dashboard] Authentication failed with status ${res.status}`)
                     router.push('/')
@@ -445,7 +566,26 @@ export default function DashBoard() {
                                     {devices.map(device => (
                                         <li key={device.id} className="bg-[var(--sb-surface-1)] hover:bg-[var(--sb-surface-2)] p-4 rounded-2xl border border-[var(--sb-border)] transition-colors group">
                                             <div className="flex items-start justify-between mb-2">
-                                                <div className="font-semibold text-[var(--sb-text-main)] group-hover:text-[var(--sb-primary)] transition-colors">{device.name}</div>
+                                                {editingDevice?.id === device.id ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={editingDevice.name}
+                                                            onChange={(e) => setEditingDevice({ ...editingDevice, name: e.target.value })}
+                                                            className="bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded px-2 py-1 text-sm text-[var(--sb-text-main)] w-full focus:outline-none focus:border-[var(--sb-primary)]"
+                                                            autoFocus
+                                                        />
+                                                        <button onClick={() => handleUpdateDevice(device.id, editingDevice.name)} className="p-1 text-green-400 hover:bg-green-500/10 rounded"><Check size={16} /></button>
+                                                        <button onClick={() => setEditingDevice(null)} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><X size={16} /></button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-semibold text-[var(--sb-text-main)] group-hover:text-[var(--sb-primary)] transition-colors">{device.name}</div>
+                                                        <button onClick={() => setEditingDevice({ id: device.id, name: device.name })} className="p-1 text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Pencil size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 <div className={`w-2 h-2 rounded-full ${device.status === 'online' ? 'bg-[var(--sb-success)] shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`}></div>
                                             </div>
                                             <div className="flex items-center justify-between text-xs text-[var(--sb-text-muted)]">
@@ -468,34 +608,124 @@ export default function DashBoard() {
                     className="grid grid-cols-1 lg:grid-cols-2 gap-8"
                 >
                     <div className="glass-card rounded-3xl p-8 flex flex-col gap-6">
-                        <h2 className="text-xl font-bold flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-accent)]">
-                                <Clock size={20} />
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <h2 className="text-xl font-bold flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-[var(--sb-surface-2)] text-[var(--sb-accent)]">
+                                    <Clock size={20} />
+                                </div>
+                                Recent Rooms
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--sb-text-muted)]" size={14} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search..."
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        className="pl-9 pr-3 py-1.5 bg-[var(--sb-surface-2)] border border-[var(--sb-border)] rounded-full text-sm focus:outline-none focus:border-[var(--sb-primary)] w-32 md:w-48 transition-all"
+                                    />
+                                </div>
+                                <div className="flex bg-[var(--sb-surface-2)] rounded-full p-1 border border-[var(--sb-border)]">
+                                    <button
+                                        onClick={() => { setSortBy('joinedAt'); setOrder(order === 'asc' ? 'desc' : 'asc'); }}
+                                        className={`p-1.5 rounded-full transition-colors ${sortBy === 'joinedAt' ? 'bg-[var(--sb-surface-3)] text-[var(--sb-text-main)]' : 'text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)]'}`}
+                                        title="Sort by Date"
+                                    >
+                                        <Clock size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => { setSortBy('name'); setOrder(order === 'asc' ? 'desc' : 'asc'); }}
+                                        className={`p-1.5 rounded-full transition-colors ${sortBy === 'name' ? 'bg-[var(--sb-surface-3)] text-[var(--sb-text-main)]' : 'text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)]'}`}
+                                        title="Sort by Name"
+                                    >
+                                        <ArrowUpDown size={14} />
+                                    </button>
+                                </div>
                             </div>
-                            Recent Rooms
-                        </h2>
+                        </div>
 
                         {recentRooms.length === 0 ? (
                             <div className="p-8 text-center border border-dashed border-[var(--sb-border)] rounded-2xl">
-                                <p className="text-sm text-[var(--sb-text-muted)]">No recent rooms. Join or create a session to get started.</p>
+                                <p className="text-sm text-[var(--sb-text-muted)]">No recent rooms match your criteria.</p>
                             </div>
                         ) : (
-                            <ul className="space-y-3">
-                                {recentRooms.slice(0, 5).map((room) => (
-                                    <li key={room.code} className="bg-[var(--sb-surface-1)] hover:bg-[var(--sb-surface-2)] p-4 rounded-2xl border border-[var(--sb-border)] transition-all flex items-center justify-between group">
-                                        <div>
-                                            <p className="font-bold text-sm text-[var(--sb-text-main)] group-hover:text-[var(--sb-accent)] transition-colors">{room.name}</p>
-                                            <p className="text-xs font-mono text-[var(--sb-text-muted)] mt-1">{room.code}</p>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-[var(--sb-text-muted)] hidden sm:block">{formatLastSeen(room.joinedAt)}</span>
-                                            <Link href={`/dashboard/room/${room.code}`} className="p-2 rounded-full bg-[var(--sb-surface-2)] hover:bg-[var(--sb-primary)] text-[var(--sb-text-main)] hover:text-white transition-colors">
-                                                <ArrowRight size={16} />
-                                            </Link>
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
+                            <>
+                                <ul className="space-y-3">
+                                    {recentRooms.map((room) => (
+                                        <li key={room.code} className="bg-[var(--sb-surface-1)] hover:bg-[var(--sb-surface-2)] p-4 rounded-2xl border border-[var(--sb-border)] transition-all flex items-center justify-between group">
+                                            <div className="flex-1 mr-4">
+                                                {editingRoom?.code === room.code ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={editingRoom.name}
+                                                            onChange={(e) => setEditingRoom({ ...editingRoom, name: e.target.value })}
+                                                            className="bg-[var(--sb-surface-3)] border border-[var(--sb-border)] rounded px-2 py-1 text-sm text-[var(--sb-text-main)] w-full focus:outline-none focus:border-[var(--sb-primary)]"
+                                                            autoFocus
+                                                        />
+                                                        <button onClick={() => handleUpdateRoom(room.code, editingRoom.name)} className="p-1 text-green-400 hover:bg-green-500/10 rounded"><Check size={16} /></button>
+                                                        <button onClick={() => setEditingRoom(null)} className="p-1 text-red-400 hover:bg-red-500/10 rounded"><X size={16} /></button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="font-bold text-sm text-[var(--sb-text-main)] group-hover:text-[var(--sb-accent)] transition-colors">{room.name}</p>
+                                                        <p className="text-xs font-mono text-[var(--sb-text-muted)] mt-1">{room.code}</p>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {!editingRoom && (
+                                                    <>
+                                                        <button onClick={() => setEditingRoom({ code: room.code, name: room.name })} className="p-2 text-[var(--sb-text-muted)] hover:text-[var(--sb-text-main)] hover:bg-[var(--sb-surface-3)] rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Edit Name">
+                                                            <Pencil size={14} />
+                                                        </button>
+                                                        {deletingRoomCode === room.code ? (
+                                                            <div className="flex items-center gap-2 bg-[var(--sb-surface-2)] p-2 rounded-lg border border-red-500/20 shadow-lg animate-in fade-in slide-in-from-right-4 duration-200">
+                                                                <span className="text-xs text-red-400 font-bold whitespace-nowrap">Delete?</span>
+                                                                <button onClick={() => handleDeleteRoom(room.code)} className="p-1 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded transition-colors"><Check size={14} /></button>
+                                                                <button onClick={() => setDeletingRoomCode(null)} className="p-1 bg-[var(--sb-surface-3)] text-white hover:bg-white/10 rounded transition-colors"><X size={14} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <button onClick={() => setDeletingRoomCode(room.code)} className="p-2 text-[var(--sb-text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Delete Room">
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                                <div className="h-4 w-px bg-[var(--sb-border)] mx-1" />
+                                                                <span className="text-xs text-[var(--sb-text-muted)] hidden sm:block mr-2">{formatLastSeen(room.joinedAt)}</span>
+                                                                <Link href={`/dashboard/room/${room.code}`} className="p-2 rounded-full bg-[var(--sb-surface-2)] hover:bg-[var(--sb-primary)] text-[var(--sb-text-main)] hover:text-white transition-colors">
+                                                                    <ArrowRight size={16} />
+                                                                </Link>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                                {/* Pagination Controls */}
+                                <div className="flex items-center justify-between mt-4 text-xs text-[var(--sb-text-muted)]">
+                                    <span>{totalRooms} rooms</span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                                            disabled={page === 1}
+                                            className="p-1 rounded hover:bg-[var(--sb-surface-2)] disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <span className="font-mono">{page} / {totalPages}</span>
+                                        <button
+                                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={page === totalPages}
+                                            className="p-1 rounded hover:bg-[var(--sb-surface-2)] disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
                         )}
                     </div>
                 </motion.section>

@@ -37,7 +37,7 @@ app.use(passport.initialize())
 app.use(passport.session())
 
 app.use('/auth', authroutes);
-
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/api', router)
 app.get('/', (req, res) => {
   res.json({ message: "server is running" })

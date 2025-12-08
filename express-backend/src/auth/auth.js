@@ -103,12 +103,12 @@ async function signup(req, res, next) {
 
         const hash = await bcrypt.hash(password, 10);
         const user = await prisma.users.create({
-            data: { 
-                name, 
-                username, 
-                email, 
+            data: {
+                name,
+                username,
+                email,
                 pfp: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                password: hash 
+                password: hash
             }
         });
 
@@ -240,7 +240,7 @@ async function googleAuthCallback(req, res) {
     }
 }
 
-async function profilefetcher(req, res, next) {
+async function getUserProfile(req, res, next) {
     try {
         const userId = req.user.id;
         const user = await prisma.users.findUnique({
@@ -251,6 +251,7 @@ async function profilefetcher(req, res, next) {
                 email: true,
                 username: true,
                 googleId: true,
+                storageUsed: true,
                 createdAt: true,
                 devices: true
             }
@@ -277,7 +278,7 @@ async function profilefetcher(req, res, next) {
 }
 
 
-async function profileeditor(req, res, next) {
+async function updateUserProfile(req, res, next) {
     try {
         const userId = req.user.id;
         const { name, username, email } = req?.body;
@@ -320,4 +321,113 @@ async function deleteDevice(req, res, next) {
     }
 }
 
-module.exports = { signup, login, logout, getDeviceName, googleAuthCallback, profilefetcher, profileeditor, deleteDevice };
+
+async function changePassword(req, res, next) {
+    try {
+        const userId = req.user.id;
+        const { oldPassword, newPassword } = req.body;
+
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ message: "Both old and new passwords are required" });
+        }
+
+        const user = await prisma.users.findUnique({ where: { id: userId } });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (!user.password && user.googleId) {
+            return res.status(400).json({ message: "You are logged in via Google. Please set a password first." });
+        }
+
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Incorrect old password" });
+        }
+
+        const hash = await bcrypt.hash(newPassword, 10);
+        await prisma.users.update({
+            where: { id: userId },
+            data: { password: hash }
+        });
+
+        res.json({ message: "Password updated successfully" });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function deleteUser(req, res, next) {
+    try {
+        const userId = req.user.id;
+
+        // Delete all related data transactions
+        // 1. Delete RoomUsers
+        await prisma.roomUsers.deleteMany({ where: { userId } });
+
+        // 2. Delete Devices & RoomDevices
+        const userDevices = await prisma.device.findMany({ where: { DeviceUserId: userId } });
+        const deviceIds = userDevices.map(d => d.id);
+
+        await prisma.roomDevices.deleteMany({ where: { deviceId: { in: deviceIds } } });
+        await prisma.device.deleteMany({ where: { DeviceUserId: userId } });
+
+        // 3. Delete RefreshTokens
+        await prisma.refreshToken.deleteMany({ where: { userId } });
+
+        // 4. Delete Rooms hosted by user
+        // First delete participants/devices in those rooms to avoid FK constraint errors if any remain
+        const userHostedRooms = await prisma.room.findMany({ where: { hostId: userId } });
+        const roomIds = userHostedRooms.map(r => r.id);
+
+        await prisma.roomUsers.deleteMany({ where: { roomId: { in: roomIds } } });
+        await prisma.roomDevices.deleteMany({ where: { roomId: { in: roomIds } } });
+        await prisma.room.deleteMany({ where: { hostId: userId } });
+
+        // 5. Finally delete user
+        await prisma.users.delete({ where: { id: userId } });
+
+        res.clearCookie("token").json({ message: "User account deleted successfully" });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function updateDevice(req, res, next) {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+        const { name } = req.body;
+
+        if (!name) return res.status(400).json({ message: "Device name is required" });
+
+        const device = await prisma.device.findFirst({
+            where: { id: deviceId, DeviceUserId: userId }
+        });
+
+        if (!device) return res.status(404).json({ message: "Device not found" });
+
+        const updatedDevice = await prisma.device.update({
+            where: { id: deviceId },
+            data: { name }
+        });
+
+        res.json({ message: "Device updated successfully", device: updatedDevice });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function clearUserStorage(req, res) {
+    try {
+        const userId = req.user.id;
+        await prisma.users.update({
+            where: { id: userId },
+            data: { storageUsed: 0 }
+        });
+        return res.status(200).json({ message: "Storage cleared" });
+    } catch (error) {
+        console.error("Clear Storage Error:", error);
+        return res.status(500).json({ message: "Failed to clear storage" });
+    }
+}
+
+module.exports = { signup, login, logout, getDeviceName, googleAuthCallback, getUserProfile, updateUserProfile, deleteDevice, changePassword, deleteUser, updateDevice, clearUserStorage };
