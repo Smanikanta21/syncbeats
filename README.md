@@ -69,6 +69,3 @@ cd frontend && npm install && npm run dev
 - Sockets: build & deploy container to Cloud Run (use region near users); bind to 0.0.0.0 and use PORT env.
 - Storage: use GCS bucket `sync-beats-audio`; service account with Storage Object Admin for uploads.
 - Frontend: deploy to Vercel; set `NEXT_PUBLIC_SOCKET_URL` to Cloud Run sockets URL and `NEXT_PUBLIC_API_URL` to backend URL.
-
-## Proposal Reference
-See `Syncbeats Proposal AP Capstone Project.pdf` for the full project proposal and problem statement.
