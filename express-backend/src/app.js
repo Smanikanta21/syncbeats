@@ -12,10 +12,7 @@ const router = require('./routes/routes')
 
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    return callback(null, true);
-  },
+  origin: [`${process.env.FRONTEND_DEV_URL}`],
   methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
