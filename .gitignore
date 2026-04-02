@@ -1,55 +1,8 @@
-# Dependencies
-node_modules
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-sockets/node_modules/
-
-# Environment
-.env
-.env.local
-.env.production
-.env.development.local
-
-# Logs
-logs/
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-.AppleDouble
-.LSOverride
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.sublime-*
-
-# Build outputs
-dist/
-build/
-.next/
-out/
-
-# Testing
-coverage/
-
-# Misc
-*.bak
-*.tmp
-api_response.json
-get_room_code.js
-gcloud init/
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
-express-backend/.DS_Store
-express-backend/package-lock.json
-.DS_Store
+/backend/node_modules
+/backend/dist
+/frontend/node_modules
+/backend/package-lock.json
+/frontend/package-lock.json
+/backend/.env
+/frontend/.env
 .DS_Store
