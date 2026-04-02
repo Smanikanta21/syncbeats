@@ -26,7 +26,7 @@ export function Navbar() {
         className="w-full max-w-5xl bg-black/80 backdrop-blur-3xl border border-[#cbd5e1]/40 rounded-full px-6 md:px-8 py-4 flex items-center justify-between pointer-events-auto"
       >
         <div className="flex items-center gap-4">
-          <span className="text-2xl font-black tracking-tighter text-[#f1f5f9] drop-shadow-[0_0_10px_rgba(241,245,249,0.5)]">SYNC<span className="text-accent-secondary">BEATS</span></span>
+          <span className="text-2xl font-black tracking-tighter text-zinc-200">SYNC<span className="text-zinc-500">BEATS</span></span>
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent-primary/10 border border-accent-primary/20">
             <Sparkles className="w-3 h-3 text-accent-primary animate-pulse" />
             <span className="text-accent-primary text-[10px] font-bold uppercase tracking-widest">Beta</span>

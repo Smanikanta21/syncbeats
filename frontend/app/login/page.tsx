@@ -4,9 +4,16 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const router = useRouter();
+
+  const handleAuth = (e: React.FormEvent) => {
+    e.preventDefault();
+    router.push("/hub");
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
@@ -63,7 +70,7 @@ export default function AuthPage() {
                   <p className="text-zinc-500 font-medium">Log in to manage your synced sessions.</p>
                 </div>
 
-                <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+                <form className="space-y-6" onSubmit={handleAuth}>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Email Address</label>
                     <div className="relative">
@@ -126,7 +133,7 @@ export default function AuthPage() {
                   <p className="text-zinc-500 font-medium">Create an account to start syncing audio.</p>
                 </div>
 
-                <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+                <form className="space-y-4" onSubmit={handleAuth}>
                   <div className="space-y-1.5 flex gap-4">
                      <div className="w-full">
                       <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Full Name</label>

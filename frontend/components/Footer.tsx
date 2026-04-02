@@ -3,7 +3,7 @@ export function Footer() {
     <footer className="border-t border-white/5 bg-black/40 backdrop-blur-2xl pt-20 pb-10 px-4 sm:px-6 lg:px-8 mt-10 relative z-10">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-10">
         <div className="flex flex-col items-start gap-4">
-          <span className="text-3xl font-black tracking-tighter text-white">SYNC<span className="text-accent-secondary">BEATS</span></span>
+          <span className="text-3xl font-black tracking-tighter text-zinc-200">SYNC<span className="text-zinc-500">BEATS</span></span>
           <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
             The collaborative workspace built specifically for music creators. Ship music faster.
           </p>
