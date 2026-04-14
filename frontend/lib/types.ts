@@ -1,0 +1,25 @@
+// lib/types.ts — Shared frontend types (mirrors backend src/types/index.ts)
+
+export enum PlaybackState {
+  IDLE    = 'IDLE',
+  PLAYING = 'PLAYING',
+  PAUSED  = 'PAUSED',
+  SEEKING = 'SEEKING',
+}
+
+export interface Participant {
+  socketId:    string;
+  displayName: string;
+  joinedAt:    number;
+  isReady:     boolean;
+}
+
+export interface RoomSnapshot {
+  roomId:       string;
+  trackUrl:     string | null;
+  position:     number;      // ms at the time of snapshot
+  state:        PlaybackState;
+  hostId:       string | null;
+  timestamp:    number;      // server epoch when snapshot was taken
+  participants: Participant[];
+}

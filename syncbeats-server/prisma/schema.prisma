@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  passwordHash String  @map("password_hash")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  devices           Device[]
+  rooms             Room[]
+  roomParticipants  RoomParticipant[]
+
+  @@map("users")
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  deviceKey String   @map("device_key")
+  name      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceKey])
+  @@index([userId])
+  @@map("devices")
+}
+
+model Room {
+  id             String   @id
+  hostId         String   @map("host_id")
+  trackUrl       String?  @map("track_url")
+  playbackState  String   @default("IDLE") @map("playback_state")
+  positionMs     BigInt   @default(0) @map("position_ms")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  roomParticipants RoomParticipant[]
+
+  @@index([hostId])
+  @@index([endedAt], map: "idx_rooms_active")
+  @@map("rooms")
+}
+
+model RoomParticipant {
+  roomId      String   @map("room_id")
+  userId      String   @map("user_id")
+  socketId    String   @map("socket_id")
+  displayName String   @map("display_name")
+  joinedAt    DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt      DateTime? @map("left_at") @db.Timestamptz(6)
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@map("room_participants")
+}

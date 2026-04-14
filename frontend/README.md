@@ -34,9 +34,3 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Audio Sync Engine
-
-- HTMLAudio-based playback: The app uses a single hidden `<audio>` element for synchronized playback across clients. Web Audio API is no longer used.
-- Sync + drift correction: Clients schedule starts against the server clock and periodically correct drift with small playbackRate adjustments (ignore <40ms, smooth 40–250ms, hard seek >250ms).
-- iOS unlock: On the first user gesture, the app briefly plays/pauses muted audio to satisfy autoplay policies; actual playback unmutes the element.
