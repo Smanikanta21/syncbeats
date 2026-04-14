@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: syncbeats
+      POSTGRES_PASSWORD: syncbeats_secret
+      POSTGRES_DB: syncbeats
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syncbeats -d syncbeats"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  prisma:
+    image: node:20-alpine
+    working_dir: /workspace/syncbeats-server
+    environment:
+      DATABASE_URL: "postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats"
+    volumes:
+      - ./:/workspace
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "npx --no-install prisma generate &&
+      npx --no-install prisma db push"
+    restart: "no"
+
+  server:
+    build:
+      context: ./syncbeats-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      CORS_ORIGIN: "*"
+      DATABASE_URL: "postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats"
+      JWT_SECRET: "syncbeats-dev-jwt-secret-change-in-prod"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      prisma:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

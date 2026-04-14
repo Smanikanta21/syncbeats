@@ -1,25 +1,56 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Disc, Play, Plus, Search, Settings, LogOut, ArrowRight, Clock } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
+import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../../../context/AuthContext";
+import { devicesApi, roomsApi, type Device } from "../../../lib/api";
+
+interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; }
 
 export default function HubPage() {
   const router = useRouter();
-  const [joinCode, setJoinCode] = useState("");
+  const { device: currentDevice } = useAuth();
+  const [joinCode,    setJoinCode]    = useState("");
+  const [isHosting,   setIsHosting]   = useState(false);
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+
+  function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
+    if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-zinc-300" />;
+    return <Laptop className="w-4 h-4 text-zinc-300" />;
+  }
+
+  useEffect(() => {
+    roomsApi.mine()
+      .then(({ rooms }) => setRecentRooms(rooms as RecentRoom[]))
+      .catch(() => {}); // not critical if it fails
+
+    devicesApi.mine()
+      .then(({ devices }) => setDevices(devices))
+      .catch(() => {});
+  }, []);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCode.length > 3) {
-      router.push(`/room/${joinCode}`);
+    if (joinCode.trim().length > 3) {
+      router.push(`/room/${joinCode.trim().toUpperCase()}`);
     }
   };
 
-  const handleHost = () => {
-    const randomId = Math.floor(100000 + Math.random() * 900000).toString();
-    router.push(`/room/${randomId}?host=true`);
+  const handleHost = async () => {
+    setIsHosting(true);
+    try {
+      const data = await roomsApi.create();
+      router.push(`/room/${data.roomId}`);
+    } catch {
+      // Fallback to client-side ID if server unreachable
+      const randomId = Math.floor(100000 + Math.random() * 900000).toString();
+      router.push(`/room/${randomId}`);
+    } finally {
+      setIsHosting(false);
+    }
   };
 
   return (
@@ -74,9 +105,10 @@ export default function HubPage() {
             
             <button 
               onClick={handleHost}
-              className="mt-auto w-full h-14 rounded-2xl bg-zinc-200 text-black font-bold text-lg hover:bg-white transition-all overflow-hidden relative shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+              disabled={isHosting}
+              className="mt-auto w-full h-14 rounded-2xl bg-zinc-200 text-black font-bold text-lg hover:bg-white transition-all overflow-hidden relative shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
             >
-              Start Session
+              {isHosting ? "Creating Room…" : "Start Session"}
             </button>
           </motion.div>
 
@@ -120,8 +152,8 @@ export default function HubPage() {
 
         </div>
 
-        {/* Recent Sessions */}
-        <motion.div 
+        {/* Recent Sessions — live from DB */}
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -131,34 +163,88 @@ export default function HubPage() {
             <Clock className="w-4 h-4 text-zinc-500" />
             <h4 className="text-sm font-semibold tracking-widest text-zinc-500 uppercase">Recent Sessions</h4>
           </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors group">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
-                  <Disc className="w-5 h-5 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-zinc-300">NYC Pre-game</div>
-                  <div className="text-xs text-zinc-600 font-medium">Last Friday</div>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-            </div>
 
-            <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors group">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
-                  <Play className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+          {recentRooms.length === 0 ? (
+            <p className="text-zinc-600 text-sm font-medium text-center py-8">
+              No sessions yet — host your first one above!
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {recentRooms.map((room) => (
+                <div
+                  key={room.id}
+                  onClick={() => router.push(`/room/${room.id}`)}
+                  className="glass-panel p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                      {room.ended_at
+                        ? <Disc className="w-5 h-5 text-zinc-600" />
+                        : <Play className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+                      }
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-zinc-300 font-mono tracking-widest">{room.id}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {!room.ended_at && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                        )}
+                        <div className="text-xs text-zinc-600 font-medium">
+                          {new Date(room.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-zinc-300">Dorm Room 4B</div>
-                  <div className="text-xs text-zinc-600 font-medium">Oct 12, 2026</div>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+              ))}
             </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="mt-10 w-full max-w-4xl mx-auto"
+        >
+          <div className="flex items-center justify-between gap-4 mb-6 ml-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500">Devices</p>
+              <h4 className="text-sm font-semibold tracking-widest text-zinc-500 uppercase mt-1">Your saved devices</h4>
+            </div>
+            <div className="text-sm text-zinc-500 font-medium">{devices.length} saved</div>
           </div>
+
+          {devices.length === 0 ? (
+            <p className="text-zinc-600 text-sm font-medium text-center py-8">No devices saved yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {devices.map((savedDevice) => {
+                const isCurrent = currentDevice?.id === savedDevice.id;
+
+                return (
+                  <div
+                    key={savedDevice.id}
+                    className={`glass-panel p-4 rounded-2xl border bg-white/5 flex items-center justify-between transition-colors ${isCurrent ? "border-white/20" : "border-white/5 hover:bg-white/10"}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
+                        <DeviceGlyph userAgent={savedDevice.user_agent} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-zinc-200 truncate flex items-center gap-2">
+                          {savedDevice.name}
+                          {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
+                        </div>
+                        <div className="text-xs text-zinc-600 font-medium truncate">{savedDevice.user_agent ?? "Unknown browser"}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
 
       </main>

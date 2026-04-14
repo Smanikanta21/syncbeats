@@ -1,8 +1,14 @@
-/backend/node_modules
-/backend/dist
 /frontend/node_modules
-/backend/package-lock.json
-/frontend/package-lock.json
-/backend/.env
+/syncbeats-server/node_modules
+/syncbeats-server/dist
+
+/syncbeats-server/.env
 /frontend/.env
+.DS_Store
+
+# Note: typically package-lock.json is committed to version control for CI/CD consistency.
+# If you want to use `npm ci` in your pipeline, remove these exact lines:
+/frontend/package-lock.json
+/syncbeats-server/package-lock.json
+.DS_Store
 .DS_Store
