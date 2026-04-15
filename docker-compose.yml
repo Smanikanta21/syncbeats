@@ -1,98 +1,80 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
-    container_name: syncbeats-db
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-syncbeats}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncbeats_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-syncbeats}
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    expose:
-      - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-syncbeats} -d $${POSTGRES_DB:-syncbeats}"]
       interval: 5s
       timeout: 3s
       retries: 20
-    networks:
-      - syncbeats-network
 
   prisma:
     image: node:20-alpine
-    container_name: syncbeats-prisma
     working_dir: /workspace/syncbeats-server
-    restart: "no"
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL_DOCKER}
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats}
     volumes:
       - ./:/workspace
     depends_on:
       db:
         condition: service_healthy
     command: >
-      sh -c "
-      npx --no-install prisma generate &&
-      npx --no-install prisma db push
-      "
-    networks:
-      - syncbeats-network
+      sh -c "npx --no-install prisma generate &&
+      npx --no-install prisma db push --accept-data-loss"
+    restart: "no"
 
   server:
-    container_name: syncbeats-server
     build:
       context: ./syncbeats-server
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      PORT: ${PORT}
-      NODE_ENV: ${NODE_ENV}
-      JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: ${DATABASE_URL_DOCKER}
-      CORS_ORIGIN: ${CORS_ORIGIN}
     ports:
-      - "${PORT}:${PORT}"
+      - "${PORT:-4000}:${PORT:-4000}"
+    environment:
+      PORT: ${PORT:-4000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats}
+      JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
       prisma:
         condition: service_completed_successfully
-    networks:
-      - syncbeats-network
 
-  frontend:
-    container_name: syncbeats-frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      PORT: ${FRONTEND_PORT}
-      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
-      NODE_ENV: ${NODE_ENV}
-    ports:
-      - "${FRONTEND_PORT}:3000"
-    depends_on:
-      - server
-    networks:
-      - syncbeats-network
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:-http://localhost:4000}
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     PORT: 3000
+  #     NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:-http://localhost:4000}
+  #   depends_on:
+  #     - server
 
 volumes:
   pgdata:
-
-networks:
-  syncbeats-network:
-    driver: bridge
+  uploads:

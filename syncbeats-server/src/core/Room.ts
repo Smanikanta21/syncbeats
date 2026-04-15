@@ -1,17 +1,16 @@
-// ─── Step 2: Room state machine ───────────────────────────────────────────
-//
-// Room is a pure EventEmitter — no socket / IO references.
-// All guards run internally; the SocketHandler simply calls methods.
+// ─── Room state machine ────────────────────────────────────────────────────
+// Pure EventEmitter — no host gate. Any participant can control playback.
+// Readiness tracking: server holds play until every client has buffered.
 
-import { EventEmitter }   from 'events';
-import { PlaybackState }  from './PlaybackState';
+import { EventEmitter }  from 'events';
+import { PlaybackState } from './PlaybackState';
 import { Participant, RoomSnapshot } from '../types';
 
 export class Room extends EventEmitter {
   private state:        PlaybackState          = PlaybackState.IDLE;
   private position:     number                 = 0;   // ms
   private trackUrl:     string | null          = null;
-  private hostId:       string | null          = null;
+  private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
   private snapshotTime: number                 = Date.now();
 
@@ -19,7 +18,7 @@ export class Room extends EventEmitter {
     super();
   }
 
-  // ── Initialization from database ───────────────────────────────────────
+  // ── Init from DB ──────────────────────────────────────────────────────
 
   initializeFromDatabase(data: {
     hostId: string;
@@ -27,78 +26,75 @@ export class Room extends EventEmitter {
     playbackState: string;
     positionMs: number;
   }): void {
-    this.hostId = data.hostId;
+    this.hostId   = data.hostId;
     this.trackUrl = data.trackUrl;
-    this.state = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING : 
-                 data.playbackState === 'PAUSED' ? PlaybackState.PAUSED : 
-                 PlaybackState.IDLE;
-    this.position = data.positionMs;
+    this.state    = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING
+                  : data.playbackState === 'PAUSED'  ? PlaybackState.PAUSED
+                  : PlaybackState.IDLE;
+    this.position     = data.positionMs;
     this.snapshotTime = Date.now();
-    console.log(`[Room ${this.roomId}] Initialized from DB:`, { hostId: data.hostId, trackUrl: data.trackUrl });
   }
 
-  // ── Playback transitions ───────────────────────────────────────────────
+  // ── Playback (no host gate — any participant) ─────────────────────────
 
-  play(requesterId: string): void {
-    this.assertHost(requesterId);
+  play(_requesterId: string): void {
     if (this.state === PlaybackState.PLAYING) return;
+    if (!this.allReady()) return; // hold until every client buffered
     this.snapshotTime = Date.now();
     this.state        = PlaybackState.PLAYING;
     this.emit('stateChanged', this.snapshot());
   }
 
-  pause(requesterId: string): void {
-    this.assertHost(requesterId);
+  pause(_requesterId: string): void {
     if (this.state !== PlaybackState.PLAYING) return;
     this.position = this.computeCurrentPosition();
     this.state    = PlaybackState.PAUSED;
     this.emit('stateChanged', this.snapshot());
   }
 
-  seek(requesterId: string, positionMs: number): void {
-    this.assertHost(requesterId);
+  seek(_requesterId: string, positionMs: number): void {
     this.position     = positionMs;
     this.snapshotTime = Date.now();
     this.emit('stateChanged', this.snapshot());
   }
 
-  setTrack(requesterId: string, url: string): void {
-    this.assertHost(requesterId);
-    this.trackUrl     = url;
-    this.position     = 0;
-    this.state        = PlaybackState.PAUSED;
-    for (const p of this.participants.values()) p.isReady = false; // Require re-buffer
+  /** Called after server has stored the file and wants to push URL to clients */
+  setTrackFromServer(url: string, title: string): void {
+    this.trackUrl  = url;
+    this.position  = 0;
+    this.state     = PlaybackState.PAUSED;
+    // Mark all current participants as NOT ready — they need to buffer first
+    for (const p of this.participants.values()) p.isReady = false;
     this.snapshotTime = Date.now();
+    this.emit('trackSet', { trackUrl: url, title });
     this.emit('stateChanged', this.snapshot());
   }
 
-  // ── Internal track setter (no auth check) ─────────────────────────────
+  // ── Readiness tracking ────────────────────────────────────────────────
 
-  setTrackDirect(url: string): void {
-    this.trackUrl     = url;
-    this.position     = 0;
-    this.state        = PlaybackState.PAUSED;
-    for (const p of this.participants.values()) p.isReady = false; // Require re-buffer
-    this.snapshotTime = Date.now();
-    console.log(`[Room ${this.roomId}] Demo track loaded:`, this.trackUrl);
+  setParticipantReady(socketId: string, ready: boolean): void {
+    const p = this.participants.get(socketId);
+    if (!p) return;
+    p.isReady = ready;
+    this.emit('stateChanged', this.snapshot());
+
+    if (ready && this.allReady()) {
+      this.emit('allReady');
+    }
   }
 
-  // ── Participants ───────────────────────────────────────────────────────
+  allReady(): boolean {
+    if (this.participants.size === 0) return false;
+    return Array.from(this.participants.values()).every(p => p.isReady);
+  }
+
+  // ── Participants ──────────────────────────────────────────────────────
 
   addParticipant(p: Participant): void {
     if (!this.hostId) this.hostId = p.socketId;
-    p.isReady = false; // Default to false on join
+    p.isReady = false;
     this.participants.set(p.socketId, p);
     this.emit('participantJoined', p);
-  }
-
-  setParticipantReady(socketId: string, isReady: boolean): void {
-    const p = this.participants.get(socketId);
-    if (p) {
-      p.isReady = isReady;
-      this.snapshotTime = Date.now(); // bump snapshot so stateChanged is picked up
-      this.emit('stateChanged', this.snapshot());
-    }
   }
 
   hasParticipant(socketId: string): boolean {
@@ -111,15 +107,8 @@ export class Room extends EventEmitter {
     this.emit('participantLeft', socketId);
   }
 
-  getParticipantCount(): number {
-    return this.participants.size;
-  }
-
-  getTrackUrl(): string | null {
-    return this.trackUrl;
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────
+  getParticipantCount(): number { return this.participants.size; }
+  getTrackUrl(): string | null  { return this.trackUrl; }
 
   computeCurrentPosition(): number {
     if (this.state !== PlaybackState.PLAYING) return this.position;
@@ -136,13 +125,6 @@ export class Room extends EventEmitter {
       timestamp:    Date.now(),
       participants: Array.from(this.participants.values()),
     };
-  }
-
-  // ── Private ────────────────────────────────────────────────────────────
-
-  private assertHost(socketId: string): void {
-    if (socketId !== this.hostId)
-      throw new Error(`Only the host can control playback (host=${this.hostId}, requester=${socketId})`);
   }
 
   private electNewHost(): void {

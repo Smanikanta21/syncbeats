@@ -21,6 +21,7 @@ export const eventBus = EventBus.getInstance();
 export const EVENTS = {
   ROOM_STATE_CHANGED: 'room:stateChanged',
   PARTICIPANT_JOINED: 'room:participantJoined',
-  PARTICIPANT_LEFT: 'room:participantLeft',
-  HOST_CHANGED: 'room:hostChanged',
+  PARTICIPANT_LEFT:   'room:participantLeft',
+  HOST_CHANGED:       'room:hostChanged',
+  TRACK_SET:          'room:trackSet',  // emitted when server stores a new track
 } as const;

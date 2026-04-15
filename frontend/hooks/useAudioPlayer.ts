@@ -1,38 +1,32 @@
 "use client";
 
 // hooks/useAudioPlayer.ts — Centralized audio playback engine
-// Controls a singleton <audio> element, exposes play/pause/seek + real-time position.
+// No demo track. trackUrl starts null — user must upload.
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
 export interface AudioPlayerState {
   isPlaying:   boolean;
   isReady:     boolean;
-  currentTime: number;   // seconds
-  duration:    number;   // seconds
-  progress:    number;   // 0–1
-  trackUrl:    string;
+  hasTrack:    boolean;       // true once a track URL is loaded
+  currentTime: number;       // seconds
+  duration:    number;       // seconds
+  progress:    number;       // 0–1
+  trackUrl:    string | null;
   trackTitle:  string;
   trackArtist: string;
-  isRoomHost: boolean;
-  allDevicesReady: boolean;
-  roomCallbacks: {play:()=>void, pause:()=>void, seek:(ms:number)=>void} | null;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
-  setIsRoomHost: (host: boolean) => void;
-  setAllDevicesReady: (ready: boolean) => void;
-  setRoomCallbacks: (callbacks: {play:()=>void, pause:()=>void, seek:(ms:number)=>void} | null) => void;
-  play:    () => void;
-  pause:   () => void;
-  toggle:  () => void;
-  seek:    (time: number) => void;    // seconds
-  seekPct: (pct: number) => void;     // 0–1
+  play:     () => void;
+  pause:    () => void;
+  toggle:   () => void;
+  seek:     (time: number) => void;
+  seekPct:  (pct: number) => void;
   setTrack: (url: string, title?: string, artist?: string) => void;
-  audioEl: HTMLAudioElement | null;
+  audioEl:  HTMLAudioElement | null;
 }
 
-// Format seconds → mm:ss
 export function formatTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) return "00:00";
   const m = Math.floor(seconds / 60);
@@ -40,10 +34,7 @@ export function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-// Default demo track
-const DEMO_URL    = "/Dhruv - double take (Official Video).mp3";
-const DEMO_TITLE  = "Double Take";
-const DEMO_ARTIST = "Dhruv";
+import { getServerUrl } from '../lib/api';
 
 export function useAudioPlayer(): UseAudioPlayerReturn {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -53,107 +44,118 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isReady,     setIsReady]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
-  const [trackUrl,    setTrackUrl]    = useState(DEMO_URL);
-  const [trackTitle,  setTrackTitle]  = useState(DEMO_TITLE);
-  const [trackArtist, setTrackArtist] = useState(DEMO_ARTIST);
+  const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
+  const [trackTitle,  setTrackTitle]  = useState("");
+  const [trackArtist, setTrackArtist] = useState("");
 
-  const [isRoomHost, setIsRoomHost] = useState(false);
-  const [allDevicesReady, setAllDevicesReady] = useState(true);
-  const [roomCallbacks, setRoomCallbacks] = useState<{play:()=>void, pause:()=>void, seek:(ms:number)=>void} | null>(null);
+  // Persist a single Audio instance to retain mobile gesture blessings
+  const [audioEl] = useState<HTMLAudioElement | null>(() => {
+    if (typeof window !== "undefined") {
+      const a = new Audio();
+      a.preload = "auto";
+      return a;
+    }
+    return null;
+  });
 
-  // Create audio element once
+  // Attach global event listeners once
   useEffect(() => {
-    setIsReady(false);
-    const audio = new Audio(trackUrl);
-    audio.preload = "auto"; // Changed from metadata to auto to force buffering
-    audioRef.current = audio;
+    if (!audioEl) return;
+    
+    const onMeta    = () => setDuration(audioEl.duration);
+    const onCanPlay = () => setIsReady(true);
+    const onWaiting = () => setIsReady(false);
+    const onEnded   = () => { setIsPlaying(false); setCurrentTime(0); };
 
-    const onLoaded   = () => setDuration(audio.duration);
-    const onCanPlay  = () => setIsReady(true);
-    const onWaiting  = () => setIsReady(false);
-    const onEnded    = () => { setIsPlaying(false); setCurrentTime(0); };
-
-    audio.addEventListener("loadedmetadata", onLoaded);
-    audio.addEventListener("canplaythrough", onCanPlay);
-    audio.addEventListener("waiting", onWaiting);
-    audio.addEventListener("ended", onEnded);
+    audioEl.addEventListener("loadedmetadata", onMeta);
+    audioEl.addEventListener("canplaythrough",  onCanPlay);
+    audioEl.addEventListener("waiting",         onWaiting);
+    audioEl.addEventListener("ended",           onEnded);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
-      audio.removeEventListener("loadedmetadata", onLoaded);
-      audio.removeEventListener("canplaythrough", onCanPlay);
-      audio.removeEventListener("waiting", onWaiting);
-      audio.removeEventListener("ended", onEnded);
-      audio.pause();
-      audio.src = "";
+      audioEl.removeEventListener("loadedmetadata", onMeta);
+      audioEl.removeEventListener("canplaythrough",  onCanPlay);
+      audioEl.removeEventListener("waiting",         onWaiting);
+      audioEl.removeEventListener("ended",           onEnded);
     };
-  }, [trackUrl]);
+  }, [audioEl]);
 
-  // requestAnimationFrame loop for smooth real-time updates
+  // Load new track
+  useEffect(() => {
+    if (!audioEl) return;
+    setIsReady(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    cancelAnimationFrame(rafRef.current);
+
+    if (trackUrl) {
+      audioEl.src = trackUrl;
+      audioEl.load();
+      audioEl.play().then(() => audioEl.pause()).catch(() => {}); // silent play to force mobile buffer
+    } else {
+      audioEl.pause();
+      audioEl.src = "";
+    }
+  }, [trackUrl, audioEl]);
+
+  // RAF loop for real-time time updates
   useEffect(() => {
     const tick = () => {
-      if (audioRef.current) {
-        setCurrentTime(audioRef.current.currentTime);
-        if (audioRef.current.duration) setDuration(audioRef.current.duration);
+      if (audioEl) {
+        setCurrentTime(audioEl.currentTime);
+        if (audioEl.duration) setDuration(audioEl.duration);
       }
       rafRef.current = requestAnimationFrame(tick);
     };
-
     if (isPlaying) {
       rafRef.current = requestAnimationFrame(tick);
     } else {
       cancelAnimationFrame(rafRef.current);
     }
-
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying]);
+  }, [isPlaying, audioEl]);
 
   const play = useCallback(() => {
-    audioRef.current?.play().catch(() => {});
+    audioEl?.play().catch(() => {});
     setIsPlaying(true);
-  }, []);
+  }, [audioEl]);
 
   const pause = useCallback(() => {
-    audioRef.current?.pause();
+    audioEl?.pause();
     setIsPlaying(false);
-  }, []);
+  }, [audioEl]);
 
   const toggle = useCallback(() => {
     if (isPlaying) pause(); else play();
   }, [isPlaying, play, pause]);
 
   const seek = useCallback((time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(time, audioRef.current.duration || 0));
-      setCurrentTime(audioRef.current.currentTime);
+    if (audioEl) {
+      audioEl.currentTime = Math.max(0, Math.min(time, audioEl.duration || 0));
+      setCurrentTime(audioEl.currentTime);
     }
-  }, []);
+  }, [audioEl]);
 
   const seekPct = useCallback((pct: number) => {
-    if (audioRef.current && audioRef.current.duration) {
-      seek(pct * audioRef.current.duration);
-    }
-  }, [seek]);
+    if (audioEl?.duration) seek(pct * audioEl.duration);
+  }, [seek, audioEl]);
 
-  const setTrack = useCallback((url: string, title = "Unknown", artist = "Unknown") => {
-    setTrackUrl(url);
+  const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
+    // If the server gave us a relative path, resolve it against the exact IP the frontend talks to
+    const absoluteUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+    setTrackUrl(absoluteUrl);
     setTrackTitle(title);
     setTrackArtist(artist);
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
-    setIsReady(false);
   }, []);
 
   const progress = duration > 0 ? currentTime / duration : 0;
+  const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, currentTime, duration, progress,
+    isPlaying, isReady, hasTrack, currentTime, duration, progress,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setTrack,
-    isRoomHost, allDevicesReady, roomCallbacks,
-    setIsRoomHost, setAllDevicesReady, setRoomCallbacks,
-    // Add raw ref access if page needs to precisely override time
-    get audioEl() { return audioRef.current; }
+    get audioEl() { return audioEl; },
   };
 }

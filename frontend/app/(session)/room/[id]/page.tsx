@@ -1,15 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useRoom } from "../../../../hooks/useRoom";
+import { useEffect, useRef, useCallback } from "react";
+import { useRoom }   from "../../../../hooks/useRoom";
+import { useAudio }  from "../../../../context/AudioContext";
+import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant } from "../../../../lib/types";
-import { useAuth } from "../../../../context/AuthContext";
-import { useAudio } from "../../../../context/AudioContext";
-import { useEffect, useMemo } from "react";
+import { useAuth }   from "../../../../context/AuthContext";
 
-// Helper: pick a nice icon per device (mocked — real impl would come from participant metadata)
 function DeviceIcon({ index }: { index: number }) {
   const icons = [Smartphone, Laptop, Speaker];
   const Icon  = icons[index % icons.length];
@@ -23,78 +23,99 @@ export default function RoomPage() {
   const { user, device } = useAuth();
   const displayName = device?.name ?? user?.name ?? "Guest";
 
-  const { snapshot, participants, isConnected, isHost, clockOffset, leave, setReady, play, pause, seek } = useRoom({
+  const audio  = useAudio();
+  const upload = useUpload();
+
+  const { snapshot, participants, isConnected, clockOffset, allReady, play, pause, seek, setReady, leave } = useRoom({
     roomId,
     displayName,
   });
 
-  const audio = useAudio();
-
+  // ── Signal ready when audio buffers ───────────────────────────────────────
   useEffect(() => {
-    if (isConnected) {
-      setReady(audio.isReady);
+    if (audio.isReady && audio.hasTrack) {
+      setReady(true);
     }
-  }, [audio.isReady, isConnected, setReady]);
+  }, [audio.isReady, audio.hasTrack, setReady]);
 
-  const allReady = useMemo(() => {
-    return participants.every(p => p.isReady);
-  }, [participants]);
+  // ── Global drag handlers → UploadContext ──────────────────────────────
+  const dragCounter = useRef(0); // track enter/leave nesting
 
-  // Sync Room -> Audio Context for DynamicIsland to consume
   useEffect(() => {
-    audio.setIsRoomHost(isHost);
-    audio.setAllDevicesReady(allReady);
-    audio.setRoomCallbacks({ play, pause, seek });
-  }, [isHost, allReady, play, pause, seek, audio.setIsRoomHost, audio.setAllDevicesReady, audio.setRoomCallbacks]);
-
-  // Handle Playback State syncing
-  useEffect(() => {
-    if (!snapshot || !audio.audioEl) return;
-
-    if (snapshot.state === PlaybackState.PLAYING) {
-      if (!audio.isPlaying) {
-        // Compute correct position to play from
-        const elapsed = (Date.now() - snapshot.timestamp) + clockOffset;
-        const currentTargetPos = (snapshot.position + elapsed) / 1000;
-        
-        // Only jump if we are desynced by more than 100ms
-        if (Math.abs(audio.audioEl.currentTime - currentTargetPos) > 0.1) {
-             audio.audioEl.currentTime = currentTargetPos;
-        }
-        audio.audioEl.play().catch(e => console.warn("Failed to auto-play", e));
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer?.items && [...e.dataTransfer.items].some(i => i.kind === "file")) {
+        dragCounter.current += 1;
+        upload.setIsDragging(true);
       }
-    } else {
-      if (audio.isPlaying || (!audio.audioEl.paused)) {
-        audio.audioEl.pause();
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current -= 1;
+      if (dragCounter.current <= 0) {
+        dragCounter.current = 0;
+        upload.setIsDragging(false);
       }
-    }
-  }, [snapshot, audio.audioEl, audio.isPlaying, clockOffset]);
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+
+    const onDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      upload.setIsDragging(false);
+
+      const file = e.dataTransfer?.files?.[0];
+      if (!file || !file.type.startsWith("audio/")) return;
+
+      try {
+        const { trackUrl, title } = await upload.uploadFile(file, roomId);
+        audio.setTrack(trackUrl, title);
+      } catch (err) {
+        console.error("[Room] Drop upload failed:", err);
+      }
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [upload, roomId, audio]);
 
   const handleLeave = () => {
     leave();
     router.push("/hub");
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(roomId).catch(() => {});
-  };
+  const handleCopy = () => navigator.clipboard.writeText(roomId).catch(() => {});
 
   return (
-    <div className="flex flex-col items-center justify-start relative px-4 sm:px-6 lg:px-8 mt-[450px] z-0 pb-32">
+    <div className="flex flex-col items-center md:justify-center relative px-4 sm:px-6 lg:px-8 z-0 pb-32 min-h-[calc(100vh-100px)]">
+      {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[500px] bg-white/[0.015] blur-[150px] rounded-full pointer-events-none -z-10" />
 
-      {/* Code & QR Section */}
+      {/* ── Room code + QR ── */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.2 }}
         className="text-center w-full max-w-4xl flex flex-col items-center"
       >
-        {/* Live badge + connection indicator */}
+        {/* Badges */}
         <div className="flex items-center gap-3 mb-6">
-          <span className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-sm font-semibold tracking-widest inline-flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-            <Users className="w-4 h-4 text-zinc-400" />
-            Sync Session Active
+          <span className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
+            <Users className="w-4 h-4 text-zinc-400" /> Sync Session Active
           </span>
           <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
             {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
@@ -102,8 +123,8 @@ export default function RoomPage() {
           </span>
         </div>
 
-        <div className="flex flex-col md:flex-row items-center justify-center gap-12 mb-16">
-          {/* Room Code */}
+        <div className="flex flex-col md:flex-row items-center justify-center gap-12 mb-12">
+          {/* Room code */}
           <div className="text-center">
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
             <h1
@@ -120,26 +141,45 @@ export default function RoomPage() {
 
           <div className="hidden md:block w-px h-32 bg-white/10" />
 
-          {/* QR Code */}
+          {/* QR */}
           <div className="flex flex-col items-center">
-            <div className="p-4 bg-white/5 border border-white/10 rounded-3xl shadow-[0_0_30px_rgba(255,255,255,0.05)] hover:scale-105 transition-transform cursor-pointer group hover:bg-white">
+            <div className="p-4 bg-white/5 border border-white/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group hover:bg-white">
               <QrCode className="w-28 h-28 text-white group-hover:text-black transition-colors" strokeWidth={1} />
             </div>
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs mt-4">Scan to Join</p>
           </div>
         </div>
 
-        {/* Playback state indicator */}
+        {/* Playback / readiness status */}
         {snapshot && (
-          <div className="mb-8 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-            <span className={`w-2 h-2 rounded-full ${snapshot.state === PlaybackState.PLAYING ? "bg-green-400 animate-pulse" : "bg-zinc-600"}`} />
-            {snapshot.state === PlaybackState.PLAYING ? "Playing" : snapshot.state}
-            {isConnected && <span className="ml-4 text-zinc-600">Clock offset: {clockOffset.toFixed(0)}ms</span>}
+          <div className="mb-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest flex-wrap justify-center">
+            <span className={`flex items-center gap-1.5 ${snapshot.state === PlaybackState.PLAYING ? "text-green-400" : "text-zinc-500"}`}>
+              <span className={`w-2 h-2 rounded-full ${snapshot.state === PlaybackState.PLAYING ? "bg-green-400 animate-pulse" : "bg-zinc-600"}`} />
+              {snapshot.state === PlaybackState.PLAYING ? "Playing" : snapshot.state}
+            </span>
+            {audio.hasTrack && (
+              allReady
+                ? <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> All devices ready</span>
+                : <span className="text-amber-400 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Waiting for devices to buffer…</span>
+            )}
           </div>
+        )}
+
+        {/* Drag hint */}
+        {!audio.hasTrack && !upload.isUploading && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mb-8 px-6 py-4 rounded-2xl border border-dashed border-white/10 text-zinc-600 text-sm font-medium flex items-center gap-3"
+          >
+            <Volume2 className="w-4 h-4 shrink-0" />
+            Drag an audio file here or hover the island above to add music
+          </motion.div>
         )}
       </motion.div>
 
-      {/* Connected Devices Grid */}
+      {/* ── Connected Devices ── */}
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -179,16 +219,19 @@ export default function RoomPage() {
                         <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-zinc-200 text-black">Host</span>
                       )}
                     </div>
-                    <p className={`text-xs font-bold ${p.isReady ? "text-green-500" : "text-yellow-500 animate-pulse"}`}>
-                      {snapshot?.state === PlaybackState.PLAYING 
-                        ? "Synced • 0ms" 
-                        : (p.isReady ? "Ready to play" : "Buffering...")}
+                    <p className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
+                      {p.isReady
+                        ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
+                        : audio.hasTrack
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
+                        : "Ready"
+                      }
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Volume bar (UI only — volume API comes in next phase) */}
+              {/* Volume bar (UI placeholder) */}
               <div className="flex items-center gap-3 w-full bg-black/40 p-3 rounded-xl border border-white/5">
                 <Volume2 className="w-4 h-4 text-zinc-500" />
                 <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -201,15 +244,17 @@ export default function RoomPage() {
         </div>
 
         {/* Leave button */}
-        {isHost && (
-          <motion.button
-            onClick={handleLeave}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            className="mt-6 mx-auto h-12 px-10 rounded-full border border-red-500/30 text-red-400 font-bold text-sm hover:bg-red-500/10 transition-all uppercase tracking-widest"
-          >
-            End Session
-          </motion.button>
+        <motion.button
+          onClick={handleLeave}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          className="mt-6 mx-auto h-12 px-10 rounded-full border border-red-500/30 text-red-400 font-bold text-sm hover:bg-red-500/10 transition-all uppercase tracking-widest"
+        >
+          Leave Session
+        </motion.button>
+
+        {isConnected && (
+          <p className="text-center text-xs text-zinc-700 font-mono">Clock offset: {clockOffset.toFixed(0)}ms</p>
         )}
       </motion.div>
     </div>
