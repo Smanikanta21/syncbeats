@@ -88,7 +88,7 @@ export function Hero() {
                 <div className="w-2.5 h-2.5 sm:w-3 border h-3 rounded-full bg-zinc-600/50" />
               </div>
               <span className="text-[10px] sm:text-xs font-semibold text-zinc-500 tracking-wider">LIVING ROOM SESSION</span>
-              <Share2 className="w-3.5 h-3.5 sm:w-4 border h-4 text-zinc-500 hover:text-white cursor-pointer" />
+              <Share2 className="w-3.5 h-3.5 sm:w-4 h-4 text-zinc-500 hover:text-white cursor-pointer" />
             </div>
             
             {/* Player Body */}
@@ -134,11 +134,11 @@ export function Hero() {
               
               {/* Controls */}
               <div className="flex items-center justify-center gap-6 sm:gap-8 w-full">
-                <SkipBack className="w-6 h-6 sm:w-8 border sm:h-8 text-white/30 hover:text-white cursor-pointer transition-colors" />
+                <SkipBack className="w-6 h-6 sm:w-8 sm:h-8 text-white/30 hover:text-white cursor-pointer transition-colors" />
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-200 text-black flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                  <Pause className="w-5 h-5 sm:w-8 border sm:h-8 fill-black" />
+                  <Pause className="w-5 h-5 sm:w-8 sm:h-8 fill-black" />
                 </div>
-                <SkipForward className="w-6 h-6 sm:w-8 border sm:h-8 text-white/30 hover:text-white cursor-pointer transition-colors" />
+                <SkipForward className="w-6 h-6 sm:w-8 sm:h-8 text-white/30 hover:text-white cursor-pointer transition-colors" />
               </div>
 
               {/* Connected Devices Plaque */}
