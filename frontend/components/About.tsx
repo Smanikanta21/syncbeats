@@ -28,7 +28,7 @@ export function About() {
               </h2>
               <div className="space-y-6 text-zinc-500 text-lg md:text-xl leading-relaxed font-medium group-hover:text-zinc-400 transition-colors duration-700">
                 <p>
-                  SyncBeats was born out of reality. We were at a friend's house, the Bluetooth speaker died, and we had 5 phones but no way to play music simultaneously loud enough.
+                  SyncBeats was born out of reality. We were at a friend&apos;s house, the Bluetooth speaker died, and we had 5 phones but no way to play music simultaneously loud enough.
                 </p>
                 <p>
                   We built this platform to turn any collection of devices into an instant surround sound experience. No cables, no bluetooth un-pairing nightmares, no apps to install. Just scan the code, hit play, and keep the party alive.

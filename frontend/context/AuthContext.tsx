@@ -27,15 +27,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user,    setUser]    = useState<User | null>(null);
   const [device,  setDevice]   = useState<Device | null>(null);
   const [needsDeviceRename, setNeedsDeviceRename] = useState(false);
-  const [token,   setToken]   = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [token,   setToken]   = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("sb_token");
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return !!localStorage.getItem("sb_token");
+  });
 
   // ── Rehydrate from localStorage on mount ───────────────────────────────
   useEffect(() => {
-    const stored = localStorage.getItem("sb_token");
-    if (!stored) { setLoading(false); return; }
+    if (!token) return;
 
-    setToken(stored);
     authApi.me()
       .then(({ user, device, needsDeviceRename }) => {
         setUser(user);
@@ -48,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(null);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [token]);
 
   const persist = (token: string, user: User) => {
     localStorage.setItem("sb_token", token);

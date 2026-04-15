@@ -132,7 +132,7 @@ export default function AuthPage() {
                 </form>
 
                 <p className="mt-8 text-center text-zinc-500 text-sm font-medium md:hidden">
-                  Don't have an account?{" "}
+                  Don&apos;t have an account?{" "}
                   <button onClick={() => switchMode(false)} className="text-zinc-300 font-semibold hover:text-white transition-colors">Sign up</button>
                 </p>
               </motion.div>
