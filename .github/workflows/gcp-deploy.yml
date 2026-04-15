@@ -1,0 +1,102 @@
+name: GCP Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: gcp-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build and lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Verify backend
+        working-directory: syncbeats-server
+        run: |
+          npm ci
+          npm run build
+
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+      FRONTEND_SERVICE: ${{ secrets.GCP_FRONTEND_SERVICE }}
+      BACKEND_SERVICE: ${{ secrets.GCP_BACKEND_SERVICE }}
+      DATABASE_URL: ${{ secrets.GCP_DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.GCP_JWT_SECRET }}
+      GCS_BUCKET_NAME: ${{ secrets.GCP_GCS_BUCKET_NAME }}
+      CORS_ORIGIN: ${{ secrets.GCP_CORS_ORIGIN }}
+      WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure gcloud project
+        run: gcloud config set project "$GCP_PROJECT_ID"
+
+      - name: Deploy backend service
+        run: |
+          gcloud run deploy "$BACKEND_SERVICE" \
+            --source ./syncbeats-server \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --allow-unauthenticated \
+            --set-env-vars "DATABASE_URL=$DATABASE_URL,JWT_SECRET=$JWT_SECRET,GCS_BUCKET_NAME=$GCS_BUCKET_NAME,CORS_ORIGIN=$CORS_ORIGIN,NODE_ENV=production"
+
+      - name: Resolve backend URL
+        id: backend-url
+        run: |
+          BACKEND_URL=$(gcloud run services describe "$BACKEND_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" --format='value(status.url)')
+          echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy frontend service
+        run: |
+          printf 'NEXT_PUBLIC_SERVER_URL=%s\n' "${{ steps.backend-url.outputs.backend_url }}" > frontend/.env.production.local
+          gcloud run deploy "$FRONTEND_SERVICE" \
+            --source ./frontend \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
+            --allow-unauthenticated \
+            --set-env-vars "NEXT_PUBLIC_SERVER_URL=${{ steps.backend-url.outputs.backend_url }}"
