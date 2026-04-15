@@ -3,17 +3,11 @@
 
 import { io, Socket } from 'socket.io-client';
 
-function getServerUrl(): string {
+function getServerUrl() {
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-  
-  // In browser, use the current hostname to connect to the API
-  if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:4000`;
-  }
-  
-  return 'http://localhost:4000';
+
 }
 
 const SERVER_URL = getServerUrl();
