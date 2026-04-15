@@ -68,6 +68,20 @@ export class RoomRepository {
     });
   }
 
+  async transferHost(roomId: string, currentHostId: string, newHostId: string): Promise<boolean> {
+    const result = await prisma.room.updateMany({
+      where: {
+        id: roomId,
+        hostId: currentHostId,
+      },
+      data: {
+        hostId: newHostId,
+      },
+    });
+
+    return result.count > 0;
+  }
+
   async getParticipants(roomId: string): Promise<Participant[]> {
     const participants = await prisma.roomParticipant.findMany({
       where: { roomId, leftAt: null }

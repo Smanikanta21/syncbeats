@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { DynamicIsland } from "../../components/DynamicIsland";
@@ -9,7 +9,6 @@ import { DynamicIsland } from "../../components/DynamicIsland";
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, loading, renameDevice } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const [deviceName, setDeviceName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -54,12 +53,10 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
 
   if (!user) return null; // redirect in-flight
 
-  const showDeviceSetupModal = needsDeviceRename && pathname !== "/hub";
-
   return (
     <UploadProvider>
       <DynamicIsland />
-      {showDeviceSetupModal && (
+      {needsDeviceRename && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
           <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">

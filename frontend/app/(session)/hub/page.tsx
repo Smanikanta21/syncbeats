@@ -1,13 +1,25 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone } from "lucide-react";
+import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 
 interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; }
+
+function getPlatformLabel(userAgent: string | null): string {
+  if (!userAgent) return "Unknown";
+  const ua = userAgent.toLowerCase();
+  if (ua.includes("iphone")) return "iPhone";
+  if (ua.includes("ipad")) return "iPad";
+  if (ua.includes("android")) return "Android";
+  if (ua.includes("mac")) return "Mac";
+  if (ua.includes("windows")) return "Windows";
+  if (ua.includes("linux")) return "Linux";
+  return "Browser";
+}
 
 export default function HubPage() {
   const router = useRouter();
@@ -16,11 +28,32 @@ export default function HubPage() {
   const [isHosting,   setIsHosting]   = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [roomMenu, setRoomMenu] = useState<{ room: RecentRoom; x: number; y: number } | null>(null);
+  const [roomToEnd, setRoomToEnd] = useState<RecentRoom | null>(null);
+  const [roomInfo, setRoomInfo] = useState<RecentRoom | null>(null);
+  const [roomToTransfer, setRoomToTransfer] = useState<RecentRoom | null>(null);
+  const [newHostEmail, setNewHostEmail] = useState("");
+  const [isTransferringHost, setIsTransferringHost] = useState(false);
+  const [copyDone, setCopyDone] = useState(false);
+  const [showDeviceRename, setShowDeviceRename] = useState(false);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingDeviceName, setEditingDeviceName] = useState("");
+  const [isRenamingDevice, setIsRenamingDevice] = useState(false);
 
   function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
     if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-zinc-300" />;
     return <Laptop className="w-4 h-4 text-zinc-300" />;
   }
+
+  const roomLink = roomInfo && typeof window !== "undefined"
+    ? `${window.location.origin}/room/${roomInfo.id}`
+    : roomInfo
+      ? `/room/${roomInfo.id}`
+      : "";
+
+  const qrSrc = roomLink
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(roomLink)}`
+    : "";
 
   useEffect(() => {
     roomsApi.mine()
@@ -31,6 +64,22 @@ export default function HubPage() {
       .then(({ devices }) => setDevices(devices))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!roomMenu) return;
+
+    const closeMenu = () => setRoomMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRoomMenu(null);
+    };
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [roomMenu]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +99,76 @@ export default function HubPage() {
       router.push(`/room/${randomId}`);
     } finally {
       setIsHosting(false);
+    }
+  };
+
+  const handleRoomContextMenu = (event: React.MouseEvent<HTMLDivElement>, room: RecentRoom) => {
+    event.preventDefault();
+    setRoomMenu({ room, x: event.clientX, y: event.clientY });
+  };
+
+  const handleConfirmEndSession = async () => {
+    if (!roomToEnd) return;
+
+    try {
+      await roomsApi.endSession(roomToEnd.id);
+      setRecentRooms(prev => prev.filter(room => room.id !== roomToEnd.id));
+      setRoomToEnd(null);
+    } catch {
+      alert("Failed to end session. Please try again.");
+    }
+  };
+
+  const handleCopyRoomLink = async () => {
+    if (!roomLink) return;
+    try {
+      await navigator.clipboard.writeText(roomLink);
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 1200);
+    } catch {
+      alert("Could not copy link.");
+    }
+  };
+
+  const handleChangeHost = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!roomToTransfer || !newHostEmail.trim()) return;
+
+    setIsTransferringHost(true);
+    try {
+      await roomsApi.changeHost(roomToTransfer.id, newHostEmail.trim());
+      setRecentRooms(prev => prev.filter(room => room.id !== roomToTransfer.id));
+      setRoomToTransfer(null);
+      setNewHostEmail("");
+    } catch {
+      alert("Failed to change host. Make sure the email exists.");
+    } finally {
+      setIsTransferringHost(false);
+    }
+  };
+
+  const openDeviceRename = (deviceId: string, currentName: string) => {
+    setEditingDeviceId(deviceId);
+    setEditingDeviceName(currentName);
+    setShowDeviceRename(true);
+  };
+
+  const handleDeviceRename = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingDeviceId || !editingDeviceName.trim()) return;
+
+    setIsRenamingDevice(true);
+    try {
+      await devicesApi.rename(editingDeviceId, editingDeviceName.trim());
+      setDevices(prev => prev.map(d =>
+        d.id === editingDeviceId ? { ...d, name: editingDeviceName.trim() } : d
+      ));
+      setShowDeviceRename(false);
+      setEditingDeviceId(null);
+    } catch {
+      alert("Failed to rename device.");
+    } finally {
+      setIsRenamingDevice(false);
     }
   };
 
@@ -174,6 +293,7 @@ export default function HubPage() {
                 <div
                   key={room.id}
                   onClick={() => router.push(`/room/${room.id}`)}
+                  onContextMenu={(event) => handleRoomContextMenu(event, room)}
                   className="glass-panel p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors group"
                 >
                   <div className="flex items-center gap-3">
@@ -195,7 +315,18 @@ export default function HubPage() {
                       </div>
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRoomMenu({ room, x: event.clientX, y: event.clientY });
+                      }}
+                      className="md:hidden h-8 w-8 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                    >
+                      <MoreHorizontal className="w-4 h-4 mx-auto" />
+                    </button>
+                    <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -237,15 +368,169 @@ export default function HubPage() {
                           {savedDevice.name}
                           {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
                         </div>
-                        <div className="text-xs text-zinc-600 font-medium truncate">{savedDevice.user_agent ?? "Unknown browser"}</div>
+                        <div className="text-xs text-zinc-600 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
+                      className="h-8 w-8 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                    >
+                      <Edit3 className="w-4 h-4 mx-auto" />
+                    </button>
                   </div>
                 );
               })}
             </div>
           )}
         </motion.div>
+
+        {roomMenu && (
+          <div
+            className="fixed z-[80] min-w-[220px] rounded-2xl border border-white/10 bg-zinc-950/95 p-2 shadow-2xl"
+            style={{ left: roomMenu.x, top: roomMenu.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                setRoomToEnd(roomMenu.room);
+                setRoomMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              End session
+            </button>
+            <button
+              onClick={() => {
+                setRoomInfo(roomMenu.room);
+                setRoomMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+            >
+              <QrCode className="w-4 h-4 text-zinc-300" />
+              Room info + QR
+            </button>
+            <button
+              onClick={() => {
+                setRoomToTransfer(roomMenu.room);
+                setRoomMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+            >
+              <UserRoundCog className="w-4 h-4 text-zinc-300" />
+              Change host
+            </button>
+          </div>
+        )}
+
+        {roomToEnd && (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-zinc-100">End Session?</h2>
+                <button onClick={() => setRoomToEnd(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+              <p className="text-zinc-400 text-sm mb-6">
+                Do you really want to end session <span className="font-mono text-zinc-200">{roomToEnd.id}</span>?
+              </p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setRoomToEnd(null)} className="h-11 flex-1 rounded-2xl border border-white/10 bg-white/5 text-zinc-200 font-semibold">No</button>
+                <button onClick={handleConfirmEndSession} className="h-11 flex-1 rounded-2xl bg-red-500 text-white font-semibold">Yes, end</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {roomInfo && (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-zinc-100">Room Info</h2>
+                <button onClick={() => setRoomInfo(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white p-4 w-fit mx-auto mb-5">
+                <img src={qrSrc} alt={`QR code for room ${roomInfo.id}`} className="w-56 h-56" />
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Room Code</p>
+                  <p className="font-mono text-zinc-100 tracking-widest">{roomInfo.id}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Room Link</p>
+                  <p className="text-zinc-300 text-sm break-all">{roomLink}</p>
+                </div>
+                <button
+                  onClick={handleCopyRoomLink}
+                  className="w-full h-11 rounded-2xl border border-white/10 bg-white/5 text-zinc-100 font-semibold flex items-center justify-center gap-2"
+                >
+                  {copyDone ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  {copyDone ? "Copied" : "Copy Link"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {roomToTransfer && (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-zinc-100">Change Host</h2>
+                <button onClick={() => setRoomToTransfer(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+
+              <p className="text-zinc-400 text-sm mb-4">
+                Enter the email of the user who should become host for <span className="font-mono text-zinc-200">{roomToTransfer.id}</span>.
+              </p>
+
+              <form className="space-y-4" onSubmit={handleChangeHost}>
+                <input
+                  type="email"
+                  value={newHostEmail}
+                  onChange={(event) => setNewHostEmail(event.target.value)}
+                  placeholder="new-host@example.com"
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                />
+                <button
+                  disabled={isTransferringHost || !newHostEmail.trim()}
+                  className="h-11 w-full rounded-2xl bg-zinc-100 text-black font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isTransferringHost ? "Changing..." : "Transfer Host"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showDeviceRename && (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-zinc-100">Rename Device</h2>
+                <button onClick={() => setShowDeviceRename(false)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+              <form className="space-y-4" onSubmit={handleDeviceRename}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={editingDeviceName}
+                  onChange={(event) => setEditingDeviceName(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                  placeholder="My Device"
+                />
+                <button
+                  disabled={isRenamingDevice || !editingDeviceName.trim()}
+                  className="h-11 w-full rounded-2xl bg-zinc-100 text-black font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isRenamingDevice ? "Saving..." : "Save Device Name"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

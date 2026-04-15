@@ -143,6 +143,15 @@ export const roomsApi = {
 
   mine: () =>
     request<{ rooms: RoomRecord[] }>('/rooms/mine', {}, true),
+
+  endSession: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' }, true),
+
+  changeHost: (roomId: string, newHostEmail: string) =>
+    request<{ ok: boolean; roomId: string; newHostEmail: string }>(`/rooms/${roomId}/host`, {
+      method: 'PATCH',
+      body: JSON.stringify({ newHostEmail }),
+    }, true),
 };
 
 export const devicesApi = {

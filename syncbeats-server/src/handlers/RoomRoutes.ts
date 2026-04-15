@@ -4,8 +4,10 @@ import { Router, Request, Response } from 'express';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { requireAuth }    from '../auth/authMiddleware';
+import { UserRepository } from '../auth/UserRepository';
 
 const repo = new RoomRepository();
+const users = new UserRepository();
 
 export function createRoomRoutes(roomManager: RoomManager): Router {
   const router = Router();
@@ -65,6 +67,42 @@ export function createRoomRoutes(roomManager: RoomManager): Router {
     } catch (err) {
       console.error('[Rooms] delete error:', err);
       res.status(500).json({ error: 'Failed to end room' });
+    }
+  });
+
+  // PATCH /rooms/:roomId/host — transfer room ownership
+  router.patch('/:roomId/host', requireAuth, async (req: Request, res: Response) => {
+    const roomId = req.params['roomId'] as string;
+    const { newHostEmail } = req.body as { newHostEmail?: string };
+
+    if (!newHostEmail?.trim()) {
+      res.status(400).json({ error: 'newHostEmail is required' });
+      return;
+    }
+
+    try {
+      const target = await users.findByEmail(newHostEmail);
+      if (!target) {
+        res.status(404).json({ error: 'Target user not found' });
+        return;
+      }
+
+      if (target.id === req.user!.sub) {
+        res.status(400).json({ error: 'You are already the host' });
+        return;
+      }
+
+      const transferred = await repo.transferHost(roomId, req.user!.sub, target.id);
+      if (!transferred) {
+        res.status(404).json({ error: 'Room not found or you are not the current host' });
+        return;
+      }
+
+      res.json({ ok: true, roomId, newHostEmail: target.email });
+    } catch (err) {
+      console.error('[Rooms] host transfer error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
     }
   });
 
