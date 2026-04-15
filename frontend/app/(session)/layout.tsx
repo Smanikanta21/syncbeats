@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { UploadProvider } from "../../context/UploadContext";
 import { DynamicIsland } from "../../components/DynamicIsland";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
@@ -44,7 +45,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   if (!user) return null; // redirect in-flight
 
   return (
-    <>
+    <UploadProvider>
       <DynamicIsland />
       {needsDeviceRename && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
@@ -73,6 +74,6 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
       <div className="pt-32">{children}</div>
-    </>
+    </UploadProvider>
   );
 }

@@ -21,11 +21,9 @@ export class RoomManager {
   getOrCreate(roomId: string): Room {
     if (!this.rooms.has(roomId)) {
       const room = new Room(roomId);
-      // Set demo song for testing latency
-      room.setTrackDirect('/songs/Dhruv - double take (Official Video).mp3');
-      console.log(`[RoomManager] Created room ${roomId} with demo track:`, room.snapshot().trackUrl);
       this.wireRoomEvents(room);
       this.rooms.set(roomId, room);
+      console.log(`[RoomManager] Created room ${roomId}`);
     }
     return this.rooms.get(roomId)!;
   }

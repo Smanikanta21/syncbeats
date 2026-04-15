@@ -1,7 +1,6 @@
 "use client";
 
-// context/AudioContext.tsx — Shares a single audio player instance across the whole app
-// so DynamicIsland and RoomPage both read/write the same playback state.
+// context/AudioContext.tsx — Singleton audio player shared across app
 
 import { createContext, useContext, type ReactNode } from "react";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";

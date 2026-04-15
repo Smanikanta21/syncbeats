@@ -1,27 +1,16 @@
 // handlers/RoomRoutes.ts — /rooms REST endpoints (auth-protected)
 
 import { Router, Request, Response } from 'express';
-import { RoomManager }     from '../core/RoomManager';
-import { RoomRepository }  from '../db/RoomRepository';
-import { requireAuth }     from '../auth/authMiddleware';
+import { RoomManager }    from '../core/RoomManager';
+import { RoomRepository } from '../db/RoomRepository';
+import { requireAuth }    from '../auth/authMiddleware';
 
 const repo = new RoomRepository();
 
 export function createRoomRoutes(roomManager: RoomManager): Router {
   const router = Router();
 
-  // GET /rooms — list active rooms from DB
-  router.get('/', requireAuth, async (_req: Request, res: Response) => {
-    try {
-      const rooms = await repo.listActive();
-      res.json({ rooms });
-    } catch (err) {
-      console.error('[Rooms] list error:', err);
-      res.status(500).json({ error: 'Failed to list rooms' });
-    }
-  });
-
-  // GET /rooms/mine — rooms created by the authed user
+  // GET /rooms/mine
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {
     try {
       const rooms = await repo.listByUser(req.user!.sub);
@@ -32,7 +21,7 @@ export function createRoomRoutes(roomManager: RoomManager): Router {
     }
   });
 
-  // GET /rooms/:roomId — snapshot (in-memory) + DB row
+  // GET /rooms/:roomId
   router.get('/:roomId', async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
     try {
@@ -49,20 +38,15 @@ export function createRoomRoutes(roomManager: RoomManager): Router {
     }
   });
 
-  // POST /rooms — create room, persist to DB, and register in RoomManager
+  // POST /rooms — create room, persist to DB
   router.post('/', requireAuth, async (req: Request, res: Response) => {
     const hostUserId = req.user!.sub;
-    // Allow client to supply a custom code, else generate one
     const roomId = (req.body as { roomId?: string }).roomId
       ?? Math.floor(100000 + Math.random() * 900000).toString();
 
     try {
-      // 1. Persist to DB (FK → users.id)
       const dbRoom = await repo.create(roomId, hostUserId);
-
-      // 2. Register in in-memory RoomManager
       roomManager.getOrCreate(roomId);
-
       console.log(`[Rooms] Created room ${roomId} by user ${hostUserId}`);
       res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at });
     } catch (err) {

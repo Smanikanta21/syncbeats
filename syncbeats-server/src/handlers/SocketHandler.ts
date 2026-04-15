@@ -1,4 +1,4 @@
-// ─── Step 7: SocketHandler — command dispatcher ───────────────────────────
+// handlers/SocketHandler.ts — command dispatcher
 
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
@@ -6,7 +6,7 @@ import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import {
-  JoinPayload, LeavePayload, SeekPayload, TrackPayload, PingPayload, RoomSnapshot
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot
 } from '../types';
 
 export class SocketHandler {
@@ -16,21 +16,27 @@ export class SocketHandler {
     private syncEngine:  SyncEngine,
     private roomRepo:    RoomRepository,
   ) {
-    // Forward all room events → socket.io rooms (runs once per server start)
+    // Forward room state changes → socket.io rooms
     eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }) => {
+    eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
       this.io.to(roomId).emit('room:participantJoined', participant);
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }) => {
+    eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }: { roomId: string; socketId: string }) => {
       this.io.to(roomId).emit('room:participantLeft', socketId);
     });
 
-    eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }) => {
+    eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }: { roomId: string; hostId: string }) => {
       this.io.to(roomId).emit('room:hostChanged', hostId);
+    });
+
+    // When a file is uploaded → broadcast track URL to every client in room
+    eventBus.on(EVENTS.TRACK_SET, ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
+      console.log(`[Socket] Broadcasting room:trackSet to ${roomId}`);
+      this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
   }
 
@@ -42,28 +48,18 @@ export class SocketHandler {
     socket.on('room:join', async ({ roomId, displayName }: JoinPayload) => {
       try {
         const room = this.roomManager.getOrCreate(roomId);
-        
-        console.log(`[Room ${roomId}] Before join - Track URL:`, room.getTrackUrl());
-        
-        // Load room data from database if not already initialized
+
+        // Load from DB if fresh
         if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
-          console.log(`[Room ${roomId}] Loading from DB (no track set, no participants)...`);
           const dbRoom = await this.roomRepo.findById(roomId);
           if (dbRoom) {
-            console.log(`[Room ${roomId}] Loaded from DB:`, {
-              trackUrl: dbRoom.track_url,
-              hostId: dbRoom.host_id,
-              playbackState: dbRoom.playback_state,
-            });
             room.initializeFromDatabase({
-              hostId: dbRoom.host_id,
-              trackUrl: dbRoom.track_url,
+              hostId:        dbRoom.host_id,
+              trackUrl:      dbRoom.track_url,
               playbackState: dbRoom.playback_state,
-              positionMs: dbRoom.position_ms,
+              positionMs:    dbRoom.position_ms,
             });
           }
-        } else {
-          console.log(`[Room ${roomId}] Skipping DB load - Track already set or has participants`);
         }
 
         if (room.hasParticipant(socket.id)) {
@@ -72,18 +68,11 @@ export class SocketHandler {
           socket.emit('room:snapshot', room.snapshot());
           return;
         }
-        
+
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
         room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady: false });
-        // Send full state to the late-joiner immediately
-        const snapshot = room.snapshot();
-        console.log(`[Room ${roomId}] Sending snapshot to ${displayName}:`, {
-          trackUrl: snapshot.trackUrl,
-          state: snapshot.state,
-          position: snapshot.position,
-        });
-        socket.emit('room:snapshot', snapshot);
+        socket.emit('room:snapshot', room.snapshot());
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
@@ -96,7 +85,7 @@ export class SocketHandler {
       socket.leave(roomId);
     });
 
-    // ── Playback commands (host-guarded inside Room) ──────────────────────
+    // ── Playback — any participant can control ────────────────────────────
 
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       try {
@@ -122,26 +111,23 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:setTrack', ({ roomId, trackUrl }: TrackPayload) => {
-      try {
-        this.roomManager.get(roomId)?.setTrack(socket.id, trackUrl);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+    // ── Client ready — sent when audio is buffered (canplaythrough) ───────
+
+    socket.on('room:clientReady', ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+
+      room.setParticipantReady(socket.id, true);
+      console.log(`[Room ${roomId}] ${socket.id} is ready`);
+
+      // If everyone is ready, tell the room
+      if (room.allReady()) {
+        console.log(`[Room ${roomId}] ALL READY → broadcasting room:allReady`);
+        this.io.to(roomId).emit('room:allReady');
       }
     });
 
-    // ── Readiness & Buffering ───────────────────────────────────────────
-
-    socket.on('room:ready', ({ roomId, isReady }: { roomId: string, isReady: boolean }) => {
-      try {
-        const room = this.roomManager.get(roomId);
-        if (room) room.setParticipantReady(socket.id, isReady);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
-      }
-    });
-
-    // ── NTP sync handshake ───────────────────────────────────────────────
+    // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0 }: PingPayload) => {
       const { t1, t2 } = this.syncEngine.recordPing(socket.id, t0);

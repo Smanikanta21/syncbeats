@@ -1,38 +1,39 @@
 // ─── SyncBeatsServer — Facade ─────────────────────────────────────────────
-import 'dotenv/config';  // load .env before anything reads process.env
+import 'dotenv/config';
 
-import express from 'express';
-import http from 'http';
-import cors from 'cors';
+import express    from 'express';
+import http       from 'http';
+import cors       from 'cors';
+import path       from 'path';
+import fs         from 'fs';
 import { Server } from 'socket.io';
-import { RoomManager } from './core/RoomManager';
-import { SyncEngine } from './sync/SyncEngine';
-import { SocketHandler } from './handlers/SocketHandler';
-import { createRoomRoutes } from './handlers/RoomRoutes';
-import { createAuthRoutes } from './handlers/AuthRoutes';
-import { createDeviceRoutes } from './handlers/DeviceRoutes';
-import { closePool } from './db/pool';
-import { RoomRepository } from './db/RoomRepository';
+
+import { config }              from './config/config';
+import { RoomManager }         from './core/RoomManager';
+import { SyncEngine }          from './sync/SyncEngine';
+import { SocketHandler }       from './handlers/SocketHandler';
+import { createRoomRoutes }    from './handlers/RoomRoutes';
+import { createAuthRoutes }    from './handlers/AuthRoutes';
+import { createDeviceRoutes }  from './handlers/DeviceRoutes';
+import { createUploadRoutes }  from './handlers/UploadRoutes';
+import prisma                  from './db/prisma';
+import { RoomRepository }      from './db/RoomRepository';
 
 export class SyncBeatsServer {
-  private app = express();
+  private app        = express();
   private httpServer = http.createServer(this.app);
-
-
-  private io = new Server(this.httpServer, {
-    cors: {
-      origin: true,
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-    },
+  private io         = new Server(this.httpServer, {
+    cors: { origin: true, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
   });
 
   private roomManager = RoomManager.getInstance();
-  private syncEngine = new SyncEngine();
+  private syncEngine  = new SyncEngine();
   private socketHandler: SocketHandler;
 
   constructor() {
-    this.socketHandler = new SocketHandler(this.io, this.roomManager, this.syncEngine, new RoomRepository());
+    this.socketHandler = new SocketHandler(
+      this.io, this.roomManager, this.syncEngine, new RoomRepository()
+    );
     this.setupMiddleware();
     this.setupRoutes();
     this.setupSocketIO();
@@ -41,19 +42,31 @@ export class SyncBeatsServer {
 
   private setupMiddleware(): void {
     this.app.use(cors({
-      origin: true,
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+      origin: true, credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
     this.app.use(express.json());
+
+    // Serve uploaded audio files as static assets
+    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    this.app.use('/files', express.static(uploadsDir, {
+      setHeaders: (res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Accept-Ranges', 'bytes'); // needed for audio seeking
+      },
+    }));
   }
 
   private setupRoutes(): void {
+    const baseUrl = `http://localhost:${config.port}`;
+
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
-    this.app.use('/auth', createAuthRoutes());
-    this.app.use('/rooms', createRoomRoutes(this.roomManager));
+    this.app.use('/auth',    createAuthRoutes());
+    this.app.use('/rooms',   createRoomRoutes(this.roomManager));
+    this.app.use('/rooms',   createUploadRoutes(this.roomManager, baseUrl));
     this.app.use('/devices', createDeviceRoutes());
   }
 
@@ -67,23 +80,22 @@ export class SyncBeatsServer {
     const shutdown = async (signal: string) => {
       console.log(`\n[Server] ${signal} received — shutting down gracefully`);
       this.httpServer.close(async () => {
-        await closePool();
+        await prisma.$disconnect();
         console.log('[Server] Closed. Goodbye.');
         process.exit(0);
       });
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
   }
 
   start(): void {
-    const port = parseInt(process.env.PORT || '4000', 10);
-    this.httpServer.listen(port, () => {
-      console.log(`\n🎵 SyncBeats server running on port ${port}`);
-      console.log(`   Health:  http://localhost:${port}/health`);
-      console.log(`   Auth:    http://localhost:${port}/auth`);
-      console.log(`   Rooms:   http://localhost:${port}/rooms`);
-      // console.log(`   CORS:    ${[`${process.env.CORS_ORIGIN}`, `${process.env.FRONTEND_CORS_ORIGIN}`].filter(Boolean).join(', ')}\n`);
+    this.httpServer.listen(config.port, () => {
+      console.log(`\n🎵 SyncBeats server running on port ${config.port}`);
+      console.log(`   Health:  http://localhost:${config.port}/health`);
+      console.log(`   Auth:    http://localhost:${config.port}/auth`);
+      console.log(`   Rooms:   http://localhost:${config.port}/rooms`);
+      console.log(`   Files:   http://localhost:${config.port}/files\n`);
     });
   }
 }

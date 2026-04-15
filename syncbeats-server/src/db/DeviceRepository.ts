@@ -1,7 +1,6 @@
-// db/DeviceRepository.ts — pg-based device storage
-// Devices table is optional for now — stubs return empty results gracefully.
+// db/DeviceRepository.ts — Prisma-based implementation
 
-import { getPool } from './pool';
+import prisma from './prisma';
 
 export interface PublicDevice {
   id:           string;
@@ -15,40 +14,87 @@ export interface PublicDevice {
 
 export class DeviceRepository {
   async ensureForUser(
-    _userId: string,
-    _deviceKey: string,
-    _userAgent: string | null
-  ): Promise<{ device: PublicDevice | null; created: boolean }> {
-    // Devices table not yet migrated — return graceful stub
-    return { device: null, created: false };
+    userId: string,
+    deviceKey: string,
+    userAgent: string | null
+  ): Promise<{ device: PublicDevice; created: boolean }> {
+    const existing = await prisma.device.findUnique({
+      where: { userId_deviceKey: { userId, deviceKey } }
+    });
+
+    if (existing) {
+      const updated = await prisma.device.update({
+        where: { id: existing.id },
+        data: { lastSeenAt: new Date(), userAgent }
+      });
+      return { device: this.mapDevice(updated), created: false };
+    }
+
+    const defaultName = userAgent ? userAgent.substring(0, 30) : 'New Device';
+
+    const created = await prisma.device.create({
+      data: {
+        userId,
+        deviceKey,
+        name: defaultName,
+        userAgent,
+      }
+    });
+
+    return { device: this.mapDevice(created), created: true };
   }
 
-  async listByUser(_userId: string): Promise<PublicDevice[]> {
-    return [];
+  async listByUser(userId: string): Promise<PublicDevice[]> {
+    const devices = await prisma.device.findMany({
+      where: { userId },
+      orderBy: { lastSeenAt: 'desc' }
+    });
+    return devices.map(d => this.mapDevice(d));
   }
 
   async rename(
-    _userId: string,
-    _deviceId: string,
-    _name: string
+    userId: string,
+    deviceId: string,
+    name: string
   ): Promise<PublicDevice | null> {
-    return null;
+    const existing = await prisma.device.findUnique({ where: { id: deviceId } });
+    if (!existing || existing.userId !== userId) return null;
+
+    const updated = await prisma.device.update({
+      where: { id: deviceId },
+      data: { name }
+    });
+    return this.mapDevice(updated);
   }
 
   async findByUserAndKey(
-    _userId: string,
-    _deviceKey: string
+    userId: string,
+    deviceKey: string
   ): Promise<PublicDevice | null> {
-    return null;
+    const device = await prisma.device.findUnique({
+      where: { userId_deviceKey: { userId, deviceKey } }
+    });
+    return device ? this.mapDevice(device) : null;
   }
 
   async findByIdAndUser(
-    _userId: string,
-    _deviceId: string
+    userId: string,
+    deviceId: string
   ): Promise<PublicDevice | null> {
-    return null;
+    const device = await prisma.device.findUnique({ where: { id: deviceId } });
+    if (!device || device.userId !== userId) return null;
+    return this.mapDevice(device);
   }
 
-  // Keep the pool warm
-  private get pool() { return getPool(); }
+  private mapDevice(d: any): PublicDevice {
+    return {
+      id: d.id,
+      device_key: d.deviceKey,
+      name: d.name,
+      user_agent: d.userAgent,
+      created_at: d.createdAt,
+      updated_at: d.updatedAt,
+      last_seen_at: d.lastSeenAt,
+    };
+  }
 }
