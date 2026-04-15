@@ -1,15 +1,10 @@
 // lib/api.ts — Typed fetch wrapper for all SyncBeats API calls
 
-export function getServerUrl(): string {
+export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-  
-  if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:4000`;
-  }
-  
-  return 'http://localhost:4000';
+  throw Error('PUBLIC_SERVER_URL environment variable is not set');
 }
 
 const BASE = getServerUrl();
