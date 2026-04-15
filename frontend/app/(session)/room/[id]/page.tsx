@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
@@ -26,7 +26,7 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
 
-  const { snapshot, participants, isConnected, clockOffset, allReady, play, pause, seek, setReady, leave } = useRoom({
+  const { snapshot, participants, isConnected, clockOffset, allReady, setReady, leave } = useRoom({
     roomId,
     displayName,
   });

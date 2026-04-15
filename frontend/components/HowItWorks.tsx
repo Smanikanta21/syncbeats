@@ -35,7 +35,7 @@ export function HowItWorks() {
             Seamless <span className="text-zinc-400">Setup</span>
           </h2>
           <p className="text-zinc-500 max-w-2xl mx-auto text-base sm:text-xl">
-            Bringing the party together shouldn't require downloading apps or un-pairing bluetooth speakers.
+            Bringing the party together shouldn&apos;t require downloading apps or un-pairing bluetooth speakers.
           </p>
         </motion.div>
 

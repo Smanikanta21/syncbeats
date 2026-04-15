@@ -37,7 +37,6 @@ export function formatTime(seconds: number): string {
 import { getServerUrl } from '../lib/api';
 
 export function useAudioPlayer(): UseAudioPlayerReturn {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef   = useRef<number>(0);
 
   const [isPlaying,   setIsPlaying]   = useState(false);

@@ -69,7 +69,7 @@ export default function HubPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl md:text-5xl font-black mb-4 text-zinc-200"
           >
-            What's the move?
+            What&apos;s the move?
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
@@ -77,7 +77,7 @@ export default function HubPage() {
             transition={{ delay: 0.1 }}
             className="text-zinc-500 text-lg font-medium tracking-wide"
           >
-            Start a new session to broadcast audio, or join a friend's room.
+            Start a new session to broadcast audio, or join a friend&apos;s room.
           </motion.p>
         </div>
 
@@ -100,7 +100,7 @@ export default function HubPage() {
             
             <h3 className="text-2xl font-bold text-zinc-200 mb-3">Host a Session</h3>
             <p className="text-zinc-500 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
-              Create a massive synchronized room. You'll control the playlist, volume, and playback.
+              Create a massive synchronized room. You&apos;ll control the playlist, volume, and playback.
             </p>
             
             <button 

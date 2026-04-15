@@ -23,7 +23,7 @@ const containerVariants: Variants = {
 
 const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } as any }
+  visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
 };
 
 export function Features() {

@@ -14,9 +14,6 @@ import { useUpload } from "../context/UploadContext";
 import { getSocket } from "../lib/socket";
 import { formatTime } from "../hooks/useAudioPlayer";
 
-const HOVER_DELAY_MS = 800;
-const PRESS_DELAY_MS = 600;
-
 export function DynamicIsland() {
   const pathname = usePathname();
   const router   = useRouter();
@@ -24,12 +21,10 @@ export function DynamicIsland() {
   const audio    = useAudio();
   const upload   = useUpload();
 
-  const [mounted,   setMounted]   = useState(false);
   const [expanded,  setExpanded]  = useState(false);
   const [driveLink, setDriveLink] = useState("");
   const [driveErr,  setDriveErr]  = useState("");
 
-  const hoverTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef  = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,8 +32,6 @@ export function DynamicIsland() {
 
   const displayName = user?.name ?? "Guest";
   const initials    = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-
-  useEffect(() => { setMounted(true); }, []);
 
   const isRoom    = pathname.includes("/room/");
   const isProfile = pathname.includes("/profile");
@@ -57,9 +50,6 @@ export function DynamicIsland() {
       bounceCtrl.set({ y: 0, scale: 1 });
     }
   }, [upload.isDragging, bounceCtrl]);
-
-  // Collapse when leaving a room
-  useEffect(() => { if (!isRoom) setExpanded(false); }, [isRoom]);
 
   // ── Interaction handlers ─────────────────────────────────────────────────
   const clearPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
@@ -123,8 +113,6 @@ export function DynamicIsland() {
       console.error("Upload failed:", err);
     }
   }, [roomId, upload, audio]);
-
-  if (!mounted) return null;
 
   const handleDriveLink = () => {
     setDriveErr("");

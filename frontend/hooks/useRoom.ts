@@ -34,7 +34,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [isConnected,  setIsConnected]  = useState(false);
+  const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady,     setAllReady]     = useState(false);
 
@@ -99,7 +99,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleConnect    = () => { setIsConnected(true); joinRoom(); };
     const handleDisconnect = () => setIsConnected(false);
 
-    if (socket.connected) { setIsConnected(true); joinRoom(); }
+    if (socket.connected) { joinRoom(); }
     else                    socket.connect();
 
     socket.on('connect',    handleConnect);
@@ -165,7 +165,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     socket.on('sync:pong', handlePong);
 
-    const handleError = ({ message }: { message: string }) => console.warn('[SyncBeats]', message);
+    const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
     // Fetch initial room state

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, ArrowRight, Sparkles, Pause, SkipForward, SkipBack, Share2, Smartphone, Speaker } from "lucide-react";
+import { Play, ArrowRight, Pause, SkipForward, SkipBack, Share2, Smartphone, Speaker } from "lucide-react";
 
 export function Hero() {
   return (
