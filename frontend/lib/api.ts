@@ -4,7 +4,9 @@ export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-  throw Error('PUBLIC_SERVER_URL environment variable is not set');
+
+  // VM deployment uses Nginx reverse proxy from /api -> backend.
+  return '/api';
 }
 
 const BASE = getServerUrl();

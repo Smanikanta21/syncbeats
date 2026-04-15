@@ -8,7 +8,9 @@ function getServerUrl() {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
 
+  return '/socket.io';
 }
+
 
 const SERVER_URL = getServerUrl();
 
@@ -16,9 +18,11 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(SERVER_URL, {
+    const endpoint = SERVER_URL === '/socket.io' ? undefined : SERVER_URL;
+    socket = io(endpoint, {
       autoConnect: false,
       transports: ['websocket'],
+      path: '/socket.io',
     });
   }
   return socket;
