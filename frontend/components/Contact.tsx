@@ -1,9 +1,32 @@
 "use client";
 
+import { FormEvent, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Mail, Link2, AtSign } from "lucide-react";
+
+const CONTACT_EMAIL = "abhi.businesscontact@gmail.com";
+const GITHUB_URL = "https://github.com/smanikanta21";
+const LINKEDIN_URL = "https://www.linkedin.com/in/siraparapu-shiva-sankar-mani-kanta-622a85323?utm_source=share_via&utm_content=profile&utm_medium=member_ios";
 
 export function Contact() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const subject = `SyncBeats inquiry from ${name || "website visitor"}`;
+    const body = [
+      `Name: ${name || "Not provided"}`,
+      `Email: ${email || "Not provided"}`,
+      "",
+      message || "No message provided.",
+    ].join("\n");
+
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 relative z-10">
       <div className="max-w-4xl mx-auto group">
@@ -21,7 +44,7 @@ export function Contact() {
           <h2 className="text-3xl sm:text-4xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tighter text-zinc-300">
             Get in <span className="text-zinc-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">Touch</span>
           </h2>
-          <p className="text-zinc-500 text-base sm:text-xl font-medium">Need early access or have a question? Drop us a line.</p>
+          <p className="text-zinc-500 text-base sm:text-xl font-medium">Need early access or have a question? Reach me by email or GitHub.</p>
         </motion.div>
 
         <motion.div
@@ -34,22 +57,63 @@ export function Contact() {
           {/* Subtle top right silver blur */}
           <div className="absolute top-0 right-0 w-48 sm:w-64 h-48 sm:h-64 bg-white/5 group-hover:bg-white/10 filter blur-[60px] transition-colors duration-1000" />
           
-          <form className="relative z-10 space-y-6 sm:space-y-8" onSubmit={(e) => e.preventDefault()}>
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <a
+              href={`mailto:${CONTACT_EMAIL}`}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 text-zinc-300 hover:border-white/30 hover:bg-white/10 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-2 text-zinc-200 font-semibold">
+                <Mail className="w-4 h-4" />
+                Email
+              </div>
+              <p className="text-sm text-zinc-400">Send an email</p>
+            </a>
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 text-zinc-300 hover:border-white/30 hover:bg-white/10 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-2 text-zinc-200 font-semibold">
+                <Link2 className="w-4 h-4" />
+                GitHub
+              </div>
+              <p className="text-sm text-zinc-400">View profile</p>
+            </a>
+            <a
+              href={LINKEDIN_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 text-zinc-300 hover:border-white/30 hover:bg-white/10 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-2 text-zinc-200 font-semibold">
+                <AtSign className="w-4 h-4" />
+                LinkedIn
+              </div>
+              <p className="text-sm text-zinc-400">Connect on LinkedIn</p>
+            </a>
+          </div>
+
+          <form className="relative z-10 space-y-6 sm:space-y-8" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
               <div className="space-y-2 sm:space-y-3">
                 <label className="text-sm font-semibold text-zinc-400 ml-1">Name</label>
                 <input 
                   type="text" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="w-full bg-white/5 border border-white/5 group-hover:border-white/10 rounded-[1.5rem] px-5 py-4 text-zinc-200 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all placeholder:text-zinc-600"
-                  placeholder="Rick Rubin"
+                  placeholder="Your Name"
                 />
               </div>
               <div className="space-y-2 sm:space-y-3">
                 <label className="text-sm font-semibold text-zinc-400 ml-1">Email</label>
                 <input 
                   type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-white/5 border border-white/5 group-hover:border-white/10 rounded-[1.5rem] px-4 sm:px-5 py-3 sm:py-4 text-zinc-200 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all placeholder:text-zinc-600"
-                  placeholder="rick@defjam.com"
+                  placeholder="example@syncbeats.com"
                 />
               </div>
             </div>
@@ -57,6 +121,8 @@ export function Contact() {
               <label className="text-sm font-semibold text-zinc-400 ml-1">Message</label>
               <textarea 
                 rows={5}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
                 className="w-full bg-white/5 border border-white/5 group-hover:border-white/10 rounded-[1.5rem] px-4 sm:px-5 py-3 sm:py-4 text-zinc-200 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all placeholder:text-zinc-600 resize-none"
                 placeholder="I need this workspace right now..."
               />

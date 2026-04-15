@@ -16,7 +16,8 @@ export class DeviceRepository {
   async ensureForUser(
     userId: string,
     deviceKey: string,
-    userAgent: string | null
+    userAgent: string | null,
+    ownerName: string
   ): Promise<{ device: PublicDevice; created: boolean }> {
     const existing = await prisma.device.findUnique({
       where: { userId_deviceKey: { userId, deviceKey } }
@@ -30,7 +31,7 @@ export class DeviceRepository {
       return { device: this.mapDevice(updated), created: false };
     }
 
-    const defaultName = userAgent ? userAgent.substring(0, 30) : 'New Device';
+    const defaultName = this.buildDefaultDeviceName(ownerName, userAgent);
 
     const created = await prisma.device.create({
       data: {
@@ -86,6 +87,48 @@ export class DeviceRepository {
     return this.mapDevice(device);
   }
 
+  async replaceCurrentWithExisting(
+    userId: string,
+    currentDeviceKey: string,
+    targetDeviceId: string,
+    userAgent: string | null
+  ): Promise<PublicDevice | null> {
+    const target = await prisma.device.findUnique({ where: { id: targetDeviceId } });
+    if (!target || target.userId !== userId) return null;
+
+    const current = await prisma.device.findUnique({
+      where: { userId_deviceKey: { userId, deviceKey: currentDeviceKey } }
+    });
+
+    if (current && current.id === target.id) {
+      const same = await prisma.device.update({
+        where: { id: target.id },
+        data: {
+          userAgent,
+          lastSeenAt: new Date(),
+        }
+      });
+      return this.mapDevice(same);
+    }
+
+    const updatedTarget = await prisma.$transaction(async (tx) => {
+      if (current && current.id !== target.id) {
+        await tx.device.delete({ where: { id: current.id } });
+      }
+
+      return tx.device.update({
+        where: { id: target.id },
+        data: {
+          deviceKey: currentDeviceKey,
+          userAgent,
+          lastSeenAt: new Date(),
+        }
+      });
+    });
+
+    return this.mapDevice(updatedTarget);
+  }
+
   private mapDevice(d: any): PublicDevice {
     return {
       id: d.id,
@@ -96,5 +139,25 @@ export class DeviceRepository {
       updated_at: d.updatedAt,
       last_seen_at: d.lastSeenAt,
     };
+  }
+
+  private buildDefaultDeviceName(ownerName: string, userAgent: string | null): string {
+    const owner = ownerName?.trim() || 'My';
+    const suffix = owner === 'My' ? '' : `'s`;
+    const platform = this.detectPlatformLabel(userAgent);
+    return `${owner}${suffix} ${platform}`.trim();
+  }
+
+  private detectPlatformLabel(userAgent: string | null): string {
+    const ua = (userAgent ?? '').toLowerCase();
+
+    if (ua.includes('iphone')) return 'iPhone';
+    if (ua.includes('ipad')) return 'iPad';
+    if (ua.includes('android')) return 'Android';
+    if (ua.includes('mac os') || ua.includes('macintosh')) return 'Mac';
+    if (ua.includes('windows')) return 'Windows PC';
+    if (ua.includes('linux')) return 'Linux PC';
+
+    return 'Device';
   }
 }

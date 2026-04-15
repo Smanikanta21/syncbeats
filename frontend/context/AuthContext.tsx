@@ -18,6 +18,7 @@ interface AuthContextType {
   login:    (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   renameDevice: (name: string) => Promise<void>;
+  replaceDevice: (targetDeviceId: string) => Promise<void>;
   logout:   () => void;
 }
 
@@ -82,6 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsDeviceRename(false);
   }, [device]);
 
+  const replaceDevice = useCallback(async (targetDeviceId: string) => {
+    const { device: updated } = await devicesApi.replace(targetDeviceId);
+    setDevice(updated);
+    setNeedsDeviceRename(false);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem("sb_token");
     setToken(null);
@@ -91,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, device, needsDeviceRename, token, loading, login, register, renameDevice, logout }}>
+    <AuthContext.Provider value={{ user, device, needsDeviceRename, token, loading, login, register, renameDevice, replaceDevice, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,7 +4,9 @@ export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-  throw Error('PUBLIC_SERVER_URL environment variable is not set');
+
+  // VM deployment uses Nginx reverse proxy from /api -> backend.
+  return '/api';
 }
 
 const BASE = getServerUrl();
@@ -110,6 +112,10 @@ export interface DeviceUpdateResponse {
   device: Device;
 }
 
+export interface DeviceReplaceResponse {
+  device: Device;
+}
+
 export interface RoomDetailsResponse {
   db: RoomRecord | null;
   live: {
@@ -141,6 +147,15 @@ export const roomsApi = {
 
   mine: () =>
     request<{ rooms: RoomRecord[] }>('/rooms/mine', {}, true),
+
+  endSession: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' }, true),
+
+  changeHost: (roomId: string, newHostEmail: string) =>
+    request<{ ok: boolean; roomId: string; newHostEmail: string }>(`/rooms/${roomId}/host`, {
+      method: 'PATCH',
+      body: JSON.stringify({ newHostEmail }),
+    }, true),
 };
 
 export const devicesApi = {
@@ -150,5 +165,11 @@ export const devicesApi = {
     request<DeviceUpdateResponse>(`/devices/${deviceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
+    }, true),
+
+  replace: (targetDeviceId: string) =>
+    request<DeviceReplaceResponse>('/devices/replace', {
+      method: 'POST',
+      body: JSON.stringify({ targetDeviceId }),
     }, true),
 };
