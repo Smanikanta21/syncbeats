@@ -50,5 +50,20 @@ services:
       prisma:
         condition: service_completed_successfully
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SERVER_URL: "http://localhost:4000"
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_SERVER_URL: "http://localhost:4000"
+    depends_on:
+      - server
+
 volumes:
   pgdata:
