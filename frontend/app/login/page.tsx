@@ -162,7 +162,7 @@ export default function AuthPage() {
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Full Name</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-zinc-500" /></div>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Rick Rubin" required />
+                      <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" required />
                     </div>
                   </div>
 

@@ -35,7 +35,7 @@ export class AuthService {
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await this.repo.create(name, email, hash);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
     const token = this.signToken(user);
     return { user, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
@@ -49,7 +49,7 @@ export class AuthService {
 
     const { password_hash: _, ...user } = row;
     const token = this.signToken(user as PublicUser);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
     return { user: user as PublicUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
@@ -57,7 +57,7 @@ export class AuthService {
     const user = await this.repo.findById(userId);
     if (!user) throw new Error('User not found');
 
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
     const token = this.signToken(user);
     return { user, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }

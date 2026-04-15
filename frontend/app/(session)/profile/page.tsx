@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Headphones, LogOut, Edit3, Shield, Activity, Music, Laptop, Smartphone } from "lucide-react";
+import { LogOut, Edit3, Shield, Activity, Music, Laptop, Smartphone, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, type Device } from "../../../lib/api";
@@ -12,13 +12,32 @@ function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   return <Laptop className="w-4 h-4 text-zinc-300" />;
 }
 
+function getPlatformLabel(userAgent: string | null): string {
+  if (!userAgent) return "Unknown";
+  const ua = userAgent.toLowerCase();
+  if (ua.includes("iphone")) return "iPhone";
+  if (ua.includes("ipad")) return "iPad";
+  if (ua.includes("android")) return "Android";
+  if (ua.includes("mac")) return "Mac";
+  if (ua.includes("windows")) return "Windows";
+  if (ua.includes("linux")) return "Linux";
+  return "Browser";
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, device, logout } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [showDeviceRename, setShowDeviceRename] = useState(false);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingDeviceName, setEditingDeviceName] = useState("");
+  const [savingDeviceRename, setSavingDeviceRename] = useState(false);
 
-  const displayName = user?.name ?? "—";
-  const displayEmail = user?.email ?? "—";
+  const displayName = profileName.trim() || user?.name || "—";
+  const displayEmail = profileEmail.trim() || user?.email || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const accountId = user ? `#SB-${user.id.slice(0, 4).toUpperCase()}` : "—";
   const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "—";
@@ -26,12 +45,59 @@ export default function ProfilePage() {
   useEffect(() => {
     devicesApi.mine()
       .then(({ devices }) => setDevices(devices))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
+
+  useEffect(() => {
+    setProfileName(user?.name ?? "");
+    setProfileEmail(user?.email ?? "");
+  }, [user?.name, user?.email]);
 
   const handleLogout = () => {
     logout();
     router.push("/login");
+  };
+
+  const openEditProfile = () => {
+    setProfileName(user?.name ?? "");
+    setProfileEmail(user?.email ?? "");
+    setIsEditingProfile(true);
+  };
+
+  const cancelEditProfile = () => {
+    setProfileName(user?.name ?? "");
+    setProfileEmail(user?.email ?? "");
+    setIsEditingProfile(false);
+  };
+
+  const saveEditProfile = () => {
+    // TODO: Add API endpoint to update profile (name, email)
+    setIsEditingProfile(false);
+  };
+
+  const openDeviceRename = (deviceId: string, currentName: string) => {
+    setEditingDeviceId(deviceId);
+    setEditingDeviceName(currentName);
+    setShowDeviceRename(true);
+  };
+
+  const handleDeviceRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDeviceId || !editingDeviceName.trim()) return;
+
+    setSavingDeviceRename(true);
+    try {
+      await devicesApi.rename(editingDeviceId, editingDeviceName.trim());
+      setDevices(devices.map(d =>
+        d.id === editingDeviceId ? { ...d, name: editingDeviceName.trim() } : d
+      ));
+      setShowDeviceRename(false);
+      setEditingDeviceId(null);
+    } catch (err) {
+      console.error("Failed to rename device:", err);
+    } finally {
+      setSavingDeviceRename(false);
+    }
   };
 
   return (
@@ -39,7 +105,7 @@ export default function ProfilePage() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-[400px] bg-white/[0.015] blur-[150px] rounded-full pointer-events-none -z-10" />
 
       <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col mt-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[220px]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[minmax(220px,auto)]">
 
           {/* 1. Main Profile Card */}
           <motion.div
@@ -54,14 +120,46 @@ export default function ProfilePage() {
               <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center border-4 border-black shadow-[0_0_20px_rgba(255,255,255,0.05)]">
                 <span className="text-4xl font-black text-white tracking-widest">{initials}</span>
               </div>
-              <button className="h-10 px-6 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold flex items-center gap-2 transition-all">
-                <Edit3 className="w-4 h-4" /> Edit Profile
-              </button>
+              {!isEditingProfile ? (
+                <button onClick={openEditProfile} className="h-10 px-6 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold flex items-center gap-2 transition-all">
+                  <Edit3 className="w-4 h-4" /> Edit Profile
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={cancelEditProfile} className="h-10 px-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 font-semibold transition-all">
+                    Cancel
+                  </button>
+                  <button onClick={saveEditProfile} className="h-10 px-5 rounded-full bg-white text-black font-semibold transition-all hover:opacity-90">
+                    Save
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-auto relative z-10">
-              <h1 className="text-5xl font-black text-zinc-200 mb-2 tracking-tight">{displayName}</h1>
-              <p className="text-zinc-500 font-medium text-xl mb-6">{displayEmail}</p>
+              {!isEditingProfile ? (
+                <>
+                  <h1 className="text-5xl font-black text-zinc-200 mb-2 tracking-tight">{displayName}</h1>
+                  <p className="text-zinc-500 font-medium text-xl mb-6">{displayEmail}</p>
+                </>
+              ) : (
+                <div className="space-y-3 mb-6">
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-3xl font-black tracking-tight text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                    placeholder="Your name"
+                  />
+                  <input
+                    type="email"
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-lg font-medium text-zinc-300 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                    placeholder="your@email.com"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
                   <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-1">Member Since</p>
@@ -91,42 +189,27 @@ export default function ProfilePage() {
             </div>
           </motion.div>
 
-          {/* 3. Audio */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-white/10 transition-colors cursor-pointer">
-            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-4"><Headphones className="w-5 h-5 text-zinc-300" /></div>
-            <div className="mt-auto">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xl font-bold text-zinc-200">Hi-Fi Audio</h3>
-                <div className="w-8 h-4 bg-zinc-700 rounded-full relative">
-                  <div className="absolute right-1 top-1 bottom-1 w-2 bg-white rounded-full" />
-                </div>
-              </div>
-              <p className="text-zinc-500 text-sm font-medium">Streams locally uncompressed</p>
-            </div>
-          </motion.div>
-
-          {/* 4. Stats */}
+          {/* 3. Stats */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.25 }}
             className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-white/10 transition-colors">
-            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-4"><Activity className="w-5 h-5 text-zinc-300" /></div>
-            <div className="mt-auto flex items-end gap-2">
-              <h3 className="text-5xl font-black text-zinc-200 leading-none">0</h3>
-              <p className="text-zinc-500 text-sm font-medium pb-1 leading-tight">Sessions<br />Hosted</p>
-            </div>
-          </motion.div>
+              <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-4"><Activity className="w-5 h-5 text-zinc-300" /></div>
+              <div className="mt-auto flex items-end gap-2">
+                <h3 className="text-5xl font-black text-zinc-200 leading-none">0</h3>
+                <p className="text-zinc-500 text-sm font-medium pb-1 leading-tight">Sessions<br />Hosted</p>
+              </div>
+            </motion.div>
 
-          {/* 5. Integrations */}
+          {/* 4. Integrations */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
             className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-white/10 transition-colors cursor-pointer">
             <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-4"><Music className="w-5 h-5 text-zinc-300" /></div>
             <div className="mt-auto">
               <h3 className="text-xl font-bold text-zinc-200 mb-1">Link Spotify</h3>
-              <p className="text-zinc-500 text-sm font-medium">Import playlists directly</p>
+              <p className="text-zinc-500 text-sm font-medium">Sync your library</p>
             </div>
           </motion.div>
 
-          {/* 6. Log Out */}
+          {/* 5. Log Out */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.35 }}
             onClick={handleLogout}
             className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-red-500/30 hover:bg-red-500/5 transition-all cursor-pointer">
@@ -139,9 +222,9 @@ export default function ProfilePage() {
             </div>
           </motion.div>
 
-          {/* 7. Devices */}
+          {/* 6. Devices */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
-            className="md:col-span-3 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl p-8 relative overflow-hidden">
+            className="md:col-span-3 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl p-12">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500">Account Devices</p>
@@ -149,7 +232,6 @@ export default function ProfilePage() {
               </div>
               <div className="text-sm text-zinc-500 font-medium">{devices.length} saved</div>
             </div>
-
             {devices.length === 0 ? (
               <p className="text-zinc-600 text-sm font-medium">No devices saved yet.</p>
             ) : (
@@ -171,9 +253,15 @@ export default function ProfilePage() {
                               <h4 className="font-bold text-zinc-100 truncate">{savedDevice.name}</h4>
                               {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
                             </div>
-                            <p className="text-xs text-zinc-500 mt-1 truncate">{savedDevice.user_agent ?? "Unknown browser"}</p>
+                            <p className="text-xs text-zinc-500 mt-1 truncate">{getPlatformLabel(savedDevice.user_agent)}</p>
                           </div>
                         </div>
+                        <button
+                          onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
+                          className="h-8 w-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
                       </div>
                       <div className="mt-4 flex items-center justify-between text-xs text-zinc-500">
                         <span>Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
@@ -185,8 +273,41 @@ export default function ProfilePage() {
               </div>
             )}
           </motion.div>
-
         </div>
+
+        {/* Device Rename Modal */}
+        {showDeviceRename && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500">Device</p>
+                  <h2 className="text-2xl font-black text-zinc-100 mt-1">Rename Device</h2>
+                </div>
+                <button onClick={() => setShowDeviceRename(false)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+              <form className="space-y-4" onSubmit={handleDeviceRename}>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-zinc-400">Device Name</label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingDeviceName}
+                    onChange={(e) => setEditingDeviceName(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                    placeholder="My Device"
+                  />
+                </div>
+                <button
+                  disabled={savingDeviceRename || !editingDeviceName.trim()}
+                  className="h-12 w-full rounded-2xl bg-zinc-100 font-bold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingDeviceRename ? "Saving..." : "Save Device Name"}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
       </main>
     </div>
   );
