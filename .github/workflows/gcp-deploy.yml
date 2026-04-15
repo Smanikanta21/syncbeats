@@ -2,8 +2,7 @@ name: Syncbeats CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -12,16 +11,13 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify / Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -47,14 +43,13 @@ jobs:
           npm run build
 
   deploy:
-    name: Deploy to GCP VM
     runs-on: ubuntu-latest
     needs: verify
     if: github.ref == 'refs/heads/main'
     timeout-minutes: 30
 
     steps:
-      - name: Setup SSH Key
+      - name: Setup SSH
         run: |
           set -euxo pipefail
           mkdir -p ~/.ssh
@@ -62,74 +57,89 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy Application
+      - name: Deploy to VM
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
             set -euxo pipefail
 
-            APP_DIR="$HOME/sync-beats"
-            FRONTEND_DIR="$APP_DIR/frontend"
+            APP="$HOME/sync-beats"
+            FRONT="$APP/frontend"
 
-            echo "📁 Enter project"
-            cd "$APP_DIR"
+            cd "$APP"
 
-            echo "📥 Sync latest code safely"
+            echo "📥 Sync code"
             git fetch origin
             git reset --hard origin/main
-            git clean -fd
 
-            echo "📌 Latest commit"
-            git log --oneline -1
-
-            echo "🐳 Stop any old frontend container if it exists"
+            echo "🐳 Ensure backend stack"
             docker rm -f syncbeats-frontend || true
             docker rm -f sync-beats_frontend_1 || true
-
-            echo "🐳 Build backend stack"
             docker-compose up -d --build db prisma server
 
-            echo "⏳ Wait for backend health"
-            sleep 10
+            echo "⏳ Wait backend"
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:4000/health >/dev/null; then
+                echo "✅ Backend ready"
+                break
+              fi
+              sleep 2
+            done
 
-            echo "🩺 Backend local probe"
-            curl -fsS http://localhost:4000 || true
+            echo "🔌 Wait Socket.IO"
+            for i in $(seq 1 30); do
+              RESP="$(curl -fsS http://localhost:4000/socket.io/?EIO=4&transport=polling || true)"
+              echo "$RESP" | grep -q '"sid"' && break
+              sleep 2
+            done
 
-            echo "🎨 Build frontend cleanly"
-            cd "$FRONTEND_DIR"
+            echo "🎨 Build frontend"
+            cd "$FRONT"
             rm -rf .next
             npm ci
             NEXT_PUBLIC_SERVER_URL=/api npm run build
 
-            echo "🧹 Free port 3000 if occupied"
-            sudo fuser -k 3000/tcp || true
-            sleep 2
+            echo "📝 Write PM2 ecosystem"
+            cat > ecosystem.config.js <<EOC
+            module.exports = {
+              apps: [{
+                name: "syncbeats-frontend",
+                cwd: "$FRONT",
+                script: "npm",
+                args: "start -- -p 3000",
+                env: {
+                  NODE_ENV: "production",
+                  PORT: "3000",
+                  NEXT_PUBLIC_SERVER_URL: "/api"
+                }
+              }]
+            }
+            EOC
 
-            echo "🚀 Restart frontend with PM2"
-            pm2 delete syncbeats-frontend || true
-            NEXT_PUBLIC_SERVER_URL=/api pm2 start npm \
-              --name syncbeats-frontend \
-              --cwd "$FRONTEND_DIR" \
-              -- start -- -p 3000
-
+            echo "🚀 Reload frontend idempotently"
+            pm2 startOrReload ecosystem.config.js --update-env
             pm2 save
 
-            echo "🩺 Frontend local probe"
-            curl -fsS http://localhost:3000 > /dev/null
+            echo "⏳ Wait frontend"
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:3000 >/dev/null; then
+                echo "✅ Frontend ready"
+                break
+              fi
+              sleep 2
+            done
 
-            echo "🔎 Validate Nginx config"
+            echo "🔎 Validate nginx"
             sudo nginx -t
-
-            echo "🔁 Reload Nginx"
             sudo systemctl reload nginx
 
-            echo "🌐 HTTPS probe"
-            curl -kfsS https://localhost > /dev/null || true
+            echo "🌐 External check"
+            curl -kfsS https://localhost >/dev/null || true
 
-            echo "📊 PM2 Status"
+            echo "📊 PM2"
             pm2 status
 
-            echo "🐳 Docker Status"
+            echo "🐳 Docker"
             docker ps
 
-            echo "✅ Deploy completed successfully"
+            echo "✅ Deploy successful"
           EOF
