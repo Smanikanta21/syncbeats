@@ -9,6 +9,14 @@ const repo = new DeviceRepository();
 export function createDeviceRoutes(): Router {
   const router = Router();
 
+  function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: string | null } {
+    const deviceId = req.header('x-device-id');
+    return {
+      deviceKey: deviceId?.trim() || null,
+      userAgent: req.header('user-agent') || null,
+    };
+  }
+
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {
     try {
       const devices = await repo.listByUser(req.user!.sub);
@@ -37,6 +45,41 @@ export function createDeviceRoutes(): Router {
       res.json({ device });
     } catch (err) {
       console.error('[Devices] rename error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  router.post('/replace', requireAuth, async (req: Request, res: Response) => {
+    const { targetDeviceId } = req.body as { targetDeviceId?: string };
+    const { deviceKey, userAgent } = getDeviceContext(req);
+
+    if (!targetDeviceId?.trim()) {
+      res.status(400).json({ error: 'targetDeviceId is required' });
+      return;
+    }
+
+    if (!deviceKey) {
+      res.status(400).json({ error: 'x-device-id is required' });
+      return;
+    }
+
+    try {
+      const device = await repo.replaceCurrentWithExisting(
+        req.user!.sub,
+        deviceKey,
+        targetDeviceId,
+        userAgent,
+      );
+
+      if (!device) {
+        res.status(404).json({ error: 'Target device not found' });
+        return;
+      }
+
+      res.json({ device });
+    } catch (err) {
+      console.error('[Devices] replace error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }

@@ -112,6 +112,10 @@ export interface DeviceUpdateResponse {
   device: Device;
 }
 
+export interface DeviceReplaceResponse {
+  device: Device;
+}
+
 export interface RoomDetailsResponse {
   db: RoomRecord | null;
   live: {
@@ -161,5 +165,11 @@ export const devicesApi = {
     request<DeviceUpdateResponse>(`/devices/${deviceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
+    }, true),
+
+  replace: (targetDeviceId: string) =>
+    request<DeviceReplaceResponse>('/devices/replace', {
+      method: 'POST',
+      body: JSON.stringify({ targetDeviceId }),
     }, true),
 };

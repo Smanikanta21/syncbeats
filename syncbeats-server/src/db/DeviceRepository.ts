@@ -87,6 +87,48 @@ export class DeviceRepository {
     return this.mapDevice(device);
   }
 
+  async replaceCurrentWithExisting(
+    userId: string,
+    currentDeviceKey: string,
+    targetDeviceId: string,
+    userAgent: string | null
+  ): Promise<PublicDevice | null> {
+    const target = await prisma.device.findUnique({ where: { id: targetDeviceId } });
+    if (!target || target.userId !== userId) return null;
+
+    const current = await prisma.device.findUnique({
+      where: { userId_deviceKey: { userId, deviceKey: currentDeviceKey } }
+    });
+
+    if (current && current.id === target.id) {
+      const same = await prisma.device.update({
+        where: { id: target.id },
+        data: {
+          userAgent,
+          lastSeenAt: new Date(),
+        }
+      });
+      return this.mapDevice(same);
+    }
+
+    const updatedTarget = await prisma.$transaction(async (tx) => {
+      if (current && current.id !== target.id) {
+        await tx.device.delete({ where: { id: current.id } });
+      }
+
+      return tx.device.update({
+        where: { id: target.id },
+        data: {
+          deviceKey: currentDeviceKey,
+          userAgent,
+          lastSeenAt: new Date(),
+        }
+      });
+    });
+
+    return this.mapDevice(updatedTarget);
+  }
+
   private mapDevice(d: any): PublicDevice {
     return {
       id: d.id,

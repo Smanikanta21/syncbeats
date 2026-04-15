@@ -364,19 +364,19 @@ export default function HubPage() {
                         <DeviceGlyph userAgent={savedDevice.user_agent} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-zinc-200 truncate flex items-center gap-2">
+                        <div className="text-sm font-bold text-zinc-200 w-[75%] truncate flex items-center gap-2">
                           {savedDevice.name}
                           {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
                         </div>
                         <div className="text-xs text-zinc-600 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
                       </div>
-                    </div>
-                    <button
+                      <button
                       onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
-                      className="h-8 w-8 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                      className="h-10 w-12 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
                     >
                       <Edit3 className="w-4 h-4 mx-auto" />
                     </button>
+                    </div>
                   </div>
                 );
               })}
