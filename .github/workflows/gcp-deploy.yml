@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify Build
+    name: Verify / Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -33,6 +34,7 @@ jobs:
         env:
           NEXT_PUBLIC_SERVER_URL: /api
         run: |
+          set -euxo pipefail
           npm ci
           npm run lint
           npm run build
@@ -40,6 +42,7 @@ jobs:
       - name: Verify Backend
         working-directory: syncbeats-server
         run: |
+          set -euxo pipefail
           npm ci
           npm run build
 
@@ -48,55 +51,85 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     if: github.ref == 'refs/heads/main'
+    timeout-minutes: 30
 
     steps:
-      - name: Setup SSH
+      - name: Setup SSH Key
         run: |
+          set -euxo pipefail
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy Application
         run: |
-          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
             set -euxo pipefail
 
-            echo "📁 Go to project"
-            cd ~/sync-beats
+            APP_DIR="$HOME/sync-beats"
+            FRONTEND_DIR="$APP_DIR/frontend"
 
-            echo "📥 Pull latest code"
+            echo "📁 Enter project"
+            cd "$APP_DIR"
+
+            echo "📥 Sync latest code safely"
             git fetch origin
             git reset --hard origin/main
+            git clean -fd
 
-            echo "🐳 Rebuild backend services"
+            echo "📌 Latest commit"
+            git log --oneline -1
+
+            echo "🐳 Stop any old frontend container if it exists"
+            docker rm -f syncbeats-frontend || true
+            docker rm -f sync-beats_frontend_1 || true
+
+            echo "🐳 Build backend stack"
             docker-compose up -d --build db prisma server
 
-            echo "🧹 Remove old frontend build"
-            cd ~/sync-beats/frontend
+            echo "⏳ Wait for backend health"
+            sleep 10
+
+            echo "🩺 Backend local probe"
+            curl -fsS http://localhost:4000 || true
+
+            echo "🎨 Build frontend cleanly"
+            cd "$FRONTEND_DIR"
             rm -rf .next
-
-            echo "📦 Install frontend deps"
             npm ci
+            NEXT_PUBLIC_SERVER_URL=/api npm run build
 
-            echo "🏗️ Build frontend"
-            export NEXT_PUBLIC_SERVER_URL=/api
-            npm run build
-
-            echo "🛑 Free port 3000 if occupied"
+            echo "🧹 Free port 3000 if occupied"
             sudo fuser -k 3000/tcp || true
+            sleep 2
 
             echo "🚀 Restart frontend with PM2"
             pm2 delete syncbeats-frontend || true
-            pm2 start npm --name syncbeats-frontend --cwd ~/sync-beats/frontend -- start
+            NEXT_PUBLIC_SERVER_URL=/api pm2 start npm \
+              --name syncbeats-frontend \
+              --cwd "$FRONTEND_DIR" \
+              -- start -- -p 3000
+
             pm2 save
 
-            echo "🔁 Reload Nginx"
+            echo "🩺 Frontend local probe"
+            curl -fsS http://localhost:3000 > /dev/null
+
+            echo "🔎 Validate Nginx config"
             sudo nginx -t
+
+            echo "🔁 Reload Nginx"
             sudo systemctl reload nginx
+
+            echo "🌐 HTTPS probe"
+            curl -kfsS https://localhost > /dev/null || true
 
             echo "📊 PM2 Status"
             pm2 status
 
-            echo "✅ Deployment Successful"
+            echo "🐳 Docker Status"
+            docker ps
+
+            echo "✅ Deploy completed successfully"
           EOF
