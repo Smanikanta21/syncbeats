@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Fast Deploy to VM
+    name: Clean Deploy to VM
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -39,10 +39,18 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            echo "🐳 Restart backend"
+            echo "🛑 Stop frontend PM2"
+            pm2 delete syncbeats-frontend || true
+            pm2 ps || true
+
+            echo "🛑 Stop backend containers"
+            docker-compose down
+
+            echo "🐳 Start backend fresh"
             docker-compose up -d --build db prisma server
 
-            echo "🩺 Backend check"
+            echo "🩺 Check backend"
+            sleep 5
             curl -fsS http://localhost:4000/health >/dev/null
 
             echo "🎨 Build frontend"
@@ -51,16 +59,26 @@ jobs:
             npm ci
             NEXT_PUBLIC_SERVER_URL=/api npm run build
 
-            echo "🚀 Restart frontend"
-            pm2 restart syncbeats-frontend --update-env || pm2 start npm --name syncbeats-frontend --cwd "$FRONT" -- start -- -p 3000
+            echo "🚀 Start frontend fresh"
+            pm2 start npm --name syncbeats-frontend --cwd "$FRONT" -- start -- -p 3000
             pm2 save
 
-            echo "🩺 Frontend check"
+            echo "📊 PM2 Process List"
+            pm2 ps
+
+            echo "🩺 Check frontend"
+            sleep 5
             curl -fsS http://localhost:3000 >/dev/null
 
             echo "🌐 Reload nginx"
             sudo nginx -t
             sudo systemctl reload nginx
+
+            echo "📊 Final PM2 Status"
+            pm2 ps
+
+            echo "🐳 Docker Status"
+            docker ps
 
             echo "✅ Deploy complete"
           EOF
