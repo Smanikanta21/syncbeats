@@ -1,25 +1,4 @@
-# docker-compose.yml
 services:
-  db:
-    image: postgres:16-alpine
-    profiles: ["localdb"]
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-syncbeats}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncbeats_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-syncbeats}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-syncbeats} -d $${POSTGRES_DB:-syncbeats}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   server:
     build:
       context: ./syncbeats-server
@@ -30,7 +9,10 @@ services:
     environment:
       PORT: ${PORT:-4000}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      # Neon pooled connection string (runtime queries)
+      DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
+      # Neon direct (non-pooled) connection string for migrations/db push
+      DIRECT_URL: ${DIRECT_URL:?Set Neon direct DIRECT_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
       NODE_ENV: ${NODE_ENV:-production}
     ports:
@@ -39,5 +21,4 @@ services:
       - uploads:/app/uploads
 
 volumes:
-  pgdata:
   uploads:

@@ -8,7 +8,6 @@ import path       from 'path';
 import fs         from 'fs';
 import { Server } from 'socket.io';
 
-import { config }              from './config/config';
 import { RoomManager }         from './core/RoomManager';
 import { SyncEngine }          from './sync/SyncEngine';
 import { SocketHandler }       from './handlers/SocketHandler';
@@ -18,6 +17,8 @@ import { createDeviceRoutes }  from './handlers/DeviceRoutes';
 import { createUploadRoutes }  from './handlers/UploadRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
+
+const PORT = parseInt(process.env.PORT ?? '4000', 10);
 
 export class SyncBeatsServer {
   private app        = express();
@@ -61,7 +62,7 @@ export class SyncBeatsServer {
   }
 
   private setupRoutes(): void {
-    const baseUrl = `http://localhost:${config.port}`;
+    const baseUrl = `http://localhost:${PORT}`;
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
@@ -118,12 +119,12 @@ export class SyncBeatsServer {
   }
 
   start(): void {
-    this.httpServer.listen(config.port, () => {
-      console.log(`\n🎵 SyncBeats server running on port ${config.port}`);
-      console.log(`   Health:  http://localhost:${config.port}/health`);
-      console.log(`   Auth:    http://localhost:${config.port}/auth`);
-      console.log(`   Rooms:   http://localhost:${config.port}/rooms`);
-      console.log(`   Files:   http://localhost:${config.port}/files\n`);
+    this.httpServer.listen(PORT, () => {
+      console.log(`\n🎵 SyncBeats server running on port ${PORT}`);
+      console.log(`   Health:  http://localhost:${PORT}/health`);
+      console.log(`   Auth:    http://localhost:${PORT}/auth`);
+      console.log(`   Rooms:   http://localhost:${PORT}/rooms`);
+      console.log(`   Files:   http://localhost:${PORT}/files\n`);
     });
   }
 }
