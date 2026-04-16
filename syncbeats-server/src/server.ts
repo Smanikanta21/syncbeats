@@ -29,14 +29,16 @@ export class SyncBeatsServer {
   private roomManager = RoomManager.getInstance();
   private syncEngine  = new SyncEngine();
   private socketHandler: SocketHandler;
+  private roomRepo = new RoomRepository();
 
   constructor() {
     this.socketHandler = new SocketHandler(
-      this.io, this.roomManager, this.syncEngine, new RoomRepository()
+      this.io, this.roomManager, this.syncEngine, this.roomRepo
     );
     this.setupMiddleware();
     this.setupRoutes();
     this.setupSocketIO();
+    this.setupRoomCleanup();
     this.setupGracefulShutdown();
   }
 
@@ -74,6 +76,32 @@ export class SyncBeatsServer {
     this.io.on('connection', (socket) => {
       this.socketHandler.register(socket);
     });
+  }
+
+  private setupRoomCleanup(): void {
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+    const cleanup = async () => {
+      try {
+        const cutoff = new Date(Date.now() - ONE_DAY_MS);
+        const candidates = await this.roomRepo.listOlderThan(cutoff);
+
+        for (const room of candidates) {
+          const liveRoom = this.roomManager.get(room.id);
+          const hasParticipants = !!liveRoom && liveRoom.getParticipantCount() > 0;
+          if (!hasParticipants) {
+            await this.roomRepo.removeRoom(room.id);
+            console.log(`[Cleanup] Removed stale empty room ${room.id}`);
+          }
+        }
+      } catch (err) {
+        console.error('[Cleanup] room cleanup failed:', err);
+      }
+    };
+
+    void cleanup();
+    setInterval(() => { void cleanup(); }, CLEANUP_INTERVAL_MS);
   }
 
   private setupGracefulShutdown(): void {

@@ -56,6 +56,8 @@ export interface User {
   id:         string;
   name:       string;
   email:      string;
+  auth_provider: 'LOCAL' | 'GOOGLE' | string;
+  email_verified_at: string | null;
   created_at: string;
 }
 
@@ -87,6 +89,36 @@ export const authApi = {
     request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+
+  googleLogin: (credential: string) =>
+    request<AuthResponse>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
+    }),
+
+  resendVerification: (email: string) =>
+    request<{ ok: boolean }>('/auth/verification/resend', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyEmail: (token: string) =>
+    request<{ ok: boolean }>('/auth/verification/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean }>('/auth/password/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ ok: boolean }>('/auth/password/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
     }),
 
   me: () => request<AuthResponse>('/auth/me', {}, true),

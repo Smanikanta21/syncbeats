@@ -9,7 +9,14 @@ CREATE TABLE IF NOT EXISTS users (
   id            UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   name          TEXT        NOT NULL,
   email         TEXT        UNIQUE NOT NULL,
-  password_hash TEXT        NOT NULL,
+  password_hash TEXT,
+  auth_provider TEXT        NOT NULL DEFAULT 'LOCAL',
+  google_id     TEXT        UNIQUE,
+  email_verified_at TIMESTAMPTZ,
+  email_verification_token_hash TEXT,
+  email_verification_expires_at TIMESTAMPTZ,
+  password_reset_token_hash TEXT,
+  password_reset_expires_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

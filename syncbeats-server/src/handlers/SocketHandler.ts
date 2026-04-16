@@ -81,7 +81,11 @@ export class SocketHandler {
 
     socket.on('room:leave', ({ roomId }: LeavePayload) => {
       const room = this.roomManager.get(roomId);
-      if (room) room.removeParticipant(socket.id);
+      if (room) {
+        // Explicit leave should stop active playback for the room.
+        room.pause(socket.id);
+        room.removeParticipant(socket.id);
+      }
       socket.leave(roomId);
     });
 

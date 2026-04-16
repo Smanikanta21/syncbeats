@@ -94,6 +94,8 @@ export default function RoomPage() {
   }, [upload, roomId, audio]);
 
   const handleLeave = () => {
+    audio.pause();
+    audio.setTrack("", "", "");
     leave();
     router.push("/hub");
   };

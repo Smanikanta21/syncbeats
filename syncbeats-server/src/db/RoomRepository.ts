@@ -68,6 +68,21 @@ export class RoomRepository {
     });
   }
 
+  async listOlderThan(cutoff: Date): Promise<RoomRow[]> {
+    const rooms = await prisma.room.findMany({
+      where: {
+        endedAt: null,
+        createdAt: { lt: cutoff },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rooms.map(r => this.mapRoom(r));
+  }
+
+  async removeRoom(roomId: string): Promise<void> {
+    await prisma.room.delete({ where: { id: roomId } });
+  }
+
   async transferHost(roomId: string, currentHostId: string, newHostId: string): Promise<boolean> {
     const result = await prisma.room.updateMany({
       where: {

@@ -62,6 +62,9 @@ export class RoomManager {
     room.on('participantJoined', (p) => eventBus.emit(EVENTS.PARTICIPANT_JOINED, { roomId: room.roomId, participant: p }));
     room.on('participantLeft', (id) => eventBus.emit(EVENTS.PARTICIPANT_LEFT, { roomId: room.roomId, socketId: id }));
     room.on('hostChanged', (hostId) => eventBus.emit(EVENTS.HOST_CHANGED, { roomId: room.roomId, hostId }));
-    room.on('empty', () => {/* room already removed in handleDisconnect */ });
+    room.on('empty', () => {
+      this.rooms.delete(room.roomId);
+      console.log(`[RoomManager] Removed empty room ${room.roomId}`);
+    });
   }
 }
