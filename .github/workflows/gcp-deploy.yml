@@ -136,8 +136,9 @@ jobs:
             curl -kfsS https://localhost >/dev/null || true
 
             echo "📊 PM2"
+            pm2 restart syncbeats-frontend --update-env
             pm2 status
-            pm2 syncbeats-frontend restart
+            pm2 save
 
             echo "🐳 Docker"
             docker ps
