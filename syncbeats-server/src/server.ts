@@ -16,7 +16,6 @@ import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes }  from './handlers/DeviceRoutes';
 import { createUploadRoutes }  from './handlers/UploadRoutes';
-import { createAdminRoutes }   from './handlers/AdminRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
@@ -68,7 +67,6 @@ export class SyncBeatsServer {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
     this.app.use('/auth',    createAuthRoutes());
-    this.app.use('/admin',   createAdminRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager));
     this.app.use('/rooms',   createUploadRoutes(this.roomManager, baseUrl));
     this.app.use('/devices', createDeviceRoutes());
