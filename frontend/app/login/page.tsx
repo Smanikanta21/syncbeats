@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle } from "lucide-react";
 import Link from "next/link";
@@ -10,7 +10,10 @@ import { useAuth } from "../../context/AuthContext";
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const router  = useRouter();
-  const { login, register } = useAuth();
+  const { login, register, googleLogin } = useAuth();
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleLoginButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleSignupButtonRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
   const [name,     setName]     = useState("");
@@ -46,6 +49,83 @@ export default function AuthPage() {
 
   const inputClass = "w-full bg-white/5 border border-white/5 focus:border-white/20 rounded-2xl pl-11 pr-4 py-3.5 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-600";
   const inputClassSm = "w-full bg-white/5 border border-white/5 focus:border-white/20 rounded-xl pl-9 pr-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-600";
+
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    let cancelled = false;
+
+    const initGoogle = () => {
+      const google = (window as any).google;
+      if (!google?.accounts?.id || cancelled) return;
+
+      google.accounts.id.initialize({
+        client_id: clientId,
+        auto_select: false,
+        // Avoid FedCM-only prompt behavior in local dev where browser policies vary.
+        use_fedcm_for_prompt: false,
+        callback: async (response: { credential?: string }) => {
+          if (!response.credential) return;
+          setError(null);
+          setLoading(true);
+          try {
+            await googleLogin(response.credential);
+            router.push("/hub");
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+
+      if (googleLoginButtonRef.current) {
+        googleLoginButtonRef.current.innerHTML = "";
+        google.accounts.id.renderButton(googleLoginButtonRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "continue_with",
+          width: 320,
+        });
+      }
+
+      if (googleSignupButtonRef.current) {
+        googleSignupButtonRef.current.innerHTML = "";
+        google.accounts.id.renderButton(googleSignupButtonRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "signup_with",
+          width: 320,
+        });
+      }
+
+      setGoogleReady(true);
+    };
+
+    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) {
+      initGoogle();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initGoogle;
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleLogin, router]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
@@ -113,7 +193,7 @@ export default function AuthPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between ml-1">
                       <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-                      <a href="#" className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors">Forgot?</a>
+                      <Link href="/forgot-password" className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors">Forgot?</Link>
                     </div>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-zinc-500" /></div>
@@ -129,6 +209,11 @@ export default function AuthPage() {
                   >
                     {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className="w-5 h-5" /></>}
                   </motion.button>
+
+                  <div className="pt-1 flex justify-center">
+                    {!googleReady && <span className="text-xs text-zinc-500">Loading Google...</span>}
+                    <div ref={googleLoginButtonRef} />
+                  </div>
                 </form>
 
                 <p className="mt-8 text-center text-zinc-500 text-sm font-medium md:hidden">
@@ -190,6 +275,12 @@ export default function AuthPage() {
                   >
                     {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className="w-4 h-4" /></>}
                   </motion.button>
+
+                  <div className="pt-2 flex flex-col items-center gap-2">
+                    <span className="text-xs uppercase tracking-[0.25em] text-zinc-600">Or use Google</span>
+                    {!googleReady && <span className="text-xs text-zinc-500">Loading Google...</span>}
+                    <div ref={googleSignupButtonRef} />
+                  </div>
                 </form>
 
                 <p className="mt-8 text-center text-zinc-500 text-sm font-medium md:hidden">

@@ -1,5 +1,4 @@
 import { Storage } from '@google-cloud/storage';
-import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 // Instantiate a storage client.

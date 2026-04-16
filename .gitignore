@@ -13,3 +13,4 @@
 .env
 node_modules
 npm-debug.log
+syncbeats.pem

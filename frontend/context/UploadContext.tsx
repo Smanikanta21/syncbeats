@@ -27,7 +27,7 @@ function getServerUrl(): string {
   if (typeof window !== "undefined") {
     return process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
   }
-  return "http://localhost:4000";
+  return "/api";
 }
 
 function getToken(): string | null {
