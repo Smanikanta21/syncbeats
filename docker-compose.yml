@@ -1,3 +1,4 @@
+# docker-compose.yml
 services:
   db:
     image: postgres:16-alpine
@@ -26,14 +27,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "${PORT:-4000}:${PORT:-4000}"
     environment:
       PORT: ${PORT:-4000}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
       NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
     volumes:
       - uploads:/app/uploads
 

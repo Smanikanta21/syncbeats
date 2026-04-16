@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yml
 name: Syncbeats CD
 
 on:
@@ -45,20 +46,19 @@ jobs:
             pm2 ps || true
 
             echo "🛑 Stop backend containers"
-            docker compose down || true
+            docker-compose down || true
 
-            echo "🧬 Run Prisma migrations on VM DB"
+            echo "🧬 Prepare Prisma Client"
             cd "$SERVER"
             npm ci
             npx prisma generate
-            npx prisma migrate deploy
 
             echo "🐳 Start backend fresh"
             cd "$APP"
-            docker compose up -d --build server
+            docker-compose up -d --build server
 
             echo "🩺 Check backend"
-            sleep 5
+            sleep 8
             curl -fsS http://localhost:4000/health >/dev/null
 
             echo "🎨 Build frontend"
@@ -71,11 +71,8 @@ jobs:
             pm2 start "npm start -- -p 3000" --name syncbeats-frontend
             pm2 save
 
-            echo "📊 PM2 Process List"
-            pm2 ps
-
             echo "🩺 Check frontend"
-            sleep 5
+            sleep 8
             curl -fsS http://localhost:3000 >/dev/null
 
             echo "🌐 Reload nginx"
