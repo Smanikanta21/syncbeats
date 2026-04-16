@@ -60,7 +60,8 @@ jobs:
             NEXT_PUBLIC_SERVER_URL=/api npm run build
 
             echo "🚀 Start frontend fresh"
-            pm2 start npm --name syncbeats-frontend --cwd "$FRONT" -- start -- -p 3000
+            cd "$FRONT"
+            pm2 start "npm start -- -p 3000" --name syncbeats-frontend
             pm2 save
 
             echo "📊 PM2 Process List"
