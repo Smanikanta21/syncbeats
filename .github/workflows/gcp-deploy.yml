@@ -2,7 +2,8 @@ name: Syncbeats CD
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -11,13 +12,16 @@ concurrency:
 
 jobs:
   verify:
+    name: Verify Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -43,6 +47,7 @@ jobs:
           npm run build
 
   deploy:
+    name: Deploy to VM
     runs-on: ubuntu-latest
     needs: verify
     if: github.ref == 'refs/heads/main'
@@ -57,7 +62,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy to VM
+      - name: Deploy Application
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
             set -euxo pipefail
@@ -67,30 +72,17 @@ jobs:
 
             cd "$APP"
 
-            echo "📥 Sync code"
+            echo "📥 Sync latest code"
             git fetch origin
             git reset --hard origin/main
 
-            echo "🐳 Ensure backend stack"
+            echo "🐳 Start backend containers"
             docker rm -f syncbeats-frontend || true
             docker rm -f sync-beats_frontend_1 || true
             docker-compose up -d --build db prisma server
 
-            echo "⏳ Wait backend"
-            for i in $(seq 1 30); do
-              if curl -fsS http://localhost:4000/health >/dev/null; then
-                echo "✅ Backend ready"
-                break
-              fi
-              sleep 2
-            done
-
-            echo "🔌 Wait Socket.IO"
-            for i in $(seq 1 30); do
-              RESP="$(curl -fsS http://localhost:4000/socket.io/?EIO=4&transport=polling || true)"
-              echo "$RESP" | grep -q '"sid"' && break
-              sleep 2
-            done
+            echo "🩺 Check backend health"
+            curl -fsS http://localhost:4000/health >/dev/null
 
             echo "🎨 Build frontend"
             cd "$FRONT"
@@ -98,7 +90,7 @@ jobs:
             npm ci
             NEXT_PUBLIC_SERVER_URL=/api npm run build
 
-            echo "📝 Write PM2 ecosystem"
+            echo "📝 Create PM2 ecosystem file"
             cat > ecosystem.config.js <<EOC
             module.exports = {
               apps: [{
@@ -115,33 +107,25 @@ jobs:
             }
             EOC
 
-            echo "🚀 Reload frontend idempotently"
+            echo "🚀 Reload frontend"
             pm2 startOrReload ecosystem.config.js --update-env
             pm2 save
 
-            echo "⏳ Wait frontend"
-            for i in $(seq 1 30); do
-              if curl -fsS http://localhost:3000 >/dev/null; then
-                echo "✅ Frontend ready"
-                break
-              fi
-              sleep 2
-            done
+            echo "🩺 Check frontend health"
+            curl -fsS http://localhost:3000 >/dev/null
 
-            echo "🔎 Validate nginx"
+            echo "🔎 Reload nginx"
             sudo nginx -t
             sudo systemctl reload nginx
 
-            echo "🌐 External check"
+            echo "🌐 Check HTTPS"
             curl -kfsS https://localhost >/dev/null || true
 
-            echo "📊 PM2"
-            pm2 restart syncbeats-frontend --update-env
+            echo "📊 PM2 Status"
             pm2 status
-            pm2 save
 
-            echo "🐳 Docker"
+            echo "🐳 Docker Status"
             docker ps
 
-            echo "✅ Deploy successful"
+            echo "✅ Deployment successful"
           EOF
