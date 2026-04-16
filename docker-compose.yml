@@ -11,8 +11,6 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       # Neon pooled connection string (runtime queries)
       DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
-      # Neon direct (non-pooled) connection string for migrations/db push
-      DIRECT_URL: ${DIRECT_URL:?Set Neon direct DIRECT_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
       NODE_ENV: ${NODE_ENV:-production}
     ports:
