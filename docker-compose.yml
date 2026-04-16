@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    profiles: ["localdb"]
     restart: unless-stopped
     env_file:
       - .env
@@ -18,23 +19,6 @@ services:
       timeout: 3s
       retries: 20
 
-  prisma:
-    image: node:20-alpine
-    working_dir: /workspace/syncbeats-server
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats}
-    volumes:
-      - ./:/workspace
-    depends_on:
-      db:
-        condition: service_healthy
-    command: >
-      sh -c "npx --no-install prisma generate &&
-      npx --no-install prisma db push --accept-data-loss"
-    restart: "no"
-
   server:
     build:
       context: ./syncbeats-server
@@ -47,16 +31,11 @@ services:
     environment:
       PORT: ${PORT:-4000}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://syncbeats:syncbeats_secret@db:5432/syncbeats}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
       NODE_ENV: ${NODE_ENV:-production}
     volumes:
       - uploads:/app/uploads
-    depends_on:
-      db:
-        condition: service_healthy
-      prisma:
-        condition: service_completed_successfully
 
 volumes:
   pgdata:
