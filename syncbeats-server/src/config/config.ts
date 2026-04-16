@@ -6,4 +6,6 @@ export const config = {
   jwtSecret:   process.env.JWT_SECRET ?? 'changeme-dev-secret',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   corsOrigin:   process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@syncbeats.app',
+  adminPassword: process.env.ADMIN_PASSWORD ?? 'syncbeats-admin',
 } as const;
