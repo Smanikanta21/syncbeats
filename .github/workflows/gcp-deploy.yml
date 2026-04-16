@@ -137,6 +137,7 @@ jobs:
 
             echo "📊 PM2"
             pm2 status
+            pm2 syncbeats-frontend restart
 
             echo "🐳 Docker"
             docker ps
