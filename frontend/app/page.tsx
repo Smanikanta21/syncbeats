@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Navbar } from "../components/Navbar";
 import { Hero } from "../components/Hero";
 import { HowItWorks } from "../components/HowItWorks";
@@ -5,6 +6,18 @@ import { Features } from "../components/Features";
 import { About } from "../components/About";
 import { Contact } from "../components/Contact";
 import { Footer } from "../components/Footer";
+
+export const metadata: Metadata = {
+  title: "SyncBeats — Synchronized Music Across All Devices",
+  description:
+    "Experience perfect audio synchronization across unlimited devices. Stream music, host collaborative rooms, and enjoy seamless multi-device playback with SyncBeats.",
+  openGraph: {
+    type: "website",
+    title: "SyncBeats — Synchronized Music Across All Devices",
+    description:
+      "Experience perfect audio synchronization across unlimited devices. Stream music, host collaborative rooms, and enjoy seamless multi-device playback.",
+  },
+};
 
 export default function Home() {
   return (
