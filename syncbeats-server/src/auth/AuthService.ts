@@ -11,7 +11,6 @@ const SALT_ROUNDS = 12;
 const VERIFY_TOKEN_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 const RESET_TOKEN_TTL_MS = 1000 * 60 * 30; // 30m
 const RESET_OTP_LENGTH = 6;
-const DEV_SAFE_EMAIL = 'siraparapuabhinay21@gmail.com';
 
 export interface TokenPayload {
   sub:   string;   // user id
@@ -155,21 +154,13 @@ export class AuthService {
       throw new Error('Email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.');
     }
 
-    // Safety rail for local/dev: never send to random real emails.
-    const forcedRecipient = process.env.FORCE_EMAIL_TO?.trim()
-      || (process.env.NODE_ENV === 'production' ? '' : DEV_SAFE_EMAIL);
-    const actualRecipient = forcedRecipient || to;
-    const adjustedSubject = actualRecipient === to
-      ? subject
-      : `[INTENDED FOR ${to}] ${subject}`;
-
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from, to: [actualRecipient], subject: adjustedSubject, html, text }),
+      body: JSON.stringify({ from, to: [to], subject, html, text }),
     });
 
     const rawBody = await response.text();
@@ -177,7 +168,7 @@ export class AuthService {
       throw new Error(`Resend email send failed: ${rawBody}`);
     }
 
-    console.info(`[Auth] Email queued via Resend to ${actualRecipient} (requested: ${to}). response=${rawBody}`);
+    console.info(`[Auth] Email queued via Resend to ${to}. response=${rawBody}`);
   }
 
   private async issueEmailVerification(user: PublicUser): Promise<void> {
@@ -196,7 +187,7 @@ export class AuthService {
     );
   }
 
-  async register(name: string, email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
+  async register(name: string, email: string, password: string): Promise<void> {
     if (!name?.trim())     throw new Error('Name is required');
     if (!email?.trim())    throw new Error('Email is required');
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
@@ -208,10 +199,6 @@ export class AuthService {
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await this.repo.create(name, email, hash);
     await this.issueEmailVerification(user);
-    const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? user;
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
-    const token = this.signToken(loggedInUser);
-    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
   async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {

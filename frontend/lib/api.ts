@@ -80,7 +80,7 @@ export interface Device {
 
 export const authApi = {
   register: (name: string, email: string, password: string) =>
-    request<AuthResponse>('/auth/register', {
+    request<{ ok: boolean }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ name, email, password }),
     }),

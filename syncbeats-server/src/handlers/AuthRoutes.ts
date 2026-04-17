@@ -25,9 +25,8 @@ export function createAuthRoutes(): Router {
       return;
     }
     try {
-      const { deviceKey, userAgent } = getDeviceContext(req);
-      const result = await authService.register(name, email, password, deviceKey, userAgent);
-      res.status(201).json(result);
+      await authService.register(name, email, password);
+      res.status(201).json({ ok: true });
     } catch (err) {
       console.error('[Auth] register error:', err);
       const msg = err instanceof Error ? err.message : String(err);
