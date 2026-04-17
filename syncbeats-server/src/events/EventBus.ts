@@ -23,5 +23,6 @@ export const EVENTS = {
   PARTICIPANT_JOINED: 'room:participantJoined',
   PARTICIPANT_LEFT:   'room:participantLeft',
   HOST_CHANGED:       'room:hostChanged',
-  TRACK_SET:          'room:trackSet',  // emitted when server stores a new track
+  TRACK_SET:          'room:trackSet',
+  QUEUE_CHANGED:      'room:queueChanged',
 } as const;

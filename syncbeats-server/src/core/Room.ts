@@ -4,7 +4,7 @@
 
 import { EventEmitter }  from 'events';
 import { PlaybackState } from './PlaybackState';
-import { Participant, RoomSnapshot } from '../types';
+import { Participant, RoomSnapshot, TrackQueueItem } from '../types';
 
 export class Room extends EventEmitter {
   private state:        PlaybackState          = PlaybackState.IDLE;
@@ -12,6 +12,7 @@ export class Room extends EventEmitter {
   private trackUrl:     string | null          = null;
   private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
+  private queue:        TrackQueueItem[]       = [];
   private snapshotTime: number                 = Date.now();
 
   constructor(public readonly roomId: string) {
@@ -32,9 +33,12 @@ export class Room extends EventEmitter {
     trackUrl: string | null;
     playbackState: string;
     positionMs: number;
+    queue: TrackQueueItem[];
   }): void {
     this.hostId   = data.hostId;
-    this.trackUrl = data.trackUrl;
+    this.queue    = [...data.queue].sort((a, b) => a.queueIndex - b.queueIndex);
+    const current = this.queue.find((item) => item.isCurrent) ?? null;
+    this.trackUrl = current?.trackUrl ?? data.trackUrl;
     this.state    = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING
                   : data.playbackState === 'PAUSED'  ? PlaybackState.PAUSED
                   : PlaybackState.IDLE;
@@ -69,15 +73,44 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
-  /** Called after server has stored the file and wants to push URL to clients */
-  setTrackFromServer(url: string, title: string): void {
-    this.trackUrl  = url;
+  addToQueue(item: TrackQueueItem): void {
+    const withoutExisting = this.queue.filter((q) => q.id !== item.id);
+    this.queue = [...withoutExisting, item].sort((a, b) => a.queueIndex - b.queueIndex);
+    this.emit('queueChanged', this.queueSnapshot());
+    if (item.isCurrent) {
+      this.setCurrentQueueItem(item.id, true);
+    }
+  }
+
+  syncQueue(queue: TrackQueueItem[], currentItemId: string | null): void {
+    this.queue = [...queue].sort((a, b) => a.queueIndex - b.queueIndex);
+    this.emit('queueChanged', this.queueSnapshot());
+    this.setCurrentQueueItem(currentItemId, true);
+  }
+
+  setCurrentQueueItem(itemId: string | null, skipQueueEmit = false): void {
+    if (itemId === null) {
+      this.queue = this.queue.map((item) => ({ ...item, isCurrent: false }));
+      this.trackUrl = null;
+      this.position = 0;
+      this.state = PlaybackState.IDLE;
+      this.snapshotTime = Date.now();
+      if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
+      this.emit('stateChanged', this.snapshot());
+      return;
+    }
+
+    const next = this.queue.find((item) => item.id === itemId);
+    if (!next) return;
+
+    this.queue = this.queue.map((item) => ({ ...item, isCurrent: item.id === itemId }));
+    this.trackUrl  = next.trackUrl;
     this.position  = 0;
     this.state     = PlaybackState.PAUSED;
-    // Mark all current participants as NOT ready — they need to buffer first
     for (const p of this.participants.values()) p.isReady = false;
     this.snapshotTime = Date.now();
-    this.emit('trackSet', { trackUrl: url, title });
+    if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
+    this.emit('trackSet', { trackUrl: next.trackUrl, title: next.title });
     this.emit('stateChanged', this.snapshot());
   }
 
@@ -121,6 +154,7 @@ export class Room extends EventEmitter {
 
   getParticipantCount(): number { return this.participants.size; }
   getTrackUrl(): string | null  { return this.trackUrl; }
+  getQueue(): TrackQueueItem[]  { return this.queueSnapshot(); }
 
   computeCurrentPosition(): number {
     if (this.state !== PlaybackState.PLAYING) return this.position;
@@ -136,6 +170,7 @@ export class Room extends EventEmitter {
       hostId:       this.hostId,
       timestamp:    Date.now(),
       participants: Array.from(this.participants.values()),
+      queue:        this.queueSnapshot(),
     };
   }
 
@@ -149,5 +184,9 @@ export class Room extends EventEmitter {
   private clampVolume(value: number): number {
     if (!Number.isFinite(value)) return 100;
     return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  private queueSnapshot(): TrackQueueItem[] {
+    return this.queue.map((item) => ({ ...item }));
   }
 }

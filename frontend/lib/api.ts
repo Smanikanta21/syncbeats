@@ -177,6 +177,17 @@ export interface Participant {
   volume:      number;
 }
 
+export interface TrackQueueItem {
+  id:         string;
+  trackUrl:   string;
+  title:      string;
+  fileName:   string;
+  queueIndex: number;
+  isCurrent:  boolean;
+  addedBy:    string;
+  createdAt:  number;
+}
+
 export interface RoomRecord {
   id:             string;
   host_id:        string;
@@ -209,8 +220,10 @@ export interface RoomDetailsResponse {
     hostId: string | null;
     timestamp: number;
     participants: Participant[];
+    queue: TrackQueueItem[];
   } | null;
   participants: Participant[];
+  queue: TrackQueueItem[];
 }
 
 export const roomsApi = {

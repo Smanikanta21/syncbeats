@@ -67,6 +67,26 @@ CREATE TABLE IF NOT EXISTS room_participants (
   PRIMARY KEY (room_id, user_id)
 );
 
+-- ── Room Queue Items ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS room_queue_items (
+  id               TEXT        PRIMARY KEY,
+  room_id          TEXT        NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  uploader_user_id UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  track_url        TEXT        NOT NULL,
+  title            TEXT        NOT NULL,
+  file_name        TEXT        NOT NULL,
+  mime_type        TEXT        NOT NULL,
+  size_bytes       BIGINT      NOT NULL,
+  queue_index      INTEGER     NOT NULL,
+  is_current       BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (room_id, queue_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_queue_room_order ON room_queue_items (room_id, queue_index);
+CREATE INDEX IF NOT EXISTS idx_room_queue_uploader   ON room_queue_items (uploader_user_id);
+
 -- ── Auto updated_at trigger (shared) ──────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION set_updated_at()

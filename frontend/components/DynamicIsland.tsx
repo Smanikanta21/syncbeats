@@ -106,13 +106,12 @@ export function DynamicIsland() {
   const handleFileChosen = useCallback(async (file: File) => {
     if (!roomId) return;
     try {
-      const { trackUrl, title } = await upload.uploadFile(file, roomId);
-      audio.setTrack(trackUrl, title);
+      await upload.uploadFile(file, roomId);
       setExpanded(false);
     } catch (err) {
       console.error("Upload failed:", err);
     }
-  }, [roomId, upload, audio]);
+  }, [roomId, upload]);
 
   const handleDriveLink = () => {
     setDriveErr("");
@@ -346,7 +345,7 @@ export function DynamicIsland() {
                 </span>
                 <div className="flex items-center gap-3">
                   <button onClick={handlePickFile} className="text-xs font-bold text-zinc-600 hover:text-zinc-300 flex items-center gap-1.5 transition-colors">
-                    <Upload className="w-3.5 h-3.5" /> Change
+                    <Upload className="w-3.5 h-3.5" /> Add to queue
                   </button>
                   <button onClick={() => router.push("/hub")} className="text-xs font-semibold bg-white/5 hover:bg-red-500/10 hover:text-red-400 px-4 py-1.5 rounded-full text-zinc-400 transition-all">
                     Leave

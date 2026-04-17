@@ -1,7 +1,7 @@
 // db/RoomRepository.ts — Prisma-based implementation
 
 import prisma from './prisma';
-import { Participant } from '../types';
+import { Participant, TrackQueueItem } from '../types';
 
 export interface RoomRow {
   id: string;
@@ -11,6 +11,19 @@ export interface RoomRow {
   position_ms: number;
   created_at: Date;
   ended_at: Date | null;
+}
+
+interface NewQueueTrackInput {
+  trackUrl: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+interface EnqueueTrackResult {
+  item: TrackQueueItem;
+  activated: boolean;
 }
 
 export class RoomRepository {
@@ -52,7 +65,10 @@ export class RoomRepository {
     positionMs: number,
     trackUrl?: string
   ): Promise<void> {
-    const data: any = { playbackState: state, positionMs };
+    const data: { playbackState: string; positionMs: bigint; trackUrl?: string | null } = {
+      playbackState: state,
+      positionMs: BigInt(positionMs),
+    };
     if (trackUrl !== undefined) data.trackUrl = trackUrl;
 
     await prisma.room.update({
@@ -81,6 +97,151 @@ export class RoomRepository {
 
   async removeRoom(roomId: string): Promise<void> {
     await prisma.room.delete({ where: { id: roomId } });
+  }
+
+  async getQueue(roomId: string): Promise<TrackQueueItem[]> {
+    const items = await prisma.roomQueueItem.findMany({
+      where: { roomId },
+      orderBy: { queueIndex: 'asc' },
+    });
+    return items.map((item) => this.mapQueueItem(item));
+  }
+
+  async getRoomFileNames(roomId: string): Promise<string[]> {
+    const items = await prisma.roomQueueItem.findMany({
+      where: { roomId },
+      select: { fileName: true },
+    });
+    return Array.from(new Set(items.map((item) => item.fileName)));
+  }
+
+  async getUserStorageUsageBytes(userId: string): Promise<number> {
+    const result = await prisma.roomQueueItem.aggregate({
+      where: { uploaderUserId: userId },
+      _sum: { sizeBytes: true },
+    });
+    return Number(result._sum.sizeBytes ?? 0n);
+  }
+
+  async enqueueTrack(roomId: string, uploaderUserId: string, input: NewQueueTrackInput): Promise<EnqueueTrackResult> {
+    return prisma.$transaction(async (tx) => {
+      const room = await tx.room.findUnique({ where: { id: roomId }, select: { id: true } });
+      if (!room) {
+        throw new Error('Room not found');
+      }
+
+      const [current, last] = await Promise.all([
+        tx.roomQueueItem.findFirst({
+          where: { roomId, isCurrent: true },
+          orderBy: { queueIndex: 'asc' },
+        }),
+        tx.roomQueueItem.findFirst({
+          where: { roomId },
+          orderBy: { queueIndex: 'desc' },
+          select: { queueIndex: true },
+        }),
+      ]);
+
+      const queueIndex = (last?.queueIndex ?? -1) + 1;
+      const activated = !current;
+
+      const created = await tx.roomQueueItem.create({
+        data: {
+          roomId,
+          uploaderUserId,
+          trackUrl: input.trackUrl,
+          title: input.title,
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+          sizeBytes: BigInt(input.sizeBytes),
+          queueIndex,
+          isCurrent: activated,
+        },
+      });
+
+      if (activated) {
+        await tx.room.update({
+          where: { id: roomId },
+          data: {
+            trackUrl: input.trackUrl,
+            playbackState: 'PAUSED',
+            positionMs: 0n,
+          },
+        });
+      }
+
+      return {
+        item: this.mapQueueItem(created),
+        activated,
+      };
+    });
+  }
+
+  async advanceQueue(roomId: string, expectedCurrentTrackUrl?: string): Promise<TrackQueueItem | null | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.roomQueueItem.findFirst({
+        where: { roomId, isCurrent: true },
+        orderBy: { queueIndex: 'asc' },
+      });
+
+      if (expectedCurrentTrackUrl !== undefined && current && current.trackUrl !== expectedCurrentTrackUrl) {
+        return undefined;
+      }
+
+      if (!current) {
+        await tx.room.update({
+          where: { id: roomId },
+          data: {
+            trackUrl: null,
+            playbackState: 'IDLE',
+            positionMs: 0n,
+          },
+        });
+        return expectedCurrentTrackUrl !== undefined ? undefined : null;
+      }
+
+      const next = await tx.roomQueueItem.findFirst({
+        where: { roomId, queueIndex: { gt: current.queueIndex } },
+        orderBy: { queueIndex: 'asc' },
+      });
+
+      if (!next) {
+        await tx.roomQueueItem.update({
+          where: { id: current.id },
+          data: { isCurrent: false },
+        });
+        await tx.room.update({
+          where: { id: roomId },
+          data: {
+            trackUrl: null,
+            playbackState: 'IDLE',
+            positionMs: 0n,
+          },
+        });
+        return null;
+      }
+
+      await Promise.all([
+        tx.roomQueueItem.update({
+          where: { id: current.id },
+          data: { isCurrent: false },
+        }),
+        tx.roomQueueItem.update({
+          where: { id: next.id },
+          data: { isCurrent: true },
+        }),
+        tx.room.update({
+          where: { id: roomId },
+          data: {
+            trackUrl: next.trackUrl,
+            playbackState: 'PAUSED',
+            positionMs: 0n,
+          },
+        }),
+      ]);
+
+      return this.mapQueueItem({ ...next, isCurrent: true });
+    });
   }
 
   async transferHost(roomId: string, currentHostId: string, newHostId: string): Promise<boolean> {
@@ -119,6 +280,28 @@ export class RoomRepository {
       position_ms: Number(r.positionMs),
       created_at: r.createdAt,
       ended_at: r.endedAt,
+    };
+  }
+
+  private mapQueueItem(item: {
+    id: string;
+    trackUrl: string;
+    title: string;
+    fileName: string;
+    queueIndex: number;
+    isCurrent: boolean;
+    uploaderUserId: string;
+    createdAt: Date;
+  }): TrackQueueItem {
+    return {
+      id: item.id,
+      trackUrl: item.trackUrl,
+      title: item.title,
+      fileName: item.fileName,
+      queueIndex: item.queueIndex,
+      isCurrent: item.isCurrent,
+      addedBy: item.uploaderUserId,
+      createdAt: item.createdAt.getTime(),
     };
   }
 }
