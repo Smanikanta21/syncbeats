@@ -104,7 +104,7 @@ export const authApi = {
     }),
 
   verifyEmail: (token: string) =>
-    request<{ ok: boolean }>('/auth/verification/confirm', {
+    request<AuthResponse>('/auth/verification/confirm', {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),

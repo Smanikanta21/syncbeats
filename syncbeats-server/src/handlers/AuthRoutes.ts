@@ -95,8 +95,9 @@ export function createAuthRoutes(): Router {
       return;
     }
     try {
-      await authService.verifyEmail(token);
-      res.json({ ok: true });
+      const { deviceKey, userAgent } = getDeviceContext(req);
+      const result = await authService.verifyEmail(token, deviceKey, userAgent);
+      res.json(result);
     } catch (err) {
       console.error('[Auth] verify email error:', err);
       const msg = err instanceof Error ? err.message : String(err);
