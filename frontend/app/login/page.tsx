@@ -151,30 +151,6 @@ export default function AuthPage() {
         },
       });
 
-      if (googleLoginButtonRef.current) {
-        googleLoginButtonRef.current.innerHTML = "";
-        google.accounts.id.renderButton(googleLoginButtonRef.current, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: "continue_with",
-          width: 320,
-        });
-      }
-
-      if (googleSignupButtonRef.current) {
-        googleSignupButtonRef.current.innerHTML = "";
-        google.accounts.id.renderButton(googleSignupButtonRef.current, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: "signup_with",
-          width: 320,
-        });
-      }
-
       setGoogleReady(true);
     };
 
@@ -197,6 +173,40 @@ export default function AuthPage() {
       cancelled = true;
     };
   }, [googleLogin, router]);
+
+  // Handle Dynamic Google Button Rendering on Tab Switch
+  useEffect(() => {
+    if (!googleReady || typeof window === "undefined") return;
+    const google = (window as any).google;
+    if (!google) return;
+
+    // Small delay allows AnimatePresence to inject the new form into the DOM
+    const timer = setTimeout(() => {
+      if (isLogin && googleLoginButtonRef.current) {
+        googleLoginButtonRef.current.innerHTML = "";
+        google.accounts.id.renderButton(googleLoginButtonRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "continue_with",
+          width: 320,
+        });
+      } else if (!isLogin && googleSignupButtonRef.current) {
+        googleSignupButtonRef.current.innerHTML = "";
+        google.accounts.id.renderButton(googleSignupButtonRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "signup_with",
+          width: 320,
+        });
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [isLogin, googleReady]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">

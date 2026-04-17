@@ -29,7 +29,6 @@ interface UseRoomReturn {
 
 const PING_INTERVAL_MS = 5_000;
 const NTP_WINDOW       = 5;
-const DRIFT_THRESHOLD_MS = 150;
 const DRIFT_CHECK_INTERVAL_MS = 500;
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
@@ -120,9 +119,16 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const actualSec = a.currentTime;
     const driftMs = Math.abs(actualSec - expectedSec) * 1000;
 
-    if (driftMs > DRIFT_THRESHOLD_MS) {
-      console.log(`[Sync] Correcting drift: ${driftMs.toFixed(0)}ms`);
+    if (driftMs > 2000) {
+      console.log(`[Sync] Hard seek to correct huge drift: ${driftMs.toFixed(0)}ms`);
       a.seek(expectedSec);
+      if (a.audioEl) a.audioEl.playbackRate = 1.0;
+    } else if (driftMs > 100 && a.audioEl && snap.state === PlaybackState.PLAYING) {
+      // Dynamically adjust playback rate by 5% to natively catch up without glitching
+      a.audioEl.playbackRate = actualSec < expectedSec ? 1.05 : 0.95;
+    } else if (a.audioEl && a.audioEl.playbackRate !== 1.0) {
+      // Tight sync achieved, restore normal real-time playback
+      a.audioEl.playbackRate = 1.0;
     }
 
     if (snap.state === PlaybackState.PLAYING && !a.isPlaying) a.play();
