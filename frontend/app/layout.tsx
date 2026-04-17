@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   title: "SyncBeats — Play music in sync",
   description: "Universal web-based multi-device music synchronization player.",
   icons: {
-    icon: "/syncbeats-icon.svg",
+    icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
     shortcut: "/syncbeats-icon.svg",
     apple: "/syncbeats-icon.svg",
   },
