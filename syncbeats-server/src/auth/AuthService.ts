@@ -270,11 +270,26 @@ export class AuthService {
     });
   }
 
-  async verifyEmail(token: string): Promise<void> {
+  async verifyEmail(token: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
     const tokenHash = this.hashToken(token);
     const row = await this.repo.findByEmailVerificationTokenHash(tokenHash);
     if (!row) throw new Error('Invalid or expired verification token');
     await this.repo.markEmailVerified(row.id);
+
+    const verifiedUser = await this.repo.setLastLoginAt(row.id);
+    if (!verifiedUser) throw new Error('User not found after verification');
+
+    const tokenValue = this.signToken(verifiedUser);
+    const device = deviceKey
+      ? await this.devices.ensureForUser(verifiedUser.id, deviceKey, userAgent ?? null, verifiedUser.name)
+      : null;
+
+    return {
+      user: verifiedUser,
+      token: tokenValue,
+      device: device?.device ?? null,
+      needsDeviceRename: device?.created ?? false,
+    };
   }
 
   async forgotPassword(email: string): Promise<{ devOtp?: string }> {
@@ -347,9 +362,9 @@ export class AuthService {
 
   private signToken(user: PublicUser): string {
     const jwtSecret = process.env.JWT_SECRET;
-    const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '7d';
     if (!jwtSecret) throw new Error('JWT_SECRET not configured');
     const payload: TokenPayload = { sub: user.id, email: user.email, name: user.name };
-    return jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiresIn } as jwt.SignOptions);
+    // Token does not expire by default for this project requirement.
+    return jwt.sign(payload, jwtSecret);
   }
 }
