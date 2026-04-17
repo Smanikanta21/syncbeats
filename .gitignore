@@ -14,3 +14,4 @@
 node_modules
 npm-debug.log
 syncbeats.pem
+syncbeats-server/src/scripts/sendUiUpdateEmail.ts
