@@ -2,8 +2,20 @@
 
 import { motion } from "framer-motion";
 import { Play, ArrowRight, Pause, SkipForward, SkipBack, Share2, Smartphone, Speaker } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../context/AuthContext";
 
 export function Hero() {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const handleCTA = () => {
+    if (user) {
+      router.push("/hub");
+    } else {
+      router.push("/login");
+    }
+  };
   return (
     <header className="relative min-h-[90vh] flex items-center justify-center pt-24 md:pt-32 px-4 sm:px-6 lg:px-8 overflow-hidden pb-20" role="banner">
       {/* Decorative Orbs behind hero (Minute Silver Glow) */}
@@ -43,6 +55,7 @@ export function Hero() {
             <div className="absolute top-1/2 left-32 -translate-x-1/2 -translate-y-1/2 w-48 h-24 bg-white/5 rounded-full blur-[40px] pointer-events-none" aria-hidden="true" />
 
             <motion.button 
+              onClick={handleCTA}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="group relative h-14 px-8 rounded-full bg-zinc-200 text-black font-bold text-lg transition-all flex items-center justify-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 w-full sm:w-auto"
@@ -54,6 +67,7 @@ export function Hero() {
             </motion.button>
 
             <motion.button 
+              onClick={handleCTA}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="group h-14 px-8 rounded-full glass-panel text-zinc-300 font-bold text-lg hover:border-white/20 transition-all flex items-center justify-center gap-3 z-10 w-full sm:w-auto"
