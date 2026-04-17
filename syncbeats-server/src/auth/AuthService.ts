@@ -141,12 +141,16 @@ export class AuthService {
   }
 
   private getPublicAppUrl(): string {
-    return process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
+    return process.env.AUTH_PUBLIC_APP_URL
+      || process.env.PUBLIC_APP_URL
+      || process.env.FRONTEND_URL
+      || 'http://localhost:3000';
   }
 
   private async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.RESEND_FROM_EMAIL;
+    const authAddress = process.env.AUTH_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
+    const from = authAddress ? `SYNCBEATS <${authAddress}>` : authAddress;
     if (!apiKey || !from) {
       throw new Error('Email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.');
     }
@@ -204,9 +208,10 @@ export class AuthService {
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await this.repo.create(name, email, hash);
     await this.issueEmailVerification(user);
+    const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? user;
     const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
-    const token = this.signToken(user);
-    return { user, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
+    const token = this.signToken(loggedInUser);
+    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
   async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
@@ -221,9 +226,10 @@ export class AuthService {
     if (!row.email_verified_at) throw new Error('Please verify your email before logging in');
 
     const { password_hash: _, ...user } = row;
-    const token = this.signToken(user as PublicUser);
+    const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
+    const token = this.signToken(loggedInUser);
     const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
-    return { user: user as PublicUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
+    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
   async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
@@ -256,9 +262,10 @@ export class AuthService {
     if (!row) throw new Error('Unable to create Google account');
 
     const { password_hash: _, ...user } = row;
-    const token = this.signToken(user as PublicUser);
+    const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
+    const token = this.signToken(loggedInUser);
     const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
-    return { user: user as PublicUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
+    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
   async resendVerification(email: string): Promise<void> {
@@ -271,6 +278,7 @@ export class AuthService {
       email: row.email,
       auth_provider: row.auth_provider,
       email_verified_at: row.email_verified_at,
+      last_login_at: row.last_login_at,
       created_at: row.created_at,
     });
   }

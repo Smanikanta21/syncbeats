@@ -16,12 +16,14 @@ interface UseRoomReturn {
   snapshot:     RoomSnapshot | null;
   participants: Participant[];
   isConnected:  boolean;
+  currentSocketId: string | null;
   clockOffset:  number;
   allReady:     boolean;      // all peers have buffered
   play:         () => void;
   pause:        () => void;
   seek:         (positionMs: number) => void;
   setReady:     (isReady: boolean) => void;
+  setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
 }
 
@@ -35,11 +37,14 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
+  const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady,     setAllReady]     = useState(false);
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
+  const currentSocketIdRef = useRef<string | null>(currentSocketId);
+  useEffect(() => { currentSocketIdRef.current = currentSocketId; }, [currentSocketId]);
 
   const offsetHistory = useRef<number[]>([]);
 
@@ -60,6 +65,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         participants: details.live.participants as Participant[],
       });
       setParticipants(details.live.participants as Participant[]);
+      const currentParticipant = details.live.participants.find(p => p.socketId === currentSocketIdRef.current);
+      if (currentParticipant) audioRef.current.setVolume(currentParticipant.volume);
 
       // If room already has a track, load it immediately
       if (details.live.trackUrl) {
@@ -96,11 +103,18 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       sendPing();
     };
 
-    const handleConnect    = () => { setIsConnected(true); joinRoom(); };
+    const handleConnect    = () => {
+      setIsConnected(true);
+      setCurrentSocketId(socket.id ?? null);
+      joinRoom();
+    };
     const handleDisconnect = () => setIsConnected(false);
 
-    if (socket.connected) { joinRoom(); }
-    else                    socket.connect();
+    if (socket.connected) {
+      handleConnect();
+    } else {
+      socket.connect();
+    }
 
     socket.on('connect',    handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -192,10 +206,19 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
   }, [applyRoomDetails, roomId, displayName, socket, sendPing]);
 
+  useEffect(() => {
+    if (!currentSocketId || !snapshot) return;
+    const me = snapshot.participants.find(p => p.socketId === currentSocketId);
+    if (me) audioRef.current.setVolume(me.volume);
+  }, [snapshot, currentSocketId]);
+
   // Any participant can control playback — no isHost check
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
+
+  const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
+    socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
   // Emit buffering readiness to server
   const setReady = useCallback((isReady: boolean) =>
@@ -206,7 +229,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, clockOffset, allReady, play, pause, seek, setReady, leave };
+  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, setReady, setParticipantVolume, leave };
 }
 
 export function computeLocalPosition(snapshot: RoomSnapshot, clockOffset: number): number {

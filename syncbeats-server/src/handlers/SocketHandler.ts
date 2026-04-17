@@ -6,7 +6,7 @@ import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload
 } from '../types';
 
 export class SocketHandler {
@@ -71,7 +71,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady: false });
+        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady: false, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
@@ -110,6 +110,16 @@ export class SocketHandler {
     socket.on('playback:seek', ({ roomId, position }: SeekPayload) => {
       try {
         this.roomManager.get(roomId)?.seek(socket.id, position);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
+    socket.on('room:setParticipantVolume', ({ roomId, targetSocketId, volume }: SetParticipantVolumePayload) => {
+      try {
+        const room = this.roomManager.get(roomId);
+        if (!room) return;
+        room.setParticipantVolume(targetSocketId?.trim() || socket.id, volume);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }

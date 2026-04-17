@@ -14,6 +14,7 @@ export interface UserRow {
   email_verification_expires_at: Date | null;
   password_reset_token_hash: string | null;
   password_reset_expires_at: Date | null;
+  last_login_at: Date | null;
   created_at:    Date;
 }
 
@@ -23,6 +24,7 @@ export interface PublicUser {
   email:      string;
   auth_provider: string;
   email_verified_at: Date | null;
+  last_login_at: Date | null;
   created_at: Date;
 }
 
@@ -104,6 +106,14 @@ export class UserRepository {
     return this.toPublicUser(user);
   }
 
+  async setLastLoginAt(userId: string, lastLoginAt: Date = new Date()): Promise<PublicUser | null> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt },
+    }) as any;
+    return user ? this.toPublicUser(user) : null;
+  }
+
   async emailExists(email: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
@@ -178,6 +188,7 @@ export class UserRepository {
       email_verification_expires_at: user.emailVerificationExpiresAt ?? null,
       password_reset_token_hash: user.passwordResetTokenHash ?? null,
       password_reset_expires_at: user.passwordResetExpiresAt ?? null,
+      last_login_at: user.lastLoginAt ?? null,
       created_at: user.createdAt,
     };
   }
@@ -189,6 +200,7 @@ export class UserRepository {
       email: user.email,
       auth_provider: user.authProvider,
       email_verified_at: user.emailVerifiedAt ?? null,
+      last_login_at: user.lastLoginAt ?? null,
       created_at: user.createdAt,
     };
   }

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_verification_expires_at TIMESTAMPTZ,
   password_reset_token_hash TEXT,
   password_reset_expires_at TIMESTAMPTZ,
+  last_login_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
