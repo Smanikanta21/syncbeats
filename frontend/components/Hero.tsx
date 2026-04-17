@@ -5,18 +5,15 @@ import { Play, ArrowRight, Pause, SkipForward, SkipBack, Share2, Smartphone, Spe
 
 export function Hero() {
   return (
-    <section className="relative min-h-[90vh] flex items-center justify-center pt-24 md:pt-32 px-4 sm:px-6 lg:px-8 overflow-hidden pb-20">
+    <header className="relative min-h-[90vh] flex items-center justify-center pt-24 md:pt-32 px-4 sm:px-6 lg:px-8 overflow-hidden pb-20" role="banner">
       {/* Decorative Orbs behind hero (Minute Silver Glow) */}
-      <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-white/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-[250px] h-[250px] sm:w-[500px] sm:h-[500px] bg-zinc-400/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" />
-      
+      <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-white/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" aria-hidden="true" />
+      <div className="absolute bottom-1/4 right-1/4 w-[250px] h-[250px] sm:w-[500px] sm:h-[500px] bg-zinc-400/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" aria-hidden="true" />
+
       <div className="relative z-10 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
-        
+
         {/* Left Column: Text & CTA */}
         <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
-          
-
-          {/* Light Cement Text */}
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -43,25 +40,27 @@ export function Hero() {
             className="relative flex flex-col sm:flex-row gap-4 w-full"
           >
             {/* Subtle silver glow underneath the primary button */}
-            <div className="absolute top-1/2 left-32 -translate-x-1/2 -translate-y-1/2 w-48 h-24 bg-white/5 rounded-full blur-[40px] pointer-events-none" />
-            
+            <div className="absolute top-1/2 left-32 -translate-x-1/2 -translate-y-1/2 w-48 h-24 bg-white/5 rounded-full blur-[40px] pointer-events-none" aria-hidden="true" />
+
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="group relative h-14 px-8 rounded-full bg-zinc-200 text-black font-bold text-lg transition-all flex items-center justify-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 w-full sm:w-auto"
+              aria-label="Start a Session"
             >
               <span className="relative z-10 flex items-center gap-2">
-                Start a Session <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                Start a Session <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" focusable="false" />
               </span>
             </motion.button>
-            
+
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="group h-14 px-8 rounded-full glass-panel text-zinc-300 font-bold text-lg hover:border-white/20 transition-all flex items-center justify-center gap-3 z-10 w-full sm:w-auto"
+              aria-label="Join via Code"
             >
               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                <Play className="w-4 h-4 fill-zinc-300" />
+                <Play className="w-4 h-4 fill-zinc-300" aria-hidden="true" focusable="false" />
               </div>
               Join via Code
             </motion.button>
