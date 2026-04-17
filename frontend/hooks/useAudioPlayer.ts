@@ -12,6 +12,7 @@ export interface AudioPlayerState {
   currentTime: number;       // seconds
   duration:    number;       // seconds
   progress:    number;       // 0–1
+  volume:      number;       // 0–100
   trackUrl:    string | null;
   trackTitle:  string;
   trackArtist: string;
@@ -23,6 +24,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   toggle:   () => void;
   seek:     (time: number) => void;
   seekPct:  (pct: number) => void;
+  setVolume: (volume: number) => void;
   setTrack: (url: string, title?: string, artist?: string) => void;
   audioEl:  HTMLAudioElement | null;
 }
@@ -43,6 +45,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isReady,     setIsReady]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
+  const [volume,      setVolumeState] = useState(100);
   const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
@@ -98,6 +101,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [trackUrl, audioEl]);
 
+  useEffect(() => {
+    if (!audioEl) return;
+    audioEl.volume = Math.max(0, Math.min(1, volume / 100));
+  }, [audioEl, volume]);
+
   // RAF loop for real-time time updates
   useEffect(() => {
     const tick = () => {
@@ -140,6 +148,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (audioEl?.duration) seek(pct * audioEl.duration);
   }, [seek, audioEl]);
 
+  const setVolume = useCallback((nextVolume: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
+    setVolumeState(clamped);
+    if (audioEl) {
+      audioEl.volume = clamped / 100;
+    }
+  }, [audioEl]);
+
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
     // If the server gave us a relative path, resolve it against the exact IP the frontend talks to
     const absoluteUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
@@ -152,9 +168,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, hasTrack, currentTime, duration, progress,
+    isPlaying, isReady, hasTrack, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
-    play, pause, toggle, seek, seekPct, setTrack,
+    play, pause, toggle, seek, seekPct, setVolume, setTrack,
     get audioEl() { return audioEl; },
   };
 }

@@ -7,6 +7,7 @@ export interface Participant {
   displayName: string;
   joinedAt:    number; // epoch ms
   isReady:     boolean;
+  volume:      number; // 0-100
 }
 
 export interface RoomSnapshot {
@@ -22,6 +23,7 @@ export interface RoomSnapshot {
 export interface JoinPayload  { roomId: string; displayName: string; }
 export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
+export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }
 export interface TrackPayload { roomId: string; trackUrl: string; }
 export interface PingPayload  { t0: number; }
 export interface PongPayload  { t0: number; t1: number; t2: number; }

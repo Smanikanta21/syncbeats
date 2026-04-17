@@ -26,7 +26,7 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
 
-  const { snapshot, participants, isConnected, clockOffset, allReady, setReady, leave } = useRoom({
+  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave } = useRoom({
     roomId,
     displayName,
   });
@@ -116,6 +116,14 @@ export default function RoomPage() {
   };
 
   const handleCopy = () => navigator.clipboard.writeText(roomId).catch(() => {});
+
+  const handleVolumeChange = (targetSocketId: string, value: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    setParticipantVolume(targetSocketId, clamped);
+    if (targetSocketId === currentSocketId) {
+      audio.setVolume(clamped);
+    }
+  };
 
   const handleGenerateQr = () => {
     if (qrState === "ready" || qrState === "generating") return;
@@ -281,13 +289,32 @@ export default function RoomPage() {
                 </div>
               </div>
 
-              {/* Volume bar (UI placeholder) */}
-              <div className="flex items-center gap-3 w-full bg-black/40 p-3 rounded-xl border border-white/5">
-                <Volume2 className="w-4 h-4 text-zinc-500" />
-                <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-zinc-300 rounded-full" style={{ width: "80%" }} />
+              <div className="flex flex-col gap-2 w-full bg-black/40 p-3 rounded-xl border border-white/5">
+                <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-zinc-500">
+                  <span className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-zinc-500" />
+                    {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
+                  </span>
+                  <span className="text-zinc-400">{p.volume}%</span>
                 </div>
-                <span className="text-xs font-bold text-zinc-500 w-8 text-right">80%</span>
+                <div className="relative h-10 flex items-center">
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                      style={{ width: `${p.volume}%` }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={p.volume}
+                    onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                    aria-label={`${p.displayName} volume`}
+                    className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                  />
+                </div>
               </div>
             </div>
           ))}

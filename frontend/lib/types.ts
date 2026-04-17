@@ -12,6 +12,7 @@ export interface Participant {
   displayName: string;
   joinedAt:    number;
   isReady:     boolean;
+  volume:      number;
 }
 
 export interface RoomSnapshot {

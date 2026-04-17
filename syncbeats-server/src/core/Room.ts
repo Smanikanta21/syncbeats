@@ -18,6 +18,13 @@ export class Room extends EventEmitter {
     super();
   }
 
+  setParticipantVolume(socketId: string, volume: number): void {
+    const participant = this.participants.get(socketId);
+    if (!participant) return;
+    participant.volume = this.clampVolume(volume);
+    this.emit('stateChanged', this.snapshot());
+  }
+
   // ── Init from DB ──────────────────────────────────────────────────────
 
   initializeFromDatabase(data: {
@@ -93,6 +100,7 @@ export class Room extends EventEmitter {
   addParticipant(p: Participant): void {
     if (!this.hostId) this.hostId = p.socketId;
     p.isReady = false;
+    p.volume = this.clampVolume(p.volume ?? 100);
     this.participants.set(p.socketId, p);
     this.emit('participantJoined', p);
   }
@@ -132,5 +140,10 @@ export class Room extends EventEmitter {
     this.hostId = next ?? null;
     if (this.hostId) this.emit('hostChanged', this.hostId);
     else             this.emit('empty');
+  }
+
+  private clampVolume(value: number): number {
+    if (!Number.isFinite(value)) return 100;
+    return Math.max(0, Math.min(100, Math.round(value)));
   }
 }

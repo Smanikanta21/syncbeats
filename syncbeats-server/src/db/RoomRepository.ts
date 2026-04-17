@@ -105,7 +105,8 @@ export class RoomRepository {
       socketId: p.socketId,
       displayName: p.displayName,
       joinedAt: p.joinedAt.getTime(),
-      isReady: false // Default to false when loaded from DB
+      isReady: false, // Default to false when loaded from DB
+      volume: 100,
     }));
   }
 
