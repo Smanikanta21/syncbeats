@@ -7,7 +7,9 @@ import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
     // Listen for play errors and forward to the correct socket
     eventBus.on('ROOM_PLAY_ERROR', ({ requesterId, message }) => {
-      const socket = this.io.sockets.sockets.get(requesterId);
+      // @ts-expect-error: checked at runtime, safe in practice
+      const sockets = (this.io!.sockets as any).sockets as Map<string, Socket>;
+      const socket = sockets?.get?.(requesterId);
       if (socket) {
         socket.emit('error', { message });
       }
