@@ -484,7 +484,7 @@ export default function HubPage() {
                     key={savedDevice.id}
                     className={`glass-panel p-4 rounded-2xl border bg-white/5 flex items-center justify-between transition-colors ${isCurrent ? "border-white/20" : "border-white/5 hover:bg-white/10"}`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex justify-evenly items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
                         <DeviceGlyph userAgent={savedDevice.user_agent} />
                       </div>
