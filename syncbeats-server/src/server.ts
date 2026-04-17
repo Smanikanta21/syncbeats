@@ -92,7 +92,13 @@ export class SyncBeatsServer {
           const liveRoom = this.roomManager.get(room.id);
           const hasParticipants = !!liveRoom && liveRoom.getParticipantCount() > 0;
           if (!hasParticipants) {
+            const fileNames = await this.roomRepo.getRoomFileNames(room.id);
             await this.roomRepo.removeRoom(room.id);
+            this.roomManager.remove(room.id);
+            for (const fileName of fileNames) {
+              const absolutePath = path.resolve(process.cwd(), 'uploads', fileName);
+              if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+            }
             console.log(`[Cleanup] Removed stale empty room ${room.id}`);
           }
         }

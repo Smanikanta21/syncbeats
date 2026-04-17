@@ -27,13 +27,14 @@ export function createRoomRoutes(roomManager: RoomManager): Router {
   router.get('/:roomId', async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
     try {
-      const [dbRow, participants] = await Promise.all([
+      const [dbRow, participants, queue] = await Promise.all([
         repo.findById(roomId),
         repo.getParticipants(roomId),
+        repo.getQueue(roomId),
       ]);
       const liveRoom = roomManager.get(roomId);
       const snapshot = liveRoom ? liveRoom.snapshot() : null;
-      res.json({ db: dbRow, live: snapshot, participants });
+      res.json({ db: dbRow, live: snapshot, participants, queue });
     } catch (err) {
       console.error('[Rooms] get error:', err);
       res.status(500).json({ error: 'Failed to get room' });

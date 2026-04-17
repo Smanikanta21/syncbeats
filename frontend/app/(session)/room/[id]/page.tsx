@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
-import { PlaybackState, Participant } from "../../../../lib/types";
+import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
 
 function DeviceIcon({ index }: { index: number }) {
@@ -80,8 +80,7 @@ export default function RoomPage() {
       if (!file || !file.type.startsWith("audio/")) return;
 
       try {
-        const { trackUrl, title } = await upload.uploadFile(file, roomId);
-        audio.setTrack(trackUrl, title);
+        await upload.uploadFile(file, roomId);
       } catch (err) {
         console.error("[Room] Drop upload failed:", err);
       }
@@ -319,6 +318,24 @@ export default function RoomPage() {
             </div>
           ))}
         </div>
+
+        {snapshot?.queue?.length ? (
+          <div className="mt-2 rounded-2xl border border-white/5 bg-black/40 p-4">
+            <h4 className="text-xs font-bold tracking-widest uppercase text-zinc-500 mb-3">
+              Room Queue ({snapshot.queue.length})
+            </h4>
+            <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+              {snapshot.queue.map((item: TrackQueueItem) => (
+                <div key={item.id} className={`rounded-xl px-3 py-2 text-sm border ${item.isCurrent ? "border-green-500/40 bg-green-500/10 text-green-300" : "border-white/5 bg-white/[0.02] text-zinc-300"}`}>
+                  <div className="font-semibold truncate">{item.title}</div>
+                  <div className="text-[11px] uppercase tracking-widest opacity-70">
+                    #{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* Leave button */}
         <motion.button

@@ -24,6 +24,7 @@ model User {
   updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   devices                    Device[]
   roomParticipants           RoomParticipant[]
+  roomQueueItems             RoomQueueItem[]
   rooms                      Room[]
 
   @@map("users")
@@ -53,12 +54,34 @@ model Room {
   positionMs       BigInt            @default(0) @map("position_ms")
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   endedAt          DateTime?         @map("ended_at") @db.Timestamptz(6)
+  queueItems       RoomQueueItem[]
   roomParticipants RoomParticipant[]
   host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
 
   @@index([hostId])
   @@index([endedAt], map: "idx_rooms_active")
   @@map("rooms")
+}
+
+model RoomQueueItem {
+  id             String   @id @default(cuid())
+  roomId         String   @map("room_id")
+  uploaderUserId String   @map("uploader_user_id")
+  trackUrl       String   @map("track_url")
+  title          String
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  sizeBytes      BigInt   @map("size_bytes")
+  queueIndex     Int      @map("queue_index")
+  isCurrent      Boolean  @default(false) @map("is_current")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploader       User     @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, queueIndex])
+  @@index([uploaderUserId])
+  @@unique([roomId, queueIndex])
+  @@map("room_queue_items")
 }
 
 model RoomParticipant {

@@ -10,6 +10,17 @@ export interface Participant {
   volume:      number; // 0-100
 }
 
+export interface TrackQueueItem {
+  id:         string;
+  trackUrl:   string;
+  title:      string;
+  fileName:   string;
+  queueIndex: number;
+  isCurrent:  boolean;
+  addedBy:    string;
+  createdAt:  number;
+}
+
 export interface RoomSnapshot {
   roomId:       string;
   trackUrl:     string | null;
@@ -18,6 +29,7 @@ export interface RoomSnapshot {
   hostId:       string | null;
   timestamp:    number;       // server epoch when snapshot was taken
   participants: Participant[];
+  queue:        TrackQueueItem[];
 }
 
 export interface JoinPayload  { roomId: string; displayName: string; }

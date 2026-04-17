@@ -1,5 +1,0 @@
-# Allow all robots
-User-agent: *
-Allow: /
-
-Sitemap: https://syncbeats.app/sitemap.xml

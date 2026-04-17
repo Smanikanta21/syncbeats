@@ -36,6 +36,10 @@ export class RoomManager {
     return Array.from(this.rooms.keys());
   }
 
+  remove(roomId: string): void {
+    this.rooms.delete(roomId);
+  }
+
   trackSocket(socketId: string, roomId: string): void {
     if (!this.socketRooms.has(socketId)) this.socketRooms.set(socketId, new Set());
     this.socketRooms.get(socketId)!.add(roomId);
@@ -47,9 +51,6 @@ export class RoomManager {
       const room = this.rooms.get(roomId);
       if (room) {
         room.removeParticipant(socketId);
-        if (room.getParticipantCount() === 0) {
-          this.rooms.delete(roomId); // GC empty rooms
-        }
       }
     }
     this.socketRooms.delete(socketId);
@@ -62,12 +63,13 @@ export class RoomManager {
     room.on('participantJoined', (p) => eventBus.emit(EVENTS.PARTICIPANT_JOINED, { roomId: room.roomId, participant: p }));
     room.on('participantLeft', (id) => eventBus.emit(EVENTS.PARTICIPANT_LEFT, { roomId: room.roomId, socketId: id }));
     room.on('hostChanged', (hostId) => eventBus.emit(EVENTS.HOST_CHANGED, { roomId: room.roomId, hostId }));
+    room.on('trackSet', ({ trackUrl, title }) => eventBus.emit(EVENTS.TRACK_SET, { roomId: room.roomId, trackUrl, title }));
+    room.on('queueChanged', (queue) => eventBus.emit(EVENTS.QUEUE_CHANGED, { roomId: room.roomId, queue }));
     room.on('playError', ({ requesterId, message }) => {
       eventBus.emit('ROOM_PLAY_ERROR', { roomId: room.roomId, requesterId, message });
     });
     room.on('empty', () => {
-      this.rooms.delete(room.roomId);
-      console.log(`[RoomManager] Removed empty room ${room.roomId}`);
+      console.log(`[RoomManager] Room ${room.roomId} is now empty`);
     });
   }
 }

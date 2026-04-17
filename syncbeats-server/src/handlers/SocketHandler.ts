@@ -5,17 +5,8 @@ import { RoomManager }    from '../core/RoomManager';
 import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
-    // Listen for play errors and forward to the correct socket
-    eventBus.on('ROOM_PLAY_ERROR', ({ requesterId, message }) => {
-      // @ts-expect-error: checked at runtime, safe in practice
-      const sockets = (this.io!.sockets as any).sockets as Map<string, Socket>;
-      const socket = sockets?.get?.(requesterId);
-      if (socket) {
-        socket.emit('error', { message });
-      }
-    });
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem
 } from '../types';
 
 export class SocketHandler {
@@ -25,6 +16,12 @@ export class SocketHandler {
     private syncEngine:  SyncEngine,
     private roomRepo:    RoomRepository,
   ) {
+    // Listen for play errors and forward to the requesting socket.
+    eventBus.on('ROOM_PLAY_ERROR', ({ requesterId, message }) => {
+      const socket = this.io.sockets.sockets.get(requesterId);
+      if (socket) socket.emit('error', { message });
+    });
+
     // Forward room state changes → socket.io rooms
     eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
@@ -47,6 +44,10 @@ export class SocketHandler {
       console.log(`[Socket] Broadcasting room:trackSet to ${roomId}`);
       this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
+
+    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: TrackQueueItem[] }) => {
+      this.io.to(roomId).emit('room:queueChanged', { queue });
+    });
   }
 
   register(socket: Socket): void {
@@ -60,13 +61,17 @@ export class SocketHandler {
 
         // Load from DB if fresh
         if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
-          const dbRoom = await this.roomRepo.findById(roomId);
+          const [dbRoom, queue] = await Promise.all([
+            this.roomRepo.findById(roomId),
+            this.roomRepo.getQueue(roomId),
+          ]);
           if (dbRoom) {
             room.initializeFromDatabase({
               hostId:        dbRoom.host_id,
               trackUrl:      dbRoom.track_url,
               playbackState: dbRoom.playback_state,
               positionMs:    dbRoom.position_ms,
+              queue,
             });
           }
         }
@@ -125,6 +130,21 @@ export class SocketHandler {
     socket.on('playback:seek', ({ roomId, position }: SeekPayload) => {
       try {
         this.roomManager.get(roomId)?.seek(socket.id, position);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
+    socket.on('playback:ended', async ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      if (room.getTrackUrl() !== trackUrl) return;
+
+      try {
+        const next = await this.roomRepo.advanceQueue(roomId, trackUrl);
+        if (next === undefined) return;
+        const latestQueue = await this.roomRepo.getQueue(roomId);
+        room.syncQueue(latestQueue, next?.id ?? null);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
