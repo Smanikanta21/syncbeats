@@ -31,6 +31,28 @@ export class DeviceRepository {
       return { device: this.mapDevice(updated), created: false };
     }
 
+    // If browser storage changed (new deviceKey) but fingerprint/userAgent matches,
+    // reuse the existing device record instead of creating duplicates.
+    const normalizedUserAgent = userAgent?.trim() || null;
+    if (normalizedUserAgent) {
+      const sameAgentDevice = await prisma.device.findFirst({
+        where: { userId, userAgent: normalizedUserAgent },
+        orderBy: { lastSeenAt: 'desc' },
+      });
+
+      if (sameAgentDevice) {
+        const reused = await prisma.device.update({
+          where: { id: sameAgentDevice.id },
+          data: {
+            deviceKey,
+            lastSeenAt: new Date(),
+            userAgent: normalizedUserAgent,
+          },
+        });
+        return { device: this.mapDevice(reused), created: false };
+      }
+    }
+
     const defaultName = this.buildDefaultDeviceName(ownerName, userAgent);
 
     const created = await prisma.device.create({
@@ -38,7 +60,7 @@ export class DeviceRepository {
         userId,
         deviceKey,
         name: defaultName,
-        userAgent,
+        userAgent: normalizedUserAgent,
       }
     });
 

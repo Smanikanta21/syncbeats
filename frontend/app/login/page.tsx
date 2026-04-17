@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle } from "lucide-react";
+import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -19,10 +19,29 @@ export default function AuthPage() {
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
+  const [shakeNonce, setShakeNonce] = useState(0);
+  const [shakeTargets, setShakeTargets] = useState<string[]>([]);
 
-  const resetForm = () => { setName(""); setEmail(""); setPassword(""); setError(null); };
+  const resetForm = () => {
+    setName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setError(null);
+    setShakeTargets([]);
+  };
+
+  const triggerShake = (targets: string[]) => {
+    setShakeTargets(targets);
+    setShakeNonce((value) => value + 1);
+    setTimeout(() => setShakeTargets([]), 420);
+  };
 
   const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,12 +50,39 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await login(email, password);
+        router.push("/hub");
       } else {
+        if (password !== confirmPassword) {
+          triggerShake(["signup-password", "signup-confirm-password"]);
+          throw new Error("Password and confirm password must match");
+        }
         await register(name, email, password);
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}`);
       }
-      router.push("/hub");
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+
+      const normalized = message.toLowerCase();
+      if (isLogin) {
+        if (normalized.includes("not found") || normalized.includes("register")) {
+          triggerShake(["login-email"]);
+        } else if (normalized.includes("password")) {
+          triggerShake(["login-password"]);
+        } else {
+          triggerShake(["login-email", "login-password"]);
+        }
+      } else {
+        if (normalized.includes("already exists") || normalized.includes("email")) {
+          triggerShake(["signup-email"]);
+        } else if (normalized.includes("name")) {
+          triggerShake(["signup-name"]);
+        } else if (normalized.includes("password")) {
+          triggerShake(["signup-password", "signup-confirm-password"]);
+        } else {
+          triggerShake(["signup-name", "signup-email", "signup-password", "signup-confirm-password"]);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -184,10 +230,15 @@ export default function AuthPage() {
                 <form className="space-y-6" onSubmit={handleAuth}>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Email Address</label>
-                    <div className="relative">
+                    <motion.div
+                      key={`login-email-${shakeNonce}`}
+                      animate={shakeTargets.includes("login-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-zinc-500" /></div>
                       <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="name@email.com" required />
-                    </div>
+                    </motion.div>
                   </div>
 
                   <div className="space-y-2">
@@ -195,10 +246,22 @@ export default function AuthPage() {
                       <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
                       <Link href="/forgot-password" className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors">Forgot?</Link>
                     </div>
-                    <div className="relative">
+                    <motion.div
+                      key={`login-password-${shakeNonce}`}
+                      animate={shakeTargets.includes("login-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-zinc-500" /></div>
-                      <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass} placeholder="••••••••" required />
-                    </div>
+                      <input type={showLoginPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClass} pr-12`} placeholder="••••••••" required />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword((value) => !value)}
+                        className="absolute inset-y-0 right-0 pr-4 text-zinc-500 hover:text-zinc-200"
+                      >
+                        {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </motion.div>
                   </div>
 
                   <motion.button
@@ -245,26 +308,68 @@ export default function AuthPage() {
                 <form className="space-y-4" onSubmit={handleAuth}>
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Full Name</label>
-                    <div className="relative">
+                    <motion.div
+                      key={`signup-name-${shakeNonce}`}
+                      animate={shakeTargets.includes("signup-name") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-zinc-500" /></div>
                       <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" required />
-                    </div>
+                    </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Email Address</label>
-                    <div className="relative">
+                    <motion.div
+                      key={`signup-email-${shakeNonce}`}
+                      animate={shakeTargets.includes("signup-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-zinc-500" /></div>
                       <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClassSm} placeholder="name@email.com" required />
-                    </div>
+                    </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Password</label>
-                    <div className="relative">
+                    <motion.div
+                      key={`signup-password-${shakeNonce}`}
+                      animate={shakeTargets.includes("signup-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
-                      <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputClassSm} placeholder="Min. 8 characters" required minLength={8} />
-                    </div>
+                      <input type={showSignupPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" required minLength={8} />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupPassword((value) => !value)}
+                        className="absolute inset-y-0 right-0 pr-3 text-zinc-500 hover:text-zinc-200"
+                      >
+                        {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </motion.div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Confirm Password</label>
+                    <motion.div
+                      key={`signup-confirm-password-${shakeNonce}`}
+                      animate={shakeTargets.includes("signup-confirm-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+                      transition={{ duration: 0.35 }}
+                      className="relative"
+                    >
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
+                      <input type={showSignupConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Confirm password" required minLength={8} />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupConfirmPassword((value) => !value)}
+                        className="absolute inset-y-0 right-0 pr-3 text-zinc-500 hover:text-zinc-200"
+                      >
+                        {showSignupConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </motion.div>
                   </div>
 
                   <motion.button

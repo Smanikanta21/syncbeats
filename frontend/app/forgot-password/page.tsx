@@ -6,21 +6,76 @@ import { authApi } from "../../lib/api";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setMessage(null);
     try {
-      await authApi.forgotPassword(email.trim());
-      setDone(true);
+      const trimmedEmail = email.trim();
+      if (!otpSent) {
+        const result = await authApi.forgotPassword(trimmedEmail);
+        setOtpSent(true);
+        setOtpVerified(false);
+        setOtpError(null);
+        setDevOtp(result.devOtp ?? null);
+        setMessage("OTP sent to your email. Verify it to unlock password fields.");
+      } else {
+        if (!otpVerified) {
+          throw new Error("Verify OTP first before changing password");
+        }
+        if (password !== confirmPassword) {
+          throw new Error("New password and confirm password must match");
+        }
+        await authApi.resetPasswordWithOtp(trimmedEmail, otp.trim(), password);
+        setDone(true);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!otpSent) return;
+    setVerifyingOtp(true);
+    setOtpError(null);
+    setError(null);
+    try {
+      await authApi.verifyResetOtp(email.trim(), otp.trim());
+      setOtpVerified(true);
+      setMessage("OTP verified. You can now set your new password.");
+    } catch (err) {
+      setOtpVerified(false);
+      setOtpError((err as Error).message || "Invalid OTP");
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  const copyDevOtp = async () => {
+    if (!devOtp) return;
+    try {
+      await navigator.clipboard.writeText(devOtp);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setError("Could not copy OTP");
     }
   };
 
@@ -29,33 +84,121 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-black/40 p-8">
         <h1 className="text-2xl font-bold text-zinc-100">Forgot Password</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          Enter your account email and we will send a reset link.
+          {!otpSent
+            ? "Enter your account email and we will send an OTP."
+            : "Enter the OTP from email and set your new password."}
         </p>
 
         {done ? (
           <div className="mt-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">
-            If an account exists for this email, a reset link was sent.
+            Password updated successfully. You can now log in with your new password.
           </div>
         ) : (
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <input
               type="email"
               required
+              disabled={otpSent}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@email.com"
-              className="w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30"
+              className="w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 disabled:opacity-70"
             />
+
+            {otpSent && (
+              <>
+                {devOtp && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
+                    <span className="font-semibold tracking-[0.2em]">OTP: {devOtp}</span>
+                    <button type="button" onClick={copyDevOtp} className="rounded-lg border border-emerald-400/30 px-2 py-1 text-xs text-emerald-200 hover:border-emerald-200/60">
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={otp}
+                    onChange={(event) => {
+                      setOtp(event.target.value.replace(/\D/g, ""));
+                      setOtpError(null);
+                      setOtpVerified(false);
+                    }}
+                    placeholder="Enter 6-digit OTP"
+                    className={`flex-1 rounded-xl border bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${otpError ? "border-red-500/70" : "border-white/10"}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={verifyOtp}
+                    disabled={verifyingOtp || otp.trim().length !== 6}
+                    className="rounded-xl border border-white/15 px-4 py-3 text-sm font-semibold text-zinc-100 hover:border-white/40 disabled:opacity-60"
+                  >
+                    {verifyingOtp ? "Checking..." : otpVerified ? "Verified" : "Verify"}
+                  </button>
+                </div>
+                {otpError && <p className="text-sm text-red-400">{otpError}</p>}
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  disabled={!otpVerified}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="New password (min 8 characters)"
+                  className={`w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  disabled={!otpVerified}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Confirm new password"
+                  className={`w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                />
+              </>
+            )}
+
+            {message && <p className="text-sm text-emerald-300">{message}</p>}
             {error && (
               <p className="text-sm text-red-400">{error}</p>
             )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (otpSent && !otpVerified)}
               className="w-full rounded-xl bg-zinc-100 px-4 py-3 font-semibold text-black disabled:opacity-60"
             >
-              {loading ? "Sending..." : "Send Reset Link"}
+              {loading ? "Processing..." : otpSent ? "Change Password" : "Send OTP"}
             </button>
+
+            {otpSent && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  setError(null);
+                  setMessage(null);
+                  try {
+                    const result = await authApi.forgotPassword(email.trim());
+                    setDevOtp(result.devOtp ?? null);
+                    setOtpVerified(false);
+                    setOtpError(null);
+                    setMessage("A new OTP has been sent to your email.");
+                  } catch (err) {
+                    setError((err as Error).message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="w-full rounded-xl border border-white/10 px-4 py-3 font-semibold text-zinc-200 hover:border-white/30 disabled:opacity-60"
+              >
+                Resend OTP
+              </button>
+            )}
           </form>
         )}
 

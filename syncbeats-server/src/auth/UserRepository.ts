@@ -61,6 +61,17 @@ export class UserRepository {
     return user ? this.toUserRow(user) : null;
   }
 
+  async findByEmailAndPasswordResetTokenHash(email: string, tokenHash: string): Promise<UserRow | null> {
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase().trim(),
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+    }) as any;
+    return user ? this.toUserRow(user) : null;
+  }
+
   async findById(id: string): Promise<PublicUser | null> {
     const user = await prisma.user.findUnique({
       where: { id },
