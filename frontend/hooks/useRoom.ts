@@ -29,20 +29,27 @@ interface UseRoomReturn {
 
 const PING_INTERVAL_MS = 5_000;
 const NTP_WINDOW       = 5;
+const DRIFT_THRESHOLD_MS = 200;
+const DRIFT_CHECK_INTERVAL_MS = 100;
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
-  const socket = getSocket();
   const audio  = useAudio();
+  const socketRef = useRef<ReturnType<typeof getSocket> | null>(null);
 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [isConnected,  setIsConnected]  = useState(() => socket.connected);
-  const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
+  const [isConnected,  setIsConnected]  = useState(false);
+  const [currentSocketId, setCurrentSocketId] = useState<string | null>(null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady,     setAllReady]     = useState(false);
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
+  const snapshotRef = useRef<RoomSnapshot | null>(null);
+  useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
+  const clockOffsetRef = useRef(clockOffset);
+  useEffect(() => { clockOffsetRef.current = clockOffset; }, [clockOffset]);
+  const driftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSocketIdRef = useRef<string | null>(currentSocketId);
   useEffect(() => { currentSocketIdRef.current = currentSocketId; }, [currentSocketId]);
 
@@ -93,10 +100,34 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     }
   }, [roomId]);
 
-  const sendPing = useCallback(() => socket.emit('sync:ping', { t0: Date.now() }), [socket]);
+  const sendPing = useCallback(() => {
+    socketRef.current?.emit('sync:ping', { t0: Date.now() });
+  }, []);
+
+  const enforceAudioState = useCallback((snap: RoomSnapshot) => {
+    const a = audioRef.current;
+
+    const expectedPositionMs = snap.state === PlaybackState.PLAYING
+      ? snap.position + (Date.now() - snap.timestamp) + clockOffsetRef.current
+      : snap.position;
+
+    const expectedSec = Math.max(0, expectedPositionMs / 1000);
+    const actualSec = a.currentTime;
+    const driftMs = Math.abs(actualSec - expectedSec) * 1000;
+
+    if (driftMs > DRIFT_THRESHOLD_MS) {
+      console.log(`[Sync] Correcting drift: ${driftMs.toFixed(0)}ms`);
+      a.seek(expectedSec);
+    }
+
+    if (snap.state === PlaybackState.PLAYING && !a.isPlaying) a.play();
+    if (snap.state !== PlaybackState.PLAYING && a.isPlaying)  a.pause();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const socket = getSocket();
+    socketRef.current = socket;
 
     const joinRoom = () => {
       socket.emit('room:join', { roomId, displayName });
@@ -119,18 +150,9 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('connect',    handleConnect);
     socket.on('disconnect', handleDisconnect);
 
-    const enforceAudioState = (snap: RoomSnapshot) => {
-      const a = audioRef.current;
-      const targetSec = snap.position / 1000;
-      if (Math.abs(a.currentTime - targetSec) > 1.0) {
-        a.seek(targetSec);
-      }
-      if (snap.state === PlaybackState.PLAYING && !a.isPlaying) a.play();
-      if (snap.state !== PlaybackState.PLAYING && a.isPlaying)  a.pause();
-    };
-
     // ── Room state ──────────────────────────────────────────────────────
     const handleSnapshot = (snap: RoomSnapshot) => {
+      snapshotRef.current = snap;
       setSnapshot(snap);
       setParticipants(snap.participants);
       enforceAudioState(snap);
@@ -138,6 +160,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('room:snapshot', handleSnapshot);
 
     const handleStateChanged = (snap: RoomSnapshot) => {
+      snapshotRef.current = snap;
       setSnapshot(snap);
       setParticipants(snap.participants);
       enforceAudioState(snap);
@@ -184,14 +207,53 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
     // Fetch initial room state
     void roomsApi.get(roomId)
-      .then(details => { if (!cancelled) applyRoomDetails(details); })
+      .then(details => {
+        if (cancelled) return;
+        applyRoomDetails(details);
+
+        const initialSnap = details.live
+          ? {
+              roomId: details.live.roomId,
+              trackUrl: details.live.trackUrl,
+              position: details.live.position,
+              state: details.live.state as PlaybackState,
+              hostId: details.live.hostId,
+              timestamp: details.live.timestamp,
+              participants: details.live.participants as Participant[],
+            }
+          : details.db
+            ? {
+                roomId,
+                trackUrl: details.db.track_url,
+                position: details.db.position_ms,
+                state: details.db.playback_state as PlaybackState,
+                hostId: details.db.host_id,
+                timestamp: Date.now(),
+                participants: details.participants.map(p => ({ ...p, isReady: false })),
+              }
+            : null;
+
+        if (initialSnap) {
+          snapshotRef.current = initialSnap;
+          enforceAudioState(initialSnap);
+        }
+      })
       .catch(() => {});
 
     const pingInterval = setInterval(sendPing, PING_INTERVAL_MS);
+    driftIntervalRef.current = setInterval(() => {
+      const latestSnapshot = snapshotRef.current;
+      if (!latestSnapshot) return;
+      enforceAudioState(latestSnapshot);
+    }, DRIFT_CHECK_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       clearInterval(pingInterval);
+      if (driftIntervalRef.current) {
+        clearInterval(driftIntervalRef.current);
+        driftIntervalRef.current = null;
+      }
       socket.emit('room:leave', { roomId });
       socket.off('connect',              handleConnect);
       socket.off('disconnect',           handleDisconnect);
@@ -204,30 +266,35 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       socket.off('sync:pong',            handlePong);
       socket.off('error',                handleError);
     };
-  }, [applyRoomDetails, roomId, displayName, socket, sendPing]);
+  }, [applyRoomDetails, roomId, displayName, sendPing, enforceAudioState]);
 
+  const lastVolumeRef = useRef<number | null>(null);
   useEffect(() => {
     if (!currentSocketId || !snapshot) return;
     const me = snapshot.participants.find(p => p.socketId === currentSocketId);
-    if (me) audioRef.current.setVolume(me.volume);
+    if (me && me.volume !== lastVolumeRef.current) {
+      lastVolumeRef.current = me.volume;
+      audioRef.current.setVolume(me.volume);
+    }
   }, [snapshot, currentSocketId]);
 
   // Any participant can control playback — no isHost check
-  const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
-  const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
-  const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
+
+  const play  = useCallback(() => socketRef.current?.emit('playback:play',  { roomId }), [roomId]);
+  const pause = useCallback(() => socketRef.current?.emit('playback:pause', { roomId }), [roomId]);
+  const seek  = useCallback((p: number) => socketRef.current?.emit('playback:seek', { roomId, position: p }), [roomId]);
 
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
-    socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
+    socketRef.current?.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [roomId]);
 
   // Emit buffering readiness to server
   const setReady = useCallback((isReady: boolean) =>
-    socket.emit('room:clientReady', { roomId, isReady }), [socket, roomId]);
+    socketRef.current?.emit('room:clientReady', { roomId, isReady }), [roomId]);
 
   const leave = useCallback(() => {
-    socket.emit('room:leave', { roomId });
-    socket.disconnect();
-  }, [socket, roomId]);
+    socketRef.current?.emit('room:leave', { roomId });
+    socketRef.current?.disconnect();
+  }, [roomId]);
 
   return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, setReady, setParticipantVolume, leave };
 }

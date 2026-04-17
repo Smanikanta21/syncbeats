@@ -44,9 +44,13 @@ export class Room extends EventEmitter {
 
   // ── Playback (no host gate — any participant) ─────────────────────────
 
-  play(_requesterId: string): void {
+  play(requesterId: string): void {
     if (this.state === PlaybackState.PLAYING) return;
-    if (!this.allReady()) return; // hold until every client buffered
+    if (!this.allReady()) {
+      // Emit an event so the handler can notify the client
+      this.emit('playError', { requesterId, message: 'Not all participants are ready. check ur audio buffers!' });
+      return;
+    }
     this.snapshotTime = Date.now();
     this.state        = PlaybackState.PLAYING;
     this.emit('stateChanged', this.snapshot());
