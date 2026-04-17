@@ -110,7 +110,7 @@ export const authApi = {
     }),
 
   forgotPassword: (email: string) =>
-    request<{ ok: boolean }>('/auth/password/forgot', {
+    request<{ ok: boolean; devOtp?: string }>('/auth/password/forgot', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
@@ -119,6 +119,18 @@ export const authApi = {
     request<{ ok: boolean }>('/auth/password/reset', {
       method: 'POST',
       body: JSON.stringify({ token, password }),
+    }),
+
+  resetPasswordWithOtp: (email: string, otp: string, password: string) =>
+    request<{ ok: boolean }>('/auth/password/reset', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, password }),
+    }),
+
+  verifyResetOtp: (email: string, otp: string) =>
+    request<{ ok: boolean }>('/auth/password/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
     }),
 
   me: () => request<AuthResponse>('/auth/me', {}, true),

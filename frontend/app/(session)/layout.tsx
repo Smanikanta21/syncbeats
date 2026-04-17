@@ -8,13 +8,16 @@ import { DynamicIsland } from "../../components/DynamicIsland";
 import { devicesApi, type Device } from "../../lib/api";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
-  const { user, device, needsDeviceRename, loading, renameDevice, replaceDevice } = useAuth();
+  const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
   const router = useRouter();
   const [deviceName, setDeviceName] = useState("");
   const [saving, setSaving] = useState(false);
   const [showExistingFlow, setShowExistingFlow] = useState(false);
   const [savedDevices, setSavedDevices] = useState<Device[]>([]);
   const [replacingDeviceId, setReplacingDeviceId] = useState<string | null>(null);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   const quickDeviceOptions = ["iPhone", "Android", "Mac", "Windows", "Device"];
 
@@ -73,6 +76,24 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     }
   };
 
+  const isLocalUnverified = user?.auth_provider === "LOCAL" && !emailVerified;
+
+  const handleResendVerification = async () => {
+    if (!user?.email || resendingVerification) return;
+
+    setResendingVerification(true);
+    setVerificationError(null);
+    setVerificationMessage(null);
+    try {
+      await resendVerification(user.email);
+      setVerificationMessage("Verification email sent. Please check your inbox.");
+    } catch (err) {
+      setVerificationError((err as Error).message || "Failed to resend verification email");
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
   // Show nothing while rehydrating token
   if (loading) {
     return (
@@ -87,6 +108,25 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
       <DynamicIsland />
+      {isLocalUnverified && (
+        <div className="fixed top-20 left-1/2 z-50 w-[min(92vw,720px)] -translate-x-1/2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-amber-100">
+              Your email is not verified yet. Please verify to secure your account and keep full access.
+            </p>
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={resendingVerification}
+              className="h-9 rounded-lg bg-amber-200 px-3 text-sm font-semibold text-black hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {resendingVerification ? "Sending..." : "Resend verification"}
+            </button>
+          </div>
+          {verificationMessage && <p className="mt-2 text-xs text-emerald-300">{verificationMessage}</p>}
+          {verificationError && <p className="mt-2 text-xs text-red-300">{verificationError}</p>}
+        </div>
+      )}
       {needsDeviceRename && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
           <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">

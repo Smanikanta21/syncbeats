@@ -76,10 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    const { token, user, device, needsDeviceRename } = await authApi.register(name, email, password);
-    persist(token, user);
-    setDevice(device);
-    setNeedsDeviceRename(needsDeviceRename);
+    // Registration now requires email verification before sign-in.
+    await authApi.register(name, email, password);
   }, []);
 
   const googleLogin = useCallback(async (credential: string) => {

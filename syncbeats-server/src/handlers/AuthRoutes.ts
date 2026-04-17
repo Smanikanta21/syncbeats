@@ -113,28 +113,61 @@ export function createAuthRoutes(): Router {
       return;
     }
     try {
-      await authService.forgotPassword(email);
+      const result = await authService.forgotPassword(email);
       // Return generic success to avoid account enumeration.
-      res.json({ ok: true });
+      res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[Auth] forgot password error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('account not found')) {
+        res.status(404).json({ error: msg });
+        return;
+      }
       res.status(500).json({ error: msg });
     }
   });
 
   // POST /auth/password/reset
   router.post('/password/reset', async (req: Request, res: Response) => {
-    const { token, password } = req.body as { token?: string; password?: string };
-    if (!token?.trim() || !password) {
-      res.status(400).json({ error: 'token and password are required' });
+    const { token, email, otp, password } = req.body as {
+      token?: string;
+      email?: string;
+      otp?: string;
+      password?: string;
+    };
+    if (!password) {
+      res.status(400).json({ error: 'password is required' });
       return;
     }
     try {
-      await authService.resetPassword(token, password);
+      if (token?.trim()) {
+        await authService.resetPassword(token, password);
+      } else if (email?.trim() && otp?.trim()) {
+        await authService.resetPasswordWithOtp(email, otp, password);
+      } else {
+        res.status(400).json({ error: 'provide token or email + otp' });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) {
       console.error('[Auth] reset password error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  // POST /auth/password/verify-otp
+  router.post('/password/verify-otp', async (req: Request, res: Response) => {
+    const { email, otp } = req.body as { email?: string; otp?: string };
+    if (!email?.trim() || !otp?.trim()) {
+      res.status(400).json({ error: 'email and otp are required' });
+      return;
+    }
+    try {
+      await authService.verifyPasswordResetOtp(email, otp);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Auth] verify reset otp error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: msg });
     }
