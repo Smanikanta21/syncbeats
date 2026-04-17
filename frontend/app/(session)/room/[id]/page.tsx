@@ -162,7 +162,7 @@ export default function RoomPage() {
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
             <h1
               onClick={handleCopy}
-              className="text-[5rem] sm:text-[7rem] font-black text-white tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
+              className="text-[5rem] select-none sm:text-[7rem] font-black text-white tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
             >
               {roomId}
               <div className="w-12 h-12 rounded-full bg-white/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

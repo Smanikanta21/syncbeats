@@ -5,6 +5,13 @@ import { RoomManager }    from '../core/RoomManager';
 import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
+    // Listen for play errors and forward to the correct socket
+    eventBus.on('ROOM_PLAY_ERROR', ({ requesterId, message }) => {
+      const socket = this.io.sockets.sockets.get(requesterId);
+      if (socket) {
+        socket.emit('error', { message });
+      }
+    });
 import {
   JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload
 } from '../types';
@@ -92,8 +99,14 @@ export class SocketHandler {
     // ── Playback — any participant can control ────────────────────────────
 
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      if (!room.allReady()) {
+        socket.emit('room:playBlocked', { reason: 'waiting_for_clients' });
+        return;
+      }
       try {
-        this.roomManager.get(roomId)?.play(socket.id);
+        room.play(socket.id);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
