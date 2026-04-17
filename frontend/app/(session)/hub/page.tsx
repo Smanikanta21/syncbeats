@@ -296,7 +296,7 @@ export default function HubPage() {
 
 
       {/* Main Hub Content */}
-      <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center pb-20">
+      <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20">
         
         <div className="text-center mb-16">
           <motion.h1 
@@ -462,7 +462,7 @@ export default function HubPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55 }}
-          className="mt-10 w-full max-w-4xl mx-auto"
+          className="mt-10 w-full max-w-5xl mx-auto"
         >
           <div className="flex items-center justify-between gap-4 mb-6 ml-2">
             <div>
@@ -475,33 +475,35 @@ export default function HubPage() {
           {devices.length === 0 ? (
             <p className="text-zinc-600 text-sm font-medium text-center py-8">No devices saved yet.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {devices.map((savedDevice) => {
                 const isCurrent = currentDevice?.id === savedDevice.id;
 
                 return (
                   <div
                     key={savedDevice.id}
-                    className={`glass-panel p-4 rounded-2xl border bg-white/5 flex items-center justify-between transition-colors ${isCurrent ? "border-white/20" : "border-white/5 hover:bg-white/10"}`}
+                    className={`glass-panel p-4 rounded-2xl border bg-white/5 flex items-center justify-between gap-3 transition-colors ${isCurrent ? "border-white/20" : "border-white/5 hover:bg-white/10"}`}
                   >
-                    <div className="flex justify-evenly items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
                         <DeviceGlyph userAgent={savedDevice.user_agent} />
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-zinc-200 w-[75%] truncate flex items-center gap-2">
-                          {savedDevice.name}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-bold text-zinc-200 truncate block" title={savedDevice.name}>
+                            {savedDevice.name}
+                          </span>
                           {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
                         </div>
                         <div className="text-xs text-zinc-600 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
                       </div>
-                      <button
+                    </div>
+                    <button
                       onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
-                      className="h-10 w-12 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                      className="h-10 w-12 shrink-0 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
                     >
                       <Edit3 className="w-4 h-4 mx-auto" />
                     </button>
-                    </div>
                   </div>
                 );
               })}

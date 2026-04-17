@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -27,6 +27,29 @@ export default function AuthPage() {
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
+  const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const cameFromGoogle = document.referrer.includes("accounts.google.");
+    const hasGoogleOAuthParams =
+      params.has("code") ||
+      params.has("state") ||
+      params.has("scope") ||
+      params.has("authuser") ||
+      params.has("error");
+
+    if (!cameFromGoogle && !hasGoogleOAuthParams) return;
+
+    setGoogleRedirectLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      setGoogleRedirectLoading(false);
+    }, 6000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const resetForm = () => {
     setName("");
@@ -114,6 +137,7 @@ export default function AuthPage() {
         callback: async (response: { credential?: string }) => {
           if (!response.credential) return;
           setError(null);
+          setGoogleRedirectLoading(true);
           setLoading(true);
           try {
             await googleLogin(response.credential);
@@ -122,6 +146,7 @@ export default function AuthPage() {
             setError((err as Error).message);
           } finally {
             setLoading(false);
+            setGoogleRedirectLoading(false);
           }
         },
       });
@@ -175,6 +200,15 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
+      {googleRedirectLoading && (
+        <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/90 px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+            <LoaderCircle className="w-5 h-5 text-zinc-200 animate-spin" />
+            <p className="text-sm font-semibold text-zinc-200">Completing Google sign in...</p>
+          </div>
+        </div>
+      )}
+
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[500px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none -z-10" />
 
       {/* Home link */}
@@ -237,7 +271,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-zinc-500" /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="name@email.com" required />
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -253,7 +287,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-zinc-500" /></div>
-                      <input type={showLoginPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClass} pr-12`} placeholder="••••••••" required />
+                      <input type={showLoginPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
                       <button
                         type="button"
                         onClick={() => setShowLoginPassword((value) => !value)}
@@ -315,7 +349,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-zinc-500" /></div>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" required />
+                      <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -328,7 +362,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-zinc-500" /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClassSm} placeholder="name@email.com" required />
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClassSm} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -341,7 +375,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
-                      <input type={showSignupPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" required minLength={8} />
+                      <input type={showSignupPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         onClick={() => setShowSignupPassword((value) => !value)}
@@ -361,7 +395,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
-                      <input type={showSignupConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Confirm password" required minLength={8} />
+                      <input type={showSignupConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         onClick={() => setShowSignupConfirmPassword((value) => !value)}
