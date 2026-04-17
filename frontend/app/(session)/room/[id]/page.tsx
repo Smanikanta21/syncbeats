@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
@@ -30,6 +30,13 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
+  const [qrState, setQrState] = useState<"mock" | "generating" | "ready">("mock");
+  const qrTimerRef = useRef<number | null>(null);
+
+  const roomLink = typeof window !== "undefined"
+    ? `${window.location.origin}/room/${roomId}`
+    : `/room/${roomId}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(roomLink)}`;
 
   // ── Signal ready when audio buffers ───────────────────────────────────────
   useEffect(() => {
@@ -93,6 +100,14 @@ export default function RoomPage() {
     };
   }, [upload, roomId, audio]);
 
+  useEffect(() => {
+    return () => {
+      if (qrTimerRef.current) {
+        window.clearTimeout(qrTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleLeave = () => {
     audio.pause();
     audio.setTrack("", "", "");
@@ -101,6 +116,14 @@ export default function RoomPage() {
   };
 
   const handleCopy = () => navigator.clipboard.writeText(roomId).catch(() => {});
+
+  const handleGenerateQr = () => {
+    if (qrState === "ready" || qrState === "generating") return;
+    setQrState("generating");
+    qrTimerRef.current = window.setTimeout(() => {
+      setQrState("ready");
+    }, 1300);
+  };
 
   return (
     <div className="flex flex-col items-center md:justify-center relative px-4 sm:px-6 lg:px-8 z-0 pb-32 min-h-[calc(100vh-100px)]">
@@ -145,10 +168,35 @@ export default function RoomPage() {
 
           {/* QR */}
           <div className="flex flex-col items-center">
-            <div className="p-4 bg-white/5 border border-white/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group hover:bg-white">
-              <QrCode className="w-28 h-28 text-white group-hover:text-black transition-colors" strokeWidth={1} />
-            </div>
-            <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs mt-4">Scan to Join</p>
+            <button
+              type="button"
+              onClick={handleGenerateQr}
+              className="p-4 bg-white/5 border border-white/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group"
+            >
+              {qrState === "mock" && (
+                <div className="w-28 h-28 flex items-center justify-center">
+                  <QrCode className="w-28 h-28 text-white group-hover:text-zinc-100 transition-colors" strokeWidth={1} />
+                </div>
+              )}
+
+              {qrState === "generating" && (
+                <div className="w-28 h-28 flex flex-col items-center justify-center gap-3">
+                  <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+                  <p className="text-[10px] tracking-[0.2em] uppercase text-zinc-400">Generating</p>
+                </div>
+              )}
+
+              {qrState === "ready" && (
+                <img
+                  src={qrSrc}
+                  alt={`QR code for room ${roomId}`}
+                  className="w-28 h-28 rounded-xl bg-white p-1"
+                />
+              )}
+            </button>
+            <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs mt-4">
+              {qrState === "ready" ? "Scan to Join" : "Tap to Generate QR"}
+            </p>
           </div>
         </div>
 

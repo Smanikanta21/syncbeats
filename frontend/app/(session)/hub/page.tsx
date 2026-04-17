@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
@@ -39,6 +39,12 @@ export default function HubPage() {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingDeviceName, setEditingDeviceName] = useState("");
   const [isRenamingDevice, setIsRenamingDevice] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanStatus, setScanStatus] = useState<"idle" | "starting" | "scanning" | "success" | "error">("idle");
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
 
   function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
     if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-zinc-300" />;
@@ -80,6 +86,116 @@ export default function HubPage() {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [roomMenu]);
+
+  useEffect(() => {
+    return () => {
+      if (scanIntervalRef.current) {
+        window.clearInterval(scanIntervalRef.current);
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+    };
+  }, []);
+
+  const parseRoomIdFromScan = (payload: string): string | null => {
+    const value = payload.trim();
+    if (!value) return null;
+
+    const directMatch = value.match(/^([a-zA-Z0-9_-]{4,20})$/);
+    if (directMatch) return directMatch[1].toUpperCase();
+
+    try {
+      const url = new URL(value);
+      const parts = url.pathname.split("/").filter(Boolean);
+      const roomCandidate = parts[parts.length - 1];
+      if (parts.includes("room") && roomCandidate) {
+        return roomCandidate.toUpperCase();
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  };
+
+  const stopScanner = () => {
+    if (scanIntervalRef.current) {
+      window.clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setShowScanner(false);
+  };
+
+  const openScannerModal = () => {
+    setShowScanner(true);
+    setScanStatus("idle");
+    setScanError(null);
+  };
+
+  const startScanner = async () => {
+    setScanStatus("starting");
+    setScanError(null);
+
+    const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (opts?: { formats?: string[] }) => { detect: (input: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      setScanStatus("error");
+      setScanError("QR scanning is not supported on this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+      });
+
+      mediaStreamRef.current = stream;
+      if (!videoRef.current) throw new Error("Could not initialize camera preview.");
+
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setScanStatus("scanning");
+
+      const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+      scanIntervalRef.current = window.setInterval(async () => {
+        if (!videoRef.current || scanStatus === "success") return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (!codes.length) return;
+
+          const rawValue = codes[0].rawValue ?? "";
+          const parsedRoomId = parseRoomIdFromScan(rawValue);
+          if (!parsedRoomId) {
+            setScanStatus("error");
+            setScanError("QR scanned, but room format is invalid.");
+            return;
+          }
+
+          setScanStatus("success");
+          stopScanner();
+          router.push(`/room/${parsedRoomId}`);
+        } catch {
+          // Keep scanning on transient detector errors.
+        }
+      }, 300);
+    } catch (err) {
+      setScanStatus("error");
+      const message = (err as Error).message || "Unable to access camera.";
+      if (message.toLowerCase().includes("permission") || message.toLowerCase().includes("denied") || message.toLowerCase().includes("notallowed")) {
+        setScanError("Camera permission denied. Please allow camera access and try again.");
+      } else {
+        setScanError(message);
+      }
+    }
+  };
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,6 +383,15 @@ export default function HubPage() {
                 <ArrowRight className="w-5 h-5" />
               </button>
             </form>
+
+            <button
+              type="button"
+              onClick={openScannerModal}
+              className="mt-3 w-full h-12 rounded-2xl border border-white/15 bg-white/5 text-zinc-200 font-semibold hover:border-white/30 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+            >
+              <ScanLine className="w-4 h-4" />
+              Scan QR from Phone
+            </button>
           </motion.div>
 
         </div>
@@ -528,6 +653,52 @@ export default function HubPage() {
                   {isRenamingDevice ? "Saving..." : "Save Device Name"}
                 </button>
               </form>
+            </div>
+          </div>
+        )}
+
+        {showScanner && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-black text-zinc-100">Scan Room QR</h2>
+                <button onClick={stopScanner} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/60 relative aspect-[3/4] flex items-center justify-center">
+                <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+                {scanStatus === "idle" && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center px-6">
+                    <Camera className="w-8 h-8 text-zinc-300 mb-3" />
+                    <p className="text-sm text-zinc-300">To scan room QR codes, allow camera permission.</p>
+                    <button
+                      type="button"
+                      onClick={startScanner}
+                      className="mt-4 h-10 rounded-xl bg-zinc-100 px-4 text-sm font-semibold text-black hover:bg-white"
+                    >
+                      Allow Camera Access
+                    </button>
+                  </div>
+                )}
+                {scanStatus === "starting" && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-zinc-300 text-sm font-semibold">Starting camera...</div>
+                )}
+                {scanStatus === "error" && (
+                  <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-center px-6">
+                    <Camera className="w-6 h-6 text-red-400 mb-3" />
+                    <p className="text-sm text-red-300">{scanError ?? "Unable to scan QR"}</p>
+                    <button
+                      type="button"
+                      onClick={startScanner}
+                      className="mt-4 h-9 rounded-lg border border-white/20 px-3 text-xs font-semibold text-zinc-100 hover:border-white/40"
+                    >
+                      Retry Camera Access
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <p className="mt-4 text-xs text-zinc-500 text-center">Point your camera at the room QR code.</p>
             </div>
           </div>
         )}
