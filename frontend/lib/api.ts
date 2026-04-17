@@ -12,6 +12,9 @@ export function getServerUrl(){
 const BASE = getServerUrl();
 
 const DEVICE_STORAGE_KEY = 'sb_device_id';
+const AUTH_COOKIE_KEY = 'sb_token';
+const AUTH_STORAGE_KEY = 'sb_token';
+const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 
 function getDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -24,9 +27,37 @@ function getDeviceId(): string | null {
   return generated;
 }
 
-function getToken(): string | null {
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const parts = document.cookie.split(';').map((part) => part.trim());
+  const match = parts.find((part) => part.startsWith(`${name}=`));
+  if (!match) return null;
+  return decodeURIComponent(match.slice(name.length + 1));
+}
+
+export function getAuthToken(): string | null {
+  const cookieToken = readCookie(AUTH_COOKIE_KEY);
+  if (cookieToken) return cookieToken;
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('sb_token');
+  return localStorage.getItem(AUTH_STORAGE_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  if (typeof document === 'undefined') return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(token)}; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+  localStorage.setItem(AUTH_STORAGE_KEY, token);
+}
+
+export function clearAuthToken(): void {
+  if (typeof document === 'undefined') return;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${AUTH_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+function getToken(): string | null {
+  return getAuthToken();
 }
 
 async function request<T>(

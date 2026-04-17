@@ -1,13 +1,13 @@
 "use client";
 
 // context/AuthContext.tsx — Global auth state
-// Persists token in localStorage, exposes user + helpers to all children.
+// Persists token in cookies, exposes user + helpers to all children.
 
 import {
   createContext, useContext, useEffect, useState, useCallback,
   type ReactNode,
 } from "react";
-import { authApi, devicesApi, type Device, type User } from "../lib/api";
+import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User } from "../lib/api";
 
 interface AuthContextType {
   user:     User | null;
@@ -32,16 +32,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [device,  setDevice]   = useState<Device | null>(null);
   const [needsDeviceRename, setNeedsDeviceRename] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
-  const [token,   setToken]   = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("sb_token");
-  });
-  const [loading, setLoading] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return !!localStorage.getItem("sb_token");
-  });
+  const [token,   setToken]   = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // ── Rehydrate from localStorage on mount ───────────────────────────────
+  // Hydration-safe bootstrap: read browser token only after mount.
+  useEffect(() => {
+    const existingToken = getAuthToken();
+    if (!existingToken) {
+      setLoading(false);
+      return;
+    }
+    setToken(existingToken);
+  }, []);
+
+  // ── Rehydrate auth state when token is present ─────────────────────────
   useEffect(() => {
     if (!token) return;
 
@@ -54,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         // Token expired or invalid — clear it
-        localStorage.removeItem("sb_token");
+        clearAuthToken();
         setToken(null);
         setEmailVerified(false);
       })
@@ -62,10 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const persist = (token: string, user: User) => {
-    localStorage.setItem("sb_token", token);
+    setAuthToken(token);
     setToken(token);
     setUser(user);
     setEmailVerified(!!user.email_verified_at);
+    setLoading(false);
   };
 
   const login = useCallback(async (email: string, password: string) => {
@@ -108,12 +113,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("sb_token");
+    clearAuthToken();
     setToken(null);
     setUser(null);
     setDevice(null);
     setNeedsDeviceRename(false);
     setEmailVerified(false);
+    setLoading(false);
   }, []);
 
   return (

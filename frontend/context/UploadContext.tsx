@@ -7,6 +7,7 @@ import {
   createContext, useContext, useState, useCallback,
   useRef, type ReactNode,
 } from "react";
+import { getAuthToken } from "../lib/api";
 
 interface UploadResult {
   trackUrl: string;
@@ -31,7 +32,7 @@ function getServerUrl(): string {
 }
 
 function getToken(): string | null {
-  return typeof window !== "undefined" ? localStorage.getItem("sb_token") : null;
+  return getAuthToken();
 }
 
 export function UploadProvider({ children }: { children: ReactNode }) {

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, Mail, ShieldCheck } from "lucide-react";
-import { authApi } from "../../lib/api";
+import { authApi, setAuthToken } from "../../lib/api";
 
 function VerifyEmailContent() {
   const params = useSearchParams();
@@ -29,7 +29,7 @@ function VerifyEmailContent() {
     void authApi.verifyEmail(token)
       .then((result) => {
         if (cancelled) return;
-        localStorage.setItem("sb_token", result.token);
+        setAuthToken(result.token);
         setStatus("success");
         setMessage("Email verified successfully. Redirecting to your hub...");
 

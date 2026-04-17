@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { LogOut, Edit3, Shield, Activity, Music, Laptop, Smartphone, X } from "lucide-react";
+import { CheckCircle2, LogOut, Edit3, Shield, Activity, Music, Laptop, Smartphone, X, KeyRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
-import { devicesApi, type Device } from "../../../lib/api";
+import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-zinc-300" />;
@@ -26,8 +26,9 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, device, logout } = useAuth();
+  const { user, device, logout, emailVerified } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
+  const [hostedSessionCount, setHostedSessionCount] = useState(0);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
@@ -47,6 +48,13 @@ export default function ProfilePage() {
       .then(({ devices }) => setDevices(devices))
       .catch(() => { });
   }, []);
+
+  useEffect(() => {
+    roomsApi.mine()
+      .then(({ rooms }) => setHostedSessionCount(rooms.length))
+      .catch(() => setHostedSessionCount(0));
+  }, []);
+
 
   useEffect(() => {
     setProfileName(user?.name ?? "");
@@ -140,7 +148,24 @@ export default function ProfilePage() {
               {!isEditingProfile ? (
                 <>
                   <h1 className="text-5xl font-black text-zinc-200 mb-2 tracking-tight">{displayName}</h1>
-                  <p className="text-zinc-500 font-medium text-xl mb-6">{displayEmail}</p>
+                  <div className="mb-6 flex flex-wrap items-center gap-3">
+                    <p className="text-zinc-500 font-medium text-xl">{displayEmail}</p>
+                    {emailVerified && (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-emerald-300 disabled:cursor-default"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Verified
+                      </button>
+                    )}
+                    {!emailVerified && (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-zinc-400">
+                        Unverified
+                      </span>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div className="space-y-3 mb-6">
@@ -194,7 +219,7 @@ export default function ProfilePage() {
             className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-white/10 transition-colors">
               <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-4"><Activity className="w-5 h-5 text-zinc-300" /></div>
               <div className="mt-auto flex items-end gap-2">
-                <h3 className="text-5xl font-black text-zinc-200 leading-none">0</h3>
+                <h3 className="text-5xl font-black text-zinc-200 leading-none">{hostedSessionCount}</h3>
                 <p className="text-zinc-500 text-sm font-medium pb-1 leading-tight">Sessions<br />Hosted</p>
               </div>
             </motion.div>
@@ -219,6 +244,18 @@ export default function ProfilePage() {
             <div className="mt-auto">
               <h3 className="text-xl font-bold text-red-500 mb-1">Log Out</h3>
               <p className="text-zinc-500 text-sm font-medium">Clear session &amp; return to login</p>
+            </div>
+          </motion.div>
+
+          {/* 6. Change Password */}
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
+            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-white/5 bg-black/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-blue-500/30 hover:bg-blue-500/5 transition-all cursor-pointer">
+            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
+              <KeyRound className="w-5 h-5 text-blue-500" />
+            </div>
+            <div className="mt-auto">
+              <h3 className="text-xl font-bold text-blue-500 mb-1">Change Password</h3>
+              <p className="text-zinc-500 text-sm font-medium">Update your password</p>
             </div>
           </motion.div>
 
