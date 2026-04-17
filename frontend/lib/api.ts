@@ -138,6 +138,14 @@ export const authApi = {
 
 // ── Rooms ─────────────────────────────────────────────────────────────────
 
+export interface Participant {
+  socketId:    string;
+  displayName: string;
+  joinedAt:    number;
+  isReady:     boolean;
+  volume:      number;
+}
+
 export interface RoomRecord {
   id:             string;
   host_id:        string;
@@ -169,17 +177,9 @@ export interface RoomDetailsResponse {
     state: string;
     hostId: string | null;
     timestamp: number;
-    participants: Array<{
-      socketId: string;
-      displayName: string;
-      joinedAt: number;
-    }>;
+    participants: Participant[];
   } | null;
-  participants: Array<{
-    socketId: string;
-    displayName: string;
-    joinedAt: number;
-  }>;
+  participants: Participant[];
 }
 
 export const roomsApi = {
