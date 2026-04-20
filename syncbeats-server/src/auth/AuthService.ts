@@ -141,7 +141,6 @@ export class AuthService {
 
   private getPublicAppUrl(): string {
     return process.env.AUTH_PUBLIC_APP_URL
-      || process.env.PUBLIC_APP_URL
       || process.env.FRONTEND_URL
       || 'http://localhost:3000';
   }
@@ -151,7 +150,7 @@ export class AuthService {
     const authAddress = process.env.AUTH_FROM_EMAIL;
     const from = authAddress ? `SYNCBEATS <${authAddress}>` : authAddress;
     if (!apiKey || !from) {
-      throw new Error('Email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.');
+      throw new Error('Email service is not configured. Set RESEND_API_KEY and AUTH_FROM_EMAIL.');
     }
 
     const response = await fetch('https://api.resend.com/emails', {
