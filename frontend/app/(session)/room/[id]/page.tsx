@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
@@ -77,9 +77,9 @@ export default function RoomPage() {
   }, [participants, myDeviceId, displayName]);
 
   // ── Orbit drag handler ───────────────────────────────────────────────────
-  const handlePositionChange = (deviceId: string, position: SpatialPosition) => {
+  const handlePositionChange = useCallback((deviceId: string, position: SpatialPosition) => {
     updatePosition(deviceId, position);
-  };
+  }, [updatePosition]);
 
   // Fallback spatial devices from participants if server doesn't send spatial events yet
   const effectiveDevices: DeviceSpatialState[] = useMemo(() => {

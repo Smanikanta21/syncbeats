@@ -240,7 +240,7 @@ const OrbitUI: React.FC<OrbitUIProps> = ({
     canvas.style.width = `${size}px`;
     canvas.style.height = `${size}px`;
     draw();
-  }, [size, draw]);
+  }, [size]); // Remove draw from dependencies so we don't reset canvas dims on every position update
 
   // ── Pointer events ───────────────────────────────────────────────────────
 
@@ -312,4 +312,4 @@ const OrbitUI: React.FC<OrbitUIProps> = ({
   );
 };
 
-export default OrbitUI;
+export default React.memo(OrbitUI);
