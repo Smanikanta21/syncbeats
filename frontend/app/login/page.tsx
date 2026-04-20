@@ -28,10 +28,13 @@ export default function AuthPage() {
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
   const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
-  const theme = localStorage.getItem('theme')
+  const [theme, setTheme] = useState<string | null>(null);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-
+    if (typeof window !== "undefined") {
+      setTheme(localStorage.getItem('theme'));
+    }
     const params = new URLSearchParams(window.location.search);
     const cameFromGoogle = document.referrer.includes("accounts.google.");
     const hasGoogleOAuthParams =

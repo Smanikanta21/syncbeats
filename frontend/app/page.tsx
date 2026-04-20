@@ -1,4 +1,5 @@
 "use client"
+import { useState, useEffect } from "react";
 import {Navbar} from "../components/Navbar";
 import { Hero } from "../components/Hero";
 import { HowItWorks } from "../components/HowItWorks";
@@ -8,7 +9,14 @@ import { Contact } from "../components/Contact";
 import { Footer } from "../components/Footer";
 
 export default function Home() {
-  const theme = localStorage.getItem('theme')
+  const [theme, setTheme] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setTheme(localStorage.getItem('theme'));
+    }
+  }, []);
+
   return (
     <div className="min-h-screen text-foreground selection:bg-accent-primary/30">
       {/* Global Ambient Background */}

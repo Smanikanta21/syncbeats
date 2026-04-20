@@ -45,7 +45,12 @@ export default function HubPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
-  const theme = localStorage.getItem('theme')
+  const [theme, setTheme] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setTheme(localStorage.getItem('theme'));
+    }
+  }, []);
 
   function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
     if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-foreground/70" />;
