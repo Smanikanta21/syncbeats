@@ -26,6 +26,11 @@ export interface TrackQueueItem {
   createdAt:  number;
 }
 
+export interface DeviceSpatialState {
+  deviceId: string;
+  position: { angle: number; radius: number; elevation: number; };
+}
+
 export interface RoomSnapshot {
   roomId:       string;
   trackUrl:     string | null;
@@ -35,4 +40,5 @@ export interface RoomSnapshot {
   timestamp:    number;      // server epoch when snapshot was taken
   participants: Participant[];
   queue:        TrackQueueItem[];
+  spatial:      DeviceSpatialState[];
 }

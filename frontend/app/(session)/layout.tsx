@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { DynamicIsland } from "../../components/DynamicIsland";
@@ -11,6 +11,8 @@ import { X, Camera } from "lucide-react";
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const isRoom = pathname?.includes("/room/");
   const [deviceName, setDeviceName] = useState("");
   const [saving, setSaving] = useState(false);
   const [showExistingFlow, setShowExistingFlow] = useState(false);
@@ -202,7 +204,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-      <div className="pt-32">{children}</div>
+      <div className={isRoom ? "h-[100dvh] overflow-hidden" : "pt-32"}>{children}</div>
     </UploadProvider>
   );
 }

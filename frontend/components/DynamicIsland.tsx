@@ -54,19 +54,24 @@ export function DynamicIsland() {
 
   // ── Interaction handlers ─────────────────────────────────────────────────
   const clearPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearHover = () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
 
+  // Medium+ screens: hover for 800ms to expand (gives time to click play/pause)
   const onMouseEnter = () => {
     if (!isRoom) return;
-    // Laptop: remove delay, expand instantly on hover
-    setExpanded(true);
+    clearHover();
+    hoverTimerRef.current = setTimeout(() => setExpanded(true), 800);
   };
   const onMouseLeave = () => {
-    // Laptop: smooth shrink on leave
+    clearHover();
     if (!upload.isUploading) setExpanded(false);
   };
+
+  // Small screens: tap to toggle expand (not hold — more natural on mobile)
   const onPointerDown = () => {
     if (!isRoom) return;
-    // Mobile: hold to expand
+    // Only set press timer on touch devices (not mouse)
     pressTimer.current = setTimeout(() => setExpanded(true), 400);
   };
   const onPointerUp = () => clearPress();
@@ -135,7 +140,7 @@ export function DynamicIsland() {
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
               <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
             </div>
-            <span className="text-base sm:text-lg font-black tracking-widest text-foreground group-hover:text-accent-primary transition-colors">
+            <span className="text-base sm:text-lg font-black tracking-widest text-foreground transition-opacity hover:opacity-80">
               SYNC<span className="text-foreground/50">BEATS</span>
             </span>
           </Link>
@@ -243,7 +248,7 @@ export function DynamicIsland() {
                   <p className="text-sm font-bold text-foreground/80 mb-2">Uploading to room… {upload.uploadProgress}%</p>
                   <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
                     <motion.div
-                      className="h-full bg-accent-primary rounded-full"
+                      className="h-full bg-foreground rounded-full"
                       style={{ width: `${upload.uploadProgress}%` }}
                       transition={{ ease: "linear" }}
                     />
@@ -372,7 +377,7 @@ export function DynamicIsland() {
                     className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden cursor-pointer group"
                   >
                     <div
-                      className="h-full bg-foreground group-hover:bg-accent-primary rounded-full transition-[width] duration-100"
+                      className="h-full bg-foreground/80 group-hover:bg-foreground rounded-full transition-[width] duration-100"
                       style={{ width: `${audio.progress * 100}%` }}
                     />
                   </div>
@@ -412,16 +417,19 @@ export function DynamicIsland() {
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
                 className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0">
+                <div 
+                  className="flex items-center gap-3 cursor-pointer group flex-1"
+                  onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                >
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors">
                     <Disc className={`w-4 h-4 text-foreground/40 ${audio.isPlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
-                    <p className="text-sm font-bold text-foreground leading-tight truncate">{audio.trackTitle}</p>
+                    <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
                     <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 shrink-0">
                   <button onClick={(e) => { e.stopPropagation(); handleSeek(Math.max(0, audio.currentTime - 10)); }}>
                     <SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" />
                   </button>

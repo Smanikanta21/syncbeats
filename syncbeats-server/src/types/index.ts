@@ -30,6 +30,18 @@ export interface RoomSnapshot {
   timestamp:    number;       // server epoch when snapshot was taken
   participants: Participant[];
   queue:        TrackQueueItem[];
+  spatial:      DeviceSpatialState[];
+}
+
+export interface SpatialPosition {
+  angle: number;
+  radius: number;
+  elevation: number;
+}
+
+export interface DeviceSpatialState {
+  deviceId: string;
+  position: SpatialPosition;
 }
 
 export interface JoinPayload  { roomId: string; displayName: string; }

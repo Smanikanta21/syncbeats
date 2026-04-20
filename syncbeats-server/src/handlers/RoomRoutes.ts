@@ -5,11 +5,12 @@ import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
+import { Server } from 'socket.io';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
 
-export function createRoomRoutes(roomManager: RoomManager): Router {
+export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
 
   // GET /rooms/mine
@@ -102,6 +103,37 @@ export function createRoomRoutes(roomManager: RoomManager): Router {
       res.json({ ok: true, roomId, newHostEmail: target.email });
     } catch (err) {
       console.error('[Rooms] host transfer error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // DELETE /rooms/:roomId/queue/:itemId
+  router.delete('/:roomId/queue/:itemId', async (req, res) => {
+    try {
+      const { roomId, itemId } = req.params;
+      console.log(`[Rooms] Request to remove queue item. Room: ${roomId}, Item: ${itemId}`);
+      const success = await repo.removeQueueItem(roomId, itemId);
+      
+      if (!success) {
+        console.error(`[Rooms] removeQueueItem failed for room ${roomId}, item ${itemId}`);
+        res.status(400).json({ error: 'Failed to remove queue item. It may be currently playing or not exist.' });
+        return;
+      }
+
+      // Re-fetch queue and broadcast to room
+      const latestQueue = await repo.getQueue(roomId);
+      const room = roomManager.get(roomId);
+      if (room) {
+        // Find current ID
+        const currentItem = latestQueue.find(i => i.isCurrent);
+        room.syncQueue(latestQueue, currentItem?.id ?? null);
+        io.to(roomId).emit('room:queueSynced', latestQueue);
+      }
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Rooms] remove queue item error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }

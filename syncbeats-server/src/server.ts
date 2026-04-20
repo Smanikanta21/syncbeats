@@ -102,7 +102,7 @@ export class SyncBeatsServer {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
     this.app.use('/auth',    createAuthRoutes());
-    this.app.use('/rooms',   createRoomRoutes(this.roomManager));
+    this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/rooms',   createUploadRoutes(this.roomManager, baseUrl));
     this.app.use('/devices', createDeviceRoutes());
   }
