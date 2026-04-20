@@ -138,6 +138,7 @@ export class SocketHandler {
     socket.on('playback:ended', async ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
+      if (room.snapshot().hostId !== socket.id) return;
       if (room.getTrackUrl() !== trackUrl) return;
 
       try {
@@ -181,6 +182,17 @@ export class SocketHandler {
     socket.on('sync:ping', ({ t0 }: PingPayload) => {
       const { t1, t2 } = this.syncEngine.recordPing(socket.id, t0);
       socket.emit('sync:pong', { t0, t1, t2 });
+    });
+
+    // ── Spatial Audio Sync ───────────────────────────────────────────────
+
+    socket.on('spatial:update', ({ roomId, deviceId, position }: { roomId: string; deviceId: string; position: any }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      room.setSpatialPosition(deviceId, position);
+      
+      // Broadcast to everyone else in the room (excludes the sender)
+      socket.to(roomId).emit('spatial:update', { deviceId, position });
     });
 
     // ── Disconnect ───────────────────────────────────────────────────────

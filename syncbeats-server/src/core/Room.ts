@@ -4,7 +4,7 @@
 
 import { EventEmitter }  from 'events';
 import { PlaybackState } from './PlaybackState';
-import { Participant, RoomSnapshot, TrackQueueItem } from '../types';
+import { Participant, RoomSnapshot, TrackQueueItem, SpatialPosition } from '../types';
 
 export class Room extends EventEmitter {
   private state:        PlaybackState          = PlaybackState.IDLE;
@@ -13,6 +13,7 @@ export class Room extends EventEmitter {
   private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
   private queue:        TrackQueueItem[]       = [];
+  private spatial:      Map<string, SpatialPosition> = new Map();
   private snapshotTime: number                 = Date.now();
 
   constructor(public readonly roomId: string) {
@@ -157,8 +158,18 @@ export class Room extends EventEmitter {
   getQueue(): TrackQueueItem[]  { return this.queueSnapshot(); }
 
   computeCurrentPosition(): number {
+    if (!this.trackUrl) return 0;
     if (this.state !== PlaybackState.PLAYING) return this.position;
-    return this.position + (Date.now() - this.snapshotTime);
+    const elapsed = Date.now() - this.snapshotTime;
+    return this.position + elapsed;
+  }
+
+  setSpatialPosition(deviceId: string, position: SpatialPosition): void {
+    this.spatial.set(deviceId, position);
+  }
+
+  removeSpatialPosition(deviceId: string): void {
+    this.spatial.delete(deviceId);
   }
 
   snapshot(): RoomSnapshot {
@@ -171,6 +182,7 @@ export class Room extends EventEmitter {
       timestamp:    Date.now(),
       participants: Array.from(this.participants.values()),
       queue:        this.queueSnapshot(),
+      spatial:      Array.from(this.spatial.entries()).map(([deviceId, position]) => ({ deviceId, position })),
     };
   }
 

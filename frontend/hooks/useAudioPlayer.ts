@@ -59,6 +59,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [audioEl] = useState<HTMLAudioElement | null>(() => {
     if (typeof window !== "undefined") {
       const a = new Audio();
+      a.crossOrigin = "anonymous";
       a.preload = "auto";
       return a;
     }

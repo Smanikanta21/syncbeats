@@ -258,6 +258,14 @@ export class RoomRepository {
     return result.count > 0;
   }
 
+  async removeQueueItem(roomId: string, itemId: string): Promise<boolean> {
+    const item = await prisma.roomQueueItem.findUnique({ where: { id: itemId } });
+    if (!item || item.roomId !== roomId || item.isCurrent) return false;
+
+    await prisma.roomQueueItem.delete({ where: { id: itemId } });
+    return true;
+  }
+
   async getParticipants(roomId: string): Promise<Participant[]> {
     const participants = await prisma.roomParticipant.findMany({
       where: { roomId, leftAt: null }

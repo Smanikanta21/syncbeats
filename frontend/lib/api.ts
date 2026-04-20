@@ -1,4 +1,5 @@
 // lib/api.ts — Typed fetch wrapper for all SyncBeats API calls
+import type { RoomSnapshot } from './types';
 
 export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
@@ -209,19 +210,9 @@ export interface DeviceUpdateResponse {
 export interface DeviceReplaceResponse {
   device: Device;
 }
-
 export interface RoomDetailsResponse {
   db: RoomRecord | null;
-  live: {
-    roomId: string;
-    trackUrl: string | null;
-    position: number;
-    state: string;
-    hostId: string | null;
-    timestamp: number;
-    participants: Participant[];
-    queue: TrackQueueItem[];
-  } | null;
+  live: RoomSnapshot | null;
   participants: Participant[];
   queue: TrackQueueItem[];
 }

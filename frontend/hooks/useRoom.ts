@@ -4,7 +4,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { getSocket }            from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
-import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem } from '../lib/types';
+import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState } from '../lib/types';
 import { useAudio }             from '../context/AudioContext';
 
 interface UseRoomOptions {
@@ -31,7 +31,7 @@ const PING_INTERVAL_MS        = 2_000;  // ping every 2s for faster offset conve
 const NTP_WINDOW              = 8;      // keep 8 samples for a more stable median
 const DRIFT_CHECK_INTERVAL_MS = 250;   // check drift every 250ms
 const DRIFT_HARD_SEEK_MS      = 1_500; // hard-seek if drift > 1.5s
-const DRIFT_DEADBAND_MS       = 25;    // ignore drift < 25ms (inaudible)
+const DRIFT_DEADBAND_MS       = 45;    // ignore drift < 45ms (very hard to hear, but prevents rate-oscillation on 4G/WiFi)
 const BURST_PING_COUNT        = 3;     // rapid pings on connect to warm up NTP fast
 const BURST_PING_INTERVAL_MS  = 120;   // 120ms between burst pings
 
@@ -76,6 +76,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         timestamp:    details.live.timestamp,
         participants: details.live.participants as Participant[],
         queue:        details.live.queue as TrackQueueItem[],
+        spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
       });
       setParticipants(details.live.participants as Participant[]);
       const currentParticipant = details.live.participants.find(p => p.socketId === currentSocketIdRef.current);
@@ -102,6 +103,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         timestamp:    Date.now(),
         participants: details.participants.map(p => ({ ...p, isReady: false })),
         queue:        details.queue as TrackQueueItem[],
+        spatial:      [],
       });
       setParticipants(details.participants.map(p => ({ ...p, isReady: false })));
     }
@@ -149,7 +151,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       // Only change rate after 2 consecutive drift observations (~500ms).
       // This prevents a single noisy NTP sample from causing an audible rate glitch.
       driftStreak.current++;
-      if (driftStreak.current >= 2) {
+      if (driftStreak.current >= 3) {
         // Proportional rate: 25ms→2%, 100ms→3%, 500ms→7%, ≥800ms→10%
         const nudge = Math.min(0.10, 0.02 + (driftMs / 10000));
         const targetRate = signedDrift > 0 ? 1.0 - nudge : 1.0 + nudge;
@@ -268,7 +270,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         if (cancelled) return;
         applyRoomDetails(details);
 
-        const initialSnap = details.live
+        const initialSnap: RoomSnapshot | null = details.live
           ? {
               roomId: details.live.roomId,
               trackUrl: details.live.trackUrl,
@@ -278,6 +280,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
               timestamp: details.live.timestamp,
               participants: details.live.participants as Participant[],
               queue: details.live.queue as TrackQueueItem[],
+              spatial: (details.live.spatial as DeviceSpatialState[]) || [],
             }
           : details.db
             ? {
@@ -289,6 +292,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
                 timestamp: Date.now(),
                 participants: details.participants.map(p => ({ ...p, isReady: false })),
                 queue: details.queue as TrackQueueItem[],
+                spatial: [],
               }
             : null;
 
