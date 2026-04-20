@@ -1,4 +1,5 @@
-import { Navbar } from "../components/Navbar";
+"use client"
+import {Navbar} from "../components/Navbar";
 import { Hero } from "../components/Hero";
 import { HowItWorks } from "../components/HowItWorks";
 import { Features } from "../components/Features";
@@ -7,10 +8,11 @@ import { Contact } from "../components/Contact";
 import { Footer } from "../components/Footer";
 
 export default function Home() {
+  const theme = localStorage.getItem('theme')
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-accent-primary/30 selection:text-white">
+    <div className="min-h-screen text-foreground selection:bg-accent-primary/30">
       {/* Global Ambient Background */}
-      <div className="mesh-bg" />
+      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
       
       <Navbar />
       <main className="relative z-10 flex flex-col pb-20">

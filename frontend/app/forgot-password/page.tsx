@@ -81,9 +81,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-black/40 p-8">
-        <h1 className="text-2xl font-bold text-zinc-100">Forgot Password</h1>
-        <p className="mt-2 text-sm text-zinc-400">
+      <div className="w-full max-w-md rounded-3xl border border-foreground/10 bg-background/40 p-8">
+        <h1 className="text-2xl font-bold text-foreground">Forgot Password</h1>
+        <p className="mt-2 text-sm text-foreground/60">
           {!otpSent
             ? "Enter your account email and we will send an OTP."
             : "Enter the OTP from email and set your new password."}
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@email.com"
-              className="w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 disabled:opacity-70"
+              className="w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 disabled:opacity-70"
             />
 
             {otpSent && (
@@ -127,13 +127,13 @@ export default function ForgotPasswordPage() {
                       setOtpVerified(false);
                     }}
                     placeholder="Enter 6-digit OTP"
-                    className={`flex-1 rounded-xl border bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${otpError ? "border-red-500/70" : "border-white/10"}`}
+                    className={`flex-1 rounded-xl border bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${otpError ? "border-red-500/70" : "border-foreground/10"}`}
                   />
                   <button
                     type="button"
                     onClick={verifyOtp}
                     disabled={verifyingOtp || otp.trim().length !== 6}
-                    className="rounded-xl border border-white/15 px-4 py-3 text-sm font-semibold text-zinc-100 hover:border-white/40 disabled:opacity-60"
+                    className="rounded-xl border border-white/15 px-4 py-3 text-sm font-semibold text-foreground hover:border-white/40 disabled:opacity-60"
                   >
                     {verifyingOtp ? "Checking..." : otpVerified ? "Verified" : "Verify"}
                   </button>
@@ -147,7 +147,7 @@ export default function ForgotPasswordPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="New password (min 8 characters)"
-                  className={`w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
                 <input
                   type="password"
@@ -157,7 +157,7 @@ export default function ForgotPasswordPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Confirm new password"
-                  className={`w-full rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-zinc-100 outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
               </>
             )}
@@ -169,7 +169,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading || (otpSent && !otpVerified)}
-              className="w-full rounded-xl bg-zinc-100 px-4 py-3 font-semibold text-black disabled:opacity-60"
+              className="w-full rounded-xl bg-zinc-100 px-4 py-3 font-semibold text-background disabled:opacity-60"
             >
               {loading ? "Processing..." : otpSent ? "Change Password" : "Send OTP"}
             </button>
@@ -194,7 +194,7 @@ export default function ForgotPasswordPage() {
                     setLoading(false);
                   }
                 }}
-                className="w-full rounded-xl border border-white/10 px-4 py-3 font-semibold text-zinc-200 hover:border-white/30 disabled:opacity-60"
+                className="w-full rounded-xl border border-foreground/10 px-4 py-3 font-semibold text-foreground hover:border-white/30 disabled:opacity-60"
               >
                 Resend OTP
               </button>
@@ -202,8 +202,8 @@ export default function ForgotPasswordPage() {
           </form>
         )}
 
-        <p className="mt-6 text-sm text-zinc-400">
-          <Link href="/login" className="text-zinc-200 hover:text-white">
+        <p className="mt-6 text-sm text-foreground/60">
+          <Link href="/login" className="text-foreground hover:text-foreground">
             Back to login
           </Link>
         </p>

@@ -50,15 +50,46 @@ export class SyncBeatsServer {
     }));
     this.app.use(express.json());
 
-    // Serve uploaded audio files as static assets
+    // Serve uploaded audio files with proper HTTP byte-range streaming.
+    // express.static advertises Accept-Ranges but doesn't implement partial content
+    // (206) responses — which browsers require for audio seeking and mid-file joins.
+    // Without this, 3 devices all buffering simultaneously stall each other.
     const uploadsDir = path.resolve(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    this.app.use('/files', express.static(uploadsDir, {
-      setHeaders: (res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Accept-Ranges', 'bytes'); // needed for audio seeking
-      },
-    }));
+
+    this.app.get('/files/:filename', (req, res) => {
+      const filename = path.basename(req.params.filename); // sanitise path traversal
+      const filePath = path.join(uploadsDir, filename);
+
+      if (!fs.existsSync(filePath)) { res.status(404).end(); return; }
+
+      const stat = fs.statSync(filePath);
+      const total = stat.size;
+      const rangeHeader = req.headers['range'];
+
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', 'audio/mpeg');
+
+      if (rangeHeader) {
+        // Parse e.g. "bytes=1048576-2097151"
+        const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
+        const start = parseInt(startStr, 10);
+        const end   = endStr ? parseInt(endStr, 10) : Math.min(start + 1_048_576, total - 1); // 1 MB chunks
+        const chunkSize = end - start + 1;
+
+        res.writeHead(206, {
+          'Content-Range':  `bytes ${start}-${end}/${total}`,
+          'Content-Length': chunkSize,
+        });
+
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+      } else {
+        // Full file request (first load / small files)
+        res.writeHead(200, { 'Content-Length': total });
+        fs.createReadStream(filePath).pipe(res);
+      }
+    });
   }
 
   private setupRoutes(): void {
@@ -126,11 +157,11 @@ export class SyncBeatsServer {
 
   start(): void {
     this.httpServer.listen(PORT, () => {
-      console.log(`\n🎵 SyncBeats server running on port ${PORT}`);
-      console.log(`   Health:  http://localhost:${PORT}/health`);
-      console.log(`   Auth:    http://localhost:${PORT}/auth`);
-      console.log(`   Rooms:   http://localhost:${PORT}/rooms`);
-      console.log(`   Files:   http://localhost:${PORT}/files\n`);
+      console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.app/api' : `
+        
+        |-----------------------------|
+        | 'http://localhost:${PORT}'
+        |-----------------------------|`}`);
     });
   }
 }

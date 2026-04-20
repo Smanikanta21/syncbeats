@@ -27,9 +27,13 @@ interface UseRoomReturn {
   leave:        () => void;
 }
 
-const PING_INTERVAL_MS = 5_000;
-const NTP_WINDOW       = 5;
-const DRIFT_CHECK_INTERVAL_MS = 500;
+const PING_INTERVAL_MS        = 2_000;  // ping every 2s for faster offset convergence
+const NTP_WINDOW              = 8;      // keep 8 samples for a more stable median
+const DRIFT_CHECK_INTERVAL_MS = 250;   // check drift every 250ms
+const DRIFT_HARD_SEEK_MS      = 1_500; // hard-seek if drift > 1.5s
+const DRIFT_DEADBAND_MS       = 25;    // ignore drift < 25ms (inaudible)
+const BURST_PING_COUNT        = 3;     // rapid pings on connect to warm up NTP fast
+const BURST_PING_INTERVAL_MS  = 120;   // 120ms between burst pings
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
@@ -48,6 +52,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
   const clockOffsetRef = useRef(clockOffset);
   useEffect(() => { clockOffsetRef.current = clockOffset; }, [clockOffset]);
+  const hasClockSync = useRef(false); // true after first NTP pong
+  const driftStreak  = useRef(0);     // consecutive checks with drift > deadband
   const driftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSocketIdRef = useRef<string | null>(currentSocketId);
   useEffect(() => { currentSocketIdRef.current = currentSocketId; }, [currentSocketId]);
@@ -103,8 +109,20 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
   const sendPing = useCallback(() => socket.emit('sync:ping', { t0: Date.now() }), [socket]);
 
+  // Fire BURST_PING_COUNT rapid pings on connect so NTP warms up in ~360ms
+  // instead of waiting up to 2000ms for the first regular interval ping.
+  const burstPing = useCallback(() => {
+    for (let i = 0; i < BURST_PING_COUNT; i++) {
+      setTimeout(() => socket.emit('sync:ping', { t0: Date.now() }), i * BURST_PING_INTERVAL_MS);
+    }
+  }, [socket]);
+
   const enforceAudioState = useCallback((snap: RoomSnapshot) => {
     const a = audioRef.current;
+
+    // Don't correct until NTP has warmed up — avoids a wrong hard-seek on join.
+    if (!hasClockSync.current) return;
+
     if (!snap.trackUrl) {
       if (a.hasTrack) a.setTrack('', '', '');
       a.pause();
@@ -116,19 +134,35 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       : snap.position;
 
     const expectedSec = Math.max(0, expectedPositionMs / 1000);
-    const actualSec = a.currentTime;
-    const driftMs = Math.abs(actualSec - expectedSec) * 1000;
+    const actualSec   = a.currentTime;
+    const signedDrift = (actualSec - expectedSec) * 1000; // +ve = ahead, -ve = behind
+    const driftMs     = Math.abs(signedDrift);
 
-    if (driftMs > 2000) {
-      console.log(`[Sync] Hard seek to correct huge drift: ${driftMs.toFixed(0)}ms`);
+    if (driftMs > DRIFT_HARD_SEEK_MS) {
+      // Drift too large to recover — snap immediately.
+      console.log(`[Sync] Hard seek: ${driftMs.toFixed(0)}ms drift`);
       a.seek(expectedSec);
       if (a.audioEl) a.audioEl.playbackRate = 1.0;
-    } else if (driftMs > 100 && a.audioEl && snap.state === PlaybackState.PLAYING) {
-      // Dynamically adjust playback rate by 5% to natively catch up without glitching
-      a.audioEl.playbackRate = actualSec < expectedSec ? 1.05 : 0.95;
-    } else if (a.audioEl && a.audioEl.playbackRate !== 1.0) {
-      // Tight sync achieved, restore normal real-time playback
-      a.audioEl.playbackRate = 1.0;
+      driftStreak.current = 0;
+
+    } else if (driftMs > DRIFT_DEADBAND_MS && a.audioEl && snap.state === PlaybackState.PLAYING) {
+      // Only change rate after 2 consecutive drift observations (~500ms).
+      // This prevents a single noisy NTP sample from causing an audible rate glitch.
+      driftStreak.current++;
+      if (driftStreak.current >= 2) {
+        // Proportional rate: 25ms→2%, 100ms→3%, 500ms→7%, ≥800ms→10%
+        const nudge = Math.min(0.10, 0.02 + (driftMs / 10000));
+        const targetRate = signedDrift > 0 ? 1.0 - nudge : 1.0 + nudge;
+        // Only write playbackRate if change is > 0.5% — avoids micro-oscillation artifacts
+        if (Math.abs((a.audioEl.playbackRate ?? 1.0) - targetRate) > 0.005) {
+          a.audioEl.playbackRate = targetRate;
+        }
+      }
+
+    } else {
+      // In deadband — reset streak and restore 1× rate
+      driftStreak.current = 0;
+      if (a.audioEl && a.audioEl.playbackRate !== 1.0) a.audioEl.playbackRate = 1.0;
     }
 
     if (snap.state === PlaybackState.PLAYING && !a.isPlaying) a.play();
@@ -140,7 +174,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
     const joinRoom = () => {
       socket.emit('room:join', { roomId, displayName });
-      sendPing();
+      // Burst pings to converge NTP offset in ~360ms instead of waiting 2s
+      burstPing();
     };
 
     const handleConnect    = () => {
@@ -212,7 +247,15 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const offset = ((t1 - t0) + (t2 - t3)) / 2;
       offsetHistory.current.push(offset);
       if (offsetHistory.current.length > NTP_WINDOW) offsetHistory.current.shift();
-      setClockOffset(medianOffset(offsetHistory.current));
+      const computed = medianOffset(offsetHistory.current);
+      setClockOffset(computed);
+      // Mark clock as synced after first pong
+      if (!hasClockSync.current) {
+        hasClockSync.current = true;
+        // Immediately run a sync check now that we have an offset
+        const snap = snapshotRef.current;
+        if (snap) enforceAudioState(snap);
+      }
     };
     socket.on('sync:pong', handlePong);
 
@@ -283,7 +326,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       socket.off('sync:pong',            handlePong);
       socket.off('error',                handleError);
     };
-  }, [applyRoomDetails, roomId, displayName, socket, sendPing, enforceAudioState]);
+  }, [applyRoomDetails, roomId, displayName, socket, sendPing, burstPing, enforceAudioState]);
 
   useEffect(() => {
     const audioEl = audioRef.current.audioEl;
