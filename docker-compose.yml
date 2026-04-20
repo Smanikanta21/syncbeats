@@ -9,10 +9,12 @@ services:
     environment:
       PORT: ${PORT:-4000}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      AUTH_PUBLIC_APP_URL: ${AUTH_PUBLIC_APP_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       # Neon pooled connection string (runtime queries)
       DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
       RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY}
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL:?Set AUTH_FROM_EMAIL}
       CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL:?Set CAMPAIGN_FROM_EMAIL}
