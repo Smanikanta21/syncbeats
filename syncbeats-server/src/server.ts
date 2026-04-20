@@ -75,7 +75,10 @@ export class SyncBeatsServer {
         // Parse e.g. "bytes=1048576-2097151"
         const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
         const start = parseInt(startStr, 10);
-        const end   = endStr ? parseInt(endStr, 10) : Math.min(start + 1_048_576, total - 1); // 1 MB chunks
+        // Instead of capping at 1MB chunks, we stream the rest of the file.
+        // This stops the browser from making dozens of mid-song HTTP requests
+        // which completely freezes the dev server when 3+ phones do it at once. 
+        const end   = endStr ? parseInt(endStr, 10) : total - 1;
         const chunkSize = end - start + 1;
 
         res.writeHead(206, {
