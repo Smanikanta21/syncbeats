@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { DynamicIsland } from "../../components/DynamicIsland";
 import { devicesApi, type Device } from "../../lib/api";
+import { X, Camera } from "lucide-react";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
@@ -98,7 +99,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-white/10 border-t-white/60 animate-spin" />
+        <div className="w-8 h-8 rounded-full border-2 border-foreground/10 border-t-white/60 animate-spin" />
       </div>
     );
   }
@@ -109,7 +110,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     <UploadProvider>
       <DynamicIsland />
       {isLocalUnverified && (
-        <div className="fixed top-20 left-1/2 z-50 w-[min(92vw,720px)] -translate-x-1/2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+        <div className="fixed top-24 left-1/2 z-50 w-[min(92vw,720px)] -translate-x-1/2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-amber-100">
               Your email is not verified yet. Please verify to secure your account and keep full access.
@@ -118,7 +119,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
               type="button"
               onClick={handleResendVerification}
               disabled={resendingVerification}
-              className="h-9 rounded-lg bg-amber-200 px-3 text-sm font-semibold text-black hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-9 rounded-lg bg-amber-200 px-3 text-sm font-semibold text-background hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {resendingVerification ? "Sending..." : "Resend verification"}
             </button>
@@ -128,12 +129,12 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
       {needsDeviceRename && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
-          <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">
-              <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500">Device setup</p>
-              <h2 className="mt-2 text-2xl font-black text-zinc-100">Select your device</h2>
-              <p className="mt-2 text-sm text-zinc-500">This login is not registered in our device database yet. Pick the device type or enter a custom name.</p>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device setup</p>
+              <h2 className="mt-2 text-2xl font-black text-foreground">Select your device</h2>
+              <p className="mt-2 text-sm text-foreground/50">This login is not registered in our device database yet. Pick the device type or enter a custom name.</p>
             </div>
             {!showExistingFlow ? (
               <form className="space-y-4" onSubmit={handleRename}>
@@ -143,7 +144,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                       key={option}
                       type="button"
                       onClick={() => setDeviceName(buildSuggestedName(option))}
-                      className="h-10 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-zinc-200 transition-colors hover:border-white/30 hover:bg-white/10"
+                      className="h-10 rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                     >
                       {option}
                     </button>
@@ -153,12 +154,12 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                   autoFocus
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                  className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
                   placeholder="Abhinay's iPhone"
                 />
                 <button
                   disabled={saving || !deviceName.trim()}
-                  className="h-12 w-full rounded-2xl bg-zinc-100 font-bold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-12 w-full rounded-2xl bg-foreground font-bold text-background transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : "Save and continue"}
                 </button>
@@ -166,7 +167,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                   <button
                     type="button"
                     onClick={() => setShowExistingFlow(true)}
-                    className="h-11 w-full rounded-2xl border border-white/10 bg-white/5 font-semibold text-zinc-200 transition-colors hover:border-white/30 hover:bg-white/10"
+                    className="h-11 w-full rounded-2xl border border-foreground/10 bg-foreground/5 font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                   >
                     This device already exists?
                   </button>
@@ -174,7 +175,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
               </form>
             ) : (
               <div className="space-y-4">
-                <p className="text-sm text-zinc-400">Choose your existing device to replace this newly detected one.</p>
+                <p className="text-sm text-foreground/60">Choose your existing device to replace this newly detected one.</p>
                 <div className="max-h-64 space-y-2 overflow-auto pr-1">
                   {replacementCandidates.map((saved) => (
                     <button
@@ -182,17 +183,17 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                       type="button"
                       onClick={() => handleReplaceDevice(saved.id)}
                       disabled={!!replacingDeviceId}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-zinc-100 transition-colors hover:border-white/30 hover:bg-white/10 disabled:opacity-60"
+                      className="w-full rounded-xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-left text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10 disabled:opacity-60"
                     >
                       <p className="font-semibold">{saved.name}</p>
-                      <p className="text-xs text-zinc-500 mt-1">Last seen {new Date(saved.last_seen_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-foreground/50 mt-1">Last seen {new Date(saved.last_seen_at).toLocaleDateString()}</p>
                     </button>
                   ))}
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowExistingFlow(false)}
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/5 font-semibold text-zinc-200 transition-colors hover:border-white/30 hover:bg-white/10"
+                  className="h-11 w-full rounded-2xl border border-foreground/10 bg-foreground/5 font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                 >
                   Back
                 </button>

@@ -38,13 +38,13 @@ export function Features() {
           className="text-center mb-12 sm:mb-20 relative px-2 sm:px-0"
         >
           {/* Subtle silver glow behind Section Title */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 sm:w-64 h-32 bg-white/5 blur-[50px] rounded-full pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 sm:w-64 h-32 bg-foreground/5 blur-[50px] rounded-full pointer-events-none" />
           
-          <h2 className="text-3xl sm:text-4xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tighter relative z-10 text-zinc-300 leading-tight">
+          <h2 className="text-3xl sm:text-4xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tighter relative z-10 text-foreground leading-tight">
             Everything you need for the <br className="hidden md:block" />
-            <span className="text-zinc-400">Perfect Party</span>
+            <span className="text-foreground/70">Perfect Party</span>
           </h2>
-          <p className="text-zinc-500 max-w-2xl mx-auto text-base sm:text-xl relative z-10">
+          <p className="text-foreground/50 max-w-2xl mx-auto text-base sm:text-xl relative z-10">
             Engineered to turn any group of friends into a synced soundsystem.
           </p>
         </motion.div>
@@ -57,7 +57,7 @@ export function Features() {
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 relative"
         >
           {/* Ambient floor glow underneath the grid - subtle silver */}
-          <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-4/5 h-48 bg-white/5 blur-[80px] pointer-events-none rounded-full" />
+          <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-4/5 h-48 bg-foreground/5 blur-[80px] pointer-events-none rounded-full" />
 
           {FEATURES.map((feature, i) => (
             <motion.div
@@ -67,22 +67,22 @@ export function Features() {
               className="group relative p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col items-start gap-4 sm:gap-6 cursor-pointer overflow-hidden glass-panel transition-all duration-300 z-10"
             >
               {/* Massive hover glow UNDERNEATH the border inside the card - subtle silver */}
-              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/[0.03] transition-all duration-500 pointer-events-none" />
+              <div className="absolute inset-0 bg-transparent group-hover:bg-foreground/5 transition-all duration-500 pointer-events-none" />
               
               {/* Outer bottom glow that emits outside the card on hover - minute silver */}
-              <div className="absolute -inset-1 bg-white/[0.03] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10 rounded-[2.5rem]" />
+              <div className="absolute -inset-1 bg-foreground/5 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10 rounded-[2.5rem]" />
 
               <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0">
-                <ArrowUpRight className="w-6 h-6 text-zinc-300" />
+                <ArrowUpRight className="w-6 h-6 text-foreground/70" />
               </div>
               
-              <div className="p-3 sm:p-4 bg-zinc-800/50 text-zinc-300 rounded-xl sm:rounded-2xl group-hover:scale-110 group-hover:bg-white/10 shadow-[0_0_10px_rgba(255,255,255,0)] group-hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all duration-300 relative z-10">
+              <div className="p-3 sm:p-4 bg-background text-foreground/80 rounded-xl sm:rounded-2xl group-hover:scale-110 group-hover:bg-foreground/5 shadow-md transition-all duration-300 relative z-10 border border-foreground/5">
                 {feature.icon}
               </div>
               
               <div className="relative z-10">
-                <h4 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 text-zinc-200 tracking-tight">{feature.title}</h4>
-                <p className="text-sm sm:text-base text-zinc-500 leading-relaxed group-hover:text-zinc-400 transition-colors">{feature.desc}</p>
+                <h4 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 text-foreground tracking-tight">{feature.title}</h4>
+                <p className="text-sm sm:text-base text-foreground/60 leading-relaxed group-hover:text-foreground/80 transition-colors">{feature.desc}</p>
               </div>
             </motion.div>
           ))}

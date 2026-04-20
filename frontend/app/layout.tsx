@@ -48,6 +48,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { ThemeProvider } from "../context/ThemeProvider";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -57,9 +59,16 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
-        <AuthProvider><AudioProvider>{children}</AudioProvider></AuthProvider>
+      <body className="min-h-full flex flex-col transition-colors duration-300">
+        <ThemeProvider>
+          <AuthProvider>
+            <AudioProvider>
+              {children}
+            </AudioProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

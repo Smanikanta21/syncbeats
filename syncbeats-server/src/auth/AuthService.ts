@@ -148,7 +148,7 @@ export class AuthService {
 
   private async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
-    const authAddress = process.env.AUTH_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
+    const authAddress = process.env.AUTH_FROM_EMAIL;
     const from = authAddress ? `SYNCBEATS <${authAddress}>` : authAddress;
     if (!apiKey || !from) {
       throw new Error('Email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.');

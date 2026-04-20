@@ -24,8 +24,8 @@ function getPlatformLabel(userAgent: string | null): string {
 export default function HubPage() {
   const router = useRouter();
   const { device: currentDevice } = useAuth();
-  const [joinCode,    setJoinCode]    = useState("");
-  const [isHosting,   setIsHosting]   = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [roomMenu, setRoomMenu] = useState<{ room: RecentRoom; x: number; y: number } | null>(null);
@@ -45,10 +45,11 @@ export default function HubPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
+  const theme = localStorage.getItem('theme')
 
   function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
-    if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-zinc-300" />;
-    return <Laptop className="w-4 h-4 text-zinc-300" />;
+    if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-foreground/70" />;
+    return <Laptop className="w-4 h-4 text-foreground/70" />;
   }
 
   const roomLink = roomInfo && typeof window !== "undefined"
@@ -64,11 +65,11 @@ export default function HubPage() {
   useEffect(() => {
     roomsApi.mine()
       .then(({ rooms }) => setRecentRooms(rooms as RecentRoom[]))
-      .catch(() => {}); // not critical if it fails
+      .catch(() => { }); // not critical if it fails
 
     devicesApi.mine()
       .then(({ devices }) => setDevices(devices))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -289,28 +290,26 @@ export default function HubPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
+    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 bg-background text-foreground transition-colors duration-300">
       {/* Background ambient lighting */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl h-[600px] bg-white/[0.015] blur-[150px] rounded-full pointer-events-none -z-10" />
-
-
+      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
 
       {/* Main Hub Content */}
-      <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20">
-        
+      <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20 pt-10">
+
         <div className="text-center mb-16">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-5xl font-black mb-4 text-zinc-200"
+            className="text-4xl md:text-5xl font-black mb-4 text-foreground"
           >
             What&apos;s the move?
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="text-zinc-500 text-lg font-medium tracking-wide"
+            className="text-foreground/50 text-lg font-medium tracking-wide"
           >
             Start a new session to broadcast audio, or join a friend&apos;s room.
           </motion.p>
@@ -318,30 +317,28 @@ export default function HubPage() {
 
         {/* The Action Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mx-auto relative z-10">
-          
+
           {/* HOST CARD */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
             whileHover={{ y: -5 }}
-            className="glass-panel p-8 rounded-[2.5rem] border border-white/5 bg-black/60 shadow-[0_20px_40px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_60px_rgba(255,255,255,0.02)] transition-all group flex flex-col items-center text-center relative overflow-hidden"
+            className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 w-64 h-64 bg-white/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-white/10 transition-colors duration-1000" />
-            
-            <div className="w-20 h-20 rounded-[1.5rem] bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-white/10 transition-all duration-300">
-              <Plus className="w-10 h-10 text-zinc-200" />
+            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+              <Plus className="w-10 h-10 text-foreground" />
             </div>
-            
-            <h3 className="text-2xl font-bold text-zinc-200 mb-3">Host a Session</h3>
-            <p className="text-zinc-500 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
+
+            <h3 className="text-2xl font-bold text-foreground mb-3">Host a Session</h3>
+            <p className="text-foreground/50 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
               Create a massive synchronized room. You&apos;ll control the playlist, volume, and playback.
             </p>
-            
-            <button 
+
+            <button
               onClick={handleHost}
               disabled={isHosting}
-              className="mt-auto w-full h-14 rounded-2xl bg-zinc-200 text-black font-bold text-lg hover:bg-white transition-all overflow-hidden relative shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
+              className="mt-auto w-full h-14 rounded-2xl bg-foreground text-background font-black text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg disabled:opacity-60"
             >
               {isHosting ? "Creating Room…" : "Start Session"}
             </button>
@@ -353,32 +350,30 @@ export default function HubPage() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
             whileHover={{ y: -5 }}
-            className="glass-panel p-8 rounded-[2.5rem] border border-white/5 bg-black/60 shadow-[0_20px_40px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_60px_rgba(255,255,255,0.02)] transition-all group flex flex-col items-center text-center relative overflow-hidden"
+            className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-white/10 transition-colors duration-1000" />
-            
-            <div className="w-20 h-20 rounded-[1.5rem] bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-white/10 transition-all duration-300">
-              <Search className="w-10 h-10 text-zinc-200" />
+            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+              <Search className="w-10 h-10 text-foreground" />
             </div>
-            
-            <h3 className="text-2xl font-bold text-zinc-200 mb-3">Join a Session</h3>
-            <p className="text-zinc-500 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
+
+            <h3 className="text-2xl font-bold text-foreground mb-3">Join a Session</h3>
+            <p className="text-foreground/50 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
               Already have a code? Punch it in below to instantly sync your audio to the host.
             </p>
-            
+
             <form onSubmit={handleJoin} className="mt-auto w-full relative">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 maxLength={6}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                className="w-full bg-white/5 border border-white/10 hover:border-white/20 focus:border-white/40 rounded-2xl pl-6 pr-16 py-4 text-zinc-200 font-bold tracking-[0.2em] text-center focus:outline-none focus:ring-1 focus:ring-white/40 transition-all placeholder:text-zinc-600 placeholder:tracking-normal placeholder:font-medium"
+                className="w-full bg-foreground/5 border border-foreground/10 hover:border-foreground/20 focus:border-accent-primary/40 rounded-2xl pl-6 pr-16 py-4 text-foreground font-bold tracking-[0.2em] text-center focus:outline-none transition-all placeholder:text-foreground/20 placeholder:tracking-normal placeholder:font-medium"
                 placeholder="Enter 6-digit Code"
               />
-              <button 
+              <button
                 type="submit"
                 disabled={joinCode.length < 3}
-                className="absolute right-2 top-2 bottom-2 w-12 flex items-center justify-center rounded-xl bg-white/10 text-zinc-300 hover:bg-zinc-200 hover:text-black disabled:opacity-50 disabled:hover:bg-white/10 disabled:hover:text-zinc-300 transition-all"
+                className="absolute right-2 top-2 bottom-2 w-12 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground hover:bg-foreground hover:text-background disabled:opacity-30 transition-all"
               >
                 <ArrowRight className="w-5 h-5" />
               </button>
@@ -387,7 +382,7 @@ export default function HubPage() {
             <button
               type="button"
               onClick={openScannerModal}
-              className="mt-3 w-full h-12 rounded-2xl border border-white/15 bg-white/5 text-zinc-200 font-semibold hover:border-white/30 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+              className="mt-3 w-full md:hidden h-12 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold hover:bg-foreground/10 transition-all flex items-center justify-center gap-2"
             >
               <ScanLine className="w-4 h-4" />
               Scan QR from Phone
@@ -396,20 +391,21 @@ export default function HubPage() {
 
         </div>
 
-        {/* Recent Sessions — live from DB */}
+        {/* Recent Sessions */}
         <motion.div
+          // ... rest of component ...
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
           className="mt-20 w-full max-w-4xl mx-auto"
         >
           <div className="flex items-center gap-2 mb-6 ml-2">
-            <Clock className="w-4 h-4 text-zinc-500" />
-            <h4 className="text-sm font-semibold tracking-widest text-zinc-500 uppercase">Recent Sessions</h4>
+            <Clock className="w-4 h-4 text-foreground/50" />
+            <h4 className="text-sm font-semibold tracking-widest text-foreground/50 uppercase">Recent Sessions</h4>
           </div>
 
           {recentRooms.length === 0 ? (
-            <p className="text-zinc-600 text-sm font-medium text-center py-8">
+            <p className="text-foreground/40 text-sm font-medium text-center py-8">
               No sessions yet — host your first one above!
             </p>
           ) : (
@@ -419,22 +415,22 @@ export default function HubPage() {
                   key={room.id}
                   onClick={() => router.push(`/room/${room.id}`)}
                   onContextMenu={(event) => handleRoomContextMenu(event, room)}
-                  className="glass-panel p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors group"
+                  className="glass-panel p-4 rounded-2xl border border-foreground/5 bg-foreground/5 hover:bg-foreground/10 flex items-center justify-between cursor-pointer transition-colors group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center">
                       {room.ended_at
-                        ? <Disc className="w-5 h-5 text-zinc-600" />
-                        : <Play className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+                        ? <Disc className="w-5 h-5 text-foreground/40" />
+                        : <Play className="w-4 h-4 text-foreground/60 group-hover:text-foreground transition-colors" />
                       }
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-zinc-300 font-mono tracking-widest">{room.id}</div>
+                      <div className="text-sm font-bold text-foreground/70 font-mono tracking-widest">{room.id}</div>
                       <div className="flex items-center gap-2 mt-0.5">
                         {!room.ended_at && (
                           <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
                         )}
-                        <div className="text-xs text-zinc-600 font-medium">
+                        <div className="text-xs text-foreground/40 font-medium">
                           {new Date(room.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>
@@ -446,11 +442,11 @@ export default function HubPage() {
                         event.stopPropagation();
                         setRoomMenu({ room, x: event.clientX, y: event.clientY });
                       }}
-                      className="md:hidden h-8 w-8 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                      className="md:hidden h-8 w-8 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
                     >
                       <MoreHorizontal className="w-4 h-4 mx-auto" />
                     </button>
-                    <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    <ArrowRight className="w-4 h-4 text-foreground/40 group-hover:text-foreground/60 transition-colors" />
                   </div>
                 </div>
               ))}
@@ -466,14 +462,14 @@ export default function HubPage() {
         >
           <div className="flex items-center justify-between gap-4 mb-6 ml-2">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-500">Devices</p>
-              <h4 className="text-sm font-semibold tracking-widest text-zinc-500 uppercase mt-1">Your saved devices</h4>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Devices</p>
+              <h4 className="text-sm font-semibold tracking-widest text-foreground/50 uppercase mt-1">Your saved devices</h4>
             </div>
-            <div className="text-sm text-zinc-500 font-medium">{devices.length} saved</div>
+            <div className="text-sm text-foreground/50 font-medium">{devices.length} saved</div>
           </div>
 
           {devices.length === 0 ? (
-            <p className="text-zinc-600 text-sm font-medium text-center py-8">No devices saved yet.</p>
+            <p className="text-foreground/40 text-sm font-medium text-center py-8">No devices saved yet.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {devices.map((savedDevice) => {
@@ -482,25 +478,25 @@ export default function HubPage() {
                 return (
                   <div
                     key={savedDevice.id}
-                    className={`glass-panel p-4 rounded-2xl border bg-white/5 flex items-center justify-between gap-3 transition-colors ${isCurrent ? "border-white/20" : "border-white/5 hover:bg-white/10"}`}
+                    className={`glass-panel p-4 rounded-2xl border bg-foreground/5 flex items-center justify-between gap-3 transition-colors ${isCurrent ? "border-foreground/20" : "border-foreground/5 hover:bg-foreground/10"}`}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center shrink-0">
                         <DeviceGlyph userAgent={savedDevice.user_agent} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-bold text-zinc-200 truncate block" title={savedDevice.name}>
+                          <span className="text-sm font-bold text-foreground truncate block" title={savedDevice.name}>
                             {savedDevice.name}
                           </span>
                           {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
                         </div>
-                        <div className="text-xs text-zinc-600 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
+                        <div className="text-xs text-foreground/40 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
                       </div>
                     </div>
                     <button
                       onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
-                      className="h-10 w-12 shrink-0 rounded-lg border border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors"
+                      className="h-10 w-12 shrink-0 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
                     >
                       <Edit3 className="w-4 h-4 mx-auto" />
                     </button>
@@ -513,7 +509,7 @@ export default function HubPage() {
 
         {roomMenu && (
           <div
-            className="fixed z-[80] min-w-[220px] rounded-2xl border border-white/10 bg-zinc-950/95 p-2 shadow-2xl"
+            className="fixed z-[80] min-w-[220px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
             style={{ left: roomMenu.x, top: roomMenu.y }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -522,7 +518,7 @@ export default function HubPage() {
                 setRoomToEnd(roomMenu.room);
                 setRoomMenu(null);
               }}
-              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               End session
@@ -532,9 +528,9 @@ export default function HubPage() {
                 setRoomInfo(roomMenu.room);
                 setRoomMenu(null);
               }}
-              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
             >
-              <QrCode className="w-4 h-4 text-zinc-300" />
+              <QrCode className="w-4 h-4 text-foreground/70" />
               Room info + QR
             </button>
             <button
@@ -542,26 +538,26 @@ export default function HubPage() {
                 setRoomToTransfer(roomMenu.room);
                 setRoomMenu(null);
               }}
-              className="w-full text-left px-3 py-2 rounded-xl text-zinc-200 hover:bg-white/10 text-sm font-medium flex items-center gap-2"
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
             >
-              <UserRoundCog className="w-4 h-4 text-zinc-300" />
+              <UserRoundCog className="w-4 h-4 text-foreground/70" />
               Change host
             </button>
           </div>
         )}
 
         {roomToEnd && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-black text-zinc-100">End Session?</h2>
-                <button onClick={() => setRoomToEnd(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h2 className="text-2xl font-black text-foreground">End Session?</h2>
+                <button onClick={() => setRoomToEnd(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
-              <p className="text-zinc-400 text-sm mb-6">
-                Do you really want to end session <span className="font-mono text-zinc-200">{roomToEnd.id}</span>?
+              <p className="text-foreground/60 text-sm mb-6">
+                Do you really want to end session <span className="font-mono text-foreground">{roomToEnd.id}</span>?
               </p>
               <div className="flex items-center gap-3">
-                <button onClick={() => setRoomToEnd(null)} className="h-11 flex-1 rounded-2xl border border-white/10 bg-white/5 text-zinc-200 font-semibold">No</button>
+                <button onClick={() => setRoomToEnd(null)} className="h-11 flex-1 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold">No</button>
                 <button onClick={handleConfirmEndSession} className="h-11 flex-1 rounded-2xl bg-red-500 text-white font-semibold">Yes, end</button>
               </div>
             </div>
@@ -569,29 +565,29 @@ export default function HubPage() {
         )}
 
         {roomInfo && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-black text-zinc-100">Room Info</h2>
-                <button onClick={() => setRoomInfo(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h2 className="text-2xl font-black text-foreground">Room Info</h2>
+                <button onClick={() => setRoomInfo(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white p-4 w-fit mx-auto mb-5">
+              <div className="rounded-2xl border border-foreground/10 bg-background p-4 w-fit mx-auto mb-5">
                 <img src={qrSrc} alt={`QR code for room ${roomInfo.id}`} className="w-56 h-56" />
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Room Code</p>
-                  <p className="font-mono text-zinc-100 tracking-widest">{roomInfo.id}</p>
+                <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
+                  <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">Room Code</p>
+                  <p className="font-mono text-foreground tracking-widest">{roomInfo.id}</p>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Room Link</p>
-                  <p className="text-zinc-300 text-sm break-all">{roomLink}</p>
+                <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
+                  <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">Room Link</p>
+                  <p className="text-foreground/70 text-sm break-all">{roomLink}</p>
                 </div>
                 <button
                   onClick={handleCopyRoomLink}
-                  className="w-full h-11 rounded-2xl border border-white/10 bg-white/5 text-zinc-100 font-semibold flex items-center justify-center gap-2"
+                  className="w-full h-11 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold flex items-center justify-center gap-2"
                 >
                   {copyDone ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                   {copyDone ? "Copied" : "Copy Link"}
@@ -602,15 +598,15 @@ export default function HubPage() {
         )}
 
         {roomToTransfer && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-black text-zinc-100">Change Host</h2>
-                <button onClick={() => setRoomToTransfer(null)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h2 className="text-2xl font-black text-foreground">Change Host</h2>
+                <button onClick={() => setRoomToTransfer(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <p className="text-zinc-400 text-sm mb-4">
-                Enter the email of the user who should become host for <span className="font-mono text-zinc-200">{roomToTransfer.id}</span>.
+              <p className="text-foreground/60 text-sm mb-4">
+                Enter the email of the user who should become host for <span className="font-mono text-foreground">{roomToTransfer.id}</span>.
               </p>
 
               <form className="space-y-4" onSubmit={handleChangeHost}>
@@ -619,11 +615,11 @@ export default function HubPage() {
                   value={newHostEmail}
                   onChange={(event) => setNewHostEmail(event.target.value)}
                   placeholder="new-host@example.com"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                  className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
                 />
                 <button
                   disabled={isTransferringHost || !newHostEmail.trim()}
-                  className="h-11 w-full rounded-2xl bg-zinc-100 text-black font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="h-11 w-full rounded-2xl bg-foreground text-background font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isTransferringHost ? "Changing..." : "Transfer Host"}
                 </button>
@@ -633,11 +629,11 @@ export default function HubPage() {
         )}
 
         {showDeviceRename && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-black text-zinc-100">Rename Device</h2>
-                <button onClick={() => setShowDeviceRename(false)} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h2 className="text-2xl font-black text-foreground">Rename Device</h2>
+                <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
               <form className="space-y-4" onSubmit={handleDeviceRename}>
                 <input
@@ -645,12 +641,12 @@ export default function HubPage() {
                   type="text"
                   value={editingDeviceName}
                   onChange={(event) => setEditingDeviceName(event.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-white/30"
+                  className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
                   placeholder="My Device"
                 />
                 <button
                   disabled={isRenamingDevice || !editingDeviceName.trim()}
-                  className="h-11 w-full rounded-2xl bg-zinc-100 text-black font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="h-11 w-full rounded-2xl bg-foreground text-background font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isRenamingDevice ? "Saving..." : "Save Device Name"}
                 </button>
@@ -660,39 +656,39 @@ export default function HubPage() {
         )}
 
         {showScanner && (
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-zinc-950 p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-black text-zinc-100">Scan Room QR</h2>
-                <button onClick={stopScanner} className="text-zinc-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h2 className="text-xl font-black text-foreground">Scan Room QR</h2>
+                <button onClick={stopScanner} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/60 relative aspect-[3/4] flex items-center justify-center">
+              <div className="rounded-2xl overflow-hidden border border-foreground/10 bg-background/60 relative aspect-[3/4] flex items-center justify-center">
                 <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
                 {scanStatus === "idle" && (
-                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center px-6">
-                    <Camera className="w-8 h-8 text-zinc-300 mb-3" />
-                    <p className="text-sm text-zinc-300">To scan room QR codes, allow camera permission.</p>
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6">
+                    <Camera className="w-8 h-8 text-foreground/70 mb-3" />
+                    <p className="text-sm text-foreground/70">To scan room QR codes, allow camera permission.</p>
                     <button
                       type="button"
                       onClick={startScanner}
-                      className="mt-4 h-10 rounded-xl bg-zinc-100 px-4 text-sm font-semibold text-black hover:bg-white"
+                      className="mt-4 h-10 rounded-xl bg-foreground px-4 text-sm font-semibold text-background hover:bg-foreground"
                     >
                       Allow Camera Access
                     </button>
                   </div>
                 )}
                 {scanStatus === "starting" && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-zinc-300 text-sm font-semibold">Starting camera...</div>
+                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center text-foreground/70 text-sm font-semibold">Starting camera...</div>
                 )}
                 {scanStatus === "error" && (
-                  <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-center px-6">
+                  <div className="absolute inset-0 bg-background/75 flex flex-col items-center justify-center text-center px-6">
                     <Camera className="w-6 h-6 text-red-400 mb-3" />
                     <p className="text-sm text-red-300">{scanError ?? "Unable to scan QR"}</p>
                     <button
                       type="button"
                       onClick={startScanner}
-                      className="mt-4 h-9 rounded-lg border border-white/20 px-3 text-xs font-semibold text-zinc-100 hover:border-white/40"
+                      className="mt-4 h-9 rounded-lg border border-foreground/20 px-3 text-xs font-semibold text-foreground hover:border-foreground/40"
                     >
                       Retry Camera Access
                     </button>
@@ -700,7 +696,7 @@ export default function HubPage() {
                 )}
               </div>
 
-              <p className="mt-4 text-xs text-zinc-500 text-center">Point your camera at the room QR code.</p>
+              <p className="mt-4 text-xs text-foreground/50 text-center">Point your camera at the room QR code.</p>
             </div>
           </div>
         )}

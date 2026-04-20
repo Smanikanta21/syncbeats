@@ -14,8 +14,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
       RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:?Set RESEND_FROM_EMAIL}
+      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL:?Set AUTH_FROM_EMAIL}
+      CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL:?Set CAMPAIGN_FROM_EMAIL}
       NODE_ENV: ${NODE_ENV:-production}
+
     ports:
       - "${PORT:-4000}:${PORT:-4000}"
     volumes:

@@ -28,7 +28,7 @@ export default function AuthPage() {
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
   const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
-
+  const theme = localStorage.getItem('theme')
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -116,8 +116,8 @@ export default function AuthPage() {
     resetForm();
   };
 
-  const inputClass = "w-full bg-white/5 border border-white/5 focus:border-white/20 rounded-2xl pl-11 pr-4 py-3.5 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-600";
-  const inputClassSm = "w-full bg-white/5 border border-white/5 focus:border-white/20 rounded-xl pl-9 pr-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-white/20 transition-all placeholder:text-zinc-600";
+  const inputClass = "w-full bg-foreground/5 border border-foreground/5 focus:border-accent-primary/40 rounded-2xl pl-11 pr-4 py-3.5 text-foreground focus:outline-none focus:ring-1 focus:ring-accent-primary/40 transition-all placeholder:text-foreground/40";
+  const inputClassSm = "w-full bg-foreground/5 border border-foreground/5 focus:border-accent-primary/40 rounded-xl pl-9 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent-primary/40 transition-all placeholder:text-foreground/40";
 
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -211,15 +211,15 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
       {googleRedirectLoading && (
-        <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="rounded-3xl border border-white/10 bg-zinc-950/90 px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
-            <LoaderCircle className="w-5 h-5 text-zinc-200 animate-spin" />
-            <p className="text-sm font-semibold text-zinc-200">Completing Google sign in...</p>
+        <div className="fixed inset-0 z-[95] bg-background/70 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="rounded-3xl border border-foreground/10 bg-background px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+            <LoaderCircle className="w-5 h-5 text-foreground animate-spin" />
+            <p className="text-sm font-semibold text-foreground">Completing Google sign in...</p>
           </div>
         </div>
       )}
 
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[500px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none -z-10" />
+      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
 
       {/* Home link */}
       <motion.div
@@ -229,10 +229,10 @@ export default function AuthPage() {
         className="absolute top-8 left-8 z-50"
       >
         <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-            <Disc className="w-4 h-4 text-zinc-300 animate-[spin_4s_linear_infinite]" />
+          <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+            <Disc className="w-4 h-4 text-foreground/80 animate-[spin_4s_linear_infinite]" />
           </div>
-          <span className="text-sm font-bold tracking-widest text-zinc-400 group-hover:text-white transition-colors">HOME</span>
+          <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
         </Link>
       </motion.div>
 
@@ -241,13 +241,13 @@ export default function AuthPage() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-5xl min-h-[600px] sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-black/60 overflow-y-auto overflow-x-hidden md:overflow-hidden flex border border-white/10 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
+        className="relative w-full max-w-5xl min-h-[600px] sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-background/80 overflow-y-auto overflow-x-hidden md:overflow-hidden flex border border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
       >
-        <div className="absolute top-0 right-1/2 w-64 h-64 bg-white/5 filter blur-[60px] pointer-events-none" />
+        <div className="absolute top-0 right-1/2 w-64 h-64 bg-foreground/5 filter blur-[60px] pointer-events-none" />
 
         {/* PANEL A — Form */}
         <div
-          className={`absolute top-0 left-0 w-full md:w-1/2 h-full z-30 flex flex-col justify-center p-6 sm:p-12 md:p-16 bg-black transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} overflow-y-auto`}
+          className={`absolute top-0 left-0 w-full md:w-1/2 h-full z-30 flex flex-col justify-center p-6 sm:p-12 md:p-16 bg-background transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} overflow-y-auto`}
         >
           <AnimatePresence mode="wait">
             {/* ── LOGIN FORM ── */}
@@ -261,8 +261,8 @@ export default function AuthPage() {
                 className="w-full max-w-sm mx-auto"
               >
                 <div className="mb-10 text-center md:text-left">
-                  <h2 className="text-4xl font-black mb-3 text-zinc-200">Welcome Back</h2>
-                  <p className="text-zinc-500 font-medium">Log in to manage your synced sessions.</p>
+                  <h2 className="text-4xl font-black mb-3 text-foreground">Welcome Back</h2>
+                  <p className="text-foreground/50 font-medium">Log in to manage your synced sessions.</p>
                 </div>
 
                 {error && (
@@ -273,22 +273,22 @@ export default function AuthPage() {
 
                 <form className="space-y-6" onSubmit={handleAuth}>
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Email Address</label>
+                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Email Address</label>
                     <motion.div
                       key={`login-email-${shakeNonce}`}
                       animate={shakeTargets.includes("login-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-foreground/50" /></div>
                       <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between ml-1">
-                      <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-                      <Link href="/forgot-password" className="text-xs font-medium text-zinc-500 hover:text-zinc-300 transition-colors">Forgot?</Link>
+                      <label className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Password</label>
+                      <Link href="/forgot-password" className="text-xs font-medium text-foreground/50 hover:text-foreground/80 transition-colors">Forgot?</Link>
                     </div>
                     <motion.div
                       key={`login-password-${shakeNonce}`}
@@ -296,12 +296,12 @@ export default function AuthPage() {
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-foreground/50" /></div>
                       <input type={showLoginPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
                       <button
                         type="button"
                         onClick={() => setShowLoginPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-4 text-zinc-500 hover:text-zinc-200"
+                        className="absolute inset-y-0 right-0 pr-4 text-foreground/50 hover:text-foreground"
                       >
                         {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                       </button>
@@ -312,20 +312,20 @@ export default function AuthPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     disabled={loading}
-                    className="w-full h-14 mt-4 bg-zinc-200 text-black font-bold rounded-2xl hover:bg-white transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
+                    className="w-full h-14 mt-4 bg-foreground text-background font-bold rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
                   >
                     {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className="w-5 h-5" /></>}
                   </motion.button>
 
                   <div className="pt-1 flex justify-center">
-                    {!googleReady && <span className="text-xs text-zinc-500">Loading Google...</span>}
+                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
                     <div ref={googleLoginButtonRef} />
                   </div>
                 </form>
 
-                <p className="mt-8 text-center text-zinc-500 text-sm font-medium md:hidden">
+                <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
                   Don&apos;t have an account?{" "}
-                  <button onClick={() => switchMode(false)} className="text-zinc-300 font-semibold hover:text-white transition-colors">Sign up</button>
+                  <button onClick={() => switchMode(false)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign up</button>
                 </p>
               </motion.div>
             ) : (
@@ -339,8 +339,8 @@ export default function AuthPage() {
                 className="w-full max-w-sm mx-auto"
               >
                 <div className="mb-8 text-center md:text-left">
-                  <h2 className="text-4xl font-black mb-2 text-zinc-200">Join SyncBeats</h2>
-                  <p className="text-zinc-500 font-medium">Create an account to start syncing audio.</p>
+                  <h2 className="text-4xl font-black mb-2 text-foreground">Join SyncBeats</h2>
+                  <p className="text-foreground/50 font-medium">Create an account to start syncing audio.</p>
                 </div>
 
                 {error && (
@@ -351,45 +351,45 @@ export default function AuthPage() {
 
                 <form className="space-y-4" onSubmit={handleAuth}>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Full Name</label>
+                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Full Name</label>
                     <motion.div
                       key={`signup-name-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-name") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-foreground/50" /></div>
                       <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Email Address</label>
+                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Email Address</label>
                     <motion.div
                       key={`signup-email-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-foreground/50" /></div>
                       <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClassSm} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Password</label>
+                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Password</label>
                     <motion.div
                       key={`signup-password-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
                       <input type={showSignupPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         onClick={() => setShowSignupPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-3 text-zinc-500 hover:text-zinc-200"
+                        className="absolute inset-y-0 right-0 pr-3 text-foreground/50 hover:text-foreground"
                       >
                         {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -397,19 +397,19 @@ export default function AuthPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-400 ml-1 uppercase tracking-wider">Confirm Password</label>
+                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Confirm Password</label>
                     <motion.div
                       key={`signup-confirm-password-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-confirm-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-zinc-500" /></div>
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
                       <input type={showSignupConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         onClick={() => setShowSignupConfirmPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-3 text-zinc-500 hover:text-zinc-200"
+                        className="absolute inset-y-0 right-0 pr-3 text-foreground/50 hover:text-foreground"
                       >
                         {showSignupConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -420,21 +420,21 @@ export default function AuthPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     disabled={loading}
-                    className="w-full h-12 mt-4 bg-zinc-200 text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
+                    className="w-full h-12 mt-4 bg-foreground text-background font-bold rounded-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
                   >
                     {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className="w-4 h-4" /></>}
                   </motion.button>
 
                   <div className="pt-2 flex flex-col items-center gap-2">
-                    <span className="text-xs uppercase tracking-[0.25em] text-zinc-600">Or use Google</span>
-                    {!googleReady && <span className="text-xs text-zinc-500">Loading Google...</span>}
+                    <span className="text-xs uppercase tracking-[0.25em] text-foreground/40">Or use Google</span>
+                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
                     <div ref={googleSignupButtonRef} />
                   </div>
                 </form>
 
-                <p className="mt-8 text-center text-zinc-500 text-sm font-medium md:hidden">
+                <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
                   Already have an account?{" "}
-                  <button onClick={() => switchMode(true)} className="text-zinc-300 font-semibold hover:text-white transition-colors">Sign in</button>
+                  <button onClick={() => switchMode(true)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign in</button>
                 </p>
               </motion.div>
             )}
@@ -443,30 +443,30 @@ export default function AuthPage() {
 
         {/* PANEL B — Branding */}
         <div
-          className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-white/10 bg-zinc-950 transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
+          className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-30">
-            <div className="absolute w-[800px] h-[800px] border border-white/5 rounded-full animate-[spin_40s_linear_infinite]" />
-            <div className="absolute w-[600px] h-[600px] border border-white/10 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
-            <div className="absolute w-[400px] h-[400px] bg-white/5 blur-[80px] rounded-full pointer-events-none" />
+            <div className="absolute w-[800px] h-[800px] border border-foreground/5 rounded-full animate-[spin_40s_linear_infinite]" />
+            <div className="absolute w-[600px] h-[600px] border border-foreground/10 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
+            <div className="absolute w-[400px] h-[400px] bg-foreground/5 blur-[80px] rounded-full pointer-events-none" />
           </div>
 
           <AnimatePresence mode="wait">
             {isLogin ? (
               <motion.div key="branding-login" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className="relative z-10 flex flex-col items-center max-w-sm">
-                <Disc className="w-20 h-20 text-zinc-300 mb-8 animate-[spin_10s_linear_infinite]" />
-                <h2 className="text-4xl font-black mb-4 text-white">New Here?</h2>
-                <p className="text-zinc-400 mb-10 text-lg leading-relaxed">Sign up to host rooms, save your history, and turn your devices into the ultimate soundsystem.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(false)} className="h-12 px-8 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-colors">
+                <Disc className="w-20 h-20 text-foreground/80 mb-8 animate-[spin_10s_linear_infinite]" />
+                <h2 className="text-4xl font-black mb-4 text-foreground">New Here?</h2>
+                <p className="text-foreground/60 mb-10 text-lg leading-relaxed">Sign up to host rooms, save your history, and turn your devices into the ultimate soundsystem.</p>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(false)} className="h-12 px-8 rounded-full border border-white/20 text-foreground font-bold hover:bg-foreground/10 transition-colors">
                   Create an Account
                 </motion.button>
               </motion.div>
             ) : (
               <motion.div key="branding-signup" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className="relative z-10 flex flex-col items-center max-w-sm">
-                <Info className="w-16 h-16 text-zinc-300 mb-8" />
-                <h2 className="text-4xl font-black mb-4 text-white">Welcome Back!</h2>
-                <p className="text-zinc-400 mb-10 text-lg leading-relaxed">Already a part of the platform? Log back in to access your synced sessions and continue the party.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(true)} className="h-12 px-8 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-colors">
+                <Info className="w-16 h-16 text-foreground/80 mb-8" />
+                <h2 className="text-4xl font-black mb-4 text-foreground">Welcome Back!</h2>
+                <p className="text-foreground/60 mb-10 text-lg leading-relaxed">Already a part of the platform? Log back in to access your synced sessions and continue the party.</p>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(true)} className="h-12 px-8 rounded-full border border-white/20 text-foreground font-bold hover:bg-foreground/10 transition-colors">
                   Sign In Instead
                 </motion.button>
               </motion.div>
