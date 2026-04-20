@@ -71,16 +71,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     const onMeta    = () => setDuration(audioEl.duration);
     const onCanPlay = () => {
-      // canplaythrough fires after every playbackRate change.
-      // Use readyOnce so we only set isReady=true once per track load,
-      // preventing the room:clientReady spam seen in server logs.
       if (!readyOnce.current) {
         readyOnce.current = true;
         setIsReady(true);
       }
     };
-    // Only mark not-ready on actual buffer stall (the 'waiting' event).
-    // This is distinct from rate changes which also fire canplaythrough.
     const onWaiting = () => { setIsReady(false); readyOnce.current = false; };
     const onEnded   = () => { setIsPlaying(false); setCurrentTime(0); };
 
@@ -89,11 +84,27 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioEl.addEventListener("waiting",         onWaiting);
     audioEl.addEventListener("ended",           onEnded);
 
+    // —— Silent auto-unlock on first user interaction ——
+    // Browser autoplay policy requires a user gesture before audio.play() works.
+    // We listen for the FIRST pointerdown anywhere on the page (covers both
+    // touchstart on mobile and mousedown on desktop). This fires silently
+    // in the background the moment the user scrolls, taps, or clicks anything.
+    // By the time anyone hits the play button, every phone that has been
+    // touched at all is already unlocked.
+    const unlock = () => {
+      audioEl.play()
+        .then(() => { audioEl.pause(); setAudioUnlocked(true); })
+        .catch(() => { setAudioUnlocked(true); }); // already unlocked or no src yet
+    };
+    document.addEventListener('pointerdown', unlock, { once: true, passive: true });
+
     return () => {
       audioEl.removeEventListener("loadedmetadata", onMeta);
       audioEl.removeEventListener("canplaythrough",  onCanPlay);
       audioEl.removeEventListener("waiting",         onWaiting);
       audioEl.removeEventListener("ended",           onEnded);
+      // If component unmounts before first touch, clean up
+      document.removeEventListener('pointerdown', unlock);
     };
   }, [audioEl]);
 

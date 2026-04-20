@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2, Music } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
@@ -25,7 +25,6 @@ export default function RoomPage() {
 
   const audio  = useAudio();
   const upload = useUpload();
-  const { audioUnlocked, unlockAudio } = audio;
   const [copied, setCopied] = useState(false);
   const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave } = useRoom({
     roomId,
@@ -143,45 +142,6 @@ export default function RoomPage() {
 
   return (
     <div className="flex flex-col items-center md:justify-center relative px-4 sm:px-6 lg:px-8 z-0 pb-32 min-h-[calc(100vh-100px)]">
-
-      {/* ── Audio unlock overlay ── */}
-      {/* Shown until the user taps, which grants browser autoplay permission. */}
-      {/* Without this tap, phones can't play audio triggered by the server's play command. */}
-      <AnimatePresence>
-        {!audioUnlocked && (
-          <motion.div
-            key="unlock-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-background/80 backdrop-blur-xl px-6"
-          >
-            <motion.button
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.1, type: "spring", stiffness: 260, damping: 20 }}
-              onClick={unlockAudio}
-              className="flex flex-col items-center gap-6 p-10 glass-panel rounded-[2rem] border border-foreground/10 max-w-xs w-full text-center shadow-2xl"
-            >
-              <div className="w-20 h-20 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center">
-                <Music className="w-10 h-10 text-foreground/70" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-foreground mb-2">Tap to Enable Audio</h2>
-                <p className="text-sm text-foreground/50 leading-relaxed">
-                  Your browser requires a tap before it can play audio.
-                  Tap here to join the session with sound.
-                </p>
-              </div>
-              <div className="h-12 w-full rounded-2xl bg-foreground text-background font-bold flex items-center justify-center gap-2 text-base">
-                <Music className="w-4 h-4" />
-                Enable Audio
-              </div>
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[500px] bg-foreground/5 blur-[150px] rounded-full pointer-events-none -z-10" />
