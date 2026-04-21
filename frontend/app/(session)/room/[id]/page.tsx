@@ -1,19 +1,32 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
 import { getAuthToken } from "../../../../lib/api";
-import { getSocket } from "../../../../lib/socket";
-import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
-import OrbitUI from "../../../../components/OrbitUI";
-import type { SpatialPosition, DeviceSpatialState } from "../../../../audio/SpatialAudioEngine";
+import { useSyncInfo } from "../../../../context/SyncContext";
+
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { SortableTrackItem } from "../../../../components/SortableTrackItem";
 
 function DeviceIcon({ index }: { index: number }) {
   const icons = [Smartphone, Laptop, Speaker];
@@ -27,7 +40,6 @@ export default function RoomPage() {
   const roomId  = (params?.id as string) ?? "000000";
   const { user, device } = useAuth();
   const displayName = device?.name ?? user?.name ?? "Guest";
-  const myDeviceId = device?.id ?? "unknown";
 
   const audio  = useAudio();
   const upload = useUpload();
@@ -36,64 +48,14 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
+  const { setClockOffset: pushClockOffset } = useSyncInfo();
+
+  // Push clock offset to shared context so DynamicIsland can access it
+  useEffect(() => {
+    pushClockOffset(clockOffset);
+  }, [clockOffset, pushClockOffset]);
   const [qrState, setQrState] = useState<"mock" | "generating" | "ready">("mock");
   const qrTimerRef = useRef<number | null>(null);
-
-  // ── Spatial Audio ─────────────────────────────────────────────────────────
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Keep the ref synced with the AudioContext's element
-  useEffect(() => {
-    audioRef.current = audio.audioEl;
-  }, [audio.audioEl]);
-
-  const socket = useMemo(() => {
-    try { return getSocket(); } catch { return null; }
-  }, []);
-
-  const {
-    updatePosition,
-    spatialDevices,
-    engineState,
-    resumeAudio,
-  } = useSpatialAudio({
-    socket,
-    audioRef,
-    myDeviceId,
-    roomId,
-    enabled: true,
-    initialDevices: snapshot?.spatial ?? [],
-  });
-
-  // Build display names map for OrbitUI labels
-  const displayNames = useMemo(() => {
-    const map: Record<string, string> = {};
-    participants.forEach(p => {
-      // Map socket IDs or device IDs to display names
-      map[p.socketId] = p.displayName;
-    });
-    map[myDeviceId] = displayName;
-    return map;
-  }, [participants, myDeviceId, displayName]);
-
-  // ── Orbit drag handler ───────────────────────────────────────────────────
-  const handlePositionChange = useCallback((deviceId: string, position: SpatialPosition) => {
-    updatePosition(deviceId, position);
-  }, [updatePosition]);
-
-  // Fallback spatial devices from participants if server doesn't send spatial events yet
-  const effectiveDevices: DeviceSpatialState[] = useMemo(() => {
-    if (spatialDevices.length > 0) return spatialDevices;
-    // Generate default orbit positions from participants
-    return participants.map((p, i) => ({
-      deviceId: p.socketId,
-      position: {
-        angle: (i / Math.max(1, participants.length)) * Math.PI * 2 - Math.PI / 2,
-        radius: 1,
-        elevation: 0,
-      },
-    }));
-  }, [spatialDevices, participants]);
 
   const roomLink = typeof window !== "undefined"
     ? `${window.location.origin}/room/${roomId}`
@@ -108,7 +70,7 @@ export default function RoomPage() {
   }, [audio.isReady, audio.hasTrack, setReady]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
-  const dragCounter = useRef(0);
+  const dragCounter = useRef(0); // track enter/leave nesting
 
   useEffect(() => {
     const onDragEnter = (e: DragEvent) => {
@@ -193,6 +155,57 @@ export default function RoomPage() {
     }
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px drag distance on desktop before activating
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250, // Require 250ms hold on mobile, so scrolling still works
+        tolerance: 5,
+      },
+    })
+  );
+
+  // We maintain a local queue state to provide immediate optimistic UI feedback to the SortableContext
+  const [localQueue, setLocalQueue] = useState<TrackQueueItem[]>([]);
+  
+  // Sync the local queue whenever the canonical snapshot changes, unless we are currently dragging
+  useEffect(() => {
+    if (snapshot?.queue) {
+      setLocalQueue(snapshot.queue);
+    }
+  }, [snapshot?.queue]);
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !snapshot?.queue) return;
+
+    const oldIndex = localQueue.findIndex((i) => i.id === active.id);
+    const newIndex = localQueue.findIndex((i) => i.id === over.id);
+
+    // Optimistically update the UI instantly
+    setLocalQueue((items) => arrayMove(items, oldIndex, newIndex));
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
+      await fetch(`${baseUrl}/rooms/${roomId}/queue/reorder`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`
+        },
+        body: JSON.stringify({ itemId: active.id, newIndex })
+      });
+    } catch (err) {
+      console.error("[Room] Error reordering queue:", err);
+      // Revert optimism if it failed
+      setLocalQueue(snapshot.queue);
+    }
+  };
+
   const handleCopy = () => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
@@ -235,279 +248,227 @@ export default function RoomPage() {
     }, 1300);
   };
 
-  // ── Orb size (responsive) ────────────────────────────────────────────────
-  const [orbSize, setOrbSize] = useState(340);
-  const [activeTab, setActiveTab] = useState<"spatial" | "info">("info");
-
-  useEffect(() => {
-    if (audio.hasTrack) setActiveTab("spatial");
-    else setActiveTab("info");
-  }, [audio.hasTrack]);
-
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      // Use the smaller of width/height, capped
-      const available = Math.min(w * 0.6, h * 0.5);
-      setOrbSize(Math.max(240, Math.min(500, available)));
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
   return (
-    <div className="absolute inset-x-0 top-0 bottom-0 pt-[100px] lg:pt-[120px] pb-safe flex flex-col lg:flex-row lg:px-6 lg:pb-6 gap-6 overflow-hidden">
-      {/* Ambient background glow */}
+    <div className="flex flex-col items-center relative w-full mx-auto h-[100dvh] md:pt-[120px] py-12 md:pb-12 px-4 sm:px-6 lg:px-8 z-0">
+      {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[500px] bg-foreground/5 blur-[150px] rounded-full pointer-events-none -z-10" />
 
-      {/* LEFT COLUMN: DEVICES (Wide Desktop Only) */}
-      <div className="hidden lg:flex w-[320px] xl:w-[360px] shrink-0 flex-col gap-4 min-h-0 z-10">
-        <div className="glass-panel rounded-3xl p-6 flex-1 flex flex-col min-h-0 border border-foreground/10 bg-background/40 shadow-xl overflow-hidden">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              <Users className="w-4 h-4" /> Network ({participants.length})
-            </h3>
-            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
-              {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              {isConnected ? "Connected" : "Connecting"}
-            </span>
+      {/* ── Room code + QR ── */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.2 }}
+        className="text-center w-full max-w-4xl flex flex-col items-center"
+      >
+        {/* Badges */}
+        <div className="flex items-center gap-3 mb-6">
+          <span className="px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
+            <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
+          </span>
+          <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+            {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            {isConnected ? "Connected" : "Connecting…"}
+          </span>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-10">
+          {/* Room code */}
+          <div className="text-center">
+            <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
+            <h1
+              onClick={handleCopy}
+              className="text-[5rem] select-none sm:text-[7rem] font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
+            >
+              {roomId}
+              <div className="w-12 h-12 rounded-full bg-foreground/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {copied ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5 text-foreground" />}
+              </div>
+            </h1>
+            <p className="text-foreground/40 text-xs font-medium mt-2">{copied ? "Copied!" : "Click to copy"}</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3 custom-scrollbar">
-            {participants.length === 0 && (
-              <div className="text-center py-10 text-foreground/40 text-sm font-medium">Waiting for others to join…</div>
+          <div className="hidden md:block w-px h-32 bg-foreground/10" />
+
+          {/* QR */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={handleGenerateQr}
+              className="p-4 bg-foreground/5 border border-foreground/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group"
+            >
+              {qrState === "mock" && (
+                <div className="w-28 h-28 flex items-center justify-center">
+                  <QrCode className="w-28 h-28 text-foreground group-hover:text-foreground transition-colors" strokeWidth={1} />
+                </div>
+              )}
+
+              {qrState === "generating" && (
+                <div className="w-30 h-30 flex flex-col items-center justify-center gap-3">
+                  <div className="w-10 h-10 rounded-full border-2 border-foreground/20 border-t-white/80 animate-spin" />
+                  <p className="text-[10px] tracking-[0.2em] uppercase text-foreground/60">Generating</p>
+                </div>
+              )}
+
+              {qrState === "ready" && (
+                <img
+                  src={qrSrc}
+                  alt={`QR code for room ${roomId}`}
+                  className="w-30 h-30 bg-background p-1"
+                />
+              )}
+            </button>
+            <p className="text-foreground/50 font-bold uppercase tracking-widest text-xs mt-4">
+              {qrState === "ready" ? "Scan to Join" : "Tap to Generate QR"}
+            </p>
+          </div>
+        </div>
+
+        {/* Playback / readiness status */}
+        {snapshot && (
+          <div className="mb-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest flex-wrap justify-center">
+            <span className={`flex items-center gap-1.5 ${snapshot.state === PlaybackState.PLAYING ? "text-green-400" : "text-foreground/50"}`}>
+              <span className={`w-2 h-2 rounded-full ${snapshot.state === PlaybackState.PLAYING ? "bg-green-400 animate-pulse" : "bg-foreground/20"}`} />
+              {snapshot.state === PlaybackState.PLAYING ? "Playing" : snapshot.state}
+            </span>
+            {audio.hasTrack && (
+              allReady
+                ? <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> All devices ready</span>
+                : <span className="text-amber-400 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Waiting for devices to buffer…</span>
             )}
-            {participants.map((p: Participant, i: number) => (
-              <div key={p.socketId} className="bg-foreground/5 p-4 rounded-2xl border border-foreground/5 hover:bg-foreground/10 transition-colors group flex flex-col gap-3">
+          </div>
+        )}
+
+        {/* Drag hint */}
+        {!audio.hasTrack && !upload.isUploading && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mb-6 px-6 py-4 rounded-2xl border border-dashed border-foreground/10 text-foreground/40 text-sm font-medium flex items-center gap-3"
+          >
+            <Volume2 className="w-4 h-4 shrink-0" />
+            Drag an audio file here or hover the island above to add music
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* ── Connected Devices ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="w-full max-w-3xl mx-auto flex flex-col gap-6 items-center"
+      >
+        <h3 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center mb-2">
+          Connected Devices ({participants.length})
+        </h3>
+
+        {participants.length === 0 && (
+          <div className="text-center py-10 text-foreground/40 text-sm font-medium">
+            Waiting for others to join…
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+          {participants.map((p: Participant, i: number) => (
+            <div
+              key={p.socketId}
+              className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
+            >
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shrink-0">
-                    <span className="font-black text-foreground/70 text-xs tracking-widest">{p.displayName.slice(0, 2).toUpperCase()}</span>
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
+                    <span className="font-black text-foreground/70 text-sm tracking-widest">
+                      {p.displayName.slice(0, 2).toUpperCase()}
+                    </span>
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
                       <DeviceIcon index={i} />
                     </div>
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-sm text-foreground truncate">{p.displayName}</h4>
-                      {snapshot?.hostId === p.socketId && <span className="px-1.5 py-[1px] rounded text-[9px] uppercase font-black tracking-widest bg-foreground text-background shrink-0">Host</span>}
+                      <h4 className="font-bold text-foreground">{p.displayName}</h4>
+                      {snapshot?.hostId === p.socketId && (
+                        <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
+                      )}
                     </div>
-                    <p className="text-[10px] font-medium text-foreground/50 flex items-center gap-1 mt-0.5">
-                      {p.isReady ? <><CheckCircle2 className="w-2.5 h-2.5 text-green-400" /><span className="text-green-400">Buffered</span></> : audio.hasTrack ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Buffering…</> : "Ready"}
+                    <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
+                      {p.isReady
+                        ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
+                        : audio.hasTrack
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
+                        : "Ready"
+                      }
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 w-full glass-panel px-3 py-1.5 rounded-lg border border-foreground/5">
-                  <Volume2 className="w-3.5 h-3.5 text-foreground/40" />
-                  <input type="range" min="0" max="100" className="flex-1 volume-slider" value={p.volume ?? 100} onChange={(e) => handleVolumeChange(p.socketId, parseInt(e.target.value))} />
-                  <span className="text-[10px] font-bold text-foreground/40 w-6 text-right">{p.volume ?? 100}%</span>
+              </div>
+
+              <div className="flex flex-col gap-2 w-full glass-panel p-3 rounded-xl border border-foreground/5">
+                <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
+                  <span className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-foreground/50" />
+                    {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
+                  </span>
+                  <span className="text-foreground/60">{p.volume}%</span>
+                </div>
+                <div className="relative h-10 flex items-center">
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                      style={{ width: `${p.volume}%` }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={p.volume}
+                    onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                    aria-label={`${p.displayName} volume`}
+                    className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-          
-          <button
-            onClick={handleLeave}
-            className="mt-4 w-full h-10 rounded-xl border border-red-500/30 text-red-400 font-bold text-[10px] hover:bg-red-500/10 transition-all uppercase tracking-widest"
-          >
-            Leave Session
-          </button>
+            </div>
+          ))}
         </div>
-      </div>
 
-      {/* CENTER COLUMN: ORB VISUALIZER */}
-      <div className="flex-1 flex flex-col items-center justify-center relative min-h-0 px-4">
-      <div className="flex-1 flex flex-col items-center justify-center relative min-h-0 px-4">
-        <motion.div
-           key="unified-state"
-           initial={{ opacity: 0, scale: 0.95 }}
-           animate={{ opacity: 1, scale: 1 }}
-           className="flex flex-col items-center justify-center w-full h-full relative pt-16"
-        >
-          {/* TABS (Spatial vs Info) */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center bg-foreground/5 p-1 rounded-full z-40 backdrop-blur-md border border-foreground/5 shadow-sm">
-            {(["info", "spatial"] as const).map((tab) => (
-              <button 
-                key={tab}
-                onClick={() => setActiveTab(tab)} 
-                className={`relative px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeTab === tab ? 'text-foreground' : 'text-foreground/50 hover:text-foreground'}`}
+        {/* ── Queue ── */}
+        {localQueue.length ? (
+          <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
+            <h4 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+              <ListMusic className="w-4 h-4" />
+              Room Queue ({localQueue.length})
+            </h4>
+            <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                {activeTab === tab && (
-                  <motion.div
-                    layoutId="active-tab-indicator"
-                    className="absolute inset-0 bg-background rounded-full shadow-sm"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-10">{tab === 'info' ? 'Room Info' : '3D Spatial Audio'}</span>
-              </button>
-            ))}
+                <SortableContext
+                  items={localQueue.map((i) => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {localQueue.map((item: TrackQueueItem) => (
+                    <SortableTrackItem
+                      key={item.id}
+                      item={item}
+                      onRemove={handleRemoveTrack}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
           </div>
-
-          {/* VIEW: INFO TAB */}
-          <AnimatePresence mode="wait">
-            {activeTab === "info" && (
-               <motion.div 
-                 key="info-tab"
-                 initial={{ opacity: 0, scale: 0.95 }} 
-                 animate={{ opacity: 1, scale: 1 }} 
-                 exit={{ opacity: 0, scale: 0.9 }} 
-                 className="absolute inset-0 flex flex-col items-center justify-center z-20"
-               >
-                 {/* QR Code */}
-                 {qrState === "mock" && (
-                   <button type="button" onClick={handleGenerateQr} className="w-24 h-24 rounded-3xl bg-background border border-foreground/10 flex items-center justify-center mb-6 cursor-pointer hover:bg-foreground/5 hover:scale-105 transition-all shadow-xl group">
-                     <QrCode className="w-10 h-10 text-foreground/60 group-hover:text-foreground" strokeWidth={1.5} />
-                   </button>
-                 )}
-                 {qrState === "generating" && (
-                   <div className="w-24 h-24 rounded-3xl bg-background border border-foreground/10 flex items-center justify-center mb-6 shadow-xl">
-                     <Loader2 className="w-8 h-8 text-foreground/60 animate-spin" />
-                   </div>
-                 )}
-                 {qrState === "ready" && (
-                   <img src={qrSrc} alt="Room QR" className="w-24 h-24 rounded-2xl bg-background p-1.5 mb-6 shadow-xl" />
-                 )}
-
-                 {/* Room Code */}
-                 <h1 onClick={handleCopy} className="text-5xl sm:text-7xl font-black text-foreground cursor-pointer hover:scale-105 transition-transform flex items-center gap-4 drop-shadow-xl select-all z-30 bg-background/50 px-8 py-4 rounded-[2.5rem] backdrop-blur-md border border-foreground/5">
-                   {roomId}
-                   {copied ? <CheckCircle2 className="w-8 h-8 text-green-400" /> : <Copy className="w-8 h-8 text-foreground/40" />}
-                 </h1>
-                 <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mt-4">
-                   {copied ? "Copied to clipboard!" : "Click to copy code"}
-                 </p>
-               </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* VIEW: SPATIAL TAB (Orb + Canvas) */}
-          <div className="relative flex-1 w-full flex flex-col items-center justify-center" style={{ visibility: activeTab === 'spatial' ? 'visible' : 'hidden', opacity: activeTab === 'spatial' ? 1 : 0, transition: 'opacity 0.3s' }}>
-            {/* The Orb Container — transitions between 2D and 3D */}
-            <motion.div
-              className="relative flex items-center justify-center rounded-full"
-              style={{ perspective: "1000px" }}
-              animate={{
-                rotateX: audio.isPlaying ? 50 : 0,
-              }}
-              transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-            >
-              {/* Glossy 3D overlay block */}
-              <div 
-                className={`absolute inset-0 rounded-full z-10 pointer-events-none transition-opacity duration-1000 ${audio.isPlaying ? 'opacity-100' : 'opacity-0'}`} 
-                style={{ background: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%), linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 40%, rgba(0,0,0,0.4) 100%)', boxShadow: 'inset 0 2px 20px rgba(255,255,255,0.05)' }} 
-              />
-
-              {/* Pulsing ring when playing */}
-              {audio.isPlaying && (
-                <motion.div
-                  className="absolute rounded-full border-2 border-accent-primary/20 pointer-events-none"
-                  style={{ width: orbSize + 40, height: orbSize + 40 }}
-                  animate={{ scale: [1, 1.15], opacity: [0.5, 0] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
-                />
-              )}
-
-              {/* Outer glow ring */}
-              <div
-                className="absolute rounded-full border border-foreground/5 pointer-events-none"
-                style={{ width: orbSize + 60, height: orbSize + 60 }}
-              />
-
-              {/* The OrbitUI canvas */}
-              <motion.div
-                style={{ transformStyle: "preserve-3d" }}
-                animate={{
-                  rotateZ: audio.isPlaying ? 360 : 0,
-                }}
-                transition={audio.isPlaying
-                  ? { duration: 120, repeat: Infinity, ease: "linear" }
-                  : { duration: 2, ease: "easeOut" }
-                }
-              >
-                <OrbitUI
-                  devices={effectiveDevices}
-                  myDeviceId={myDeviceId}
-                  onPositionChange={handlePositionChange}
-                  size={orbSize}
-                  displayNames={displayNames}
-                />
-              </motion.div>
-            </motion.div>
-          </div>
-
-          {/* Below the Orb */}
-          <div className="mt-8 flex flex-col items-center z-10 w-full max-w-md h-[100px]">
-             {activeTab === 'spatial' && audio.hasTrack ? (
-               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center w-full">
-                  <h2 className="text-xl sm:text-3xl font-black text-foreground text-center line-clamp-1 mb-3 drop-shadow-lg px-4">{audio.trackTitle}</h2>
-                  <div className="flex flex-col items-center gap-1.5">
-                    {allReady
-                      ? <span className="px-3 py-1 rounded-full bg-green-500/10 text-green-400 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> All synced</span>
-                      : <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Buffering</span>
-                    }
-                    <p className="text-[9px] text-foreground/40 font-mono">Clock: {clockOffset.toFixed(0)}ms • Spatial: {engineState}</p>
-                  </div>
-               </motion.div>
-             ) : activeTab === 'spatial' && !audio.hasTrack ? (
-               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-4">
-                  <div className="flex items-center gap-2 bg-foreground/5 border border-foreground/10 px-4 py-2 rounded-full backdrop-blur-md">
-                     <Speaker className="w-4 h-4 text-foreground/60" />
-                     <span className="text-xs font-bold text-foreground">3D Spatial Audio Room</span>
-                  </div>
-                  <div className="text-xs font-medium text-foreground/40 flex items-center gap-2 border border-dashed border-foreground/10 px-4 py-2 rounded-xl">
-                     <Music2 className="w-4 h-4" /> Drop audio files anywhere to start
-                  </div>
-               </motion.div>
-             ) : null}
-          </div>
-        </motion.div>
-      </div>
-      </div>
-
-      {/* RIGHT COLUMN: QUEUE & OPTIONS (Wide Desktop Only) */}
-      <div className="hidden lg:flex w-[320px] xl:w-[360px] shrink-0 flex-col gap-4 min-h-0 z-10">
-        <div className="glass-panel rounded-3xl p-6 flex-1 flex flex-col min-h-0 border border-foreground/10 bg-background/40 shadow-xl overflow-hidden">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              <ListMusic className="w-4 h-4" /> Up Next
-            </h3>
-            <button className="text-xs font-bold tracking-widest uppercase text-foreground hover:opacity-80 transition-opacity">
-               Add +
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {(!snapshot?.queue || snapshot.queue.length === 0) ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-foreground/30 px-4">
-                 <ListMusic className="w-12 h-12 mb-3 opacity-20" />
-                 <p className="text-sm font-medium">Queue is empty</p>
-                 <p className="text-xs mt-1">Drop files here to play them next.</p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {snapshot.queue.map((track: TrackQueueItem, i: number) => (
-                  <div key={i} className="p-3 rounded-2xl bg-foreground/5 border border-foreground/5 flex items-center gap-3 group hover:bg-foreground/10 transition-colors cursor-pointer">
-                    <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center shrink-0">
-                      <Music2 className="w-4 h-4 text-foreground/50" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-foreground truncate">{track.title || "Unknown Track"}</p>
-                      <p className="text-[10px] font-semibold text-foreground/40 mt-0.5">Added by {track.addedBy || "Someone"}</p>
-                    </div>
-                    {!track.isCurrent && (
-                      <button onClick={(e) => handleRemoveTrack(e, track.id)} className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-500 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        ) : (<div className="mt-2 rounded-2xl border border-foreground/5 bg-background/40 max-h-[35vh] p-4">
+          <h4 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+            No songs in the queue
+          </h4>
+        </div>)}
+      </motion.div>
     </div>
   );
 }

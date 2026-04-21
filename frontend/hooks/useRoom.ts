@@ -236,6 +236,12 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     socket.on('room:queueChanged', handleQueueChanged);
 
+    // Also listen for direct queue sync from REST routes (reorder, delete)
+    const handleQueueSynced = (queue: TrackQueueItem[]) => {
+      setSnapshot((prev) => prev ? { ...prev, queue } : prev);
+    };
+    socket.on('room:queueSynced', handleQueueSynced);
+
     // ── All clients are buffered — play is now safe ──────────────────────
     const handleAllReady = () => {
       console.log('[Room] All devices ready ✓');
@@ -326,6 +332,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       socket.off('room:participantLeft', handleParticipantLeft);
       socket.off('room:trackSet',        handleTrackSet);
       socket.off('room:queueChanged',    handleQueueChanged);
+      socket.off('room:queueSynced',     handleQueueSynced);
       socket.off('room:allReady',        handleAllReady);
       socket.off('sync:pong',            handlePong);
       socket.off('error',                handleError);

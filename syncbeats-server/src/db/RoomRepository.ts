@@ -260,10 +260,44 @@ export class RoomRepository {
 
   async removeQueueItem(roomId: string, itemId: string): Promise<boolean> {
     const item = await prisma.roomQueueItem.findUnique({ where: { id: itemId } });
-    if (!item || item.roomId !== roomId || item.isCurrent) return false;
+    if (!item || item.roomId !== roomId) return false;
+
+    if (item.isCurrent) {
+      // Advance to the next track before deleting this one so we don't break playback sequence
+      await this.advanceQueue(roomId, item.trackUrl);
+    }
 
     await prisma.roomQueueItem.delete({ where: { id: itemId } });
     return true;
+  }
+
+  async reorderQueue(roomId: string, itemId: string, newIndex: number): Promise<boolean> {
+    return prisma.$transaction(async (tx) => {
+      const queueItems = await tx.roomQueueItem.findMany({
+        where: { roomId },
+        orderBy: { queueIndex: 'asc' },
+      });
+      
+      const oldIndexArray = queueItems.findIndex(i => i.id === itemId);
+      if (oldIndexArray === -1) return false;
+      
+      // Reorder in memory
+      const [movingItem] = queueItems.splice(oldIndexArray, 1);
+      
+      // Prevent out of bounds
+      const safeNewIndex = Math.max(0, Math.min(newIndex, queueItems.length));
+      queueItems.splice(safeNewIndex, 0, movingItem);
+      
+      // Persist the new sequence indices
+      await Promise.all(queueItems.map((item, index) => 
+        tx.roomQueueItem.update({
+          where: { id: item.id },
+          data: { queueIndex: index }
+        })
+      ));
+      
+      return true;
+    });
   }
 
   async getParticipants(roomId: string): Promise<Participant[]> {

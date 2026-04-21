@@ -89,6 +89,15 @@ export class Room extends EventEmitter {
     this.setCurrentQueueItem(currentItemId, true);
   }
 
+  /** Reorder the queue without interrupting current playback. */
+  updateQueueOrder(queue: TrackQueueItem[]): void {
+    this.queue = [...queue].sort((a, b) => a.queueIndex - b.queueIndex);
+    this.emit('queueChanged', this.queueSnapshot());
+    // Emit a fresh snapshot so all clients see the new order,
+    // but do NOT touch trackUrl / position / state.
+    this.emit('stateChanged', this.snapshot());
+  }
+
   setCurrentQueueItem(itemId: string | null, skipQueueEmit = false): void {
     if (itemId === null) {
       this.queue = this.queue.map((item) => ({ ...item, isCurrent: false }));
