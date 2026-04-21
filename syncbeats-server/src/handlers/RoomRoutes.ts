@@ -117,7 +117,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       
       if (!success) {
         console.error(`[Rooms] removeQueueItem failed for room ${roomId}, item ${itemId}`);
-        res.status(400).json({ error: 'Failed to remove queue item. It may be currently playing or not exist.' });
+        res.status(400).json({ error: 'Failed to remove queue item.' });
         return;
       }
 
@@ -125,7 +125,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const latestQueue = await repo.getQueue(roomId);
       const room = roomManager.get(roomId);
       if (room) {
-        // Find current ID
         const currentItem = latestQueue.find(i => i.isCurrent);
         room.syncQueue(latestQueue, currentItem?.id ?? null);
         io.to(roomId).emit('room:queueSynced', latestQueue);
@@ -134,6 +133,41 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.json({ ok: true });
     } catch (err) {
       console.error('[Rooms] remove queue item error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // PUT /rooms/:roomId/queue/reorder
+  router.put('/:roomId/queue/reorder', requireAuth, async (req, res) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      const { itemId, newIndex } = req.body as { itemId: string; newIndex: number };
+
+      if (typeof newIndex !== 'number' || !itemId) {
+        res.status(400).json({ error: 'Missing itemId or newIndex' });
+        return;
+      }
+
+      const success = await repo.reorderQueue(roomId, itemId, newIndex);
+      if (!success) {
+        res.status(404).json({ error: 'Failed to reorder queue. Item may not exist.' });
+        return;
+      }
+
+      // Re-fetch queue and broadcast to room
+      const latestQueue = await repo.getQueue(roomId);
+      const room = roomManager.get(roomId);
+      if (room) {
+        // Use updateQueueOrder — NOT syncQueue — so we don't interrupt
+        // the currently playing track (no position reset, no pause).
+        room.updateQueueOrder(latestQueue);
+        io.to(roomId).emit('room:queueSynced', latestQueue);
+      }
+
+      res.json({ ok: true, queue: latestQueue });
+    } catch (err) {
+      console.error('[Rooms] reorder queue error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }

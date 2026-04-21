@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
+import { SyncProvider } from "../../context/SyncContext";
 import { DynamicIsland } from "../../components/DynamicIsland";
 import { devicesApi, type Device } from "../../lib/api";
 import { X, Camera } from "lucide-react";
@@ -110,6 +111,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
 
   return (
     <UploadProvider>
+    <SyncProvider>
       <DynamicIsland />
       {isLocalUnverified && (
         <div className="fixed top-24 left-1/2 z-50 w-[min(92vw,720px)] -translate-x-1/2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
@@ -204,7 +206,8 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-      <div className={isRoom ? "h-[100dvh] overflow-hidden" : "pt-32"}>{children}</div>
+      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center" : "pt-32"}>{children}</div>
+    </SyncProvider>
     </UploadProvider>
   );
 }

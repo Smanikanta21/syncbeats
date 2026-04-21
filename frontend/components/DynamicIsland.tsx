@@ -14,6 +14,7 @@ import { useUpload } from "../context/UploadContext";
 import { getSocket } from "../lib/socket";
 import { formatTime } from "../hooks/useAudioPlayer";
 import { ThemeToggle } from "./ThemeToggle";
+import { useSyncInfo } from "../context/SyncContext";
 
 export function DynamicIsland() {
   const pathname = usePathname();
@@ -21,6 +22,7 @@ export function DynamicIsland() {
   const { user } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
+  const { clockOffset } = useSyncInfo();
 
   const [expanded, setExpanded] = useState(false);
   const [driveLink, setDriveLink] = useState("");
@@ -426,7 +428,7 @@ export function DynamicIsland() {
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
                     <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
-                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
+                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)} · {clockOffset.toFixed(0)}ms</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
