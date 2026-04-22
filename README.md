@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma" />
 </p>
 
-# 🎵 SyncBeats
+# SyncBeats
 
 **Play music in perfect sync across every device in the room.**
 
@@ -15,20 +15,20 @@ SyncBeats lets a group of friends join a shared room, upload audio, and hear it 
 
 ---
 
-## ✨ Features
+## Features
 
-- 🔊 **Sub-25ms Sync** — NTP clock sync + proportional playback rate correction keeps all devices locked
-- 🎛 **Shared Queue** — Upload tracks, drag-and-drop reorder, delete — changes broadcast to everyone in real time
-- 👥 **Multi-Device Rooms** — Join with a 6-digit code or QR scan. No app install needed
-- 🎚 **Per-Device Volume** — Each participant can control their own volume and see others'
-- 🏝 **Dynamic Island** — Persistent floating mini-player with playback controls, upload zone, and live sync offset display
-- 🔐 **Full Auth** — Email/password, Google SSO, email verification, password reset (link + OTP)
-- 📱 **Mobile-First** — Responsive design, touch-friendly drag-and-drop with 250ms long-press activation
-- 🐳 **Docker-Ready** — One command to deploy the backend anywhere
+- **Sub-25ms Synchronization** — NTP clock sync with proportional playback rate correction keeps all devices locked in phase
+- **Shared Queue** — Upload tracks, drag-and-drop to reorder, delete items — all changes broadcast to every participant in real time
+- **Multi-Device Rooms** — Join with a 6-digit code or QR scan. No app install required
+- **Per-Device Volume** — Each participant controls their own volume independently
+- **Dynamic Island** — Persistent floating mini-player with playback controls, upload zone, and live sync offset display
+- **Full Authentication** — Email/password, Google SSO, email verification, password reset (link + OTP)
+- **Mobile-First Design** — Fully responsive with touch-optimized drag-and-drop (250ms long-press activation)
+- **Docker-Ready** — Single-command backend deployment
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ```
 sync-beats/
@@ -90,19 +90,19 @@ sync-beats/
 └── .env
 ```
 
-> 📖 See [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) for a deep dive into the sync engine, state machine, event flow, and deployment architecture.
+> For a deep dive into the sync engine, state machine, event flow, and deployment architecture, see [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md).
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- **Node.js** ≥ 20
+- **Node.js** >= 20
 - **PostgreSQL** database (or a [Neon](https://neon.tech) free-tier instance)
-- **npm** ≥ 10
+- **npm** >= 10
 
-### 1. Clone & Install
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/Smanikanta21/sync-beats.git
@@ -121,24 +121,6 @@ cd ../frontend && npm install
 ### 2. Environment Variables
 
 Create a `.env` file in the project root:
-
-```env
-# ── Database ──────────────────────────────────────────────
-DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require"
-
-# ── Auth ──────────────────────────────────────────────────
-JWT_SECRET="your-secret-key"
-GOOGLE_CLIENT_ID="your-google-client-id"
-
-# ── Email (Resend) ────────────────────────────────────────
-RESEND_API_KEY="re_xxxxxxxxxxxx"
-AUTH_FROM_EMAIL="noreply@yourdomain.com"
-
-# ── URLs ──────────────────────────────────────────────────
-AUTH_PUBLIC_APP_URL="http://localhost:3000"
-FRONTEND_URL="http://localhost:3000"
-NEXT_PUBLIC_SERVER_URL="http://localhost:4000"
-```
 
 ### 3. Database Setup
 
@@ -164,7 +146,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ```bash
 # Build and run the backend
@@ -174,84 +156,84 @@ docker compose up -d
 ```
 
 The `docker-compose.yml` configures:
-- Backend container with all env vars
+- Backend container with all environment variables
 - Persistent `uploads` volume for audio files
 - Port mapping (default: 4000)
 
 ---
 
-## 🔌 API Reference
+## API Reference
 
-### Auth (`/auth`)
+### Authentication (`/auth`)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/auth/register` | Create account (name, email, password) |
-| `POST` | `/auth/login` | Login → JWT |
-| `POST` | `/auth/google` | Google OAuth → JWT |
+| `POST` | `/auth/login` | Login, returns JWT |
+| `POST` | `/auth/google` | Google OAuth, returns JWT |
 | `POST` | `/auth/verification/resend` | Resend email verification |
 | `POST` | `/auth/verification/confirm` | Confirm email token |
-| `POST` | `/auth/password/forgot` | Send reset email/OTP |
+| `POST` | `/auth/password/forgot` | Send reset email or OTP |
 | `POST` | `/auth/password/reset` | Reset password (token or OTP) |
-| `GET`  | `/auth/me` | Get current user (🔒 protected) |
+| `GET`  | `/auth/me` | Get current user (protected) |
 
 ### Rooms (`/rooms`)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/rooms` | Create a room (🔒) |
-| `GET`  | `/rooms/mine` | List your rooms (🔒) |
+| `POST` | `/rooms` | Create a room (protected) |
+| `GET`  | `/rooms/mine` | List your rooms (protected) |
 | `GET`  | `/rooms/:id` | Get room details |
-| `DELETE` | `/rooms/:id` | End a room (🔒) |
-| `PATCH` | `/rooms/:id/host` | Transfer host (🔒) |
+| `DELETE` | `/rooms/:id` | End a room (protected) |
+| `PATCH` | `/rooms/:id/host` | Transfer host (protected) |
 | `POST` | `/rooms/:id/upload` | Upload audio file |
 | `DELETE` | `/rooms/:id/queue/:itemId` | Remove queue item |
-| `PUT` | `/rooms/:id/queue/reorder` | Reorder queue (🔒) |
+| `PUT` | `/rooms/:id/queue/reorder` | Reorder queue (protected) |
 
 ### WebSocket Events
 
 | Event | Direction | Payload |
 |-------|-----------|---------|
-| `room:join` | Client → Server | `{ roomId, displayName }` |
-| `room:leave` | Client → Server | `{ roomId }` |
-| `playback:play` | Client → Server | `{ roomId }` |
-| `playback:pause` | Client → Server | `{ roomId }` |
-| `playback:seek` | Client → Server | `{ roomId, position }` |
-| `playback:ended` | Client → Server | `{ roomId, trackUrl }` |
-| `room:clientReady` | Client → Server | `{ roomId }` |
-| `sync:ping` | Client → Server | `{ t0 }` |
-| `sync:pong` | Server → Client | `{ t0, t1, t2 }` |
-| `room:snapshot` | Server → Client | Full `RoomSnapshot` |
-| `room:stateChanged` | Server → Client | Updated `RoomSnapshot` |
-| `room:trackSet` | Server → Client | `{ trackUrl, title }` |
-| `room:queueChanged` | Server → Client | `{ queue }` |
-| `room:allReady` | Server → Client | _(empty)_ |
+| `room:join` | Client to Server | `{ roomId, displayName }` |
+| `room:leave` | Client to Server | `{ roomId }` |
+| `playback:play` | Client to Server | `{ roomId }` |
+| `playback:pause` | Client to Server | `{ roomId }` |
+| `playback:seek` | Client to Server | `{ roomId, position }` |
+| `playback:ended` | Client to Server | `{ roomId, trackUrl }` |
+| `room:clientReady` | Client to Server | `{ roomId }` |
+| `sync:ping` | Client to Server | `{ t0 }` |
+| `sync:pong` | Server to Client | `{ t0, t1, t2 }` |
+| `room:snapshot` | Server to Client | Full `RoomSnapshot` |
+| `room:stateChanged` | Server to Client | Updated `RoomSnapshot` |
+| `room:trackSet` | Server to Client | `{ trackUrl, title }` |
+| `room:queueChanged` | Server to Client | `{ queue }` |
+| `room:allReady` | Server to Client | _(empty)_ |
 
 ---
 
-## 🎯 How Sync Works
+## How Sync Works
 
-1. **On join**: Client fires 6 rapid NTP pings (60ms apart) to converge clock offset in ~360ms
-2. **Steady-state**: Pings continue every 2s. The median of the last 5 offsets is used
-3. **On play**: Server records `{ position, timestamp }`. Client computes expected position:
+1. **On join**: The client fires 6 rapid NTP pings (60ms apart) to converge the clock offset within approximately 360ms.
+2. **Steady-state**: Pings continue every 2 seconds. The median of the last 5 offset samples is used as the canonical offset.
+3. **On play**: The server records `{ position, timestamp }`. Each client computes its expected position:
    ```
    expected = position + (now - timestamp) + clockOffset
    ```
 4. **Drift correction**:
-   - < 15ms → ignore (deadband)
-   - 15–800ms → gently adjust `playbackRate` (±2–10%) over 3+ observations
-   - \> 800ms → hard seek
+   - Less than 15ms: ignored (within perceptual deadband)
+   - 15ms to 800ms: playback rate is gently adjusted (plus or minus 2 to 10 percent) over 3 or more consecutive observations
+   - Greater than 800ms: hard seek to the expected position
 
 This achieves sub-25ms synchronization across WiFi without any specialized hardware.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Frontend | Next.js 16, React 19, Tailwind CSS 4, Framer Motion |
-| Drag & Drop | @dnd-kit/core, @dnd-kit/sortable |
+| Drag and Drop | @dnd-kit/core, @dnd-kit/sortable |
 | Icons | Lucide React |
 | Backend | Express 5, Socket.IO 4, TypeScript 6 |
 | Database | PostgreSQL (Neon), Prisma ORM |
@@ -262,12 +244,12 @@ This achieves sub-25ms synchronization across WiFi without any specialized hardw
 
 ---
 
-## 📄 License
+## License
 
 This project is private. All rights reserved.
 
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://github.com/Smanikanta21">Smanikanta21</a>
+  Built by <a href="https://github.com/Smanikanta21">Smanikanta21</a>
 </p>
