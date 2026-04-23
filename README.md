@@ -86,12 +86,8 @@ sync-beats/
 │       └── schema.prisma       # Database schema
 │
 ├── docker-compose.yml
-├── SYSTEM_DESIGN.md
 └── .env
 ```
-
-> For a deep dive into the sync engine, state machine, event flow, and deployment architecture, see [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md).
-
 ---
 
 ## Getting Started
