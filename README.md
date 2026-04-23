@@ -120,8 +120,18 @@ cd ../frontend && npm install
 
 ### 2. Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root with the following keys:
 
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string (Neon pooled) |
+| `JWT_SECRET` | Secret key for signing JWTs |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `RESEND_API_KEY` | Resend API key for transactional email |
+| `AUTH_FROM_EMAIL` | Sender address for auth emails |
+| `AUTH_PUBLIC_APP_URL` | Public-facing frontend URL |
+| `FRONTEND_URL` | Frontend URL (used for CORS and email links) |
+| `NEXT_PUBLIC_SERVER_URL` | Backend API URL (used by the frontend) |
 ### 3. Database Setup
 
 ```bash
@@ -240,7 +250,7 @@ This achieves sub-25ms synchronization across WiFi without any specialized hardw
 | Auth | JWT, bcryptjs, Google Auth Library |
 | Email | Nodemailer + Resend |
 | File Upload | Multer |
-| Deployment | Docker, Vercel (frontend) |
+| Deployment | Docker (backend,sockets) EC2 instance |
 
 ---
 
