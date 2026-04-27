@@ -158,6 +158,7 @@ jobs:
             # ── BACKEND ──────────────────────────────────────
             # Stop old container
             docker compose down --remove-orphans || true
+            docker compose ps 
 
             # Log in to GHCR and pull the pre-built image
             # (built in Job 1 — this is ~5s, no RAM spike)
@@ -170,7 +171,9 @@ jobs:
             docker compose run --rm server npx prisma migrate deploy
 
             # Start backend with the fresh image
-            docker compose up -d --no-build --remove-orphans server
+            docker compose up -d server
+
+            docker compose ps
 
             # Health check
             sleep 6
