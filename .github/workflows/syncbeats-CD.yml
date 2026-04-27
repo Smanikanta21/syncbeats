@@ -157,7 +157,7 @@ jobs:
 
             # ── BACKEND ──────────────────────────────────────
             # Stop old container
-            docker compose down --remove-orphans || true
+            docker compose --profile admin down --remove-orphans || true
             docker compose ps 
 
             # Log in to GHCR and pull the pre-built image
