@@ -153,11 +153,14 @@ export class UserRepository {
   }
 
   async resetPassword(userId: string, passwordHash: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } }) as any;
+    const newAuthProvider = user?.googleId ? 'GOOGLE_LOCAL' : 'LOCAL';
+
     await prisma.user.update({
       where: { id: userId },
       data: {
         passwordHash,
-        authProvider: 'LOCAL',
+        authProvider: newAuthProvider,
         passwordResetTokenHash: null,
         passwordResetExpiresAt: null,
       },
@@ -165,11 +168,15 @@ export class UserRepository {
   }
 
   async linkGoogleAccount(userId: string, googleId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } }) as any;
+    const hasRealPassword = user?.passwordHash && user.passwordHash !== 'temp_hash_change_me';
+    const newAuthProvider = hasRealPassword ? 'GOOGLE_LOCAL' : 'GOOGLE';
+
     await prisma.user.update({
       where: { id: userId },
       data: {
         googleId,
-        authProvider: 'GOOGLE',
+        authProvider: newAuthProvider,
         emailVerifiedAt: new Date(),
       },
     });

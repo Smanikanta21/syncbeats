@@ -34,6 +34,22 @@ export function createAuthRoutes(): Router {
     }
   });
 
+  // POST /auth/check-email
+  router.post('/check-email', async (req: Request, res: Response) => {
+    const { email } = req.body as { email?: string };
+    if (!email) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+    try {
+      const exists = await authService.checkEmail(email);
+      res.json({ exists });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   // POST /auth/login
   router.post('/login', async (req: Request, res: Response) => {
     const { email, password } = req.body as { email?: string; password?: string };

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
 import { authApi } from "../../lib/api";
 
@@ -19,6 +19,19 @@ export default function ForgotPasswordPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const initialEmail = params.get("email");
+    const autoSent = params.get("autoSent");
+    
+    if (initialEmail) setEmail(initialEmail);
+    if (autoSent === "true") {
+      setOtpSent(true);
+      setMessage("You previously logged in with Google. An OTP has been sent to your email so you can set a password.");
+    }
+  }, []);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();

@@ -186,6 +186,11 @@ export class AuthService {
     );
   }
 
+  async checkEmail(email: string): Promise<boolean> {
+    if (!email?.trim()) return false;
+    return await this.repo.emailExists(email);
+  }
+
   async register(name: string, email: string, password: string): Promise<void> {
     if (!name?.trim())     throw new Error('Name is required');
     if (!email?.trim())    throw new Error('Email is required');
@@ -204,12 +209,18 @@ export class AuthService {
     const row = await this.repo.findByEmail(email);
     if (!row) throw new Error('User not found , Register first');
 
-    if (!row.password_hash) throw new Error('This account uses Google sign-in. Use Google login.');
+    if (row.auth_provider === 'GOOGLE' || !row.password_hash || row.password_hash === 'temp_hash_change_me') {
+      await this.forgotPassword(email);
+      throw new Error('GOOGLE_AUTH_SETUP_PASSWORD: An OTP has been sent to your email to set up a local password.');
+    }
 
     const valid = await bcrypt.compare(password, row.password_hash);
     if (!valid) throw new Error('Invalid password');
 
-    if (!row.email_verified_at) throw new Error('Please verify your email before logging in');
+    if (!row.email_verified_at) {
+      await this.issueEmailVerification(row as unknown as PublicUser);
+      throw new Error('UNVERIFIED_EMAIL: We have sent a new verification link to your email. Please verify before logging in.');
+    }
 
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);

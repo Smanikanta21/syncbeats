@@ -8,10 +8,11 @@ import { useAuth } from "../../context/AuthContext";
 function VerifyEmailSentContent() {
   const params = useSearchParams();
   const email = useMemo(() => params.get("email") ?? "", [params]);
+  const resentParam = useMemo(() => params.get("resent") === "true", [params]);
   const { resendVerification } = useAuth();
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(resentParam ? "We noticed your email wasn't verified, so we just sent a new verification link to your inbox." : null);
   const [error, setError] = useState<string | null>(null);
 
   const handleResend = async () => {
