@@ -1,21 +1,116 @@
-# .github/workflows/deploy.yml
 name: Syncbeats CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: syncbeats-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/syncbeats-server
+
 jobs:
-  deploy:
-    name: Clean Deploy to VM
+  # ─────────────────────────────────────────────
+  # JOB 1 — Build backend Docker image
+  # Runs on GitHub's free runner (7GB RAM)
+  # ─────────────────────────────────────────────
+  build-backend:
+    name: Build & Push Backend Image
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: write           # needed to push to GHCR
+
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,format=short   # e.g. ghcr.io/you/syncbeats-server:a1b2c3d
+            type=raw,value=latest
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./syncbeats-server   # path to your backend Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          # Cache layers between runs — dramatically speeds up rebuilds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────
+  # JOB 2 — Build Next.js frontend
+  # Runs on GitHub's free runner (7GB RAM)
+  # ─────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Next.js
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_SERVER_URL: /api
+        run: npm run build
+
+      # Package the build output to transfer to EC2
+      # .next/standalone + .next/static + public is all you need
+      - name: Package build output
+        run: tar -czf frontend-build.tar.gz -C frontend .next public package.json
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend-build.tar.gz
+          retention-days: 1
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Deploy to EC2
+  # Waits for both builds. EC2 does almost nothing.
+  # ─────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-backend, build-frontend]   # only runs if both succeed
 
     steps:
       - name: Setup SSH
@@ -26,65 +121,89 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy Syncbeats
+      # ── Download the frontend build from Job 2 ──
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+
+      # ── SCP the pre-built frontend to EC2 ──
+      # EC2 doesn't build anything — just receives a tarball
+      - name: Upload frontend build to EC2
         run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
+          scp -o StrictHostKeyChecking=yes \
+            frontend-build.tar.gz \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/frontend-build.tar.gz
+
+      # ── Everything below is lightweight on EC2 ──
+      - name: Deploy on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
             set -euxo pipefail
 
             APP="$HOME/sync-beats"
             FRONT="$APP/frontend"
             SERVER="$APP/syncbeats-server"
 
+            # Pull only what's needed for prisma migration files
+            # (no npm ci, no build — just the schema/migration files)
             cd "$APP"
-
-            echo "📥 Pull latest code"
             git fetch origin
             git reset --hard origin/main
 
-            echo "🛑 Stop frontend PM2"
-            pm2 delete syncbeats-frontend || true
-            pm2 ps || true
-
-            echo "🛑 Stop backend containers"
+            # ── BACKEND ──────────────────────────────────────
+            # Stop old container
             docker compose down --remove-orphans || true
 
-            echo "🧬 Prepare Prisma Client"
-            cd "$SERVER"
-            npm ci
-            npx prisma generate
-            npx prisma migrate deploy
+            # Log in to GHCR and pull the pre-built image
+            # (built in Job 1 — this is ~5s, no RAM spike)
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            echo "🐳 Start backend fresh"
-            cd "$APP"
-            docker compose up -d --build --remove-orphans server
+            docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
 
-            echo "🩺 Check backend"
-            sleep 8
+            # Run migrations ONLY (no build, no npm ci)
+            # Use the pulled image itself to run prisma — avoids installing node deps
+            docker run --rm \
+              --env-file "$SERVER/.env" \
+              ghcr.io/${{ env.IMAGE_NAME }}:latest \
+              npx prisma migrate deploy
+
+            # Start backend with the fresh image
+            docker compose up -d --no-build --remove-orphans server
+
+            # Health check
+            sleep 6
             curl -fsS http://localhost:4000/health >/dev/null
+            echo "Backend healthy"
 
-            echo "🎨 Build frontend"
+            # ── FRONTEND ─────────────────────────────────────
+            # Stop PM2 before swapping files
+            pm2 delete syncbeats-frontend || true
+
+            # Unpack the pre-built frontend (built in Job 2)
             cd "$FRONT"
-            rm -rf .next
-            npm ci
-            NEXT_PUBLIC_SERVER_URL=/api npm run build
+            rm -rf .next public
+            tar -xzf "$APP/frontend-build.tar.gz"
+            rm "$APP/frontend-build.tar.gz"
 
-            echo "🚀 Start frontend fresh"
-            pm2 start "npm start -- -p 3000" --name syncbeats-frontend
+            # Start with the unpacked build — no npm ci, no next build
+            pm2 start "node .next/standalone/server.js" \
+              --name syncbeats-frontend \
+              --env PORT=3000
             pm2 save
 
-            echo "🩺 Check frontend"
-            sleep 8
+            # Health check
+            sleep 6
             curl -fsS http://localhost:3000 >/dev/null
+            echo "Frontend healthy"
 
-            echo "🌐 Reload nginx"
+            # ── NGINX ─────────────────────────────────────────
             sudo nginx -t
             sudo systemctl reload nginx
 
-            echo "📊 Final PM2 Status"
+            echo "Deploy complete"
             pm2 ps
-
-            echo "🐳 Docker Status"
             docker ps
-
-            echo "✅ Deploy complete"
           EOF
