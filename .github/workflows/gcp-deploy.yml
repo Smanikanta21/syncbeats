@@ -166,12 +166,8 @@ jobs:
 
             docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
 
-            # Run migrations ONLY (no build, no npm ci)
-            # Use the pulled image itself to run prisma — avoids installing node deps
-            docker run --rm \
-              --env-file "$SERVER/.env" \
-              ghcr.io/${{ env.IMAGE_NAME }}:latest \
-              npx prisma migrate deploy
+            # Run migrations (handles starting the database and network setup)
+            docker compose run --rm server npx prisma migrate deploy
 
             # Start backend with the fresh image
             docker compose up -d --no-build --remove-orphans server
