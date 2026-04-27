@@ -39,6 +39,22 @@ services:
     volumes:
       - uploads:/app/uploads
 
+  studio:
+    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: npx prisma studio --hostname 0.0.0.0 --port 5555
+    ports:
+      - "5555:5555"
+    profiles:
+      - admin
+
 volumes:
   pgdata:
   uploads:
