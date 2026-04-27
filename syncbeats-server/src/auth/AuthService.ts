@@ -196,7 +196,13 @@ export class AuthService {
     if (!email?.trim())    throw new Error('Email is required');
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
 
-    if (await this.repo.emailExists(email)) {
+    const existing = await this.repo.findByEmail(email);
+    if (existing) {
+      if (existing.auth_provider === 'GOOGLE' || !existing.password_hash || existing.password_hash === 'temp_hash_change_me') {
+        const { devOtp } = await this.forgotPassword(email);
+        const extra = devOtp ? ` [DEV_OTP:${devOtp}]` : '';
+        throw new Error(`GOOGLE_AUTH_SETUP_PASSWORD: You already have a Google account. An OTP has been sent to your email so you can set up a local password.${extra}`);
+      }
       throw new Error('An account with this email already exists');
     }
 
@@ -210,8 +216,9 @@ export class AuthService {
     if (!row) throw new Error('User not found , Register first');
 
     if (row.auth_provider === 'GOOGLE' || !row.password_hash || row.password_hash === 'temp_hash_change_me') {
-      await this.forgotPassword(email);
-      throw new Error('GOOGLE_AUTH_SETUP_PASSWORD: An OTP has been sent to your email to set up a local password.');
+      const { devOtp } = await this.forgotPassword(email);
+      const extra = devOtp ? ` [DEV_OTP:${devOtp}]` : '';
+      throw new Error(`GOOGLE_AUTH_SETUP_PASSWORD: An OTP has been sent to your email to set up a local password.${extra}`);
     }
 
     const valid = await bcrypt.compare(password, row.password_hash);

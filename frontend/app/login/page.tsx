@@ -109,7 +109,9 @@ export default function AuthPage() {
       const message = (err as Error).message;
       
       if (message.includes("GOOGLE_AUTH_SETUP_PASSWORD")) {
-        router.push(`/forgot-password?email=${encodeURIComponent(email)}&autoSent=true`);
+        const match = message.match(/\[DEV_OTP:(.+?)\]/);
+        const devOtp = match ? match[1] : null;
+        router.push(`/forgot-password?email=${encodeURIComponent(email)}&autoSent=true${devOtp ? `&devOtp=${devOtp}` : ''}`);
         return;
       }
 
