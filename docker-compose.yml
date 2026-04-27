@@ -1,62 +1,69 @@
+name: sync-beats
 services:
   postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      POSTGRES_DB: syncbeats
+      POSTGRES_PASSWORD: syncbeats
+      POSTGRES_USER: syncbeats
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
-      interval: 5s
+      test:
+        - CMD-SHELL
+        - pg_isready -U syncbeats
       timeout: 5s
+      interval: 5s
       retries: 5
-
-  server:
-    build:
-      context: ./syncbeats-server
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    image: postgres:16-alpine
+    networks:
+      default: null
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      PORT: ${PORT}
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      AUTH_PUBLIC_APP_URL: ${AUTH_PUBLIC_APP_URL}
-      FRONTEND_URL: ${FRONTEND_URL}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      JWT_SECRET: ${JWT_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
-      CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL}
-      NODE_ENV: ${NODE_ENV}
-    ports:
-      - "${PORT}:${PORT}"
     volumes:
-      - uploads:/app/uploads
-
-  studio:
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
-    restart: unless-stopped
+      - type: volume
+        source: pgdata
+        target: /var/lib/postgresql/data
+        volume: {}
+  server:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file:
-      - .env
+        required: true
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    command: npx prisma studio --port 5555 --browser none
+      AUTH_FROM_EMAIL: auth@syncbeats.app
+      AUTH_PUBLIC_APP_URL: https://syncbeats.app
+      CAMPAIGN_FROM_EMAIL: team@syncbeats.app
+      CORS_ORIGIN: https://syncbeats.app
+      DATABASE_URL: postgresql://syncbeats:syncbeats@localhost:5432/syncbeats
+      FRONTEND_CORS_ORIGIN: http://13.234.159.243:3000
+      FRONTEND_PORT: "3000"
+      FRONTEND_URL: https://syncbeats.app
+      GOOGLE_CLIENT_ID: 1006171035854-cacohriuvvgpb7mu8q11iro8oq2dj2o1.apps.googleusercontent.com
+      JWT_SECRET: Abhinay
+      NEXT_PUBLIC_SERVER_URL: /api
+      NODE_ENV: Production
+      PORT: "4000"
+      POSTGRES_DB: syncbeats
+      POSTGRES_PASSWORD: syncbeats
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: syncbeats
+      RESEND_API_KEY: re_ZwSsx72s_KZegwoQKuuwUBUz1DntXeJfC
+    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    networks:
+      default: null
     ports:
-      - "5555:5555"
-    profiles:
-      - admin
-
+      - mode: ingress
+        target: 4000
+        published: "4000"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: uploads
+        target: /app/uploads
+        volume: {}
+networks:
+  default:
+    name: sync-beats_default
 volumes:
   pgdata:
+    name: sync-beats_pgdata
   uploads:
+    name: sync-beats_uploads
