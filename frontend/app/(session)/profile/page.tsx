@@ -185,7 +185,7 @@ export default function ProfilePage() {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
                   <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Member Since</p>
                   <p className="text-foreground/70 font-medium">{memberSince}</p>
@@ -193,6 +193,12 @@ export default function ProfilePage() {
                 <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
                   <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Account ID</p>
                   <p className="text-foreground/70 font-mono text-sm">{accountId}</p>
+                </div>
+                <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
+                  <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Account Type</p>
+                  <p className="text-foreground/70 font-medium capitalize">
+                    {user?.auth_provider === 'GOOGLE_LOCAL' ? 'Google & Local' : user?.auth_provider?.toLowerCase() || 'Local'}
+                  </p>
                 </div>
               </div>
             </div>

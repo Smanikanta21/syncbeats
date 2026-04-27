@@ -6,6 +6,7 @@ import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, Loa
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { authApi } from "../../lib/api";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -22,6 +23,7 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+  const [emailExists, setEmailExists] = useState<boolean | null>(null);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
@@ -53,6 +55,24 @@ export default function AuthPage() {
 
     return () => window.clearTimeout(timeoutId);
   }, []);
+
+  useEffect(() => {
+    if (!email.trim() || !email.includes('@')) {
+      setEmailExists(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await authApi.checkEmail(email.trim());
+        setEmailExists(result.exists);
+      } catch (err) {
+        setEmailExists(null);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [email]);
 
   const resetForm = () => {
     setName("");
@@ -87,6 +107,17 @@ export default function AuthPage() {
       }
     } catch (err) {
       const message = (err as Error).message;
+      
+      if (message.includes("GOOGLE_AUTH_SETUP_PASSWORD")) {
+        router.push(`/forgot-password?email=${encodeURIComponent(email)}&autoSent=true`);
+        return;
+      }
+
+      if (message.includes("UNVERIFIED_EMAIL")) {
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}&resent=true`);
+        return;
+      }
+
       setError(message);
 
       const normalized = message.toLowerCase();
@@ -121,6 +152,23 @@ export default function AuthPage() {
 
   const inputClass = "w-full bg-foreground/5 border border-foreground/5 focus:border-accent-primary/40 rounded-2xl pl-11 pr-4 py-3.5 text-foreground focus:outline-none focus:ring-1 focus:ring-accent-primary/40 transition-all placeholder:text-foreground/40";
   const inputClassSm = "w-full bg-foreground/5 border border-foreground/5 focus:border-accent-primary/40 rounded-xl pl-9 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent-primary/40 transition-all placeholder:text-foreground/40";
+
+  const getEmailInputClass = (baseClass: string, isLoginField: boolean) => {
+    if (emailExists === true) {
+      if (isLoginField) {
+        return baseClass.replace('border-foreground/5', 'border-emerald-500/50').replace('focus:border-accent-primary/40', 'focus:border-emerald-500/80').replace('focus:ring-accent-primary/40', 'focus:ring-emerald-500/80');
+      } else {
+        return baseClass.replace('border-foreground/5', 'border-red-500/50').replace('focus:border-accent-primary/40', 'focus:border-red-500/80').replace('focus:ring-accent-primary/40', 'focus:ring-red-500/80');
+      }
+    } else if (emailExists === false && email.includes('@')) {
+      if (isLoginField) {
+        return baseClass.replace('border-foreground/5', 'border-red-500/50').replace('focus:border-accent-primary/40', 'focus:border-red-500/80').replace('focus:ring-accent-primary/40', 'focus:ring-red-500/80');
+      } else {
+        return baseClass.replace('border-foreground/5', 'border-emerald-500/50').replace('focus:border-accent-primary/40', 'focus:border-emerald-500/80').replace('focus:ring-accent-primary/40', 'focus:ring-emerald-500/80');
+      }
+    }
+    return baseClass;
+  };
 
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -284,7 +332,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-foreground/50" /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={getEmailInputClass(inputClass, true)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -375,7 +423,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-foreground/50" /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClassSm} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={getEmailInputClass(inputClassSm, false)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 

@@ -111,6 +111,12 @@ export interface Device {
 }
 
 export const authApi = {
+  checkEmail: (email: string) =>
+    request<{ exists: boolean }>('/auth/check-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
   register: (name: string, email: string, password: string) =>
     request<{ ok: boolean }>('/auth/register', {
       method: 'POST',
