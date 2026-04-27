@@ -149,55 +149,55 @@ jobs:
             FRONT="$APP/frontend"
             SERVER="$APP/syncbeats-server"
 
-            # Pull only what's needed for prisma migration files
-            # (no npm ci, no build — just the schema/migration files)
+            # Always run docker compose from APP dir
+            # Define a helper so we never forget
+            dc() { docker compose --project-directory "$APP" "$@"; }
+
             cd "$APP"
             git fetch origin
             git reset --hard origin/main
 
             # ── BACKEND ──────────────────────────────────────
-            # Stop old container
-            docker compose --profile admin down --remove-orphans || true
-            docker compose ps 
+            dc down --remove-orphans || true
 
-            # Log in to GHCR and pull the pre-built image
-            # (built in Job 1 — this is ~5s, no RAM spike)
             echo "${{ secrets.GITHUB_TOKEN }}" | \
               docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
 
-            # Run migrations (handles starting the database and network setup)
-            docker compose run --rm server npx prisma migrate deploy
+            # Run migrations
+            dc run --rm server npx prisma migrate deploy
 
-            # Start backend with the fresh image
-            docker compose up -d server
+            # Start backend
+            dc up -d server
 
-            docker compose ps
+            # Give it 3s then immediately dump logs — don't wait silently
+            sleep 3
+            echo "=== SERVER LOGS ==="
+            dc logs --tail 50 server
+            echo "=== CONTAINER STATUS ==="
+            dc ps
 
             # Health check
-            sleep 6
+            sleep 5
             curl -fsS http://localhost:4000/health >/dev/null
             echo "Backend healthy"
 
             # ── FRONTEND ─────────────────────────────────────
-            # Stop PM2 before swapping files
             pm2 delete syncbeats-frontend || true
 
-            # Unpack the pre-built frontend (built in Job 2)
+            # Stay in FRONT only for the frontend steps
             cd "$FRONT"
             rm -rf .next public
             tar -xzf "$APP/frontend-build.tar.gz"
             rm "$APP/frontend-build.tar.gz"
 
-            # Start with the unpacked build — no npm ci, no next build
             pm2 start "node .next/standalone/server.js" \
               --name syncbeats-frontend \
               --env PORT=3000
             pm2 save
 
-            # Health check
-            sleep 6
+            sleep 5
             curl -fsS http://localhost:3000 >/dev/null
             echo "Frontend healthy"
 
@@ -205,7 +205,14 @@ jobs:
             sudo nginx -t
             sudo systemctl reload nginx
 
-            echo "Deploy complete"
+            # ── FINAL STATUS — always from APP dir ───────────
+            cd "$APP"
+            echo "=== FINAL DOCKER STATUS ==="
+            dc ps
+            echo "=== FINAL SERVER LOGS ==="
+            dc logs --tail 20 server
+            echo "=== PM2 STATUS ==="
             pm2 ps
-            docker ps
+
+            echo "Deploy complete"
           EOF
