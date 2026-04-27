@@ -1,29 +1,48 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   server:
     build:
       context: ./syncbeats-server
       dockerfile: Dockerfile
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
-      PORT: ${PORT:-4000}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      AUTH_PUBLIC_APP_URL: ${AUTH_PUBLIC_APP_URL:-http://localhost:3000}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      # Neon pooled connection string (runtime queries)
-      DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET:-syncbeats-dev-jwt-secret-change-in-prod}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
-      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY}
-      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL:?Set AUTH_FROM_EMAIL}
-      CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL:?Set CAMPAIGN_FROM_EMAIL}
-      NODE_ENV: ${NODE_ENV:-production}
-
+      PORT: ${PORT}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AUTH_PUBLIC_APP_URL: ${AUTH_PUBLIC_APP_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
+      CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL}
+      NODE_ENV: ${NODE_ENV}
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - "${PORT}:${PORT}"
     volumes:
       - uploads:/app/uploads
 
 volumes:
+  pgdata:
   uploads:
