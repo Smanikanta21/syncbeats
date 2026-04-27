@@ -25,8 +25,10 @@ export default function ForgotPasswordPage() {
     const params = new URLSearchParams(window.location.search);
     const initialEmail = params.get("email");
     const autoSent = params.get("autoSent");
+    const initialDevOtp = params.get("devOtp");
     
     if (initialEmail) setEmail(initialEmail);
+    if (initialDevOtp) setDevOtp(initialDevOtp);
     if (autoSent === "true") {
       setOtpSent(true);
       setMessage("You previously logged in with Google. An OTP has been sent to your email so you can set a password.");
@@ -92,14 +94,20 @@ export default function ForgotPasswordPage() {
     }
   };
 
+  const isAutoSetup = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("autoSent") === "true";
+
   return (
     <main className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-md rounded-3xl border border-foreground/10 bg-background/40 p-8">
-        <h1 className="text-2xl font-bold text-foreground">Forgot Password</h1>
+        <h1 className="text-2xl font-bold text-foreground">
+          {isAutoSetup ? "Setup Local Password" : "Forgot Password"}
+        </h1>
         <p className="mt-2 text-sm text-foreground/60">
-          {!otpSent
-            ? "Enter your account email and we will send an OTP."
-            : "Enter the OTP from email and set your new password."}
+          {isAutoSetup 
+            ? "Since you used Google before, please verify your email and set a local password."
+            : !otpSent
+              ? "Enter your account email and we will send an OTP."
+              : "Enter the OTP from email and set your new password."}
         </p>
 
         {done ? (
