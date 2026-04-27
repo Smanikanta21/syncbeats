@@ -121,7 +121,7 @@ jobs:
           set -euxo pipefail
           mkdir -p ~/.ssh
           printf "%s" "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
       # ── Download the frontend build from Job 2 ──
