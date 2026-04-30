@@ -245,9 +245,9 @@ jobs:
             echo "=== Running migrations ==="
             dc run --rm server npx prisma migrate deploy
 
-            # ── Start server ─────────────────────────────────
-            echo "=== Starting server ==="
-            dc up -d server
+            # ── Start all services ────────────────────────
+            echo "=== Starting all services ==="
+            dc up -d
 
             # Wait for backend to become healthy (retry up to 10 times)
             echo "Waiting for backend to become healthy..."
