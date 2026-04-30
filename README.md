@@ -125,7 +125,6 @@ Create a `.env` file in the project root with the following keys:
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `AUTH_FROM_EMAIL` | Sender address for auth emails |
-| `AUTH_PUBLIC_APP_URL` | Public-facing frontend URL |
 | `FRONTEND_URL` | Frontend URL (used for CORS and email links) |
 | `NEXT_PUBLIC_SERVER_URL` | Backend API URL (used by the frontend) |
 ### 3. Database Setup
