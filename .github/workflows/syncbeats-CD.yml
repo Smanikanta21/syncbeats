@@ -233,21 +233,24 @@ jobs:
           dc up -d postgres
 
           echo "Waiting for Postgres to become healthy..."
+          PGOK=false
           for i in $(seq 1 30); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' \
               sync-beats-postgres-1 2>/dev/null || echo "not-found")
             echo "  [$i/30] postgres = $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Postgres healthy ✓"
-              exit 0
-            fi
-            if [ "$i" = "30" ]; then
-              echo "ERROR: Postgres never became healthy"
-              dc logs --tail 100 postgres
-              exit 1
+              PGOK=true
+              break
             fi
             sleep 2
           done
+
+          if [ "$PGOK" = "false" ]; then
+            echo "ERROR: Postgres never became healthy"
+            dc logs --tail 100 postgres
+            exit 1
+          fi
           ENDSSH
 
       # ── Step C: run migrations ──
@@ -390,21 +393,25 @@ jobs:
           pm2 save
 
           echo "Health checking http://localhost:3000 ..."
+          FRONT_OK=false
           for i in $(seq 1 10); do
             sleep 3
             if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
               echo "Frontend healthy ✓  (attempt $i/10)"
-              pm2 ps
-              exit 0
+              FRONT_OK=true
+              break
             fi
             echo "  [$i/10] not ready..."
           done
 
-          # Failed — dump pm2 logs
-          echo ""
-          echo "════ PM2 LOGS ════"
-          pm2 logs syncbeats-frontend --lines 50 --nostream
-          exit 1
+          if [ "$FRONT_OK" = "true" ]; then
+            pm2 ps
+          else
+            echo ""
+            echo "════ PM2 LOGS ════"
+            pm2 logs syncbeats-frontend --lines 50 --nostream
+            exit 1
+          fi
           ENDSSH
 
   # ───────────────────────────────────────────────────────────────
