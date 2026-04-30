@@ -153,6 +153,7 @@ jobs:
           ENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           # Build the .env content locally, then SCP it
+          # IMPORTANT: No indentation inside heredoc — leading spaces break .env parsing
           cat > /tmp/syncbeats.env <<EOF
           NODE_ENV=${ENV_NODE_ENV}
           PORT=${ENV_PORT}
