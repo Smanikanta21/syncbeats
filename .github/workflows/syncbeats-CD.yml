@@ -76,7 +76,13 @@ jobs:
         run: npm run build
 
       - name: Package build output
-        run: tar -czf frontend-build.tar.gz -C frontend .next public package.json
+        run: |
+          cd frontend
+          tar -czf ../frontend-build.tar.gz \
+          .next/standalone \
+          .next/static \
+          public \
+          package.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -180,11 +186,17 @@ jobs:
           dc down --remove-orphans || true
           dc up -d postgres
 
+          PG_OK=false
           for i in $(seq 1 30); do
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' sync-beats-postgres-1 2>/dev/null || echo "not-found")
-            [ "$STATUS" = "healthy" ] && break
+            if [ "$STATUS" = "healthy" ]; then
+              PG_OK=true
+              break
+            fi
             sleep 2
           done
+
+          [ "$PG_OK" = "false" ] && echo "Postgres failed" && exit 1
           ENDSSH
 
       - name: Run database migrations
@@ -197,7 +209,7 @@ jobs:
           dc run --rm server npx prisma migrate deploy
           ENDSSH
 
-      - name: Start server & studio
+      - name: Start server & studio and verify
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
@@ -205,6 +217,18 @@ jobs:
           dc() { docker compose --project-directory "$APP" "$@"; }
 
           dc up -d server studio
+
+          for i in $(seq 1 10); do
+            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "Backend failed"
+          dc logs server
+          exit 1
           ENDSSH
 
   deploy-frontend:
@@ -240,13 +264,30 @@ jobs:
           pm2 delete syncbeats-frontend || true
 
           cd "$FRONT"
-          rm -rf .next public
+          rm -rf .next public server.js node_modules
+
           tar -xzf "$APP/frontend-build.tar.gz"
           rm "$APP/frontend-build.tar.gz"
 
-          # IMPORTANT FIX: correct standalone path
-          pm2 start "node .next/standalone/server.js" --name syncbeats-frontend --env PORT=3000
+          cp -r .next/standalone/* .
+          npm ci --omit=dev
+
+          [ -d ".next/static" ] || { echo "Missing static files"; exit 1; }
+
+          pm2 start "node server.js" --name syncbeats-frontend --env PORT=3000
           pm2 save
+
+          for i in $(seq 1 10); do
+            if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+              echo "Frontend healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "Frontend failed"
+          pm2 logs syncbeats-frontend --lines 50 --nostream
+          exit 1
           ENDSSH
 
   finalize:
