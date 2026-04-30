@@ -138,6 +138,33 @@ jobs:
             frontend-build.tar.gz \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/frontend-build.tar.gz
 
+      # ── Write .env to EC2 from GitHub Secrets ──
+      - name: Create .env on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENVEOF'
+            cat > ~/sync-beats/.env << 'DOTENV'
+          NODE_ENV=${{ secrets.NODE_ENV }}
+          PORT=${{ secrets.PORT }}
+          CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+          FRONTEND_PORT=${{ secrets.FRONTEND_PORT }}
+          FRONTEND_CORS_ORIGIN=${{ secrets.FRONTEND_CORS_ORIGIN }}
+          NEXT_PUBLIC_SERVER_URL=${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          AUTH_PUBLIC_APP_URL=${{ secrets.AUTH_PUBLIC_APP_URL }}
+          AUTH_FROM_EMAIL=${{ secrets.AUTH_FROM_EMAIL }}
+          CAMPAIGN_FROM_EMAIL=${{ secrets.CAMPAIGN_FROM_EMAIL }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          DOTENV
+            chmod 600 ~/sync-beats/.env
+          ENVEOF
+
       # ── Everything below is lightweight on EC2 ──
       - name: Deploy on EC2
         run: |
