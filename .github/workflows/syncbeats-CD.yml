@@ -387,7 +387,7 @@ jobs:
           tar -xzf "$APP/frontend-build.tar.gz"
           rm "$APP/frontend-build.tar.gz"
 
-          pm2 start "node .next/standalone/server.js" \
+          pm2 start "node .next/standalone/frontend/server.js" \
             --name syncbeats-frontend \
             --env PORT=3000
           pm2 save
