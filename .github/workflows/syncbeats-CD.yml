@@ -13,13 +13,28 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: smanikanta21/syncbeats-server
 
+# ═══════════════════════════════════════════════════════════════════
+#
+#  JOB GRAPH
+#
+#  build-backend ─┐
+#                 ├─► deploy-backend ─┐
+#  provision-env ─┘                   ├─► deploy-frontend ─► finalize
+#                                     │
+#  build-frontend ────────────────────┘
+#
+#  rollback runs automatically if deploy-backend OR deploy-frontend fails
+#
+# ═══════════════════════════════════════════════════════════════════
+
 jobs:
-  # ─────────────────────────────────────────────
-  # JOB 1 — Build backend Docker image
-  # Runs on GitHub's free runner (7GB RAM)
-  # ─────────────────────────────────────────────
+
+  # ───────────────────────────────────────────────────────────────
+  # JOB 1  Build & push backend Docker image
+  # GitHub runner (7 GB RAM) — EC2 never builds anything
+  # ───────────────────────────────────────────────────────────────
   build-backend:
-    name: Build & Push Backend Image
+    name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -27,14 +42,11 @@ jobs:
       contents: read
       packages: write
 
-    outputs:
-      image: ${{ steps.meta.outputs.tags }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -50,23 +62,22 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=,format=short   # e.g. ghcr.io/you/syncbeats-server:a1b2c3d
+            type=sha,prefix=,format=short
             type=raw,value=latest
 
-      - name: Build and push backend image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./syncbeats-server   # path to your backend Dockerfile
+          context: ./syncbeats-server
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          # Cache layers between runs — dramatically speeds up rebuilds
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ─────────────────────────────────────────────
-  # JOB 2 — Build Next.js frontend
-  # Runs on GitHub's free runner (7GB RAM)
-  # ─────────────────────────────────────────────
+  # ───────────────────────────────────────────────────────────────
+  # JOB 2  Build Next.js frontend
+  # GitHub runner (7 GB RAM) — output uploaded as artifact
+  # ───────────────────────────────────────────────────────────────
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
@@ -76,7 +87,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -93,228 +104,407 @@ jobs:
           NEXT_PUBLIC_SERVER_URL: /api
         run: npm run build
 
-      # Package the build output to transfer to EC2
-      # .next/standalone + .next/static + public is all you need
       - name: Package build output
+        # .next/standalone + static + public is everything needed to run
         run: tar -czf frontend-build.tar.gz -C frontend .next public package.json
 
-      - name: Upload build artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: frontend-build.tar.gz
           retention-days: 1
 
-  # ─────────────────────────────────────────────
-  # JOB 3 — Deploy to EC2
-  # Waits for both builds. EC2 does almost nothing.
-  # ─────────────────────────────────────────────
-  deploy:
-    name: Deploy to EC2
+  # ───────────────────────────────────────────────────────────────
+  # JOB 3  Write .env to EC2
+  # Runs in PARALLEL with build jobs — no need to wait for them
+  # ───────────────────────────────────────────────────────────────
+  provision-env:
+    name: Provision .env on EC2
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [build-backend, build-frontend]   # only runs if both succeed
+    timeout-minutes: 5
 
     steps:
       - name: Setup SSH
         run: |
-          set -euxo pipefail
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      # ── Download the frontend build from Job 2 ──
-      - name: Download frontend build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-
-      # ── SCP the pre-built frontend to EC2 ──
-      - name: Upload frontend build to EC2
-        run: |
-          scp -o StrictHostKeyChecking=yes \
-            frontend-build.tar.gz \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/frontend-build.tar.gz
-
-      # ── Write .env to EC2 from GitHub Secrets ──
-      - name: Create .env on EC2
+      - name: Write .env and SCP to EC2
         env:
-          ENV_NODE_ENV: ${{ secrets.NODE_ENV }}
-          ENV_PORT: ${{ secrets.PORT }}
-          ENV_STUDIO_PORT: ${{ secrets.STUDIO_PORT }}
-          ENV_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          ENV_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          ENV_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          ENV_JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          ENV_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          ENV_FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-          ENV_AUTH_FROM_EMAIL: ${{ secrets.AUTH_FROM_EMAIL }}
-          ENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Load secrets into env vars first so the heredoc is clean
+          V_NODE_ENV:          ${{ secrets.NODE_ENV }}
+          V_PORT:              ${{ secrets.PORT }}
+          V_STUDIO_PORT:       ${{ secrets.STUDIO_PORT }}
+          V_POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
+          V_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          V_POSTGRES_DB:       ${{ secrets.POSTGRES_DB }}
+          V_JWT_SECRET:        ${{ secrets.JWT_SECRET }}
+          V_GOOGLE_CLIENT_ID:  ${{ secrets.GOOGLE_CLIENT_ID }}
+          V_FRONTEND_URL:      ${{ secrets.FRONTEND_URL }}
+          V_AUTH_FROM_EMAIL:   ${{ secrets.AUTH_FROM_EMAIL }}
+          V_RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
         run: |
-          # Build the .env content locally, then SCP it
-          # IMPORTANT: No indentation inside heredoc — leading spaces break .env parsing
+          # No indentation inside heredoc — leading spaces break .env parsing
           cat > /tmp/syncbeats.env <<EOF
-          NODE_ENV=${ENV_NODE_ENV}
-          PORT=${ENV_PORT}
-          STUDIO_PORT=${ENV_STUDIO_PORT}
-          POSTGRES_USER=${ENV_POSTGRES_USER}
-          POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
-          POSTGRES_DB=${ENV_POSTGRES_DB}
-          JWT_SECRET=${ENV_JWT_SECRET}
-          GOOGLE_CLIENT_ID=${ENV_GOOGLE_CLIENT_ID}
-          FRONTEND_URL=${ENV_FRONTEND_URL}
-          AUTH_FROM_EMAIL=${ENV_AUTH_FROM_EMAIL}
-          RESEND_API_KEY=${ENV_RESEND_API_KEY}
+          NODE_ENV=${V_NODE_ENV}
+          PORT=${V_PORT}
+          STUDIO_PORT=${V_STUDIO_PORT}
+          POSTGRES_USER=${V_POSTGRES_USER}
+          POSTGRES_PASSWORD=${V_POSTGRES_PASSWORD}
+          POSTGRES_DB=${V_POSTGRES_DB}
+          DATABASE_URL=postgresql://${V_POSTGRES_USER}:${V_POSTGRES_PASSWORD}@postgres:5432/${V_POSTGRES_DB}
+          JWT_SECRET=${V_JWT_SECRET}
+          GOOGLE_CLIENT_ID=${V_GOOGLE_CLIENT_ID}
+          FRONTEND_URL=${V_FRONTEND_URL}
+          AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}
+          RESEND_API_KEY=${V_RESEND_API_KEY}
           EOF
 
-          # Verify it's not empty
-          echo "=== .env file has $(wc -l < /tmp/syncbeats.env) lines ==="
+          echo "=== .env has $(wc -l < /tmp/syncbeats.env) lines ==="
+          echo "=== Keys written ==="
+          grep -oP '^[A-Z_]+(?==)' /tmp/syncbeats.env
 
-          # SCP to EC2
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
 
-          # Lock it down
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "chmod 600 ~/sync-beats/.env"
+            "chmod 600 ~/sync-beats/.env && echo '.env written and locked ✓'"
 
           rm /tmp/syncbeats.env
 
-      # ── Deploy on EC2 ──
-      - name: Deploy on EC2
+  # ───────────────────────────────────────────────────────────────
+  # JOB 4  Deploy backend to EC2
+  # Needs: build-backend + provision-env
+  # Saves previous image digest → used by rollback job on failure
+  # ───────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: 🚀 Deploy Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-backend, provision-env]
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+
+      # ── Step A: pull new image, save previous for rollback ──
+      - name: Pull latest image
         run: |
           ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'EOF'
-            set -euxo pipefail
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
 
-            APP="$HOME/sync-beats"
-            FRONT="$APP/frontend"
+          cd "$APP"
+          git fetch origin
+          git reset --hard origin/main
 
-            dc() { docker compose --project-directory "$APP" "$@"; }
+          # Save currently running image ID so rollback can restore it
+          docker inspect --format='{{.Image}}' sync-beats-server-1 2>/dev/null \
+            > /tmp/syncbeats-prev-image.txt \
+            || echo "none" > /tmp/syncbeats-prev-image.txt
+          echo "Previous image saved: $(cat /tmp/syncbeats-prev-image.txt)"
 
-            cd "$APP"
-            git fetch origin
-            git reset --hard origin/main
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # ── Verify .env is present ──────────────────────
-            echo "=== .env check ==="
-            if [ ! -f .env ]; then
-              echo "ERROR: .env file missing!"
+          docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
+          echo "Image pulled ✓"
+          ENDSSH
+
+      # ── Step B: bring down old stack, start postgres, wait healthy ──
+      - name: Start Postgres and wait for healthy
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
+
+          dc down --remove-orphans || true
+          dc up -d postgres
+
+          echo "Waiting for Postgres to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' \
+              sync-beats-postgres-1 2>/dev/null || echo "not-found")
+            echo "  [$i/30] postgres = $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Postgres healthy ✓"
+              exit 0
+            fi
+            if [ "$i" = "30" ]; then
+              echo "ERROR: Postgres never became healthy"
+              dc logs --tail 100 postgres
               exit 1
             fi
-            echo ".env exists with $(wc -l < .env) lines"
-            # Print keys only (no values) for debugging
-            echo "Keys present:"
-            grep -oP '^[A-Z_]+(?==)' .env || echo "(no keys found)"
+            sleep 2
+          done
+          ENDSSH
 
-            # ── BACKEND ──────────────────────────────────────
-            dc down --remove-orphans || true
+      # ── Step C: run migrations ──
+      - name: Run database migrations
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
 
-            echo "${{ secrets.GITHUB_TOKEN }}" | \
-              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          dc run --rm server npx prisma migrate deploy
+          echo "Migrations complete ✓"
+          ENDSSH
 
-            docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
+      # ── Step D: start server + studio, health check both ──
+      - name: Start server & studio — verify both healthy
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
 
-            # ── Start Postgres first and wait for healthy ────
-            echo "=== Starting Postgres ==="
-            dc up -d postgres
+          # Start both services together
+          dc up -d server studio
 
-            echo "Waiting for Postgres to become healthy..."
-            for i in $(seq 1 30); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' sync-beats-postgres-1 2>/dev/null || echo "not-found")
-              echo "  Attempt $i/30: postgres status = $STATUS"
-              if [ "$STATUS" = "healthy" ]; then
-                echo "Postgres is healthy!"
-                break
-              fi
-              if [ "$i" = "30" ]; then
-                echo "ERROR: Postgres failed to become healthy after 30 attempts"
-                echo "=== POSTGRES LOGS ==="
-                dc logs --tail 100 postgres
-                echo "=== POSTGRES CONTAINER INSPECT ==="
-                docker inspect sync-beats-postgres-1 | grep -A 20 '"Health"'
-                exit 1
-              fi
-              sleep 2
-            done
+          SERVER_PORT=$(grep '^PORT=' "$APP/.env" | cut -d= -f2 || echo "4000")
+          STUDIO_PORT=$(grep '^STUDIO_PORT=' "$APP/.env" | cut -d= -f2 || echo "5555")
 
-            # ── Run migrations ───────────────────────────────
-            echo "=== Running migrations ==="
-            dc run --rm server npx prisma migrate deploy
+          echo "Checking server  → http://localhost:${SERVER_PORT}/health"
+          echo "Checking studio  → http://localhost:${STUDIO_PORT}"
 
-            # ── Start all services ────────────────────────
-            echo "=== Starting all services ==="
-            dc up -d
+          SERVER_OK=false
+          STUDIO_OK=false
 
-            # Wait for backend to become healthy (retry up to 10 times)
-            echo "Waiting for backend to become healthy..."
-            BACKEND_PORT=$(grep '^PORT=' "$APP/.env" | cut -d= -f2)
-            BACKEND_PORT=${BACKEND_PORT:-4000}
-            BACKEND_HEALTHY=false
+          for i in $(seq 1 15); do
+            sleep 3
 
-            for i in $(seq 1 10); do
-              sleep 3
-              if curl -fsS "http://localhost:${BACKEND_PORT}/health" >/dev/null 2>&1; then
-                echo "  Attempt $i/10: Backend healthy ✓"
-                BACKEND_HEALTHY=true
-                break
+            if [ "$SERVER_OK" = "false" ]; then
+              if curl -fsS "http://localhost:${SERVER_PORT}/health" >/dev/null 2>&1; then
+                echo "  [$i/15] server  ✓ healthy"
+                SERVER_OK=true
               else
-                echo "  Attempt $i/10: Backend not ready yet..."
+                echo "  [$i/15] server  ✗ not ready"
               fi
-            done
-
-            echo "=== SERVER LOGS ==="
-            dc logs --tail 50 server
-            echo "=== CONTAINER STATUS ==="
-            dc ps
-
-            if [ "$BACKEND_HEALTHY" = "false" ]; then
-              echo "ERROR: Backend failed health check after 10 attempts"
-              echo "=== FULL SERVER LOGS ==="
-              dc logs server
-              echo "=== POSTGRES LOGS ==="
-              dc logs postgres
-              echo "=== CONTAINER INSPECT ==="
-              docker inspect sync-beats-server-1 2>/dev/null | head -60 || true
-              exit 1
             fi
 
-            # ── FRONTEND ─────────────────────────────────────
-            pm2 delete syncbeats-frontend || true
+            if [ "$STUDIO_OK" = "false" ]; then
+              if curl -fsS "http://localhost:${STUDIO_PORT}" >/dev/null 2>&1; then
+                echo "  [$i/15] studio  ✓ healthy"
+                STUDIO_OK=true
+              else
+                echo "  [$i/15] studio  ✗ not ready"
+              fi
+            fi
 
-            cd "$FRONT"
-            rm -rf .next public
-            tar -xzf "$APP/frontend-build.tar.gz"
-            rm "$APP/frontend-build.tar.gz"
+            [ "$SERVER_OK" = "true" ] && [ "$STUDIO_OK" = "true" ] && break
+          done
 
-            pm2 start "node .next/standalone/server.js" \
-              --name syncbeats-frontend \
-              --env PORT=3000
-            pm2 save
+          echo ""
+          echo "════ DEPLOY LOGS — SERVER ════"
+          dc logs --tail 50 server
 
-            sleep 5
+          echo ""
+          echo "════ DEPLOY LOGS — STUDIO ════"
+          dc logs --tail 30 studio
+
+          echo ""
+          echo "════ CONTAINER STATUS ════"
+          dc ps -a
+
+          # Fail if either is down — show full logs for the broken one
+          if [ "$SERVER_OK" = "false" ]; then
+            echo "ERROR: server failed health check"
+            dc logs server
+            exit 1
+          fi
+
+          if [ "$STUDIO_OK" = "false" ]; then
+            echo "ERROR: studio failed health check"
+            dc logs studio
+            exit 1
+          fi
+
+          echo "Both server and studio healthy ✓"
+          ENDSSH
+
+  # ───────────────────────────────────────────────────────────────
+  # JOB 5  Deploy frontend to EC2
+  # Needs: build-frontend + deploy-backend (backend must be healthy first)
+  # ───────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-frontend, deploy-backend]
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+
+      # ── Step A: SCP tarball to EC2 ──
+      - name: Upload build to EC2
+        run: |
+          scp -o StrictHostKeyChecking=yes \
+            frontend-build.tar.gz \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/frontend-build.tar.gz
+          echo "Tarball uploaded ✓"
+
+      # ── Step B: swap build, restart pm2, health check ──
+      - name: Swap frontend and verify healthy
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
+          FRONT="$APP/frontend"
+
+          # Stop old process before touching files
+          pm2 delete syncbeats-frontend || true
+
+          cd "$FRONT"
+          rm -rf .next public
+          tar -xzf "$APP/frontend-build.tar.gz"
+          rm "$APP/frontend-build.tar.gz"
+
+          pm2 start "node .next/standalone/server.js" \
+            --name syncbeats-frontend \
+            --env PORT=3000
+          pm2 save
+
+          echo "Health checking http://localhost:3000 ..."
+          for i in $(seq 1 10); do
+            sleep 3
             if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
-              echo "Frontend healthy ✓"
-            else
-              echo "WARNING: Frontend health check failed"
-              pm2 logs syncbeats-frontend --lines 30 --nostream
+              echo "Frontend healthy ✓  (attempt $i/10)"
+              pm2 ps
+              exit 0
             fi
+            echo "  [$i/10] not ready..."
+          done
 
-            # ── NGINX ─────────────────────────────────────────
-            sudo nginx -t
-            sudo systemctl reload nginx
+          # Failed — dump pm2 logs
+          echo ""
+          echo "════ PM2 LOGS ════"
+          pm2 logs syncbeats-frontend --lines 50 --nostream
+          exit 1
+          ENDSSH
 
-            # ── FINAL STATUS ─────────────────────────────────
-            cd "$APP"
-            echo "=== FINAL DOCKER STATUS ==="
-            dc ps
-            echo "=== FINAL SERVER LOGS ==="
-            dc logs --tail 20 server
-            echo "=== PM2 STATUS ==="
-            pm2 ps
+  # ───────────────────────────────────────────────────────────────
+  # JOB 6  Finalize — reload nginx + print final status
+  # Only runs after BOTH deploy jobs succeed
+  # ───────────────────────────────────────────────────────────────
+  finalize:
+    name: Finalize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy-frontend]
 
-            echo "Deploy complete ✓"
-          EOF
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Reload nginx
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "sudo nginx -t && sudo systemctl reload nginx && echo 'nginx reloaded ✓'"
+
+      - name: Print final status
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
+
+          echo ""
+          echo "════════════════════════════════"
+          echo "  DOCKER CONTAINERS"
+          echo "════════════════════════════════"
+          dc ps
+
+          echo ""
+          echo "════════════════════════════════"
+          echo "  PM2 PROCESSES"
+          echo "════════════════════════════════"
+          pm2 ps
+
+          echo ""
+          echo "════════════════════════════════"
+          echo "  RECENT SERVER LOGS"
+          echo "════════════════════════════════"
+          dc logs --tail 20 server
+
+          echo ""
+          echo "🎉 Deploy complete"
+          ENDSSH
+
+  # ───────────────────────────────────────────────────────────────
+  # JOB 7  Rollback — ONLY runs if deploy-backend or deploy-frontend fails
+  # Restores the previous Docker image and brings backend back up
+  # ───────────────────────────────────────────────────────────────
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy-backend, deploy-frontend]
+    if: failure()
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Restore previous backend image
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          set -euo pipefail
+          APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
+
+          PREV=$(cat /tmp/syncbeats-prev-image.txt 2>/dev/null || echo "none")
+          echo "Previous image: $PREV"
+
+          if [ "$PREV" = "none" ] || [ -z "$PREV" ]; then
+            echo "No previous image on record — cannot roll back backend"
+          else
+            echo "Rolling back to: $PREV"
+            dc down --remove-orphans || true
+            docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:latest
+            dc up -d postgres
+            sleep 15
+            dc run --rm server npx prisma migrate deploy || true
+            dc up -d server
+            echo "Rollback applied ✓"
+          fi
+
+          echo ""
+          echo "════ POST-ROLLBACK STATUS ════"
+          dc ps -a
+          ENDSSH
