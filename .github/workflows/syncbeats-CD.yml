@@ -25,7 +25,7 @@ jobs:
 
     permissions:
       contents: read
-      packages: write           # needed to push to GHCR
+      packages: write
 
     outputs:
       image: ${{ steps.meta.outputs.tags }}
@@ -131,7 +131,6 @@ jobs:
           name: frontend-build
 
       # ── SCP the pre-built frontend to EC2 ──
-      # EC2 doesn't build anything — just receives a tarball
       - name: Upload frontend build to EC2
         run: |
           scp -o StrictHostKeyChecking=yes \
@@ -140,32 +139,50 @@ jobs:
 
       # ── Write .env to EC2 from GitHub Secrets ──
       - name: Create .env on EC2
+        env:
+          ENV_NODE_ENV: ${{ secrets.NODE_ENV }}
+          ENV_PORT: ${{ secrets.PORT }}
+          ENV_STUDIO_PORT: ${{ secrets.STUDIO_PORT }}
+          ENV_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          ENV_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ENV_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          ENV_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ENV_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          ENV_FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          ENV_AUTH_FROM_EMAIL: ${{ secrets.AUTH_FROM_EMAIL }}
+          ENV_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
-          ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENVEOF'
-            cat > ~/sync-beats/.env << 'DOTENV'
-          NODE_ENV=${{ secrets.NODE_ENV }}
-          PORT=${{ secrets.PORT }}
-          CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
-          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
-          FRONTEND_PORT=${{ secrets.FRONTEND_PORT }}
-          FRONTEND_CORS_ORIGIN=${{ secrets.FRONTEND_CORS_ORIGIN }}
-          NEXT_PUBLIC_SERVER_URL=${{ secrets.NEXT_PUBLIC_SERVER_URL }}
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          AUTH_PUBLIC_APP_URL=${{ secrets.AUTH_PUBLIC_APP_URL }}
-          AUTH_FROM_EMAIL=${{ secrets.AUTH_FROM_EMAIL }}
-          CAMPAIGN_FROM_EMAIL=${{ secrets.CAMPAIGN_FROM_EMAIL }}
-          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-          DOTENV
-            chmod 600 ~/sync-beats/.env
-          ENVEOF
+          # Build the .env content locally, then SCP it
+          cat > /tmp/syncbeats.env <<EOF
+          NODE_ENV=${ENV_NODE_ENV}
+          PORT=${ENV_PORT}
+          STUDIO_PORT=${ENV_STUDIO_PORT}
+          POSTGRES_USER=${ENV_POSTGRES_USER}
+          POSTGRES_PASSWORD=${ENV_POSTGRES_PASSWORD}
+          POSTGRES_DB=${ENV_POSTGRES_DB}
+          JWT_SECRET=${ENV_JWT_SECRET}
+          GOOGLE_CLIENT_ID=${ENV_GOOGLE_CLIENT_ID}
+          FRONTEND_URL=${ENV_FRONTEND_URL}
+          AUTH_FROM_EMAIL=${ENV_AUTH_FROM_EMAIL}
+          RESEND_API_KEY=${ENV_RESEND_API_KEY}
+          EOF
 
-      # ── Everything below is lightweight on EC2 ──
+          # Verify it's not empty
+          echo "=== .env file has $(wc -l < /tmp/syncbeats.env) lines ==="
+
+          # SCP to EC2
+          scp -o StrictHostKeyChecking=yes \
+            /tmp/syncbeats.env \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
+
+          # Lock it down
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "chmod 600 ~/sync-beats/.env"
+
+          rm /tmp/syncbeats.env
+
+      # ── Deploy on EC2 ──
       - name: Deploy on EC2
         run: |
           ssh -o StrictHostKeyChecking=yes \
@@ -174,15 +191,23 @@ jobs:
 
             APP="$HOME/sync-beats"
             FRONT="$APP/frontend"
-            SERVER="$APP/syncbeats-server"
 
-            # Always run docker compose from APP dir
-            # Define a helper so we never forget
             dc() { docker compose --project-directory "$APP" "$@"; }
 
             cd "$APP"
             git fetch origin
             git reset --hard origin/main
+
+            # ── Verify .env is present ──────────────────────
+            echo "=== .env check ==="
+            if [ ! -f .env ]; then
+              echo "ERROR: .env file missing!"
+              exit 1
+            fi
+            echo ".env exists with $(wc -l < .env) lines"
+            # Print keys only (no values) for debugging
+            echo "Keys present:"
+            grep -oP '^[A-Z_]+(?==)' .env || echo "(no keys found)"
 
             # ── BACKEND ──────────────────────────────────────
             dc down --remove-orphans || true
@@ -192,13 +217,37 @@ jobs:
 
             docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
 
-            # Run migrations
+            # ── Start Postgres first and wait for healthy ────
+            echo "=== Starting Postgres ==="
+            dc up -d postgres
+
+            echo "Waiting for Postgres to become healthy..."
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' sync-beats-postgres-1 2>/dev/null || echo "not-found")
+              echo "  Attempt $i/30: postgres status = $STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "Postgres is healthy!"
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "ERROR: Postgres failed to become healthy after 30 attempts"
+                echo "=== POSTGRES LOGS ==="
+                dc logs --tail 100 postgres
+                echo "=== POSTGRES CONTAINER INSPECT ==="
+                docker inspect sync-beats-postgres-1 | grep -A 20 '"Health"'
+                exit 1
+              fi
+              sleep 2
+            done
+
+            # ── Run migrations ───────────────────────────────
+            echo "=== Running migrations ==="
             dc run --rm server npx prisma migrate deploy
 
-            # Start backend
+            # ── Start server ─────────────────────────────────
+            echo "=== Starting server ==="
             dc up -d server
 
-            # Give it 3s then immediately dump logs — don't wait silently
             sleep 3
             echo "=== SERVER LOGS ==="
             dc logs --tail 50 server
@@ -207,13 +256,19 @@ jobs:
 
             # Health check
             sleep 5
-            curl -fsS http://localhost:4000/health >/dev/null
-            echo "Backend healthy"
+            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
+              echo "Backend healthy ✓"
+            else
+              echo "WARNING: Backend health check failed"
+              echo "=== FULL SERVER LOGS ==="
+              dc logs server
+              echo "=== POSTGRES LOGS ==="
+              dc logs postgres
+            fi
 
             # ── FRONTEND ─────────────────────────────────────
             pm2 delete syncbeats-frontend || true
 
-            # Stay in FRONT only for the frontend steps
             cd "$FRONT"
             rm -rf .next public
             tar -xzf "$APP/frontend-build.tar.gz"
@@ -225,14 +280,18 @@ jobs:
             pm2 save
 
             sleep 5
-            curl -fsS http://localhost:3000 >/dev/null
-            echo "Frontend healthy"
+            if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+              echo "Frontend healthy ✓"
+            else
+              echo "WARNING: Frontend health check failed"
+              pm2 logs syncbeats-frontend --lines 30 --nostream
+            fi
 
             # ── NGINX ─────────────────────────────────────────
             sudo nginx -t
             sudo systemctl reload nginx
 
-            # ── FINAL STATUS — always from APP dir ───────────
+            # ── FINAL STATUS ─────────────────────────────────
             cd "$APP"
             echo "=== FINAL DOCKER STATUS ==="
             dc ps
@@ -241,5 +300,5 @@ jobs:
             echo "=== PM2 STATUS ==="
             pm2 ps
 
-            echo "Deploy complete"
+            echo "Deploy complete ✓"
           EOF
