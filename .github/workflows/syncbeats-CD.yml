@@ -248,22 +248,37 @@ jobs:
             echo "=== Starting server ==="
             dc up -d server
 
-            sleep 3
+            # Wait for backend to become healthy (retry up to 10 times)
+            echo "Waiting for backend to become healthy..."
+            BACKEND_PORT=$(grep '^PORT=' "$APP/.env" | cut -d= -f2)
+            BACKEND_PORT=${BACKEND_PORT:-4000}
+            BACKEND_HEALTHY=false
+
+            for i in $(seq 1 10); do
+              sleep 3
+              if curl -fsS "http://localhost:${BACKEND_PORT}/health" >/dev/null 2>&1; then
+                echo "  Attempt $i/10: Backend healthy ✓"
+                BACKEND_HEALTHY=true
+                break
+              else
+                echo "  Attempt $i/10: Backend not ready yet..."
+              fi
+            done
+
             echo "=== SERVER LOGS ==="
             dc logs --tail 50 server
             echo "=== CONTAINER STATUS ==="
             dc ps
 
-            # Health check
-            sleep 5
-            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
-              echo "Backend healthy ✓"
-            else
-              echo "WARNING: Backend health check failed"
+            if [ "$BACKEND_HEALTHY" = "false" ]; then
+              echo "ERROR: Backend failed health check after 10 attempts"
               echo "=== FULL SERVER LOGS ==="
               dc logs server
               echo "=== POSTGRES LOGS ==="
               dc logs postgres
+              echo "=== CONTAINER INSPECT ==="
+              docker inspect sync-beats-server-1 2>/dev/null | head -60 || true
+              exit 1
             fi
 
             # ── FRONTEND ─────────────────────────────────────
