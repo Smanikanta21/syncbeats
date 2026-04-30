@@ -11,7 +11,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -22,32 +23,34 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - "${PORT}:${PORT}"
     environment:
-      # App
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      FRONTEND_URL: ${FRONTEND_URL}
-      FRONTEND_PORT: ${FRONTEND_PORT}
-      FRONTEND_CORS_ORIGIN: ${FRONTEND_CORS_ORIGIN}
-      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
-      # Database — always use the 'postgres' service name
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PORT: ${POSTGRES_PORT}
       # Auth
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       AUTH_PUBLIC_APP_URL: ${AUTH_PUBLIC_APP_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
       # Email
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
-      CAMPAIGN_FROM_EMAIL: ${CAMPAIGN_FROM_EMAIL}
       RESEND_API_KEY: ${RESEND_API_KEY}
     volumes:
       - uploads:/app/uploads
+
+  studio:
+    container_name: studio-1
+    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${STUDIO_PORT}:${STUDIO_PORT}"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: npx prisma studio --port ${STUDIO_PORT} --browser none
 
 volumes:
   pgdata:

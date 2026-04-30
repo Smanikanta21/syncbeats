@@ -140,9 +140,7 @@ export class AuthService {
   }
 
   private getPublicAppUrl(): string {
-    return process.env.AUTH_PUBLIC_APP_URL
-      || process.env.FRONTEND_URL
-      || 'http://localhost:3000';
+    return process.env.FRONTEND_URL || "https://syncbeats.app";
   }
 
   private async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {
