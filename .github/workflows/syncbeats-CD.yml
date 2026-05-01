@@ -176,7 +176,6 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:latest
-          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
           ENDSSH
 
       - name: Start Postgres and wait until ready
@@ -259,6 +258,11 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
+
           dc() { docker compose --project-directory "$APP" "$@"; }
 
           dc up -d frontend
