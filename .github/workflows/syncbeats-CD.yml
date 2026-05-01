@@ -20,6 +20,7 @@ jobs:
     name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: ${{ github.ref_name }}
 
     permissions:
       contents: read
@@ -56,6 +57,7 @@ jobs:
     name: Build Frontend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: ${{ github.ref_name }}
 
     permissions:
       contents: read
@@ -94,8 +96,11 @@ jobs:
     name: Provision .env on EC2
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: ${{ github.ref_name }}
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -134,10 +139,22 @@ jobs:
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
           } > /tmp/syncbeats.env
 
+          # Ensure target dir exists and is writable
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "mkdir -p ~/sync-beats && sudo chown -R \$USER:\$USER ~/sync-beats && rm -f ~/sync-beats/.env"
+
+          # Upload .env
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
 
+          # Upload docker-compose.yml
+          scp -o StrictHostKeyChecking=yes \
+            docker-compose.yml \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/docker-compose.yml
+
+          # Lock down .env
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "chmod 600 ~/sync-beats/.env"
@@ -149,6 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-backend, provision-env]
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
@@ -163,14 +181,7 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
-
           cd "$APP"
-          git fetch origin
-          git reset --hard origin/main
-
-          docker inspect --format='{{.Image}}' sync-beats-server-1 2>/dev/null \
-            > /tmp/syncbeats-prev-image.txt \
-            || echo "none" > /tmp/syncbeats-prev-image.txt
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -183,22 +194,27 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
+          cd "$APP"
 
-          dc down --remove-orphans || true
-          dc up -d postgres
+          # Source .env for POSTGRES_USER
+          set -a; source .env; set +a
 
+          docker compose --project-directory "$APP" down --remove-orphans || true
+          docker compose --project-directory "$APP" up -d postgres
+
+          echo "Waiting for Postgres..."
           for i in $(seq 1 60); do
-            if docker exec sync-beats-postgres-1 pg_isready -U syncbeats >/dev/null 2>&1; then
+            if docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
               echo "Postgres ready"
               break
             fi
             sleep 2
           done
 
-          docker exec sync-beats-postgres-1 pg_isready -U syncbeats || {
-            echo "Postgres failed"
-            docker logs sync-beats-postgres-1
+          # Final check — fail hard if still not ready
+          docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" || {
+            echo "Postgres failed to start"
+            docker compose --project-directory "$APP" logs postgres
             exit 1
           }
           ENDSSH
@@ -208,9 +224,8 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
 
-          dc run --rm server npx prisma migrate deploy
+          docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
           ENDSSH
 
       - name: Start server & studio and verify
@@ -218,13 +233,17 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
+          cd "$APP"
 
-          dc up -d server studio
+          # Source .env for PORT
+          set -a; source .env; set +a
 
+          docker compose --project-directory "$APP" up -d server studio
+
+          echo "Waiting for backend on port $PORT..."
           BACKEND_OK=false
           for i in $(seq 1 10); do
-            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
+            if curl -fsS "http://localhost:${PORT}/health" >/dev/null 2>&1; then
               BACKEND_OK=true
               break
             fi
@@ -232,18 +251,20 @@ jobs:
           done
 
           if [ "$BACKEND_OK" = "false" ]; then
-            echo "Backend failed"
-            dc logs server
+            echo "Backend health check failed"
+            docker compose --project-directory "$APP" logs server
             exit 1
           fi
-          ENDSSH
 
+          echo "Backend healthy!"
+          ENDSSH
 
   deploy-frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-frontend, deploy-backend]
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
@@ -258,19 +279,16 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
+
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
 
-          # Kill old PM2 process if it exists to free up port 3000
-          pm2 delete syncbeats-frontend || true
-
-          dc() { docker compose --project-directory "$APP" "$@"; }
-
-          dc up -d frontend
+          docker compose --project-directory "$APP" up -d frontend
 
           # Health check
+          echo "Waiting for frontend on port 3000..."
           FRONT_OK=false
           for i in $(seq 1 10); do
             if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
@@ -281,13 +299,14 @@ jobs:
           done
 
           if [ "$FRONT_OK" = "false" ]; then
-            echo "Frontend failed"
-            dc logs frontend
+            echo "Frontend health check failed"
+            docker compose --project-directory "$APP" logs frontend
             exit 1
           fi
 
-          echo "Frontend deployed successfully"
+          echo "Frontend healthy!"
           ENDSSH
+
   finalize:
     name: Finalize
     runs-on: ubuntu-latest
@@ -315,6 +334,7 @@ jobs:
     timeout-minutes: 5
     needs: [deploy-backend, deploy-frontend]
     if: failure()
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
@@ -329,15 +349,14 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
 
           PREV=$(cat /tmp/syncbeats-prev-image.txt 2>/dev/null || echo "none")
 
           if [ "$PREV" != "none" ]; then
-            dc down --remove-orphans || true
+            docker compose --project-directory "$APP" down --remove-orphans || true
             docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:latest
-            dc up -d postgres
-            dc run --rm server npx prisma migrate deploy
-            dc up -d server studio
+            docker compose --project-directory "$APP" up -d postgres
+            docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
+            docker compose --project-directory "$APP" up -d server studio
           fi
           ENDSSH
