@@ -202,6 +202,12 @@ jobs:
     needs: [deploy-frontend]
 
     steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
       - name: Reload nginx
         run: |
           ssh -o StrictHostKeyChecking=yes \
