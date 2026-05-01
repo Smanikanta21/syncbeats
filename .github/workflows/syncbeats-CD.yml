@@ -76,6 +76,7 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
+      - uses: actions/checkout@v4
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -112,12 +113,23 @@ jobs:
             echo "RESEND_API_KEY=$RESEND_API_KEY"
             echo "NEXT_PUBLIC_SERVER_URL=$NEXT_PUBLIC_SERVER_URL"
           } > /tmp/syncbeats.env
+
+          ssh -o StrictHostKeyChecking=yes \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+            "mkdir -p ~/sync-beats"
+
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
+
+          scp -o StrictHostKeyChecking=yes \
+            docker-compose.yml \
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/docker-compose.yml
+
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "chmod 600 ~/sync-beats/.env"
+
           rm /tmp/syncbeats.env
 
   deploy-backend:
@@ -141,8 +153,6 @@ jobs:
           APP="$HOME/sync-beats"
           dc() { docker compose --project-directory "$APP" "$@"; }
           cd "$APP"
-          git fetch origin
-          git reset --hard origin/${{ github.ref_name }}
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
           docker tag ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }} \
