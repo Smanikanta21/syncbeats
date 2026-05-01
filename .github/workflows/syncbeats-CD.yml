@@ -185,7 +185,24 @@ jobs:
           done
 
           dc run --rm server npx prisma migrate deploy
-          dc up -d server studio
+          dc down
+          SERVER_OK=false
+          dc up -d server
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:4000 >/dev/null 2>&1; then
+              SERVER_OK=true
+              break
+            fi
+            sleep 2
+            if [ $SERVER_OK == false ]; then
+              echo "backend start failed"
+              docker logs sync-beats-server-1
+              exit 1
+            fi
+          done
+
+          dc up -d studio
           ENDSSH
 
 
