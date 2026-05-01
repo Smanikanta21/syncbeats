@@ -113,6 +113,7 @@ jobs:
           V_NODE_ENV:              ${{ vars.NODE_ENV }}
           V_PORT:                  ${{ vars.PORT }}
           V_STUDIO_PORT:           ${{ vars.STUDIO_PORT }}
+          V_FRONTEND_PORT:         ${{ vars.FRONTEND_PORT }}
           V_POSTGRES_USER:         ${{ vars.POSTGRES_USER }}
           V_POSTGRES_PASSWORD:     ${{ secrets.POSTGRES_PASSWORD }}
           V_POSTGRES_DB:           ${{ vars.POSTGRES_DB }}
@@ -127,6 +128,7 @@ jobs:
             echo "NODE_ENV=${V_NODE_ENV}"
             echo "PORT=${V_PORT}"
             echo "STUDIO_PORT=${V_STUDIO_PORT}"
+            echo "FRONTEND_PORT=${V_FRONTEND_PORT}"
             echo "POSTGRES_USER=${V_POSTGRES_USER}"
             echo "POSTGRES_PASSWORD=${V_POSTGRES_PASSWORD}"
             echo "POSTGRES_DB=${V_POSTGRES_DB}"
@@ -279,6 +281,11 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
           APP="$HOME/sync-beats"
+          cd "$APP"
+
+          # Source .env for FRONTEND_PORT
+          set -a; source .env; set +a
+          FPORT="${FRONTEND_PORT:-3000}"
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -288,10 +295,10 @@ jobs:
           docker compose --project-directory "$APP" up -d frontend
 
           # Health check
-          echo "Waiting for frontend on port 3000..."
+          echo "Waiting for frontend on port $FPORT..."
           FRONT_OK=false
           for i in $(seq 1 10); do
-            if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+            if curl -fsS "http://localhost:${FPORT}" >/dev/null 2>&1; then
               FRONT_OK=true
               break
             fi
@@ -322,11 +329,14 @@ jobs:
           chmod 400 ~/.ssh/id_rsa
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Reload nginx
+      - name: Reload nginx and cleanup
         run: |
           ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "sudo nginx -t && sudo systemctl reload nginx"
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          sudo nginx -t && sudo systemctl reload nginx
+          # Prune old unused images to free disk space
+          docker image prune -a -f --filter "until=1h"
+          ENDSSH
 
   rollback:
     name: Rollback on Failure
