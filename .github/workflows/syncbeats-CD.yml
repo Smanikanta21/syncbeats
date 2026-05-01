@@ -115,7 +115,7 @@ jobs:
 
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "mkdir -p ~/sync-beats"
+            "mkdir -p ~/sync-beats && sudo chown -R \$USER:\$USER ~/sync-beats && sudo rm -f ~/sync-beats/.env"
 
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
