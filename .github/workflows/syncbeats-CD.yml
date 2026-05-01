@@ -142,7 +142,7 @@ jobs:
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "chmod 600 ~/sync-beats/.env"
 
-          rm /tmp/syncbeats.env
+          rm -f /tmp/syncbeats.env
 
   deploy-backend:
     name: Deploy Backend
@@ -293,6 +293,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [deploy-frontend]
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
