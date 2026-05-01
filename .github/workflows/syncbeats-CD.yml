@@ -2,7 +2,7 @@ name: Syncbeats CD
 
 on:
   push:
-    branches: [main,dev]
+    branches: [main, nodejs-dev]
   workflow_dispatch:
 
 concurrency:
@@ -16,12 +16,11 @@ env:
   ENVIRONMENT: ${{ github.ref_name }}
 
 jobs:
-
   build-backend:
     name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name }}
 
     permissions:
       contents: read
@@ -46,7 +45,7 @@ jobs:
     name: Build Frontend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name }}
 
     permissions:
       contents: read
@@ -73,7 +72,7 @@ jobs:
     name: Provision .env on EC2
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -85,17 +84,17 @@ jobs:
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
       - name: Write .env and SCP to EC2
         env:
-          NODE_ENV:          ${{ vars.NODE_ENV }}
-          PORT:              ${{ vars.PORT }}
-          STUDIO_PORT:       ${{ vars.STUDIO_PORT }}
-          POSTGRES_USER:     ${{ vars.POSTGRES_USER }}
+          NODE_ENV: ${{ vars.NODE_ENV }}
+          PORT: ${{ vars.PORT }}
+          STUDIO_PORT: ${{ vars.STUDIO_PORT }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB:       ${{ vars.POSTGRES_DB }}
-          JWT_SECRET:        ${{ secrets.JWT_SECRET }}
-          GOOGLE_CLIENT_ID:  ${{ secrets.GOOGLE_CLIENT_ID }}
-          FRONTEND_URL:      ${{ vars.FRONTEND_URL }}
-          AUTH_FROM_EMAIL:   ${{ vars.AUTH_FROM_EMAIL }}
-          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          AUTH_FROM_EMAIL: ${{ vars.AUTH_FROM_EMAIL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
         run: |
           {
@@ -137,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-backend, provision-env]
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
@@ -171,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-frontend, deploy-backend]
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name }}
 
     steps:
       - name: Setup SSH
