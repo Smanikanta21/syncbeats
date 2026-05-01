@@ -23,10 +23,10 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${PORT}:${PORT}"
+      - "${PORT:-4000}:${PORT:-4000}"
     environment:
       NODE_ENV: ${NODE_ENV}
-      PORT: ${PORT}
+      PORT: ${PORT:-4000}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # Auth
       JWT_SECRET: ${JWT_SECRET}
@@ -44,9 +44,9 @@ services:
     depends_on:
       - server
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
 
 
@@ -58,10 +58,10 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${STUDIO_PORT}:${STUDIO_PORT}"
+      - "${STUDIO_PORT:-5555}:${STUDIO_PORT:-5555}"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    command: npx prisma studio --port ${STUDIO_PORT} --browser none
+    command: npx prisma studio --port ${STUDIO_PORT:-5555} --browser none
 
 volumes:
   pgdata:
