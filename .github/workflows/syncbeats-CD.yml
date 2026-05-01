@@ -21,7 +21,7 @@ jobs:
     name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     permissions:
       contents: read
@@ -46,7 +46,7 @@ jobs:
     name: Build Frontend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     permissions:
       contents: read
@@ -73,7 +73,7 @@ jobs:
     name: Provision .env on EC2
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Setup SSH
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-backend, provision-env]
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Setup SSH
@@ -144,7 +144,9 @@ jobs:
           git fetch origin
           git reset --hard origin/${{ github.ref_name }}
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:latest
+          docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
+          docker tag ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }} \
+          ghcr.io/${{ env.BACKEND_IMAGE }}:latest
           dc down --remove-orphans || true
           dc up -d postgres
           sleep 10
@@ -159,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-frontend, deploy-backend]
-    environment: ${{ env.ENVIRONMENT }}
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Setup SSH
@@ -175,7 +177,9 @@ jobs:
           APP="$HOME/sync-beats"
           dc() { docker compose --project-directory "$APP" "$@"; }
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
+          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
+          docker tag ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }} \
+           ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
           dc up -d frontend
           sleep 5
           curl -f http://localhost:3000 || exit 1
