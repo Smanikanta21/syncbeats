@@ -2,7 +2,7 @@ name: Syncbeats CD
 
 on:
   push:
-    branches: [main, nodejs-dev]
+    branches: [main,dev]
   workflow_dispatch:
 
 concurrency:
@@ -13,7 +13,7 @@ env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: smanikanta21/syncbeats-server
   FRONTEND_IMAGE: smanikanta21/syncbeats-frontend
-  ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+  ENVIRONMENT: ${{ github.ref_name }}
 
 jobs:
 
@@ -21,7 +21,7 @@ jobs:
     name: Build Backend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ env.ENVIRONMENT }}
 
     permissions:
       contents: read
@@ -46,7 +46,7 @@ jobs:
     name: Build Frontend Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ env.ENVIRONMENT }}
 
     permissions:
       contents: read
@@ -73,7 +73,7 @@ jobs:
     name: Provision .env on EC2
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ env.ENVIRONMENT }}
 
     steps:
       - uses: actions/checkout@v4
@@ -137,7 +137,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-backend, provision-env]
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ env.ENVIRONMENT }}
 
     steps:
       - name: Setup SSH
@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [build-frontend, deploy-backend]
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ env.ENVIRONMENT }}
 
     steps:
       - name: Setup SSH
