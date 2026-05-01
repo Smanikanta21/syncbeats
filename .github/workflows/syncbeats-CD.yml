@@ -88,7 +88,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
-            NEXT_PUBLIC_SERVER_URL=${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+            NEXT_PUBLIC_SERVER_URL=${{ vars.NEXT_PUBLIC_SERVER_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -110,18 +110,18 @@ jobs:
 
       - name: Write .env and SCP to EC2
         env:
-          V_NODE_ENV:          ${{ secrets.NODE_ENV }}
-          V_PORT:              ${{ secrets.PORT }}
-          V_STUDIO_PORT:       ${{ secrets.STUDIO_PORT }}
-          V_POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
-          V_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          V_POSTGRES_DB:       ${{ secrets.POSTGRES_DB }}
-          V_JWT_SECRET:        ${{ secrets.JWT_SECRET }}
-          V_GOOGLE_CLIENT_ID:  ${{ secrets.GOOGLE_CLIENT_ID }}
-          V_FRONTEND_URL:      ${{ secrets.FRONTEND_URL }}
-          V_AUTH_FROM_EMAIL:   ${{ secrets.AUTH_FROM_EMAIL }}
-          V_RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
-          V_NEXT_PUBLIC_SERVER_URL: ${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+          V_NODE_ENV:              ${{ vars.NODE_ENV }}
+          V_PORT:                  ${{ vars.PORT }}
+          V_STUDIO_PORT:           ${{ vars.STUDIO_PORT }}
+          V_POSTGRES_USER:         ${{ vars.POSTGRES_USER }}
+          V_POSTGRES_PASSWORD:     ${{ secrets.POSTGRES_PASSWORD }}
+          V_POSTGRES_DB:           ${{ vars.POSTGRES_DB }}
+          V_JWT_SECRET:            ${{ secrets.JWT_SECRET }}
+          V_GOOGLE_CLIENT_ID:      ${{ secrets.GOOGLE_CLIENT_ID }}
+          V_FRONTEND_URL:          ${{ vars.FRONTEND_URL }}
+          V_AUTH_FROM_EMAIL:       ${{ vars.AUTH_FROM_EMAIL }}
+          V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
         run: |
           {
             echo "NODE_ENV=${V_NODE_ENV}"
