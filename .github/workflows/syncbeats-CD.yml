@@ -182,7 +182,7 @@ jobs:
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
       - name: Deploy frontend
         run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<EOF
+          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'EOF'
           set -euo pipefail
           APP="$HOME/sync-beats"
           dc() { docker compose --project-directory "$APP" "$@"; }
