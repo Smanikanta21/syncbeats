@@ -51,6 +51,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
@@ -79,16 +80,17 @@ jobs:
         run: |
           cd frontend
           tar -czf ../frontend-build.tar.gz \
-          .next/standalone \
-          .next/static \
-          public \
-          package.json
+            .next/standalone \
+            .next/static \
+            public \
+            package.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: frontend-build.tar.gz
           retention-days: 1
+
 
   provision-env:
     name: Provision .env on EC2
@@ -132,15 +134,14 @@ jobs:
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
           } > /tmp/syncbeats.env
 
-          scp -o StrictHostKeyChecking=yes \
-            /tmp/syncbeats.env \
+          scp /tmp/syncbeats.env \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
 
-          ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "chmod 600 ~/sync-beats/.env"
 
           rm /tmp/syncbeats.env
+
 
   deploy-backend:
     name: Deploy Backend
@@ -156,85 +157,37 @@ jobs:
           chmod 400 ~/.ssh/id_rsa
           ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Pull latest image
+      - name: Deploy Backend
         run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
+
           APP="$HOME/sync-beats"
+          dc() { docker compose --project-directory "$APP" "$@"; }
 
           cd "$APP"
           git fetch origin
           git reset --hard origin/main
 
-          docker inspect --format='{{.Image}}' sync-beats-server-1 2>/dev/null \
-            > /tmp/syncbeats-prev-image.txt \
-            || echo "none" > /tmp/syncbeats-prev-image.txt
-
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           docker pull ghcr.io/${{ env.IMAGE_NAME }}:latest
-          ENDSSH
-
-      - name: Start Postgres and wait until ready
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          set -euo pipefail
-          APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
 
           dc down --remove-orphans || true
           dc up -d postgres
 
           for i in $(seq 1 60); do
             if docker exec sync-beats-postgres-1 pg_isready -U syncbeats >/dev/null 2>&1; then
-              echo "Postgres ready"
               break
             fi
             sleep 2
           done
 
-          docker exec sync-beats-postgres-1 pg_isready -U syncbeats || {
-            echo "Postgres failed"
-            docker logs sync-beats-postgres-1
-            exit 1
-          }
-          ENDSSH
-
-      - name: Run database migrations
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          set -euo pipefail
-          APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
-
           dc run --rm server npx prisma migrate deploy
-          ENDSSH
-
-      - name: Start server & studio and verify
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          set -euo pipefail
-          APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
-
           dc up -d server studio
-
-          BACKEND_OK=false
-          for i in $(seq 1 10); do
-            if curl -fsS http://localhost:4000/health >/dev/null 2>&1; then
-              BACKEND_OK=true
-              break
-            fi
-            sleep 3
-          done
-
-          if [ "$BACKEND_OK" = "false" ]; then
-            echo "Backend failed"
-            dc logs server
-            exit 1
-          fi
           ENDSSH
+
 
   deploy-frontend:
     name: Deploy Frontend
@@ -256,52 +209,64 @@ jobs:
 
       - name: Upload build
         run: |
-          scp -o StrictHostKeyChecking=yes frontend-build.tar.gz \
+          scp frontend-build.tar.gz \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/frontend-build.tar.gz
 
-      - name: Deploy frontend
+      - name: Deploy frontend with rollback
         run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
+
           APP="$HOME/sync-beats"
           FRONT="$APP/frontend"
+          BACKUP="$APP/frontend_backup"
+
+          rm -rf "$BACKUP"
+          cp -r "$FRONT" "$BACKUP" || true
 
           pm2 delete syncbeats-frontend || true
 
           cd "$FRONT"
-          rm -rf .next public server.js node_modules
+          rm -rf .next public node_modules server.js
 
           tar -xzf "$APP/frontend-build.tar.gz"
           rm "$APP/frontend-build.tar.gz"
 
-          cp -r .next/standalone/* .
-          npm ci --omit=dev
+          mkdir -p .next/standalone/frontend/.next
+          cp -r .next/static .next/standalone/frontend/.next/
 
-          [ -d ".next/static" ] || { echo "Missing static files"; exit 1; }
+          pm2 start ".next/standalone/frontend/server.js" \
+            --name syncbeats-frontend \
+            --env PORT=3000
 
-          pm2 start "node server.js" --name syncbeats-frontend --env PORT=3000
           pm2 save
 
-          FRONT_OK=false
           for i in $(seq 1 10); do
             if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
-              FRONT_OK=true
-              break
+              rm -rf "$BACKUP"
+              exit 0
             fi
             sleep 3
           done
 
-          if [ "$FRONT_OK" = "false" ]; then
-            echo "Frontend failed"
-            pm2 logs syncbeats-frontend --lines 50 --nostream
-            exit 1
-          fi
+          echo "Frontend failed, rolling back"
+
+          pm2 delete syncbeats-frontend || true
+          rm -rf "$FRONT"
+          mv "$BACKUP" "$FRONT"
+
+          pm2 start "$FRONT/.next/standalone/frontend/server.js" \
+            --name syncbeats-frontend \
+            --env PORT=3000
+
+          pm2 save
+          exit 1
           ENDSSH
+
 
   finalize:
     name: Finalize
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: [deploy-frontend]
 
     steps:
@@ -314,39 +279,5 @@ jobs:
 
       - name: Reload nginx
         run: |
-          ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
             "sudo nginx -t && sudo systemctl reload nginx"
-
-  rollback:
-    name: Rollback on Failure
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [deploy-backend, deploy-frontend]
-    if: failure()
-
-    steps:
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Rollback backend
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          set -euo pipefail
-          APP="$HOME/sync-beats"
-          dc() { docker compose --project-directory "$APP" "$@"; }
-
-          PREV=$(cat /tmp/syncbeats-prev-image.txt 2>/dev/null || echo "none")
-
-          if [ "$PREV" != "none" ]; then
-            dc down --remove-orphans || true
-            docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:latest
-            dc up -d postgres
-            dc run --rm server npx prisma migrate deploy
-            dc up -d server studio
-          fi
-          ENDSSH
