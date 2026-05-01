@@ -263,6 +263,9 @@ jobs:
 
           docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
 
+          # Kill old PM2 process if it exists to free up port 3000
+          pm2 delete syncbeats-frontend || true
+
           dc() { docker compose --project-directory "$APP" "$@"; }
 
           dc up -d frontend
