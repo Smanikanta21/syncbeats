@@ -144,22 +144,22 @@ jobs:
           # Ensure target dir exists and is writable
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "mkdir -p ~/sync-beats && sudo chown -R \$USER:\$USER ~/sync-beats && rm -f ~/sync-beats/.env"
+            "mkdir -p ~/sync-beats-${{ github.ref_name }} && sudo chown -R \$USER:\$USER ~/sync-beats-${{ github.ref_name }} && rm -f ~/sync-beats-${{ github.ref_name }}/.env"
 
           # Upload .env
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/.env
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats-${{ github.ref_name }}/.env
 
           # Upload docker-compose.yml
           scp -o StrictHostKeyChecking=yes \
             docker-compose.yml \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats/docker-compose.yml
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats-${{ github.ref_name }}/docker-compose.yml
 
           # Lock down .env
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "chmod 600 ~/sync-beats/.env"
+            "chmod 600 ~/sync-beats-${{ github.ref_name }}/.env"
 
           rm -f /tmp/syncbeats.env
 
@@ -182,7 +182,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
           cd "$APP"
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
@@ -195,7 +195,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
           cd "$APP"
 
           # Source .env for POSTGRES_USER
@@ -225,7 +225,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
 
           docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
           ENDSSH
@@ -234,7 +234,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
           cd "$APP"
 
           # Source .env for PORT
@@ -280,7 +280,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
           cd "$APP"
 
           # Source .env for FRONTEND_PORT
@@ -338,6 +338,17 @@ jobs:
           docker image prune -a -f --filter "until=1h"
           ENDSSH
 
+      - name: Stop dev containers if deploying main
+        if: github.ref_name == 'main'
+        run: |
+          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
+          if [ -d "$HOME/sync-beats-nodejs-dev" ]; then
+            echo "Tearing down dev environment..."
+            docker compose --project-directory "$HOME/sync-beats-nodejs-dev" down || true
+            rm -rf "$HOME/sync-beats-nodejs-dev"
+          fi
+          ENDSSH
+
   rollback:
     name: Rollback on Failure
     runs-on: ubuntu-latest
@@ -358,7 +369,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats"
+          APP="$HOME/sync-beats-${{ github.ref_name }}"
 
           PREV=$(cat /tmp/syncbeats-prev-image.txt 2>/dev/null || echo "none")
 
