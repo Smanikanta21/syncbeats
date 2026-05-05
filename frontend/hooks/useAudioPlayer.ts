@@ -200,7 +200,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
 
     const localAtEpoch = payload.atEpoch - clockOffset;
-    const audioCtxStartTime = audioCtxRef.current.currentTime + (localAtEpoch - performance.now()) / 1000;
+    const msUntilStart = localAtEpoch - Date.now();
+    const audioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000;
     const playTime = Math.max(audioCtxStartTime, audioCtxRef.current.currentTime + 0.01);
 
     stopCurrentSource();

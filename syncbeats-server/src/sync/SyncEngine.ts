@@ -13,7 +13,7 @@ export class NTPSyncStrategy implements ISyncStrategy {
 
 export class SyncEngine {
   recordPing(_socketId: string, _t0: number): { t1: number; t2: number } {
-    const now = performance.now();
+    const now = Date.now();
     return { t1: now, t2: now }; 
   }
 

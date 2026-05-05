@@ -108,17 +108,17 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   }, [roomId, currentSocketId]);
 
   const pingOnce = useCallback((seq: number) => new Promise<{ t0: number; t1: number; t3: number }>((resolve) => {
-    const t0 = performance.now();
+    const t0 = Date.now();
     const timeout = window.setTimeout(() => {
       socket.off('sync:pong', onPong);
-      resolve({ t0, t1: t0, t3: performance.now() });
+      resolve({ t0, t1: t0, t3: Date.now() });
     }, 1000);
 
     const onPong = ({ t1, seq: pongSeq }: { t1: number; seq?: number }) => {
       if (pongSeq !== seq) return;
       window.clearTimeout(timeout);
       socket.off('sync:pong', onPong);
-      resolve({ t0, t1, t3: performance.now() });
+      resolve({ t0, t1, t3: Date.now() });
     };
 
     socket.on('sync:pong', onPong);
@@ -164,7 +164,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
 
-      const nowServer = performance.now() + clockOffsetRef.current;
+      const nowServer = Date.now() + clockOffsetRef.current;
       
       // Do not run drift correction before the song is actually scheduled to start
       if (nowServer < snap.startEpoch!) return;

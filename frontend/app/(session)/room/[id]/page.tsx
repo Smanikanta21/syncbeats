@@ -9,7 +9,7 @@ import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
-import { getAuthToken } from "../../../../lib/api";
+import { getAuthToken, getServerUrl } from "../../../../lib/api";
 import { useSyncInfo } from "../../../../context/SyncContext";
 
 import {
@@ -141,7 +141,7 @@ export default function RoomPage() {
   const handleRemoveTrack = async (e: React.MouseEvent, trackId: string) => {
     e.stopPropagation();
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
+      const baseUrl = getServerUrl();
       const res = await fetch(`${baseUrl}/rooms/${roomId}/queue/${trackId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
@@ -190,7 +190,7 @@ export default function RoomPage() {
     setLocalQueue((items) => arrayMove(items, oldIndex, newIndex));
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
+      const baseUrl = getServerUrl();
       await fetch(`${baseUrl}/rooms/${roomId}/queue/reorder`, {
         method: 'PUT',
         headers: {
