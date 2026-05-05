@@ -26,12 +26,12 @@ interface UseRoomReturn {
   leave:        () => void;
 }
 
-const NTP_SAMPLE_COUNT         = 16;
-const NTP_RTT_GATE_MS          = 200;
-const NTP_PING_GAP_MS          = 50;
-const NTP_RESYNC_INTERVAL_MS   = 30_000;
-const DRIFT_CHECK_INTERVAL_MS  = 1_000;
-const DRIFT_HARD_SEEK_MS       = 500;
+const NTP_SAMPLE_COUNT         = 20;    // More samples → better median accuracy
+const NTP_RTT_GATE_MS          = 100;   // Reject noisy pings (>100ms round-trip)
+const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
+const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
+const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
+const DRIFT_HARD_SEEK_MS       = 150;   // Seek if off by >150ms (was 500ms)
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
