@@ -369,8 +369,9 @@ export default function RoomPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-          {participants.map((p: Participant, i: number) => (
+        <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+            {participants.map((p: Participant, i: number) => (
             <div
               key={p.socketId}
               className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
@@ -432,7 +433,8 @@ export default function RoomPage() {
                 </div>
               </div>
             </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* ── Queue ── */}
