@@ -43,7 +43,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}
           tags: |
             type=sha,format=short
-            type=raw,value=latest
+            type=raw,value=${{ github.ref_name }}
 
       - uses: docker/build-push-action@v5
         with:
@@ -80,7 +80,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
           tags: |
             type=sha,format=short
-            type=raw,value=latest
+            type=raw,value=${{ github.ref_name }}
 
       - uses: docker/build-push-action@v5
         with:
@@ -139,27 +139,33 @@ jobs:
             echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}"
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
+            echo "IMAGE_TAG=${{ github.ref_name }}"
           } > /tmp/syncbeats.env
+
+          APP_DIR="sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP_DIR="sync-beats-dev"
+          fi
 
           # Ensure target dir exists and is writable
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "mkdir -p ~/sync-beats-${{ github.ref_name }} && sudo chown -R \$USER:\$USER ~/sync-beats-${{ github.ref_name }} && rm -f ~/sync-beats-${{ github.ref_name }}/.env"
+            "mkdir -p ~/$APP_DIR && sudo chown -R \$USER:\$USER ~/$APP_DIR && rm -f ~/$APP_DIR/.env"
 
           # Upload .env
           scp -o StrictHostKeyChecking=yes \
             /tmp/syncbeats.env \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats-${{ github.ref_name }}/.env
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/$APP_DIR/.env
 
           # Upload docker-compose.yml
           scp -o StrictHostKeyChecking=yes \
             docker-compose.yml \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/sync-beats-${{ github.ref_name }}/docker-compose.yml
+            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/$APP_DIR/docker-compose.yml
 
           # Lock down .env
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "chmod 600 ~/sync-beats-${{ github.ref_name }}/.env"
+            "chmod 600 ~/$APP_DIR/.env"
 
           rm -f /tmp/syncbeats.env
 
@@ -182,20 +188,26 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
           cd "$APP"
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:latest
+          docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
           ENDSSH
 
       - name: Start Postgres and wait until ready
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
           cd "$APP"
 
           # Source .env for POSTGRES_USER
@@ -225,7 +237,10 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
 
           docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
           ENDSSH
@@ -234,7 +249,10 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
           cd "$APP"
 
           # Source .env for PORT
@@ -280,7 +298,10 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
           cd "$APP"
 
           # Source .env for FRONTEND_PORT
@@ -290,7 +311,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:latest
+          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
 
           docker compose --project-directory "$APP" up -d frontend
 
@@ -342,10 +363,10 @@ jobs:
         if: github.ref_name == 'main'
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          if [ -d "$HOME/sync-beats-nodejs-dev" ]; then
+          if [ -d "$HOME/sync-beats-dev" ]; then
             echo "Tearing down dev environment..."
-            docker compose --project-directory "$HOME/sync-beats-nodejs-dev" down || true
-            rm -rf "$HOME/sync-beats-nodejs-dev"
+            docker compose --project-directory "$HOME/sync-beats-dev" down || true
+            rm -rf "$HOME/sync-beats-dev"
           fi
           ENDSSH
 
@@ -369,13 +390,16 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           set -euo pipefail
-          APP="$HOME/sync-beats-${{ github.ref_name }}"
+          APP="$HOME/sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP="$HOME/sync-beats-dev"
+          fi
 
           PREV=$(cat /tmp/syncbeats-prev-image.txt 2>/dev/null || echo "none")
 
           if [ "$PREV" != "none" ]; then
             docker compose --project-directory "$APP" down --remove-orphans || true
-            docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:latest
+            docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:${{ github.ref_name }}
             docker compose --project-directory "$APP" up -d postgres
             docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
             docker compose --project-directory "$APP" up -d server studio

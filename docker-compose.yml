@@ -17,7 +17,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   server:
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -39,7 +39,7 @@ services:
       - uploads:/app/uploads
 
   frontend:
-    image: ghcr.io/smanikanta21/syncbeats-frontend:latest
+    image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
     depends_on:
@@ -53,7 +53,7 @@ services:
 
   studio:
     container_name: studio-1
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
