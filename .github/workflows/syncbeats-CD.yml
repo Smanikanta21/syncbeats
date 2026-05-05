@@ -124,6 +124,11 @@ jobs:
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
         run: |
+          APP_DIR="sync-beats"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            APP_DIR="sync-beats-dev"
+          fi
+
           {
             echo "NODE_ENV=${V_NODE_ENV}"
             echo "PORT=${V_PORT}"
@@ -140,12 +145,8 @@ jobs:
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
+            echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env
-
-          APP_DIR="sync-beats"
-          if [ "${{ github.ref_name }}" != "main" ]; then
-            APP_DIR="sync-beats-dev"
-          fi
 
           # Ensure target dir exists and is writable
           ssh -o StrictHostKeyChecking=yes \

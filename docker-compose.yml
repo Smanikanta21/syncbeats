@@ -1,4 +1,4 @@
-name: sync-beats
+name: ${COMPOSE_PROJECT_NAME:-sync-beats}
 services:
   postgres:
     image: postgres:16-alpine
@@ -52,7 +52,6 @@ services:
 
 
   studio:
-    container_name: studio-1
     image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
