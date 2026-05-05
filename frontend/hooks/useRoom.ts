@@ -164,8 +164,13 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
 
-      const expected = Math.max(0, (performance.now() + clockOffsetRef.current - snap.startEpoch!) / 1000);
-      const actual = audioRef.current.currentTime;
+      const nowServer = performance.now() + clockOffsetRef.current;
+      
+      // Do not run drift correction before the song is actually scheduled to start
+      if (nowServer < snap.startEpoch!) return;
+
+      const expected = Math.max(0, (nowServer - snap.startEpoch!) / 1000);
+      const actual = audioRef.current.getTruePosition();
       const driftMs = Math.abs(actual - expected) * 1000;
 
       if (driftMs > DRIFT_HARD_SEEK_MS) {

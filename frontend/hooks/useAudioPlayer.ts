@@ -29,6 +29,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
   playNow:     (expectedPosition: number) => void;
   pauseAt:     (position: number) => void;
+  getTruePosition: () => number;
   audioEl:     HTMLAudioElement | null;
 }
 
@@ -143,7 +144,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   useEffect(() => {
     const tick = () => {
       if (isPlaying && audioCtxRef.current) {
-        const elapsed = audioCtxRef.current.currentTime - startTimeRef.current;
+        const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
         setCurrentTime(pauseOffsetRef.current + elapsed);
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -239,6 +240,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setCurrentTime(position);
   }, [stopCurrentSource]);
 
+  const getTruePosition = useCallback(() => {
+    if (!isPlaying || !audioCtxRef.current) return pauseOffsetRef.current;
+    const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+    return pauseOffsetRef.current + elapsed;
+  }, [isPlaying]);
+
   const play = useCallback(() => {}, []);
   const pause = useCallback(() => {}, []);
   const toggle = useCallback(() => {}, []);
@@ -264,7 +271,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlaying, isReady, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, unlockAudio,
-    scheduleStart, playNow, pauseAt,
+    scheduleStart, playNow, pauseAt, getTruePosition,
     audioEl: null,
   };
 }
