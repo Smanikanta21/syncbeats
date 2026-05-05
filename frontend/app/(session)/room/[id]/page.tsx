@@ -48,12 +48,18 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
-  const { setClockOffset: pushClockOffset } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
     pushClockOffset(clockOffset);
   }, [clockOffset, pushClockOffset]);
+
+  // Push server-side playing state so DynamicIsland shows correct button
+  useEffect(() => {
+    setIsRoomPlaying(snapshot?.isPlaying ?? false);
+  }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
   const [qrState, setQrState] = useState<"mock" | "generating" | "ready">("mock");
   const qrTimerRef = useRef<number | null>(null);
 

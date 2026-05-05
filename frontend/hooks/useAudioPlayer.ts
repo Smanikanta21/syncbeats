@@ -88,23 +88,38 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setAudioUnlocked(true);
     }
     // Flush any pending schedule that arrived before user interaction
-    // We use a timeout so React state has time to settle
     setTimeout(() => {
       const pending = pendingScheduleRef.current;
       if (pending) {
         pendingScheduleRef.current = null;
-        // Use a direct call rather than the callback to get fresh refs
-        scheduleStartRef.current?.(pending.payload, pending.clockOffset);
+        // Recalculate: the original atEpoch is likely in the past now.
+        // Compute where the song SHOULD be right now based on startEpoch.
+        const serverNow = Date.now() + pending.clockOffset;
+        const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
+        const adjustedPayload = {
+          ...pending.payload,
+          atEpoch: Date.now() + pending.clockOffset + 100, // start in 100ms
+          fromPosition: elapsed,
+        };
+        console.log(`[Audio] Flushing pending schedule: seeking to ${elapsed.toFixed(1)}s`);
+        scheduleStartRef.current?.(adjustedPayload, pending.clockOffset);
       }
-    }, 0);
+    }, 50);
   }, []);
 
   useEffect(() => {
     const unlock = () => {
       unlockAudio();
     };
+    // Use multiple events to ensure iOS Safari catches the user gesture
+    document.addEventListener('touchstart', unlock, { once: true, passive: true });
+    document.addEventListener('click', unlock, { once: true, passive: true });
     document.addEventListener('pointerdown', unlock, { once: true, passive: true });
-    return () => document.removeEventListener('pointerdown', unlock);
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('pointerdown', unlock);
+    };
   }, [unlockAudio]);
 
   const fetchAndDecode = async (url: string) => {
@@ -190,7 +205,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (!buffer && payload.trackUrl) {
        buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(payload.trackUrl);
     }
-    if (!buffer) return;
+    if (!buffer) {
+      console.warn('[Audio] No buffer available, cannot play');
+      return;
+    }
 
     if (audioCtxRef.current.state === 'suspended') {
       // Store for replay once user unlocks audio
@@ -201,8 +219,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     const localAtEpoch = payload.atEpoch - clockOffset;
     const msUntilStart = localAtEpoch - Date.now();
-    const audioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000;
-    const playTime = Math.max(audioCtxStartTime, audioCtxRef.current.currentTime + 0.01);
 
     stopCurrentSource();
 
@@ -216,14 +232,26 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    source.start(playTime, payload.fromPosition);
-    sourceNodeRef.current = source;
-    
-    startTimeRef.current = playTime;
-    pauseOffsetRef.current = payload.fromPosition;
+    if (msUntilStart > 50) {
+      // Schedule in the future — normal sync path
+      const audioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000;
+      source.start(audioCtxStartTime, payload.fromPosition);
+      sourceNodeRef.current = source;
+      startTimeRef.current = audioCtxStartTime;
+      pauseOffsetRef.current = payload.fromPosition;
+    } else {
+      // atEpoch is in the past (stale pending or late arrival) — play NOW at the correct position
+      const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000;
+      const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
+      console.log(`[Audio] Late start: jumping to ${clampedPosition.toFixed(1)}s`);
+      source.start(0, Math.max(0, clampedPosition));
+      sourceNodeRef.current = source;
+      startTimeRef.current = audioCtxRef.current.currentTime;
+      pauseOffsetRef.current = Math.max(0, clampedPosition);
+    }
     
     setIsPlaying(true);
-    setCurrentTime(payload.fromPosition);
+    setCurrentTime(pauseOffsetRef.current);
   }, [audioUnlocked, stopCurrentSource]);
 
   // Keep ref in sync so unlockAudio can flush pending schedule

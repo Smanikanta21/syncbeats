@@ -22,7 +22,7 @@ export function DynamicIsland() {
   const { user } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
-  const { clockOffset } = useSyncInfo();
+  const { clockOffset, isRoomPlaying } = useSyncInfo();
 
   const [expanded, setExpanded] = useState(false);
   const [driveLink, setDriveLink] = useState("");
@@ -79,11 +79,15 @@ export function DynamicIsland() {
   const onPointerUp = () => clearPress();
   const onPointerCancel = () => clearPress();
 
+  // In a room, use server-side state so the button updates on all devices.
+  // Outside a room, fall back to local AudioContext state.
+  const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
+
   // ── Network-Aware Playback Controls ──────────────────────────────────────
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isRoom && roomId) {
-      if (audio.isPlaying) getSocket().emit('playback:pause', { roomId });
+      if (effectivePlaying) getSocket().emit('playback:pause', { roomId });
       else getSocket().emit('playback:play', { roomId });
     } else {
       audio.toggle();
@@ -358,7 +362,7 @@ export function DynamicIsland() {
                 {/* Track info */}
                 <div className="flex items-center gap-5 mb-7">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-foreground/10 to-foreground/5 flex items-center justify-center border border-foreground/10 shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
-                    <Disc className={`w-8 h-8 text-foreground/40 ${audio.isPlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                    <Disc className={`w-8 h-8 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-xl sm:text-2xl font-black text-foreground truncate leading-tight">{audio.trackTitle || "Unknown Track"}</h3>
@@ -398,7 +402,7 @@ export function DynamicIsland() {
                     onClick={handleToggle}
                     className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)]"
                   >
-                    {audio.isPlaying
+                    {effectivePlaying
                       ? <Pause className="w-6 h-6" fill="currentColor" />
                       : <Play className="w-6 h-6 ml-0.5" fill="currentColor" />
                     }
@@ -424,7 +428,7 @@ export function DynamicIsland() {
                   onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
                 >
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors">
-                    <Disc className={`w-4 h-4 text-foreground/40 ${audio.isPlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                    <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
                     <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
@@ -439,7 +443,7 @@ export function DynamicIsland() {
                     onClick={handleToggle}
                     className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
                   >
-                    {audio.isPlaying
+                    {effectivePlaying
                       ? <Pause className="w-3 h-3" fill="currentColor" />
                       : <Play className="w-3 h-3 ml-0.5" fill="currentColor" />
                     }
