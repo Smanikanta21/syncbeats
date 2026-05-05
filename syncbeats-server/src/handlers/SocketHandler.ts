@@ -48,6 +48,14 @@ export class SocketHandler {
     eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: TrackQueueItem[] }) => {
       this.io.to(roomId).emit('room:queueChanged', { queue });
     });
+
+    eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
+      this.io.to(payload.roomId).emit('playback:schedule', payload);
+    });
+
+    eventBus.on(EVENTS.PLAYBACK_PAUSE, (payload: any) => {
+      this.io.to(payload.roomId).emit('playback:pause', payload);
+    });
   }
 
   register(socket: Socket): void {
@@ -108,10 +116,6 @@ export class SocketHandler {
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
-      if (!room.allReady()) {
-        socket.emit('room:playBlocked', { reason: 'waiting_for_clients' });
-        return;
-      }
       try {
         room.play(socket.id);
       } catch (err) {
@@ -121,7 +125,9 @@ export class SocketHandler {
 
     socket.on('playback:pause', ({ roomId }: { roomId: string }) => {
       try {
-        this.roomManager.get(roomId)?.pause(socket.id);
+        const room = this.roomManager.get(roomId);
+        if (!room) return;
+        room.pause(socket.id);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -129,7 +135,9 @@ export class SocketHandler {
 
     socket.on('playback:seek', ({ roomId, position }: SeekPayload) => {
       try {
-        this.roomManager.get(roomId)?.seek(socket.id, position);
+        const room = this.roomManager.get(roomId);
+        if (!room) return;
+        room.seek(socket.id, position);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -169,19 +177,13 @@ export class SocketHandler {
 
       room.setParticipantReady(socket.id, true);
       console.log(`[Room ${roomId}] ${socket.id} is ready`);
-
-      // If everyone is ready, tell the room
-      if (room.allReady()) {
-        console.log(`[Room ${roomId}] ALL READY → broadcasting room:allReady`);
-        this.io.to(roomId).emit('room:allReady');
-      }
     });
 
     // ── NTP sync ─────────────────────────────────────────────────────────
 
-    socket.on('sync:ping', ({ t0 }: PingPayload) => {
+    socket.on('sync:ping', ({ t0, seq }: PingPayload) => {
       const { t1, t2 } = this.syncEngine.recordPing(socket.id, t0);
-      socket.emit('sync:pong', { t0, t1, t2 });
+      socket.emit('sync:pong', { t0, t1, t2, seq });
     });
 
     // ── Spatial Audio Sync ───────────────────────────────────────────────

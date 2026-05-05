@@ -7,7 +7,7 @@ import {
   createContext, useContext, useState, useCallback,
   useRef, type ReactNode,
 } from "react";
-import { getAuthToken } from "../lib/api";
+import { getAuthToken, getServerUrl } from "../lib/api";
 
 interface UploadResult {
   trackUrl: string;
@@ -15,21 +15,14 @@ interface UploadResult {
 }
 
 interface UploadCtx {
-  isDragging:       boolean;    // file is currently dragged over the window
+  isDragging:       boolean;
   isUploading:      boolean;
-  uploadProgress:   number;     // 0–100
+  uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
 }
 
 const Ctx = createContext<UploadCtx | null>(null);
-
-function getServerUrl(): string {
-  if (typeof window !== "undefined") {
-    return process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
-  }
-  return "/api";
-}
 
 function getToken(): string | null {
   return getAuthToken();

@@ -1,17 +1,21 @@
 import { io, Socket } from "socket.io-client";
+import { getServerUrl } from "./api";
 
 let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    // In production, we pass `undefined` so socket.io defaults to the current domain (syncbeats.app)
-    // and the root namespace. We only provide the custom path.
-    const url = process.env.NODE_ENV === "production" ? undefined : "http://10.7.9.42:4000";
+    const serverUrl = getServerUrl();
+    
+    // If we're using the /api prefix (remote VM), route through /api/socket.io
+    const isRelativeApi = serverUrl === '/api';
+    const socketUrl = isRelativeApi ? (typeof window !== 'undefined' ? window.location.origin : undefined) : serverUrl;
+    const socketPath = isRelativeApi ? '/api/socket.io' : '/socket.io';
 
-    socket = io(url, {
+    socket = io(socketUrl, {
       autoConnect: false,
       transports: ["websocket"],
-      path: "/socket.io",
+      path: socketPath,
       withCredentials: true,
     });
   }

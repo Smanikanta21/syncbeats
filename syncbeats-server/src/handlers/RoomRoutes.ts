@@ -127,7 +127,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       if (room) {
         const currentItem = latestQueue.find(i => i.isCurrent);
         room.syncQueue(latestQueue, currentItem?.id ?? null);
-        io.to(roomId).emit('room:queueSynced', latestQueue);
+        io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
       }
 
       res.json({ ok: true });
@@ -162,7 +162,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         // Use updateQueueOrder — NOT syncQueue — so we don't interrupt
         // the currently playing track (no position reset, no pause).
         room.updateQueueOrder(latestQueue);
-        io.to(roomId).emit('room:queueSynced', latestQueue);
+        io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
       }
 
       res.json({ ok: true, queue: latestQueue });

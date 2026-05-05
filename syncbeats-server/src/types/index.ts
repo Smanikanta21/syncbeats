@@ -31,6 +31,9 @@ export interface RoomSnapshot {
   participants: Participant[];
   queue:        TrackQueueItem[];
   spatial:      DeviceSpatialState[];
+  startEpoch?:  number | null;
+  pauseOffset?: number;
+  isPlaying?:   boolean;
 }
 
 export interface SpatialPosition {
@@ -49,5 +52,16 @@ export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
 export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }
 export interface TrackPayload { roomId: string; trackUrl: string; }
-export interface PingPayload  { t0: number; }
-export interface PongPayload  { t0: number; t1: number; t2: number; }
+export interface PingPayload  { t0: number; seq?: number; }
+export interface PongPayload  { t0: number; t1: number; t2: number; seq?: number; }
+
+export interface PlaybackSchedulePayload {
+  startEpoch: number;
+  fromPosition: number;
+  trackUrl?: string;
+  atEpoch: number;
+}
+
+export interface PlaybackPausePayload {
+  pauseOffset: number;
+}

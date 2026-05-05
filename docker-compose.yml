@@ -1,4 +1,4 @@
-name: sync-beats
+name: ${COMPOSE_PROJECT_NAME:-sync-beats}
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,7 +17,8 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   server:
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    build: ./syncbeats-server
+    image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -35,11 +36,22 @@ services:
       # Email
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      # AWS S3
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-syncbeats-audio}
+      CDN_DOMAIN: ${CDN_DOMAIN:-ds4qzxgjm76yj.cloudfront.net}
     volumes:
       - uploads:/app/uploads
 
   frontend:
-    image: ghcr.io/smanikanta21/syncbeats-frontend:latest
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_SERVER_URL=${NEXT_PUBLIC_SERVER_URL}
+    image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     depends_on:
       - server
@@ -51,8 +63,8 @@ services:
 
 
   studio:
-    container_name: studio-1
-    image: ghcr.io/smanikanta21/syncbeats-server:latest
+    build: ./syncbeats-server
+    image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:

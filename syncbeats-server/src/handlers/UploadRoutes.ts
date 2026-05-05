@@ -8,6 +8,7 @@ import fs     from 'fs';
 import { requireAuth }  from '../auth/authMiddleware';
 import { RoomManager }  from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
+import { uploadToS3 } from '../utils/s3';
 
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -23,7 +24,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB hard cap
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /audio\//;
     if (allowed.test(file.mimetype)) return cb(null, true);
@@ -54,7 +55,16 @@ export function createUploadRoutes(roomManager: RoomManager, baseUrl: string): R
         return;
       }
 
-      const publicUrl = `/files/${file.filename}`;
+      let publicUrl = `/files/${file.filename}`;
+      try {
+        publicUrl = await uploadToS3(file.path, file.filename, file.mimetype, roomId, userId);
+        // Delete local file after successful upload to S3
+        fs.unlinkSync(file.path);
+      } catch (s3Err) {
+        console.error('[Upload] S3 upload failed, falling back to local:', s3Err);
+        // Keep the local file and the local publicUrl
+      }
+
       const title = file.originalname.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
 
       const { item, activated } = await repo.enqueueTrack(roomId, userId, {

@@ -1,0 +1,80 @@
+name: sync-beats-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-syncbeats}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    build: 
+      context: ./syncbeats-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-4000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-syncbeats}
+      # Auth
+      JWT_SECRET: ${JWT_SECRET:-dev_secret}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # Email
+      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+    volumes:
+      - ./syncbeats-server:/app
+      - uploads:/app/uploads
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:-http://localhost:4000}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  studio:
+    container_name: studio-1
+    build:
+      context: ./syncbeats-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${STUDIO_PORT:-5555}:${STUDIO_PORT:-5555}"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-syncbeats}
+    command: npx prisma studio --port ${STUDIO_PORT:-5555} --browser none
+
+volumes:
+  pgdata:
+  uploads:

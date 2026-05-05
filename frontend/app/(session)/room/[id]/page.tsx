@@ -9,7 +9,7 @@ import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
-import { getAuthToken } from "../../../../lib/api";
+import { getAuthToken, getServerUrl } from "../../../../lib/api";
 import { useSyncInfo } from "../../../../context/SyncContext";
 
 import {
@@ -48,12 +48,18 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
-  const { setClockOffset: pushClockOffset } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
     pushClockOffset(clockOffset);
   }, [clockOffset, pushClockOffset]);
+
+  // Push server-side playing state so DynamicIsland shows correct button
+  useEffect(() => {
+    setIsRoomPlaying(snapshot?.isPlaying ?? false);
+  }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
   const [qrState, setQrState] = useState<"mock" | "generating" | "ready">("mock");
   const qrTimerRef = useRef<number | null>(null);
 
@@ -141,7 +147,7 @@ export default function RoomPage() {
   const handleRemoveTrack = async (e: React.MouseEvent, trackId: string) => {
     e.stopPropagation();
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
+      const baseUrl = getServerUrl();
       const res = await fetch(`${baseUrl}/rooms/${roomId}/queue/${trackId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
@@ -190,7 +196,7 @@ export default function RoomPage() {
     setLocalQueue((items) => arrayMove(items, oldIndex, newIndex));
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? `http://${window.location.hostname}:4000`;
+      const baseUrl = getServerUrl();
       await fetch(`${baseUrl}/rooms/${roomId}/queue/reorder`, {
         method: 'PUT',
         headers: {
@@ -369,8 +375,9 @@ export default function RoomPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-          {participants.map((p: Participant, i: number) => (
+        <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+            {participants.map((p: Participant, i: number) => (
             <div
               key={p.socketId}
               className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
@@ -432,7 +439,8 @@ export default function RoomPage() {
                 </div>
               </div>
             </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* ── Queue ── */}
