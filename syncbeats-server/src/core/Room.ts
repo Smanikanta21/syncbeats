@@ -15,6 +15,11 @@ export class Room extends EventEmitter {
   private queue:        TrackQueueItem[]       = [];
   private spatial:      Map<string, SpatialPosition> = new Map();
   private snapshotTime: number                 = Date.now();
+  private timeline = {
+    startEpoch: null as number | null,
+    pauseOffset: 0,
+    isPlaying: false
+  };
 
   constructor(public readonly roomId: string) {
     super();
@@ -50,26 +55,59 @@ export class Room extends EventEmitter {
   // ── Playback (no host gate — any participant) ─────────────────────────
 
   play(requesterId: string): void {
-    if (this.state === PlaybackState.PLAYING) return;
-    if (!this.allReady()) {
-      // Emit an event so the handler can notify the client
-      this.emit('playError', { requesterId, message: 'Not all participants are ready. check ur audio buffers!' });
-      return;
-    }
+    if (this.timeline.isPlaying) return;
+    
+    // Scheduled start protocol: 2.5s buffer window
+    const scheduleDelay = 2500;
+    const atEpoch = Date.now() + scheduleDelay;
+    
+    this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;
+    this.timeline.isPlaying = true;
     this.snapshotTime = Date.now();
-    this.state        = PlaybackState.PLAYING;
+    this.state = PlaybackState.PLAYING;
+
+    this.emit('schedule', {
+      atEpoch,
+      fromPosition: this.timeline.pauseOffset,
+      trackUrl: this.trackUrl,
+      startEpoch: this.timeline.startEpoch,
+    });
     this.emit('stateChanged', this.snapshot());
   }
 
   pause(_requesterId: string): void {
-    if (this.state !== PlaybackState.PLAYING) return;
-    this.position = this.computeCurrentPosition();
-    this.state    = PlaybackState.PAUSED;
+    if (!this.timeline.isPlaying) return;
+    
+    this.timeline.pauseOffset = this.computeCurrentPosition() / 1000;
+    this.timeline.startEpoch = null;
+    this.timeline.isPlaying = false;
+    this.position = this.timeline.pauseOffset * 1000;
+    this.state = PlaybackState.PAUSED;
+
+    this.emit('pause', { pauseOffset: this.timeline.pauseOffset });
     this.emit('stateChanged', this.snapshot());
   }
 
   seek(_requesterId: string, positionMs: number): void {
-    this.position     = positionMs;
+    const positionSec = positionMs / 1000;
+    
+    if (this.timeline.isPlaying) {
+      const scheduleDelay = 500; // shorter delay for seek
+      const atEpoch = Date.now() + scheduleDelay;
+      this.timeline.startEpoch = atEpoch - positionMs;
+      
+      this.emit('schedule', {
+        atEpoch,
+        fromPosition: positionSec,
+        trackUrl: this.trackUrl,
+        startEpoch: this.timeline.startEpoch,
+      });
+    } else {
+      this.timeline.pauseOffset = positionSec;
+      this.position = positionMs;
+      this.emit('pause', { pauseOffset: positionSec });
+    }
+    
     this.snapshotTime = Date.now();
     this.emit('stateChanged', this.snapshot());
   }
@@ -104,6 +142,9 @@ export class Room extends EventEmitter {
       this.trackUrl = null;
       this.position = 0;
       this.state = PlaybackState.IDLE;
+      this.timeline.isPlaying = false;
+      this.timeline.startEpoch = null;
+      this.timeline.pauseOffset = 0;
       this.snapshotTime = Date.now();
       if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
       this.emit('stateChanged', this.snapshot());
@@ -117,6 +158,9 @@ export class Room extends EventEmitter {
     this.trackUrl  = next.trackUrl;
     this.position  = 0;
     this.state     = PlaybackState.PAUSED;
+    this.timeline.isPlaying = false;
+    this.timeline.startEpoch = null;
+    this.timeline.pauseOffset = 0;
     for (const p of this.participants.values()) p.isReady = false;
     this.snapshotTime = Date.now();
     if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
@@ -168,9 +212,10 @@ export class Room extends EventEmitter {
 
   computeCurrentPosition(): number {
     if (!this.trackUrl) return 0;
-    if (this.state !== PlaybackState.PLAYING) return this.position;
-    const elapsed = Date.now() - this.snapshotTime;
-    return this.position + elapsed;
+    if (!this.timeline.isPlaying || this.timeline.startEpoch === null) {
+      return this.timeline.pauseOffset * 1000;
+    }
+    return Date.now() - this.timeline.startEpoch;
   }
 
   setSpatialPosition(deviceId: string, position: SpatialPosition): void {
@@ -192,6 +237,9 @@ export class Room extends EventEmitter {
       participants: Array.from(this.participants.values()),
       queue:        this.queueSnapshot(),
       spatial:      Array.from(this.spatial.entries()).map(([deviceId, position]) => ({ deviceId, position })),
+      startEpoch:   this.timeline.startEpoch,
+      pauseOffset:  this.timeline.pauseOffset,
+      isPlaying:    this.timeline.isPlaying,
     };
   }
 

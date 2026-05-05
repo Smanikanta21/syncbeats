@@ -1,19 +1,17 @@
 "use client";
 
-// hooks/useAudioPlayer.ts — Centralized audio playback engine
-// No demo track. trackUrl starts null — user must upload.
-
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getServerUrl } from '../lib/api';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
-  hasTrack:      boolean;       // true once a track URL is loaded
-  audioUnlocked: boolean;       // true after user has tapped/clicked (unlocks autoplay)
-  currentTime:   number;       // seconds
-  duration:      number;       // seconds
-  progress:      number;       // 0–1
-  volume:        number;       // 0–100
+  hasTrack:      boolean;       
+  audioUnlocked: boolean;       
+  currentTime:   number;       
+  duration:      number;       
+  progress:      number;       
+  volume:        number;       
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
@@ -27,7 +25,10 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   seekPct:     (pct: number) => void;
   setVolume:   (volume: number) => void;
   setTrack:    (url: string, title?: string, artist?: string) => void;
-  unlockAudio: () => void;   // call from a click/tap handler to grant autoplay
+  unlockAudio: () => void;
+  scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
+  playNow:     (expectedPosition: number) => void;
+  pauseAt:     (position: number) => void;
   audioEl:     HTMLAudioElement | null;
 }
 
@@ -37,8 +38,6 @@ export function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
-
-import { getServerUrl } from '../lib/api';
 
 export function useAudioPlayer(): UseAudioPlayerReturn {
   const rafRef   = useRef<number>(0);
@@ -51,98 +50,101 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
-  // Has the user tapped/clicked on this device? Required by browser autoplay policy.
   const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const readyOnce = useRef(false); // prevent canplaythrough spam from rate changes
 
-  // Persist a single Audio instance to retain mobile gesture blessings
-  const [audioEl] = useState<HTMLAudioElement | null>(() => {
-    if (typeof window !== "undefined") {
-      const a = new Audio();
-      a.crossOrigin = "anonymous";
-      a.preload = "auto";
-      return a;
-    }
-    return null;
-  });
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
+  
+  const startTimeRef = useRef<number>(0);
+  const pauseOffsetRef = useRef<number>(0);
 
-  // Attach global event listeners once
   useEffect(() => {
-    if (!audioEl) return;
-    
-    const onMeta    = () => setDuration(audioEl.duration);
-    const onCanPlay = () => {
-      if (!readyOnce.current) {
-        readyOnce.current = true;
-        setIsReady(true);
+    if (typeof window !== "undefined") {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass && !audioCtxRef.current) {
+        audioCtxRef.current = new AudioContextClass();
+        gainNodeRef.current = audioCtxRef.current.createGain();
+        gainNodeRef.current.connect(audioCtxRef.current.destination);
       }
-    };
-    const onWaiting = () => { setIsReady(false); readyOnce.current = false; };
-    const onEnded   = () => { setIsPlaying(false); setCurrentTime(0); };
+    }
+  }, []);
 
-    audioEl.addEventListener("loadedmetadata", onMeta);
-    audioEl.addEventListener("canplaythrough",  onCanPlay);
-    audioEl.addEventListener("waiting",         onWaiting);
-    audioEl.addEventListener("ended",           onEnded);
+  const unlockAudio = useCallback(() => {
+    if (audioCtxRef.current) {
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().then(() => {
+          setAudioUnlocked(true);
+        }).catch(() => {
+          console.warn("Failed to resume AudioContext");
+        });
+      } else {
+        setAudioUnlocked(true);
+      }
+    }
+  }, []);
 
-    // —— Silent auto-unlock on first user interaction ——
-    // Browser autoplay policy requires a user gesture before audio.play() works.
-    // We listen for the FIRST pointerdown anywhere on the page (covers both
-    // touchstart on mobile and mousedown on desktop). This fires silently
-    // in the background the moment the user scrolls, taps, or clicks anything.
-    // By the time anyone hits the play button, every phone that has been
-    // touched at all is already unlocked.
+  useEffect(() => {
     const unlock = () => {
-      audioEl.play()
-        .then(() => { audioEl.pause(); setAudioUnlocked(true); })
-        .catch(() => { setAudioUnlocked(true); }); // already unlocked or no src yet
+      unlockAudio();
     };
     document.addEventListener('pointerdown', unlock, { once: true, passive: true });
+    return () => document.removeEventListener('pointerdown', unlock);
+  }, [unlockAudio]);
 
-    return () => {
-      audioEl.removeEventListener("loadedmetadata", onMeta);
-      audioEl.removeEventListener("canplaythrough",  onCanPlay);
-      audioEl.removeEventListener("waiting",         onWaiting);
-      audioEl.removeEventListener("ended",           onEnded);
-      // If component unmounts before first touch, clean up
-      document.removeEventListener('pointerdown', unlock);
-    };
-  }, [audioEl]);
+  const fetchAndDecode = async (url: string) => {
+    if (!audioCtxRef.current) return null;
+    
+    // If already fetching this url, return the existing promise
+    if (fetchPromiseRef.current) return fetchPromiseRef.current;
 
-  // Load new track — reset readyOnce so canplaythrough fires fresh
+    const promise = (async () => {
+      setIsReady(false);
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
+        audioBufferRef.current = decodedData;
+        setDuration(decodedData.duration);
+        setIsReady(true);
+        return decodedData;
+      } catch (err) {
+        console.error("Error decoding audio data", err);
+        return null;
+      } finally {
+        fetchPromiseRef.current = null;
+      }
+    })();
+
+    fetchPromiseRef.current = promise;
+    return promise;
+  };
+
   useEffect(() => {
-    if (!audioEl) return;
-    setIsReady(false);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    readyOnce.current = false;
-    cancelAnimationFrame(rafRef.current);
-
     if (trackUrl) {
-      audioEl.src = trackUrl;
-      audioEl.load();
-      // Attempt a silent play to pre-warm the audio context.
-      // This only succeeds if the user has already tapped the page (audioUnlocked).
-      // If it fails (NotAllowedError) we catch silently — the unlock overlay handles it.
-      audioEl.play().then(() => audioEl.pause()).catch(() => {});
+      fetchAndDecode(trackUrl);
     } else {
-      audioEl.pause();
-      audioEl.src = "";
+      audioBufferRef.current = null;
+      fetchPromiseRef.current = null;
+      setDuration(0);
+      setIsReady(false);
     }
-  }, [trackUrl, audioEl]);
+    pauseAt(0);
+  }, [trackUrl]);
 
   useEffect(() => {
-    if (!audioEl) return;
-    audioEl.volume = Math.max(0, Math.min(1, volume / 100));
-  }, [audioEl, volume]);
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
+    }
+  }, [volume]);
 
-  // RAF loop for real-time time updates
   useEffect(() => {
     const tick = () => {
-      if (audioEl) {
-        setCurrentTime(audioEl.currentTime);
-        if (audioEl.duration) setDuration(audioEl.duration);
+      if (isPlaying && audioCtxRef.current) {
+        const elapsed = audioCtxRef.current.currentTime - startTimeRef.current;
+        setCurrentTime(pauseOffsetRef.current + elapsed);
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -152,62 +154,103 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       cancelAnimationFrame(rafRef.current);
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying, audioEl]);
+  }, [isPlaying]);
 
-  const play = useCallback(() => {
-    if (!audioEl) return;
-    audioEl.play().catch(() => {
-      // NotAllowedError — user hasn't interacted yet.
-      // The unlock overlay should appear; we do nothing here.
-    });
-    setIsPlaying(true);
-  }, [audioEl]);
-
-  const pause = useCallback(() => {
-    audioEl?.pause();
-    setIsPlaying(false);
-  }, [audioEl]);
-
-  const toggle = useCallback(() => {
-    if (isPlaying) pause(); else play();
-  }, [isPlaying, play, pause]);
-
-  const seek = useCallback((time: number) => {
-    if (audioEl) {
-      audioEl.currentTime = Math.max(0, Math.min(time, audioEl.duration || 0));
-      setCurrentTime(audioEl.currentTime);
+  const stopCurrentSource = useCallback(() => {
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.onended = null;
+      try {
+        sourceNodeRef.current.stop();
+      } catch (e) {}
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
     }
-  }, [audioEl]);
+  }, []);
 
-  const seekPct = useCallback((pct: number) => {
-    if (audioEl?.duration) seek(pct * audioEl.duration);
-  }, [seek, audioEl]);
+  const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
+    if (!audioCtxRef.current) return;
+    
+    let buffer = audioBufferRef.current;
+    if (!buffer && payload.trackUrl) {
+       buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(payload.trackUrl);
+    }
+    if (!buffer) return;
+
+    if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) {
+      console.warn("AudioContext suspended, waiting for user gesture...");
+      return;
+    }
+
+    const localAtEpoch = payload.atEpoch - clockOffset;
+    const audioCtxStartTime = audioCtxRef.current.currentTime + (localAtEpoch - performance.now()) / 1000;
+    const playTime = Math.max(audioCtxStartTime, audioCtxRef.current.currentTime + 0.01);
+
+    stopCurrentSource();
+
+    const source = audioCtxRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gainNodeRef.current!);
+    
+    source.onended = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      document.dispatchEvent(new CustomEvent('audioEnded'));
+    };
+
+    source.start(playTime, payload.fromPosition);
+    sourceNodeRef.current = source;
+    
+    startTimeRef.current = playTime;
+    pauseOffsetRef.current = payload.fromPosition;
+    
+    setIsPlaying(true);
+    setCurrentTime(payload.fromPosition);
+  }, [audioUnlocked, stopCurrentSource]);
+
+  const playNow = useCallback((expectedPosition: number) => {
+    if (!audioCtxRef.current || !audioBufferRef.current) return;
+    if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) return;
+    
+    stopCurrentSource();
+    
+    const source = audioCtxRef.current.createBufferSource();
+    source.buffer = audioBufferRef.current;
+    source.connect(gainNodeRef.current!);
+    
+    source.onended = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      document.dispatchEvent(new CustomEvent('audioEnded'));
+    };
+
+    source.start(0, expectedPosition);
+    sourceNodeRef.current = source;
+    
+    startTimeRef.current = audioCtxRef.current.currentTime;
+    pauseOffsetRef.current = expectedPosition;
+    setIsPlaying(true);
+    setCurrentTime(expectedPosition);
+  }, [audioUnlocked, stopCurrentSource]);
+
+  const pauseAt = useCallback((position: number) => {
+    stopCurrentSource();
+    setIsPlaying(false);
+    pauseOffsetRef.current = position;
+    setCurrentTime(position);
+  }, [stopCurrentSource]);
+
+  const play = useCallback(() => {}, []);
+  const pause = useCallback(() => {}, []);
+  const toggle = useCallback(() => {}, []);
+  const seek = useCallback((time: number) => {}, []);
+  const seekPct = useCallback((pct: number) => {}, []);
 
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
     setVolumeState(clamped);
-    if (audioEl) {
-      audioEl.volume = clamped / 100;
-    }
-  }, [audioEl]);
-
-  // Called when user taps the "Enable Audio" overlay.
-  // This creates the user-gesture context that unlocks autoplay for the session.
-  const unlockAudio = useCallback(() => {
-    if (!audioEl || audioUnlocked) return;
-    // A play+pause inside a click handler is the standard unlock technique
-    audioEl.play().then(() => {
-      audioEl.pause();
-      audioEl.currentTime = 0;
-      setAudioUnlocked(true);
-    }).catch(() => {
-      // Already paused / no src yet — still mark as unlocked
-      setAudioUnlocked(true);
-    });
-  }, [audioEl, audioUnlocked]);
+  }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    // If the server gave us a relative path, resolve it against the exact IP the frontend talks to
     const absoluteUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
     setTrackTitle(title);
@@ -221,6 +264,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlaying, isReady, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, unlockAudio,
-    get audioEl() { return audioEl; },
+    scheduleStart, playNow, pauseAt,
+    audioEl: null,
   };
 }
