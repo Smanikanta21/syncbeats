@@ -5,12 +5,17 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    const url = getServerUrl();
+    const serverUrl = getServerUrl();
+    
+    // If we're using the /api prefix (remote VM), route through /api/socket.io
+    const isRelativeApi = serverUrl === '/api';
+    const socketUrl = isRelativeApi ? (typeof window !== 'undefined' ? window.location.origin : undefined) : serverUrl;
+    const socketPath = isRelativeApi ? '/api/socket.io' : '/socket.io';
 
-    socket = io(url, {
+    socket = io(socketUrl, {
       autoConnect: false,
       transports: ["websocket"],
-      path: "/socket.io",
+      path: socketPath,
       withCredentials: true,
     });
   }
