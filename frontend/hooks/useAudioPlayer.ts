@@ -61,6 +61,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
+  const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -73,18 +74,29 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
-  const unlockAudio = useCallback(() => {
-    if (audioCtxRef.current) {
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().then(() => {
-          setAudioUnlocked(true);
-        }).catch(() => {
-          console.warn("Failed to resume AudioContext");
-        });
-      } else {
+  const unlockAudio = useCallback(async () => {
+    if (!audioCtxRef.current) return;
+    if (audioCtxRef.current.state === 'suspended') {
+      try {
+        await audioCtxRef.current.resume();
         setAudioUnlocked(true);
+      } catch {
+        console.warn("Failed to resume AudioContext");
+        return;
       }
+    } else {
+      setAudioUnlocked(true);
     }
+    // Flush any pending schedule that arrived before user interaction
+    // We use a timeout so React state has time to settle
+    setTimeout(() => {
+      const pending = pendingScheduleRef.current;
+      if (pending) {
+        pendingScheduleRef.current = null;
+        // Use a direct call rather than the callback to get fresh refs
+        scheduleStartRef.current?.(pending.payload, pending.clockOffset);
+      }
+    }, 0);
   }, []);
 
   useEffect(() => {
@@ -168,6 +180,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
+  // Ref to latest scheduleStart so pendingSchedule flush can call it
+  const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
+
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
     if (!audioCtxRef.current) return;
     
@@ -177,8 +192,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     if (!buffer) return;
 
-    if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) {
-      console.warn("AudioContext suspended, waiting for user gesture...");
+    if (audioCtxRef.current.state === 'suspended') {
+      // Store for replay once user unlocks audio
+      console.warn("AudioContext suspended — queuing schedule for after user gesture");
+      pendingScheduleRef.current = { payload, clockOffset };
       return;
     }
 
@@ -207,6 +224,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsPlaying(true);
     setCurrentTime(payload.fromPosition);
   }, [audioUnlocked, stopCurrentSource]);
+
+  // Keep ref in sync so unlockAudio can flush pending schedule
+  scheduleStartRef.current = scheduleStart;
 
   const playNow = useCallback((expectedPosition: number) => {
     if (!audioCtxRef.current || !audioBufferRef.current) return;
