@@ -7,9 +7,10 @@ import { TrackQueueItem } from "../lib/types";
 interface SortableTrackItemProps {
   item: TrackQueueItem;
   onRemove: (e: React.MouseEvent, id: string) => void;
+  addedByName?: string;
 }
 
-export function SortableTrackItem({ item, onRemove }: SortableTrackItemProps) {
+export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrackItemProps) {
   const {
     attributes,
     listeners,
@@ -65,7 +66,7 @@ export function SortableTrackItem({ item, onRemove }: SortableTrackItemProps) {
         <div className="font-semibold truncate">{item.title}</div>
         <div className="text-[11px] uppercase tracking-widest opacity-70 flex flex-col gap-0.5 mt-0.5">
           <span>{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}</span>
-          <span className="text-[9px] opacity-60 normal-case tracking-normal truncate">Added by: {item.addedBy}</span>
+          <span className="text-[9px] opacity-60 normal-case tracking-normal truncate">Added by: {addedByName}</span>
         </div>
       </div>
 

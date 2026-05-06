@@ -454,13 +454,18 @@ export default function RoomPage() {
               items={localQueue.map((i) => i.id)}
               strategy={verticalListSortingStrategy}
             >
-              {localQueue.map((item: TrackQueueItem) => (
-                <SortableTrackItem
-                  key={item.id}
-                  item={item}
-                  onRemove={handleRemoveTrack}
-                />
-              ))}
+              {localQueue.map((item: TrackQueueItem) => {
+                const p = participants.find(part => part.socketId === item.addedBy);
+                const addedByName = p ? p.displayName.split(" ")[0] : (item.addedBy === currentSocketId ? "You" : item.addedBy);
+                return (
+                  <SortableTrackItem
+                    key={item.id}
+                    item={item}
+                    onRemove={handleRemoveTrack}
+                    addedByName={addedByName}
+                  />
+                );
+              })}
             </SortableContext>
           </DndContext>
         </div>
@@ -675,13 +680,18 @@ export default function RoomPage() {
                     items={localQueue.map((i) => i.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {localQueue.map((item: TrackQueueItem) => (
-                      <SortableTrackItem
-                        key={item.id}
-                        item={item}
-                        onRemove={handleRemoveTrack}
-                      />
-                    ))}
+                    {localQueue.map((item: TrackQueueItem) => {
+                      const p = participants.find(part => part.socketId === item.addedBy);
+                      const addedByName = p ? p.displayName.split(" ")[0] : (item.addedBy === currentSocketId ? "You" : item.addedBy);
+                      return (
+                        <SortableTrackItem
+                          key={item.id}
+                          item={item}
+                          onRemove={handleRemoveTrack}
+                          addedByName={addedByName}
+                        />
+                      );
+                    })}
                   </SortableContext>
                 </DndContext>
               </div>
