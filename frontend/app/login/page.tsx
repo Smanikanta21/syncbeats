@@ -185,7 +185,6 @@ export default function AuthPage() {
       google.accounts.id.initialize({
         client_id: clientId,
         auto_select: false,
-        // Avoid FedCM-only prompt behavior in local dev where browser policies vary.
         use_fedcm_for_prompt: false,
         callback: async (response: { credential?: string }) => {
           if (!response.credential) return;
@@ -203,6 +202,8 @@ export default function AuthPage() {
           }
         },
       });
+
+      google.accounts.id.prompt();
 
       setGoogleReady(true);
     };

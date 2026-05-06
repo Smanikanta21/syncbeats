@@ -21,6 +21,8 @@ interface UseRoomReturn {
   play:         () => void;
   pause:        () => void;
   seek:         (positionMs: number) => void;
+  nextTrack:    () => void;
+  prevTrack:    () => void;
   setReady:     (isReady: boolean) => void;
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
@@ -289,6 +291,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
+  const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
+  const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
   const setReady = useCallback((isReady: boolean) => {
     if (isReady) socket.emit('room:clientReady', { roomId });
   }, [socket, roomId]);
@@ -300,5 +304,5 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, setReady, setParticipantVolume, leave };
+  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave };
 }
