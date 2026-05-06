@@ -146,7 +146,8 @@ export class SocketHandler {
     socket.on('playback:ended', async ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
-      if (room.snapshot().hostId !== socket.id) return;
+      // Allow any client to notify that the track ended.
+      // The expectedCurrentTrackUrl ensures we only advance once per track end.
       if (room.getTrackUrl() !== trackUrl) return;
 
       try {
@@ -154,6 +155,34 @@ export class SocketHandler {
         if (next === undefined) return;
         const latestQueue = await this.roomRepo.getQueue(roomId);
         room.syncQueue(latestQueue, next?.id ?? null);
+        // Automatically play the next track if it exists
+        if (next) room.play(socket.id);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
+    socket.on('playback:next', async ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        const next = await this.roomRepo.advanceQueue(roomId);
+        const latestQueue = await this.roomRepo.getQueue(roomId);
+        room.syncQueue(latestQueue, next?.id ?? null);
+        if (next) room.play(socket.id);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
+    socket.on('playback:prev', async ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        const prev = await this.roomRepo.prevQueue(roomId);
+        const latestQueue = await this.roomRepo.getQueue(roomId);
+        room.syncQueue(latestQueue, prev?.id ?? null);
+        if (prev) room.play(socket.id);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }

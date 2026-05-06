@@ -244,6 +244,44 @@ export class RoomRepository {
     });
   }
 
+  async prevQueue(roomId: string): Promise<TrackQueueItem | null | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.roomQueueItem.findFirst({
+        where: { roomId, isCurrent: true },
+      });
+
+      if (!current) return undefined;
+
+      const prev = await tx.roomQueueItem.findFirst({
+        where: { roomId, queueIndex: { lt: current.queueIndex } },
+        orderBy: { queueIndex: 'desc' },
+      });
+
+      if (!prev) return undefined;
+
+      await Promise.all([
+        tx.roomQueueItem.update({
+          where: { id: current.id },
+          data: { isCurrent: false },
+        }),
+        tx.roomQueueItem.update({
+          where: { id: prev.id },
+          data: { isCurrent: true },
+        }),
+        tx.room.update({
+          where: { id: roomId },
+          data: {
+            trackUrl: prev.trackUrl,
+            playbackState: 'PAUSED',
+            positionMs: 0n,
+          },
+        }),
+      ]);
+
+      return this.mapQueueItem({ ...prev, isCurrent: true });
+    });
+  }
+
   async transferHost(roomId: string, currentHostId: string, newHostId: string): Promise<boolean> {
     const result = await prisma.room.updateMany({
       where: {

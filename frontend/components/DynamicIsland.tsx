@@ -54,6 +54,7 @@ export function DynamicIsland() {
     }
   }, [upload.isDragging, bounceCtrl]);
 
+  
   // ── Interaction handlers ─────────────────────────────────────────────────
   const clearPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +93,16 @@ export function DynamicIsland() {
     } else {
       audio.toggle();
     }
+  };
+
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRoom && roomId) getSocket().emit('playback:next', { roomId });
+  };
+
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRoom && roomId) getSocket().emit('playback:prev', { roomId });
   };
 
   const handleSeek = (posSecs: number) => {
@@ -377,14 +388,27 @@ export function DynamicIsland() {
 
                 {/* Progress bar */}
                 <div className="mb-7">
-                  <div
-                    ref={progressRef}
-                    onClick={handleProgressClick}
-                    className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden cursor-pointer group"
-                  >
-                    <div
-                      className="h-full bg-foreground/80 group-hover:bg-foreground rounded-full transition-[width] duration-100"
-                      style={{ width: `${audio.progress * 100}%` }}
+                  <div className="relative group">
+                    <div className="absolute inset-0 flex items-center pointer-events-none">
+                      <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-foreground transition-[width] duration-100"
+                          style={{ width: `${audio.progress * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={audio.duration || 100}
+                      value={audio.currentTime || 0}
+                      onChange={(e) => handleSeek(Number(e.target.value))}
+                      className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
+                    />
+                    {/* Handle indicator (visible on hover) */}
+                    <div 
+                      className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
+                      style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
                     />
                   </div>
                   <div className="flex justify-between mt-2 text-xs text-foreground/50 font-mono font-medium">
@@ -395,19 +419,40 @@ export function DynamicIsland() {
 
                 {/* Controls */}
                 <div className="flex justify-center items-center gap-8">
-                  <button onClick={(e) => { e.stopPropagation(); handleSeek(Math.max(0, audio.currentTime - 10)); }}>
+                  <button onClick={handlePrev}>
                     <SkipBack className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" />
                   </button>
                   <button
                     onClick={handleToggle}
-                    className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)]"
+                    className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)] relative"
                   >
-                    {effectivePlaying
-                      ? <Pause className="w-6 h-6" fill="currentColor" />
-                      : <Play className="w-6 h-6 ml-0.5" fill="currentColor" />
-                    }
+                    <AnimatePresence mode="wait" initial={false}>
+                      {effectivePlaying ? (
+                        <motion.div
+                          key="pause"
+                          initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
+                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                          exit={{ opacity: 0, scale: 0.5, rotate: 45 }}
+                          transition={{ duration: 0.2, ease: "backOut" }}
+                          className="absolute"
+                        >
+                          <Pause className="w-6 h-6" fill="currentColor" />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="play"
+                          initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
+                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                          exit={{ opacity: 0, scale: 0.5, rotate: -45 }}
+                          transition={{ duration: 0.2, ease: "backOut" }}
+                          className="absolute"
+                        >
+                          <Play className="w-6 h-6 ml-0.5" fill="currentColor" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleSeek(audio.currentTime + 10); }}>
+                  <button onClick={handleNext}>
                     <SkipForward className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" />
                   </button>
                 </div>
@@ -436,19 +481,40 @@ export function DynamicIsland() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <button onClick={(e) => { e.stopPropagation(); handleSeek(Math.max(0, audio.currentTime - 10)); }}>
+                  <button onClick={handlePrev}>
                     <SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" />
                   </button>
                   <button
                     onClick={handleToggle}
-                    className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+                    className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative"
                   >
-                    {effectivePlaying
-                      ? <Pause className="w-3 h-3" fill="currentColor" />
-                      : <Play className="w-3 h-3 ml-0.5" fill="currentColor" />
-                    }
+                    <AnimatePresence mode="wait" initial={false}>
+                      {effectivePlaying ? (
+                        <motion.div
+                          key="pause-mini"
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute"
+                        >
+                          <Pause className="w-3 h-3" fill="currentColor" />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="play-mini"
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute"
+                        >
+                          <Play className="w-3 h-3 ml-0.5" fill="currentColor" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleSeek(audio.currentTime + 10); }}>
+                  <button onClick={handleNext}>
                     <SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" />
                   </button>
                 </div>
