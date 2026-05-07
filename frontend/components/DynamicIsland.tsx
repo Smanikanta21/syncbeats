@@ -595,7 +595,7 @@ export function DynamicIsland() {
               exit={{ opacity: 0, scale: 0.3 }}
               transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
               onClick={(e) => { e.stopPropagation(); setPillView(pillView === "player" ? "network" : "player"); }}
-              className="pointer-events-auto ml-2.5 mt-[7px] shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform md:block hidden cursor-pointer border-2"
+              className="pointer-events-auto ml-2.5 mt-[8px] shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform hidden cursor-pointer border-2 justify-center items-center"
               style={{
                 borderColor: pillView === "player"
                   ? `${qualityColor(netStats.quality)}50`
