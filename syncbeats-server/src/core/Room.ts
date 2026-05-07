@@ -75,10 +75,15 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
-  pause(_requesterId: string): void {
+  pause(_requesterId: string, positionMs?: number): void {
     if (!this.timeline.isPlaying) return;
     
-    this.timeline.pauseOffset = this.computeCurrentPosition() / 1000;
+    if (typeof positionMs === 'number') {
+      this.timeline.pauseOffset = Math.max(0, positionMs / 1000);
+    } else {
+      this.timeline.pauseOffset = this.computeCurrentPosition() / 1000;
+    }
+    
     this.timeline.startEpoch = null;
     this.timeline.isPlaying = false;
     this.position = this.timeline.pauseOffset * 1000;

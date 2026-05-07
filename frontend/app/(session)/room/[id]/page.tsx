@@ -55,7 +55,7 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
@@ -66,6 +66,11 @@ export default function RoomPage() {
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
   }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
+  // Push participants so DynamicIsland can show per-device network stats
+  useEffect(() => {
+    pushParticipants(participants);
+  }, [participants, pushParticipants]);
 
   const groupedParticipants = participants.reduce((acc, p) => {
     const parts = p.displayName.split("::");

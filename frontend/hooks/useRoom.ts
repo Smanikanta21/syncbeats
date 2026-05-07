@@ -29,7 +29,7 @@ interface UseRoomReturn {
 }
 
 const NTP_SAMPLE_COUNT         = 20;    // More samples → better median accuracy
-const NTP_RTT_GATE_MS          = 100;   // Reject noisy pings (>100ms round-trip)
+const NTP_RTT_GATE_MS          = 500;   // Reject noisy pings (>500ms round-trip)
 const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
 const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
