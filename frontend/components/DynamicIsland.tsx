@@ -124,6 +124,56 @@ export function DynamicIsland() {
     }
   };
 
+  // ── Double-tap to toggle play/pause, single-tap to expand (mobile) ─────
+  const lastTapRef = useRef(0);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlePillTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      // Double tap — cancel the pending single-tap expand and toggle playback
+      if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+      lastTapRef.current = 0;
+      if (isRoom && roomId) {
+        if (effectivePlaying) {
+          const exactPos = audio.getTruePosition();
+          audio.pauseAt(exactPos);
+          getSocket().emit('playback:pause', { roomId, positionMs: exactPos * 1000 });
+        } else {
+          getSocket().emit('playback:play', { roomId });
+        }
+      } else {
+        audio.toggle();
+      }
+    } else {
+      // First tap — wait to see if a second tap comes
+      lastTapRef.current = now;
+      singleTapTimer.current = setTimeout(() => {
+        singleTapTimer.current = null;
+        setExpanded(true);
+      }, 300);
+    }
+  }, [isRoom, roomId, effectivePlaying, audio]);
+
+  // ── Swipe to seek ±10s (mobile) ───────────────────────────────────────────
+  const touchStartRef = useRef<{ x: number; t: number } | null>(null);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch) touchStartRef.current = { x: touch.clientX, t: Date.now() };
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dt = Date.now() - touchStartRef.current.t;
+    touchStartRef.current = null;
+    // Require at least 40px swipe within 400ms
+    if (Math.abs(dx) < 40 || dt > 400) return;
+    const seekDelta = dx > 0 ? 10 : -10; // +10s right, -10s left
+    const newPos = Math.max(0, audio.currentTime + seekDelta);
+    handleSeek(newPos);
+  }, [audio.currentTime, handleSeek]);
+
   // ── Seek on progress bar click ────────────────────────────────────────────
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const bar = progressRef.current;
@@ -221,6 +271,8 @@ export function DynamicIsland() {
             e.target.value = "";
           }}
         />
+
+        <div className="flex items-center">
 
         <motion.div
           layout
@@ -524,10 +576,12 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
                 className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onClick={handlePillTap}
               >
                 <div 
                   className="flex items-center gap-3 cursor-pointer group flex-1"
-                  onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
                 >
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors">
                     <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
@@ -595,7 +649,7 @@ export function DynamicIsland() {
               exit={{ opacity: 0, scale: 0.3 }}
               transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
               onClick={(e) => { e.stopPropagation(); setPillView(pillView === "player" ? "network" : "player"); }}
-              className="pointer-events-auto ml-2.5 mt-[7px] shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform cursor-pointer border-2"
+              className="pointer-events-auto ml-2.5 shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform cursor-pointer border-2"
               style={{
                 borderColor: pillView === "player"
                   ? `${qualityColor(netStats.quality)}50`
@@ -615,6 +669,7 @@ export function DynamicIsland() {
             </motion.button>
           )}
         </AnimatePresence>
+        </div>
       </div>
     </>
   );
