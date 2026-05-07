@@ -41,7 +41,7 @@ export function HowItWorks() {
 
         <div className="relative">
           {/* Connecting Line background - minute silver */}
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-foreground/10 to-transparent hidden lg:block -translate-y-1/2" />
+          {/* <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-foreground/10 to-transparent hidden lg:block -translate-y-1/2" /> */}
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-16 sm:gap-12 lg:gap-8 relative z-10">
             {STEPS.map((step, index) => (

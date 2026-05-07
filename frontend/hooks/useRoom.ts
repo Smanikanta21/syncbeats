@@ -59,6 +59,14 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
 
+  const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
+    const currentQueueItem = queue.find((item) => item.isCurrent);
+    if (currentQueueItem?.title) return currentQueueItem.title;
+    if (!trackUrl) return "Unknown Track";
+    const fileName = trackUrl.split('/').pop() ?? '';
+    return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
+  }, []);
+
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;
     let parts: Participant[] = [];
@@ -104,10 +112,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       if (currentParticipant) audioRef.current.setVolume(currentParticipant.volume);
 
       if (snap.trackUrl) {
-        audioRef.current.setTrack(snap.trackUrl, snap.trackUrl.split('/').pop() ?? 'Track');
+        audioRef.current.setTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
       }
     }
-  }, [roomId, currentSocketId]);
+  }, [roomId, currentSocketId, getTrackTitle]);
 
   const pingOnce = useCallback((seq: number) => new Promise<{ t0: number; t1: number; t3: number }>((resolve) => {
     const t0 = Date.now();
