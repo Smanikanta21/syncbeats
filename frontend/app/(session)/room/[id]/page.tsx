@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
@@ -39,7 +39,14 @@ export default function RoomPage() {
   const router  = useRouter();
   const roomId  = (params?.id as string) ?? "000000";
   const { user, device } = useAuth();
-  const displayName = device?.name ?? user?.name ?? "Guest";
+  const participantName = user?.name ?? "Guest";
+  const deviceName = device?.name ?? "Device";
+  const displayName = `${participantName}::${deviceName}`;
+
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const audio  = useAudio();
   const upload = useUpload();
@@ -59,6 +66,15 @@ export default function RoomPage() {
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
   }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
+  const groupedParticipants = participants.reduce((acc, p) => {
+    const parts = p.displayName.split("::");
+    const userName = parts.length > 1 ? parts[0] : (parts[0] || "Guest");
+    const devName = parts.length > 1 ? parts[1] : (parts[0] || "Device");
+    if (!acc[userName]) acc[userName] = [];
+    acc[userName].push({ ...p, devName });
+    return acc;
+  }, {} as Record<string, (Participant & { devName: string })[]>);
 
   const [qrState, setQrState] = useState<"mock" | "generating" | "ready">("mock");
   const qrTimerRef = useRef<number | null>(null);
@@ -246,6 +262,21 @@ export default function RoomPage() {
     }
   };
 
+  const [previousVolumes, setPreviousVolumes] = useState<Record<string, number>>({});
+
+  const toggleMute = (targetSocketId: string) => {
+    const p = participants.find(part => part.socketId === targetSocketId);
+    if (!p) return;
+    
+    if (p.volume > 0) {
+      setPreviousVolumes(prev => ({ ...prev, [targetSocketId]: p.volume }));
+      handleVolumeChange(targetSocketId, 0);
+    } else {
+      const restoreVol = previousVolumes[targetSocketId] || 100;
+      handleVolumeChange(targetSocketId, restoreVol);
+    }
+  };
+
   const handleGenerateQr = () => {
     if (qrState === "ready" || qrState === "generating") return;
     setQrState("generating");
@@ -361,67 +392,74 @@ export default function RoomPage() {
           Waiting for others to join…
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3 pb-4">
-          {participants.map((p: Participant, i: number) => (
-            <div
-              key={p.socketId}
-              className="glass-panel p-4 rounded-3xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 shrink-0 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
-                    <span className="font-black text-foreground/70 text-sm tracking-widest">
-                      {p.displayName.slice(0, 2).toUpperCase()}
-                    </span>
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm">
-                      <DeviceIcon index={i} />
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 flex flex-col gap-6">
+          {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
+            <div key={userName} className="flex flex-col gap-3">
+              <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2">{userName}</h4>
+              <div className="flex flex-col gap-3">
+                {userDevices.map((p, i) => (
+                  <div
+                    key={p.socketId}
+                    className="glass-panel p-4 rounded-3xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 shrink-0 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
+                          <span className="font-black text-foreground/70 text-sm tracking-widest">
+                            {p.devName.slice(0, 2).toUpperCase()}
+                          </span>
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm">
+                            <DeviceIcon index={i} />
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-foreground truncate">{p.devName}</h4>
+                            {snapshot?.hostId === p.socketId && (
+                              <span className="shrink-0 px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
+                            )}
+                          </div>
+                          <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5 mt-0.5">
+                            {p.isReady
+                              ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
+                              : audio.hasTrack
+                              ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
+                              : "Ready"
+                            }
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-foreground truncate">{p.displayName}</h4>
-                      {snapshot?.hostId === p.socketId && (
-                        <span className="shrink-0 px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
-                      )}
-                    </div>
-                    <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5 mt-0.5">
-                      {p.isReady
-                        ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
-                        : audio.hasTrack
-                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
-                        : "Ready"
-                      }
-                    </p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
-                <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
-                  <span className="flex items-center gap-1.5">
-                    <Volume2 className="w-3 h-3 text-foreground/50" />
-                    {currentSocketId === p.socketId ? "Your Vol" : "Vol"}
-                  </span>
-                  <span className="text-foreground/60">{p.volume}%</span>
-                </div>
-                <div className="relative h-6 flex items-center">
-                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-zinc-300 to-white shadow-[0_0_10px_rgba(255,255,255,0.3)]"
-                      style={{ width: `${p.volume}%` }}
-                    />
+                    <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
+                      <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
+                        <span className="flex items-center gap-1.5 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
+                          {p.volume === 0 ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-foreground/50" />}
+                          {currentSocketId === p.socketId ? "Your Vol" : "Vol"}
+                        </span>
+                        <span className="text-foreground/60">{p.volume}%</span>
+                      </div>
+                      <div className="relative h-6 flex items-center">
+                        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-zinc-300 to-white shadow-[0_0_10px_rgba(255,255,255,0.3)]"
+                            style={{ width: `${p.volume}%` }}
+                          />
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={p.volume}
+                          onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                          aria-label={`${p.devName} volume`}
+                          className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={p.volume}
-                    onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                    aria-label={`${p.displayName} volume`}
-                    className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
-                  />
-                </div>
+                ))}
               </div>
             </div>
           ))}
@@ -455,8 +493,9 @@ export default function RoomPage() {
               strategy={verticalListSortingStrategy}
             >
               {localQueue.map((item: TrackQueueItem) => {
-                const p = participants.find(part => part.socketId === item.addedBy);
-                const addedByName = p ? p.displayName.split(" ")[0] : (item.addedBy === currentSocketId ? "You" : item.addedBy);
+                const addedByName = item.addedBy === user?.id
+                  ? "You"
+                  : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
                 return (
                   <SortableTrackItem
                     key={item.id}
@@ -472,6 +511,8 @@ export default function RoomPage() {
       )}
     </div>
   );
+
+  if (!isMounted) return null;
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
@@ -595,72 +636,77 @@ export default function RoomPage() {
             </div>
           )}
 
-          <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-              {participants.map((p: Participant, i: number) => (
-              <div
-                key={p.socketId}
-                className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
-                      <span className="font-black text-foreground/70 text-sm tracking-widest">
-                        {p.displayName.slice(0, 2).toUpperCase()}
-                      </span>
-                      <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
-                        <DeviceIcon index={i} />
+          <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2 flex flex-col gap-8">
+            {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
+              <div key={userName} className="w-full flex flex-col gap-4">
+                <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2">{userName}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                  {userDevices.map((p, i) => (
+                    <div
+                      key={p.socketId}
+                      className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
+                            <span className="font-black text-foreground/70 text-sm tracking-widest">
+                              {p.devName.slice(0, 2).toUpperCase()}
+                            </span>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
+                              <DeviceIcon index={i} />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-foreground">{p.devName}</h4>
+                              {snapshot?.hostId === p.socketId && (
+                                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
+                              )}
+                            </div>
+                            <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
+                              {p.isReady
+                                ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
+                                : audio.hasTrack
+                                ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
+                                : "Ready"
+                              }
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-foreground">{p.displayName}</h4>
-                        {snapshot?.hostId === p.socketId && (
-                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
-                        )}
-                      </div>
-                      <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
-                        {p.isReady
-                          ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
-                          : audio.hasTrack
-                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
-                          : "Ready"
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="flex flex-col gap-2 w-full glass-panel p-3 rounded-xl border border-foreground/5">
-                  <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
-                    <span className="flex items-center gap-2">
-                      <Volume2 className="w-4 h-4 text-foreground/50" />
-                      {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
-                    </span>
-                    <span className="text-foreground/60">{p.volume}%</span>
-                  </div>
-                  <div className="relative h-10 flex items-center">
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                        style={{ width: `${p.volume}%` }}
-                      />
+                      <div className="flex flex-col gap-2 w-full glass-panel p-3 rounded-xl border border-foreground/5">
+                        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
+                          <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
+                            {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
+                            {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
+                          </span>
+                          <span className="text-foreground/60">{p.volume}%</span>
+                        </div>
+                        <div className="relative h-10 flex items-center">
+                          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              style={{ width: `${p.volume}%` }}
+                            />
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={p.volume}
+                            onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                            aria-label={`${p.devName} volume`}
+                            className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={p.volume}
-                      onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                      aria-label={`${p.displayName} volume`}
-                      className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
-                    />
-                  </div>
+                  ))}
                 </div>
               </div>
-              ))}
-            </div>
+            ))}
           </div>
 
           {/* ── Queue ── */}
@@ -681,8 +727,9 @@ export default function RoomPage() {
                     strategy={verticalListSortingStrategy}
                   >
                     {localQueue.map((item: TrackQueueItem) => {
-                      const p = participants.find(part => part.socketId === item.addedBy);
-                      const addedByName = p ? p.displayName.split(" ")[0] : (item.addedBy === currentSocketId ? "You" : item.addedBy);
+                      const addedByName = item.addedBy === user?.id
+                        ? "You"
+                        : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
                       return (
                         <SortableTrackItem
                           key={item.id}

@@ -103,6 +103,7 @@ export class RoomRepository {
     const items = await prisma.roomQueueItem.findMany({
       where: { roomId },
       orderBy: { queueIndex: 'asc' },
+      include: { uploader: { select: { name: true } } }
     });
     return items.map((item) => this.mapQueueItem(item));
   }
@@ -157,6 +158,7 @@ export class RoomRepository {
           queueIndex,
           isCurrent: activated,
         },
+        include: { uploader: { select: { name: true } } }
       });
 
       if (activated) {
@@ -203,6 +205,7 @@ export class RoomRepository {
       const next = await tx.roomQueueItem.findFirst({
         where: { roomId, queueIndex: { gt: current.queueIndex } },
         orderBy: { queueIndex: 'asc' },
+        include: { uploader: { select: { name: true } } }
       });
 
       if (!next) {
@@ -255,6 +258,7 @@ export class RoomRepository {
       const prev = await tx.roomQueueItem.findFirst({
         where: { roomId, queueIndex: { lt: current.queueIndex } },
         orderBy: { queueIndex: 'desc' },
+        include: { uploader: { select: { name: true } } }
       });
 
       if (!prev) return undefined;
@@ -372,6 +376,7 @@ export class RoomRepository {
     isCurrent: boolean;
     uploaderUserId: string;
     createdAt: Date;
+    uploader?: { name: string };
   }): TrackQueueItem {
     return {
       id: item.id,
@@ -381,6 +386,7 @@ export class RoomRepository {
       queueIndex: item.queueIndex,
       isCurrent: item.isCurrent,
       addedBy: item.uploaderUserId,
+      addedByName: item.uploader?.name,
       createdAt: item.createdAt.getTime(),
     };
   }

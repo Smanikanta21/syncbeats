@@ -182,6 +182,10 @@ export default function AuthPage() {
       const google = (window as any).google;
       if (!google?.accounts?.id || cancelled) return;
 
+      console.log("[GSI DEBUG] Initializing Google Auth with:");
+      console.log("[GSI DEBUG] Client ID:", clientId);
+      console.log("[GSI DEBUG] Origin:", window.location.origin);
+
       google.accounts.id.initialize({
         client_id: clientId,
         auto_select: false,
