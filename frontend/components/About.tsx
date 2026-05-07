@@ -45,9 +45,9 @@ export function About() {
                 <div className="absolute inset-16 rounded-full border border-foreground/5 animate-[spin_10s_linear_infinite]" />
                 
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-32 h-32 md:w-40 md:h-40 glass-panel border border-foreground/10 rounded-full flex flex-col items-center justify-center shadow-lg bg-background/50 group-hover:scale-110 transition-transform duration-700">
+                  <div className="w-32 h-32 md:w-44 md:h-44 glass-panel border border-foreground/10 rounded-full flex flex-col items-center justify-center shadow-lg bg-background/50 group-hover:scale-110 transition-transform duration-700">
                     <span className="font-bold text-sm tracking-widest text-foreground/50 mb-1">ALL DEVICES</span>
-                    <span className="font-black text-2xl md:text-3xl tracking-widest text-foreground drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]">IN SYNC</span>
+                    <span className="font-black text-2xl md:px-2 md:text-3xl tracking-widest text-foreground drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]">IN SYNC</span>
                   </div>
                 </div>
               </div>
