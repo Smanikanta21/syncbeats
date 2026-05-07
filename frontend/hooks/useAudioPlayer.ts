@@ -234,14 +234,24 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     if (msUntilStart > 50) {
       // Schedule in the future — normal sync path
-      const audioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000;
+      // Compensate for hardware output latency to ensure perfect beat alignment
+      const baseLatency = audioCtxRef.current.baseLatency || 0;
+      const outputLatency = audioCtxRef.current.outputLatency || 0;
+      const hardwareLatency = baseLatency + outputLatency;
+      
+      const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
+      
       source.start(audioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
       // atEpoch is in the past (stale pending or late arrival) — play NOW at the correct position
-      const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000;
+      const baseLatency = audioCtxRef.current.baseLatency || 0;
+      const outputLatency = audioCtxRef.current.outputLatency || 0;
+      const hardwareLatency = baseLatency + outputLatency;
+
+      const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000 + hardwareLatency;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
       console.log(`[Audio] Late start: jumping to ${clampedPosition.toFixed(1)}s`);
       source.start(0, Math.max(0, clampedPosition));
@@ -273,13 +283,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    source.start(0, expectedPosition);
+    const baseLatency = audioCtxRef.current.baseLatency || 0;
+    const outputLatency = audioCtxRef.current.outputLatency || 0;
+    const hardwareLatency = baseLatency + outputLatency;
+
+    const actualPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition + hardwareLatency);
+
+    source.start(0, Math.max(0, actualPosition));
     sourceNodeRef.current = source;
     
     startTimeRef.current = audioCtxRef.current.currentTime;
-    pauseOffsetRef.current = expectedPosition;
+    pauseOffsetRef.current = actualPosition;
     setIsPlaying(true);
-    setCurrentTime(expectedPosition);
+    setCurrentTime(actualPosition);
   }, [audioUnlocked, stopCurrentSource]);
 
   const pauseAt = useCallback((position: number) => {
@@ -298,9 +314,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const play = useCallback(() => {}, []);
   const pause = useCallback(() => {}, []);
   const toggle = useCallback(() => {}, []);
-  const seek = useCallback((time: number) => {}, []);
-  const seekPct = useCallback((pct: number) => {}, []);
+  const seek = useCallback((time: number) => {
+    if (isPlaying) {
+      playNow(time);
+    } else {
+      pauseAt(time);
+    }
+  }, [isPlaying, playNow, pauseAt]);
 
+  const seekPct = useCallback((pct: number) => {
+    if (!audioBufferRef.current) return;
+    const time = pct * audioBufferRef.current.duration;
+    seek(time);
+  }, [seek]);
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
     setVolumeState(clamped);

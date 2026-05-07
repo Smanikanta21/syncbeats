@@ -89,6 +89,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             NEXT_PUBLIC_SERVER_URL=${{ vars.NEXT_PUBLIC_SERVER_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -123,6 +124,11 @@ jobs:
           V_AUTH_FROM_EMAIL:       ${{ vars.AUTH_FROM_EMAIL }}
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
+          V_AWS_REGION:            ${{ vars.AWS_REGION }}
+          V_AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          V_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          V_S3_BUCKET_NAME:        ${{ vars.S3_BUCKET_NAME }}
+          V_CDN_DOMAIN:            ${{ vars.CDN_DOMAIN }}
         run: |
           APP_DIR="sync-beats"
           if [ "${{ github.ref_name }}" != "main" ]; then
@@ -144,6 +150,11 @@ jobs:
             echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}"
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
+            echo "AWS_REGION=${V_AWS_REGION}"
+            echo "AWS_ACCESS_KEY_ID=${V_AWS_ACCESS_KEY_ID}"
+            echo "AWS_SECRET_ACCESS_KEY=${V_AWS_SECRET_ACCESS_KEY}"
+            echo "S3_BUCKET_NAME=${V_S3_BUCKET_NAME}"
+            echo "CDN_DOMAIN=${V_CDN_DOMAIN}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env

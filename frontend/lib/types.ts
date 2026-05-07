@@ -23,6 +23,7 @@ export interface TrackQueueItem {
   queueIndex: number;
   isCurrent:  boolean;
   addedBy:    string;
+  addedByName?: string;
   createdAt:  number;
 }
 

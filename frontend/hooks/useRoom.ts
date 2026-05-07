@@ -29,7 +29,7 @@ interface UseRoomReturn {
 }
 
 const NTP_SAMPLE_COUNT         = 20;    // More samples → better median accuracy
-const NTP_RTT_GATE_MS          = 100;   // Reject noisy pings (>100ms round-trip)
+const NTP_RTT_GATE_MS          = 500;   // Reject noisy pings (>500ms round-trip)
 const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
 const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
@@ -58,6 +58,14 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seqRef = useRef(0);
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
+
+  const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
+    const currentQueueItem = queue.find((item) => item.isCurrent);
+    if (currentQueueItem?.title) return currentQueueItem.title;
+    if (!trackUrl) return "Unknown Track";
+    const fileName = trackUrl.split('/').pop() ?? '';
+    return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
+  }, []);
 
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;
@@ -104,10 +112,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       if (currentParticipant) audioRef.current.setVolume(currentParticipant.volume);
 
       if (snap.trackUrl) {
-        audioRef.current.setTrack(snap.trackUrl, snap.trackUrl.split('/').pop() ?? 'Track');
+        audioRef.current.setTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
       }
     }
-  }, [roomId, currentSocketId]);
+  }, [roomId, currentSocketId, getTrackTitle]);
 
   const pingOnce = useCallback((seq: number) => new Promise<{ t0: number; t1: number; t3: number }>((resolve) => {
     const t0 = Date.now();

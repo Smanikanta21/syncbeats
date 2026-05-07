@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Disc, Pause, Play, SkipForward, SkipBack,
-  Upload, Music2, Loader2, CheckCircle2,
+  Upload, Music2, Loader2, CheckCircle2, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -15,6 +15,8 @@ import { getSocket } from "../lib/socket";
 import { formatTime } from "../hooks/useAudioPlayer";
 import { ThemeToggle } from "./ThemeToggle";
 import { useSyncInfo } from "../context/SyncContext";
+import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
+import { NetworkPill, NetworkExpanded } from "./NetworkStats";
 
 export function DynamicIsland() {
   const pathname = usePathname();
@@ -22,11 +24,15 @@ export function DynamicIsland() {
   const { user } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
-  const { clockOffset, isRoomPlaying } = useSyncInfo();
+  const { clockOffset, isRoomPlaying, participants: roomParticipants } = useSyncInfo();
+
+  const isRoom = pathname.includes("/room/");
 
   const [expanded, setExpanded] = useState(false);
+  const [pillView, setPillView] = useState<"player" | "network">("player");
   const [driveLink, setDriveLink] = useState("");
   const [driveErr, setDriveErr] = useState("");
+  const netStats = useNetworkStats(isRoom);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -36,7 +42,7 @@ export function DynamicIsland() {
   const displayName = user?.name ?? "Guest";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 
-  const isRoom = pathname.includes("/room/");
+
   const isProfile = pathname.includes("/profile");
   const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
 
@@ -88,8 +94,13 @@ export function DynamicIsland() {
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isRoom && roomId) {
-      if (effectivePlaying) getSocket().emit('playback:pause', { roomId });
-      else getSocket().emit('playback:play', { roomId });
+      if (effectivePlaying) {
+        const exactPos = audio.getTruePosition();
+        audio.pauseAt(exactPos);
+        getSocket().emit('playback:pause', { roomId, positionMs: exactPos * 1000 });
+      } else {
+        getSocket().emit('playback:play', { roomId });
+      }
     } else {
       audio.toggle();
     }
@@ -194,7 +205,7 @@ export function DynamicIsland() {
     <>
       {/* Invisible backdrop to capture outside taps on mobile and close the island */}
       {expanded && isRoom && !isDragTarget && !isUploading && (
-        <div className="fixed inset-0 z-40 pointer-events-auto" onPointerDown={() => setExpanded(false)} />
+        <div className="fixed inset-0 z-40 pointer-events-auto" onPointerDown={() => { setExpanded(false); setPillView("player"); }} />
       )}
 
       <div className="fixed top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
@@ -346,8 +357,8 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {/* ━━ HAS TRACK | EXPANDED → Full player ━━ */}
-            {!isDragTarget && !isUploading && hasTrack && expanded && (
+            {/* ━━ HAS TRACK | EXPANDED → Tabbed (Player / Network) ━━ */}
+            {!isDragTarget && !isUploading && hasTrack && expanded && pillView === "player" && (
               <motion.div
                 key="player-full"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -356,7 +367,7 @@ export function DynamicIsland() {
                 className="p-6 md:p-8 flex flex-col"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between mb-7">
+                <div className="flex items-center justify-between mb-5">
                   <span className="text-xs font-bold tracking-widest text-foreground/50 uppercase flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Live Session
                   </span>
@@ -368,6 +379,21 @@ export function DynamicIsland() {
                       Leave
                     </button>
                   </div>
+                </div>
+
+                {/* Tab Switcher */}
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-5 self-start">
+                  <button
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-foreground text-background shadow-sm"
+                  >
+                    Player
+                  </button>
+                  <button
+                    onClick={() => setPillView("network")}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60"
+                  >
+                    Network
+                  </button>
                 </div>
 
                 {/* Track info */}
@@ -405,7 +431,6 @@ export function DynamicIsland() {
                       onChange={(e) => handleSeek(Number(e.target.value))}
                       className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
                     />
-                    {/* Handle indicator (visible on hover) */}
                     <div 
                       className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
                       style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
@@ -459,8 +484,40 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {/* ━━ HAS TRACK | COLLAPSED mini-player pill ━━ */}
-            {!isDragTarget && !isUploading && hasTrack && !expanded && (
+            {/* ━━ HAS TRACK | EXPANDED → Network Stats ━━ */}
+            {!isDragTarget && !isUploading && hasTrack && expanded && pillView === "network" && (
+              <motion.div
+                key="net-full-wrap"
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, delay: 0.15 } }}
+                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                className="flex flex-col"
+              >
+                {/* Tab Switcher inside network view */}
+                <div className="px-6 pt-6 md:px-8 md:pt-8">
+                  <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-1 self-start">
+                    <button
+                      onClick={() => setPillView("player")}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60"
+                    >
+                      Player
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-foreground text-background shadow-sm"
+                    >
+                      Network
+                    </button>
+                  </div>
+                </div>
+                <NetworkExpanded
+                  stats={netStats}
+                  onClose={() => setExpanded(false)}
+                />
+              </motion.div>
+            )}
+
+            {/* ━━ HAS TRACK | COLLAPSED → Player in island ━━ */}
+            {!isDragTarget && !isUploading && hasTrack && !expanded && pillView === "player" && (
               <motion.div
                 key="player-pill"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -477,52 +534,87 @@ export function DynamicIsland() {
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
                     <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
-                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)} · {clockOffset.toFixed(0)}ms</p>
+                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <button onClick={handlePrev}>
-                    <SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" />
-                  </button>
-                  <button
-                    onClick={handleToggle}
-                    className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative"
-                  >
+                  <button onClick={handlePrev}><SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
+                  <button onClick={handleToggle} className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative">
                     <AnimatePresence mode="wait" initial={false}>
-                      {effectivePlaying ? (
-                        <motion.div
-                          key="pause-mini"
-                          initial={{ opacity: 0, scale: 0.5 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.5 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute"
-                        >
-                          <Pause className="w-3 h-3" fill="currentColor" />
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          key="play-mini"
-                          initial={{ opacity: 0, scale: 0.5 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.5 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute"
-                        >
-                          <Play className="w-3 h-3 ml-0.5" fill="currentColor" />
-                        </motion.div>
-                      )}
+                      {effectivePlaying
+                        ? <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
+                        : <motion.div key="r" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Play className="w-3 h-3 ml-0.5" fill="currentColor" /></motion.div>
+                      }
                     </AnimatePresence>
                   </button>
-                  <button onClick={handleNext}>
-                    <SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" />
-                  </button>
+                  <button onClick={handleNext}><SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ━━ HAS TRACK | COLLAPSED → Network in island ━━ */}
+            {!isDragTarget && !isUploading && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
+              <motion.div
+                key="net-collapsed"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
+                exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 justify-between cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 border" style={{ borderColor: `${qualityColor(netStats.quality)}30`, background: `${qualityColor(netStats.quality)}10` }}>
+                    <Activity className="w-4 h-4" style={{ color: qualityColor(netStats.quality) }} />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground leading-tight">Network</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: qualityColor(netStats.quality), background: `${qualityColor(netStats.quality)}15` }}>
+                        {netStats.quality === "excellent" ? "Excellent" : netStats.quality === "good" ? "Good" : netStats.quality === "fair" ? "Fair" : "Poor"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-[10px] font-mono text-foreground/40"><span style={{ color: qualityColor(netStats.quality) }}>{netStats.rtt.toFixed(0)}</span>ms RTT</span>
+                      <span className="text-[10px] font-mono text-foreground/40 hidden sm:inline"><span style={{ color: qualityColor(netStats.quality) }}>{netStats.jitter.toFixed(0)}</span>ms jitter</span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}
 
           </AnimatePresence>
         </motion.div>
+
+        {/* ━━ EXTERNAL PILL — swaps content with main island ━━ */}
+        <AnimatePresence mode="wait">
+          {isRoom && hasTrack && !expanded && netStats.hasData && (
+            <motion.button
+              key={pillView === "player" ? "ext-net" : "ext-player"}
+              initial={{ opacity: 0, scale: 0.3 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.3 }}
+              transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
+              onClick={(e) => { e.stopPropagation(); setPillView(pillView === "player" ? "network" : "player"); }}
+              className="pointer-events-auto ml-2.5 mt-[8px] shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform hidden cursor-pointer border-2 justify-center items-center"
+              style={{
+                borderColor: pillView === "player"
+                  ? `${qualityColor(netStats.quality)}50`
+                  : effectivePlaying ? "#22c55e80" : "#ef444480",
+              }}
+              title={pillView === "player" ? "Show network stats" : "Show player"}
+            >
+              {pillView === "player" ? (
+                <span className="text-[10px] font-black tabular-nums" style={{ color: qualityColor(netStats.quality) }}>
+                  {netStats.rtt.toFixed(0)}
+                </span>
+              ) : (
+                effectivePlaying
+                  ? <Pause className="w-3.5 h-3.5" style={{ color: "#22c55e" }} fill="#22c55e" />
+                  : <Play className="w-3.5 h-3.5 ml-0.5" style={{ color: "#ef4444" }} fill="#ef4444" />
+              )}
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
     </>
   );

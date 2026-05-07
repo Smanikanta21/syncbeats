@@ -123,11 +123,11 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:pause', ({ roomId }: { roomId: string }) => {
+    socket.on('playback:pause', ({ roomId, positionMs }: { roomId: string; positionMs?: number }) => {
       try {
         const room = this.roomManager.get(roomId);
         if (!room) return;
-        room.pause(socket.id);
+        room.pause(socket.id, positionMs);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
