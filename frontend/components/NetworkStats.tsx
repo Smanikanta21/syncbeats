@@ -17,7 +17,7 @@ interface SparklineProps {
   data:   number[];
   color:  string;
   height?: number;
-  width?:  number;
+  width?:  number | string;
 }
 
 function Sparkline({ data, color, height = 32, width = 120 }: SparklineProps) {
