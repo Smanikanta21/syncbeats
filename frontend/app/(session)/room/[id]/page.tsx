@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
@@ -353,10 +354,13 @@ export default function RoomPage() {
               )}
 
               {qrState === "ready" && (
-                <img
+                <Image
                   src={qrSrc}
                   alt={`QR code for room ${roomId}`}
+                  width={112}
+                  height={112}
                   className="w-28 h-28 bg-background p-1 rounded-xl"
+                  unoptimized
                 />
               )}
             </button>
@@ -582,10 +586,13 @@ export default function RoomPage() {
                 )}
 
                 {qrState === "ready" && (
-                  <img
+                  <Image
                     src={qrSrc}
                     alt={`QR code for room ${roomId}`}
+                    width={120}
+                    height={120}
                     className="w-30 h-30 bg-background p-1"
+                    unoptimized
                   />
                 )}
               </button>

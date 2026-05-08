@@ -1,11 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { SyncProvider } from "../../context/SyncContext";
-import { DynamicIsland } from "../../components/DynamicIsland";
+const DynamicIsland = dynamic(() => import("../../components/DynamicIsland").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
 import { X, Camera } from "lucide-react";
 
