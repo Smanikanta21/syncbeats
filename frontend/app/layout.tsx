@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { AudioProvider } from "../context/AudioContext";
@@ -17,10 +18,12 @@ const geistMono = Geist_Mono({
   preload: false,
 });
 
+
+
 const BASE_URL = "https://syncbeats.app";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
+    metadataBase: new URL(BASE_URL),
 
   // ── Primary ──────────────────────────────────────────────────────────────
   title: {
@@ -133,6 +136,9 @@ const jsonLd = {
   ],
 };
 
+
+
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -151,6 +157,19 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
+      <Script
+        async
+        src="https://www.googletagmanager.com/gtag/js?id=G-9D67M1G5XC"
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){window.dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-9D67M1G5XC');
+        `}
+      </Script>
       <body className="min-h-full flex flex-col transition-colors duration-300">
         <ThemeProvider>
           <AuthProvider>
@@ -160,6 +179,9 @@ export default function RootLayout({
           </AuthProvider>
         </ThemeProvider>
       </body>
+
     </html>
+
+
   );
 }
