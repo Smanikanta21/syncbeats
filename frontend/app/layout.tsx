@@ -170,6 +170,8 @@ export default function RootLayout({
           gtag('config', 'G-9D67M1G5XC');
         `}
       </Script>
+
+      <Script src="https://analytics.ahrefs.com/analytics.js" data-key="+9fzuLLzZbLhEJcB+CsBWA" async></Script>
       <body className="min-h-full flex flex-col transition-colors duration-300">
         <ThemeProvider>
           <AuthProvider>
