@@ -17,6 +17,7 @@ import { createDeviceRoutes }  from './handlers/DeviceRoutes';
 import { createUploadRoutes }  from './handlers/UploadRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
+import { deleteRoomFromS3 }    from './utils/s3';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 
@@ -129,6 +130,11 @@ export class SyncBeatsServer {
             const fileNames = await this.roomRepo.getRoomFileNames(room.id);
             await this.roomRepo.removeRoom(room.id);
             this.roomManager.remove(room.id);
+
+            // Remove hosted files from CDN/S3
+            await deleteRoomFromS3(room.id);
+
+            // Also cleanup legacy fallback local files if any exist
             for (const fileName of fileNames) {
               const absolutePath = path.resolve(process.cwd(), 'uploads', fileName);
               if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
