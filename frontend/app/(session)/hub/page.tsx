@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera } from "lucide-react";
+import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
@@ -578,7 +579,7 @@ export default function HubPage() {
               </div>
 
               <div className="rounded-2xl border border-foreground/10 bg-background p-4 w-fit mx-auto mb-5">
-                <img src={qrSrc} alt={`QR code for room ${roomInfo.id}`} className="w-56 h-56" />
+                <Image src={qrSrc} alt={`QR code for room ${roomInfo.id}`} width={224} height={224} className="w-56 h-56" unoptimized />
               </div>
 
               <div className="space-y-3">

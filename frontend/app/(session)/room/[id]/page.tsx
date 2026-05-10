@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useRoom }   from "../../../../hooks/useRoom";
@@ -337,6 +338,7 @@ export default function RoomPage() {
             <button
               type="button"
               onClick={handleGenerateQr}
+              aria-label="Generate QR code to share room"
               className="p-4 bg-foreground/5 border border-foreground/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group"
             >
               {qrState === "mock" && (
@@ -353,10 +355,13 @@ export default function RoomPage() {
               )}
 
               {qrState === "ready" && (
-                <img
+                <Image
                   src={qrSrc}
                   alt={`QR code for room ${roomId}`}
+                  width={112}
+                  height={112}
                   className="w-28 h-28 bg-background p-1 rounded-xl"
+                  unoptimized
                 />
               )}
             </button>
@@ -387,9 +392,9 @@ export default function RoomPage() {
   const renderDevicesPanel = () => (
     <div className={PANEL_CLASSES}>
       <div className="flex items-center justify-between mb-4 shrink-0">
-        <h3 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+        <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
           <Smartphone className="w-4 h-4" /> Devices ({participants.length})
-        </h3>
+        </h2>
       </div>
 
       {participants.length === 0 ? (
@@ -476,9 +481,9 @@ export default function RoomPage() {
   const renderQueuePanel = () => (
     <div className={PANEL_CLASSES}>
       <div className="flex items-center justify-between mb-4 shrink-0">
-        <h4 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+        <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
           <ListMusic className="w-4 h-4" /> Queue ({localQueue.length})
-        </h4>
+        </h2>
       </div>
 
       {localQueue.length === 0 ? (
@@ -520,7 +525,7 @@ export default function RoomPage() {
   if (!isMounted) return null;
 
   return (
-    <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
       {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-[600px] max-h-[600px] md:w-full md:max-w-2xl md:h-[500px] bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
@@ -566,6 +571,7 @@ export default function RoomPage() {
               <button
                 type="button"
                 onClick={handleGenerateQr}
+                aria-label="Generate QR code to share room"
                 className="p-4 bg-foreground/5 border border-foreground/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group"
               >
                 {qrState === "mock" && (
@@ -582,10 +588,13 @@ export default function RoomPage() {
                 )}
 
                 {qrState === "ready" && (
-                  <img
+                  <Image
                     src={qrSrc}
                     alt={`QR code for room ${roomId}`}
+                    width={120}
+                    height={120}
                     className="w-30 h-30 bg-background p-1"
+                    unoptimized
                   />
                 )}
               </button>
@@ -631,9 +640,9 @@ export default function RoomPage() {
           transition={{ delay: 0.3 }}
           className="w-full max-w-3xl mx-auto flex flex-col gap-6 items-center"
         >
-          <h3 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center mb-2">
+          <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center mb-2">
             Connected Devices ({participants.length})
-          </h3>
+          </h2>
 
           {participants.length === 0 && (
             <div className="text-center py-10 text-foreground/40 text-sm font-medium">
@@ -717,10 +726,10 @@ export default function RoomPage() {
           {/* ── Queue ── */}
           {localQueue.length ? (
             <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
-              <h4 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
                 <ListMusic className="w-4 h-4" />
                 Room Queue ({localQueue.length})
-              </h4>
+              </h3>
               <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 <DndContext
                   sensors={sensors}
@@ -749,9 +758,9 @@ export default function RoomPage() {
               </div>
             </div>
           ) : (<div className="mt-2 rounded-2xl border border-foreground/5 bg-background/40 max-h-[35vh] p-4">
-            <h4 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
               No songs in the queue
-            </h4>
+            </h3>
           </div>)}
         </motion.div>
       </div>
@@ -760,9 +769,9 @@ export default function RoomPage() {
       <div className="flex md:hidden flex-col w-full h-full relative pt-[120px] pb-[80px]">
         {/* Pagination Dots */}
         <div className="flex justify-center items-center gap-3 mb-4 shrink-0 px-4">
-          <button onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 0 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 1 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 2, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 2 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
+          <button aria-label="View room info" onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 0 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
+          <button aria-label="View connected devices" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 1 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
+          <button aria-label="View music queue" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 2, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 2 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
         </div>
 
         {/* Carousel */}
@@ -795,6 +804,6 @@ export default function RoomPage() {
           </button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

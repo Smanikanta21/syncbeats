@@ -348,7 +348,7 @@ export function DynamicIsland() {
                     <Music2 className="w-4 h-4 text-foreground/40" />
                   </div>
                   <p className="text-sm font-semibold md:px-2 text-foreground/40 hidden sm:block">Hover to add your music and enjoy</p>
-                  <p className="text-sm font-semibold text-foreground/40 sm:hidden">Hold to add music</p>
+                  <p className="text-sm font-semibold text-foreground/40 hidden sm:block">Hover to add your music and enjoy</p>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setExpanded(true); }}

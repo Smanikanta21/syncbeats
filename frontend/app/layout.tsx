@@ -9,13 +9,13 @@ import { ThemeProvider } from "../context/ThemeProvider";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  preload: false,
+  preload: true,
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-  preload: false,
+  preload: true,
 });
 
 
@@ -170,6 +170,8 @@ export default function RootLayout({
           gtag('config', 'G-9D67M1G5XC');
         `}
       </Script>
+
+      <Script src="https://analytics.ahrefs.com/analytics.js" data-key="+9fzuLLzZbLhEJcB+CsBWA" strategy="lazyOnload" />
       <body className="min-h-full flex flex-col transition-colors duration-300">
         <ThemeProvider>
           <AuthProvider>

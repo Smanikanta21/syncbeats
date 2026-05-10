@@ -12,7 +12,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: ["/", "/login", "/register"],
         // Block room pages and API routes from being indexed
-        disallow: ["/room/", "/api/", "/_next/"],
+        disallow: ["/room/", "/api/"],
       },
     ],
     sitemap: `${BASE_URL}/sitemap.xml`,
