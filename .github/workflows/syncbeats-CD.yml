@@ -270,7 +270,7 @@ jobs:
           # Source .env for PORT
           set -a; source .env; set +a
 
-          docker compose --project-directory "$APP" up -d server studio
+          docker compose --project-directory "$APP" up -d --force-recreate server studio
 
           echo "Waiting for backend on port $PORT..."
           BACKEND_OK=false
@@ -325,7 +325,7 @@ jobs:
 
           docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
 
-          docker compose --project-directory "$APP" up -d frontend
+          docker compose --project-directory "$APP" up -d --force-recreate frontend
 
           # Health check
           echo "Waiting for frontend on port $FPORT..."

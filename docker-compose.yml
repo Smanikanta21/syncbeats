@@ -17,7 +17,6 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   server:
-    build: ./syncbeats-server
     image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
@@ -46,11 +45,6 @@ services:
       - uploads:/app/uploads
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        - NEXT_PUBLIC_SERVER_URL=${NEXT_PUBLIC_SERVER_URL}
-        - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
     image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
@@ -63,9 +57,7 @@ services:
       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
 
-
   studio:
-    build: ./syncbeats-server
     image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
