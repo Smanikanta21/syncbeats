@@ -25,6 +25,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   seekPct:     (pct: number) => void;
   setVolume:   (volume: number) => void;
   setTrack:    (url: string, title?: string, artist?: string) => void;
+  clearTrack:  () => void;
   unlockAudio: () => void;
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
   playNow:     (expectedPosition: number) => void;
@@ -339,13 +340,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setTrackArtist(artist);
   }, []);
 
+  const clearTrack = useCallback(() => {
+    stopCurrentSource();
+    setTrackUrl(null);
+    setTrackTitle("");
+    setTrackArtist("");
+    setIsPlaying(false);
+    setCurrentTime(0);
+    pauseOffsetRef.current = 0;
+    audioBufferRef.current = null;
+    fetchPromiseRef.current = null;
+  }, [stopCurrentSource]);
+
   const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
     isPlaying, isReady, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
-    play, pause, toggle, seek, seekPct, setVolume, setTrack, unlockAudio,
+    play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition,
     audioEl: null,
   };

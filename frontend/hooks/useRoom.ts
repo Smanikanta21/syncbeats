@@ -238,6 +238,18 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
     const handleQueueChanged = ({ queue }: { queue: TrackQueueItem[] }) => {
       setSnapshot((prev) => prev ? { ...prev, queue } : prev);
+
+      const newCurrentItem = queue.find((item) => item.isCurrent);
+
+      if (queue.length === 0) {
+        audioRef.current.clearTrack();
+      } else if (newCurrentItem) {
+        const playingUrl = audioRef.current.trackUrl;
+        if (playingUrl && playingUrl !== newCurrentItem.trackUrl) {
+          audioRef.current.setTrack(newCurrentItem.trackUrl, newCurrentItem.title);
+        }
+      }
+      // If queue has songs but none is isCurrent, let room:trackSet / room:stateChanged handle it
     };
     socket.on('room:queueChanged', handleQueueChanged);
 
