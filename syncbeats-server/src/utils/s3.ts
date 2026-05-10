@@ -5,9 +5,9 @@ let _s3Client: S3Client | null = null;
 
 function getS3Client(): S3Client {
   if (!_s3Client) {
-    const region = process.env.AWS_REGION || "ap-south-1";
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    const region = (process.env.AWS_REGION || "ap-south-1").trim();
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim();
 
     if (!accessKeyId || !secretAccessKey) {
       console.error("[S3] Missing AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY");
@@ -24,7 +24,7 @@ function getS3Client(): S3Client {
 }
 
 function getBucket(): string {
-  return process.env.S3_BUCKET_NAME || "syncbeats-audio";
+  return (process.env.S3_BUCKET_NAME || "syncbeats-audio").trim();
 }
 
 export async function uploadToS3(filePath: string, fileName: string, mimeType: string, roomId: string, userId: string): Promise<string> {
