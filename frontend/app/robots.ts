@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/login", "/register"],
+        allow: ["/", "/login", "/privacy-policy", "/terms-of-service", "/cookie-settings"],
         // Block room pages and API routes from being indexed
         disallow: ["/room/", "/api/"],
       },

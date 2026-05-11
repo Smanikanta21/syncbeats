@@ -3,7 +3,8 @@
 import { motion } from "framer-motion";
 import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera } from "lucide-react";
 import Image from "next/image";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import jsQR from "jsqr";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
@@ -44,8 +45,10 @@ export default function HubPage() {
   const [scanStatus, setScanStatus] = useState<"idle" | "starting" | "scanning" | "success" | "error">("idle");
   const [scanError, setScanError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
+  const scanSuccessRef = useRef(false);
   const [theme, setTheme] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -127,7 +130,7 @@ export default function HubPage() {
     return null;
   };
 
-  const stopScanner = () => {
+  const stopScanner = useCallback(() => {
     if (scanIntervalRef.current) {
       window.clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
@@ -140,24 +143,19 @@ export default function HubPage() {
       videoRef.current.srcObject = null;
     }
     setShowScanner(false);
-  };
+  }, []);
 
   const openScannerModal = () => {
     setShowScanner(true);
     setScanStatus("idle");
     setScanError(null);
+    scanSuccessRef.current = false;
   };
 
   const startScanner = async () => {
     setScanStatus("starting");
     setScanError(null);
-
-    const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (opts?: { formats?: string[] }) => { detect: (input: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      setScanStatus("error");
-      setScanError("QR scanning is not supported on this browser.");
-      return;
-    }
+    scanSuccessRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -171,28 +169,58 @@ export default function HubPage() {
       await videoRef.current.play();
       setScanStatus("scanning");
 
-      const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+      // Try native BarcodeDetector first, fall back to jsQR
+      const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (opts?: { formats?: string[] }) => { detect: (input: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
+      const nativeDetector = BarcodeDetectorCtor ? new BarcodeDetectorCtor({ formats: ["qr_code"] }) : null;
+
+      // Create a hidden canvas for frame extraction (needed for jsQR fallback)
+      if (!canvasRef.current) {
+        canvasRef.current = document.createElement("canvas");
+      }
+
       scanIntervalRef.current = window.setInterval(async () => {
-        if (!videoRef.current || scanStatus === "success") return;
+        if (!videoRef.current || scanSuccessRef.current) return;
+        if (videoRef.current.readyState < videoRef.current.HAVE_ENOUGH_DATA) return;
+
+        let rawValue = "";
+
         try {
-          const codes = await detector.detect(videoRef.current);
-          if (!codes.length) return;
-
-          const rawValue = codes[0].rawValue ?? "";
-          const parsedRoomId = parseRoomIdFromScan(rawValue);
-          if (!parsedRoomId) {
-            setScanStatus("error");
-            setScanError("QR scanned, but room format is invalid.");
-            return;
+          if (nativeDetector) {
+            // Use native BarcodeDetector (Chrome Android)
+            const codes = await nativeDetector.detect(videoRef.current);
+            if (codes.length) rawValue = codes[0].rawValue ?? "";
+          } else {
+            // Use jsQR fallback (Safari, Firefox, iOS, macOS)
+            const video = videoRef.current;
+            const canvas = canvasRef.current!;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (!ctx) return;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+            if (result) rawValue = result.data;
           }
-
-          setScanStatus("success");
-          stopScanner();
-          router.push(`/room/${parsedRoomId}`);
         } catch {
           // Keep scanning on transient detector errors.
+          return;
         }
-      }, 300);
+
+        if (!rawValue) return;
+
+        const parsedRoomId = parseRoomIdFromScan(rawValue);
+        if (!parsedRoomId) {
+          setScanStatus("error");
+          setScanError("QR scanned, but room format is invalid.");
+          return;
+        }
+
+        scanSuccessRef.current = true;
+        setScanStatus("success");
+        stopScanner();
+        router.push(`/room/${parsedRoomId}`);
+      }, 250);
     } catch (err) {
       setScanStatus("error");
       const message = (err as Error).message || "Unable to access camera.";
