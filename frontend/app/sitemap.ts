@@ -1,7 +1,3 @@
-// app/sitemap.ts
-// Next.js generates /sitemap.xml automatically from this file.
-// Submit this URL in Google Search Console.
-
 import { MetadataRoute } from "next";
 
 const BASE_URL = "https://syncbeats.app";

@@ -11,14 +11,14 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
   preload: true,
-  display: "swap",  // ← ADD THIS
+  display: "swap",  
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   preload: true,
-  display: "swap",  // ← ADD THIS
+  display: "swap",  
 });
 
 const BASE_URL = "https://syncbeats.app";
@@ -143,10 +143,6 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* Preconnect to external domains for performance */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-
         {/* JSON-LD structured data */}
         <script
           type="application/ld+json"
