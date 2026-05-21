@@ -134,7 +134,7 @@ jobs:
           DB_HOST="postgres"
           if [ "${{ github.ref_name }}" != "main" ]; then
             APP_DIR="sync-beats-dev"
-            DB_HOST="10.7.15.243"
+            DB_HOST="${{ secrets.VM_HOST }}"
           fi
 
           {
@@ -180,6 +180,13 @@ jobs:
           scp -o StrictHostKeyChecking=yes \
             docker-compose.yml \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/$APP_DIR/docker-compose.yml
+
+          # Dynamic VM Host Private IP Injection for Staging
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            ssh -o StrictHostKeyChecking=yes \
+              ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
+              "VM_IP=\$(hostname -I | awk '{print \$1}') && sed -i \"s/PLACEHOLDER_VM_IP/\$VM_IP/g\" ~/$APP_DIR/.env"
+          fi
 
           # Lock down .env
           ssh -o StrictHostKeyChecking=yes \
