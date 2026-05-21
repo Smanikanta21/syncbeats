@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { io } from "socket.io-client";
 import { getServerUrl } from "@/lib/api";
+import { Navbar } from "./Navbar";
 
 interface StreamTest {
   videoId: string;
@@ -15,7 +16,7 @@ interface StreamTest {
 
 export default function YouTubeStreamingDemo() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [roomId, setRoomId] = useState(() => Math.random().toString(36).slice(7));
+  const [roomId, setRoomId] = useState("");
   const [streamTest, setStreamTest] = useState<StreamTest>({
     videoId: "",
     url: "",
@@ -29,9 +30,28 @@ export default function YouTubeStreamingDemo() {
   const playerRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initialPositionRef = useRef<number>(0);
+
+  // Initialize room ID on mount to prevent SSR hydration mismatches
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get("room");
+      if (roomParam) {
+        setRoomId(roomParam);
+      } else {
+        const generated = Math.random().toString(36).slice(7);
+        setRoomId(generated);
+        const newUrl = `${window.location.pathname}?room=${generated}`;
+        window.history.replaceState({}, "", newUrl);
+      }
+    }
+  }, []);
 
   // Initialize Socket.IO connection
   useEffect(() => {
+    if (!roomId) return;
+
     const serverUrl = getServerUrl();
     const isRelativeApi = serverUrl === '/api';
     const socketUrl = isRelativeApi ? (typeof window !== 'undefined' ? window.location.origin : '') : serverUrl;
@@ -41,6 +61,26 @@ export default function YouTubeStreamingDemo() {
       transports: ["websocket"],
       path: socketPath,
       withCredentials: true,
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log(`🔌 Connected to YouTube Sync. Joining room: ${roomId}`);
+      socketRef.current.emit("youtube:join-room", { roomId, videoId: "" });
+    });
+
+    socketRef.current.on("youtube:sync-state", (state: any) => {
+      if (state && state.videoId && state.videoId !== streamTest.videoId) {
+        console.log(`📥 Received sync-state: ${state.videoId} at ${state.position}s`);
+        initialPositionRef.current = state.position;
+        setYoutubeUrl(`https://www.youtube.com/watch?v=${state.videoId}`);
+        setStreamTest((prev) => ({
+          ...prev,
+          videoId: state.videoId,
+          status: "loading",
+          isPlaying: state.isPlaying,
+        }));
+        loadYouTubeAPI(state.videoId);
+      }
     });
 
     socketRef.current.on("youtube:play", (data: any) => {
@@ -75,7 +115,7 @@ export default function YouTubeStreamingDemo() {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
       socketRef.current?.disconnect();
     };
-  }, [streamTest.videoId]); // Add streamTest.videoId dependency so the play/pause callbacks always have the correct videoId in scope or we can keep it as is. Actually the original had [] but let's keep it robust.
+  }, [roomId, streamTest.videoId]); // Add streamTest.videoId dependency so the play/pause callbacks always have the correct videoId in scope or we can keep it as is. Actually the original had [] but let's keep it robust.
 
   // Extract video ID from YouTube URL
   const extractVideoId = (url: string): string | null => {
@@ -117,6 +157,16 @@ export default function YouTubeStreamingDemo() {
   };
 
   const loadYouTubeAPI = (videoId: string) => {
+    // If player already exists, just load the new video ID dynamically
+    if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
+      setStreamTest((prev) => ({
+        ...prev,
+        status: "loading",
+      }));
+      playerRef.current.loadVideoById(videoId);
+      return;
+    }
+
     // Check if YouTube API is already loaded
     if ((window as any).YT && (window as any).YT.Player) {
       createPlayer(videoId);
@@ -158,6 +208,16 @@ export default function YouTubeStreamingDemo() {
             status: "ready",
             duration: event.target.getDuration(),
           }));
+
+          if (initialPositionRef.current > 0) {
+            console.log(`⏱️ Seeking to initial position: ${initialPositionRef.current}s`);
+            event.target.seekTo(initialPositionRef.current);
+            initialPositionRef.current = 0;
+          }
+
+          if (streamTest.isPlaying) {
+            event.target.playVideo();
+          }
 
           // Start sync every 3 seconds
           syncIntervalRef.current = setInterval(() => {
@@ -245,13 +305,20 @@ export default function YouTubeStreamingDemo() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen text-foreground relative z-10 flex flex-col pb-20 selection:bg-accent-primary/30">
+      {/* Global Ambient Background */}
+      <div className="mesh-bg" />
+
+      <Navbar />
+
+      <main className="flex-1 w-full max-w-6xl mx-auto px-6 pt-28 md:pt-36">
         {/* Header */}
         <div className="mb-12">
-          <h1 className="text-4xl font-bold mb-2">🎬 YouTube Stream Sync Demo</h1>
-          <p className="text-slate-400">
-            Test whether YouTube videos can be synchronized across multiple devices
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-3">
+            🎬 <span className="text-gradient-accent">YouTube Stream Sync</span>
+          </h1>
+          <p className="text-foreground/60 text-sm md:text-base max-w-2xl">
+            Test and experience real-time YouTube video synchronization across multiple devices using custom web socket gateways.
           </p>
         </div>
 
@@ -260,20 +327,20 @@ export default function YouTubeStreamingDemo() {
           {/* Video Player */}
           <div className="lg:col-span-2 space-y-6">
             {/* URL Input */}
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <label className="block text-sm font-semibold mb-2">YouTube URL or Video ID</label>
-              <div className="flex gap-2">
+            <div className="glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-6 shadow-2xl border border-glass-border">
+              <label className="block text-sm font-bold text-foreground/80 mb-2">YouTube URL or Video ID</label>
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   value={youtubeUrl}
                   onChange={(e) => setYoutubeUrl(e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=... or just paste video ID"
-                  className="flex-1 bg-slate-700 border border-slate-600 rounded px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="flex-1 bg-background/40 border border-glass-border rounded-xl px-4 py-2.5 text-foreground placeholder-foreground/30 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all text-sm"
                   onKeyPress={(e) => e.key === "Enter" && handleTestStream()}
                 />
                 <button
                   onClick={handleTestStream}
-                  className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-semibold transition-colors"
+                  className="bg-accent-primary text-white hover:scale-105 active:scale-95 px-6 py-2.5 rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(99,102,241,0.2)] cursor-pointer text-sm animate-button"
                 >
                   Test Stream
                 </button>
@@ -281,20 +348,20 @@ export default function YouTubeStreamingDemo() {
             </div>
 
             {/* Player Container */}
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <div id="youtube-player" className="w-full aspect-video bg-black rounded mb-4" />
+            <div className="glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-6 shadow-2xl border border-glass-border">
+              <div id="youtube-player" className="w-full aspect-video bg-black/40 rounded-2xl mb-4 border border-glass-border overflow-hidden" />
 
               {/* Status */}
-              <div className="mb-4 p-4 bg-slate-700 rounded">
+              <div className="mb-4 p-4 bg-background/30 backdrop-blur-md rounded-2xl border border-glass-border">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-400">STATUS</span>
+                  <span className="text-xs font-black tracking-wide text-foreground/50">STATUS</span>
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    className={`px-3 py-1 rounded-full text-xs font-black tracking-wide ${
                       streamTest.status === "playing"
-                        ? "bg-green-500/20 text-green-400"
+                        ? "bg-green-500/10 text-green-500 border border-green-500/20"
                         : streamTest.status === "error"
-                          ? "bg-red-500/20 text-red-400"
-                          : "bg-slate-600 text-slate-300"
+                          ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                          : "bg-background/80 text-foreground/70 border border-glass-border"
                     }`}
                   >
                     {streamTest.status.toUpperCase()}
@@ -302,15 +369,15 @@ export default function YouTubeStreamingDemo() {
                 </div>
 
                 {streamTest.error && (
-                  <div className="text-red-400 text-sm mt-2 p-2 bg-red-500/10 rounded border border-red-500/20">
+                  <div className="text-rose-500 text-sm mt-2 p-3 bg-red-500/5 rounded-xl border border-rose-500/10">
                     ⚠️ {streamTest.error}
                   </div>
                 )}
 
                 {streamTest.videoId && (
-                  <div className="text-sm text-slate-300 mt-2 space-y-1">
-                    <p>Video ID: <code className="text-blue-400">{streamTest.videoId}</code></p>
-                    <p>Position: {formatTime(streamTest.position)} / {formatTime(streamTest.duration)}</p>
+                  <div className="text-sm text-foreground/80 mt-2 space-y-1">
+                    <p>Video ID: <code className="text-accent-primary font-semibold">{streamTest.videoId}</code></p>
+                    <p>Position: <span className="font-semibold text-foreground">{formatTime(streamTest.position)}</span> / {formatTime(streamTest.duration)}</p>
                   </div>
                 )}
               </div>
@@ -319,32 +386,32 @@ export default function YouTubeStreamingDemo() {
               {streamTest.status !== "idle" && streamTest.status !== "error" && (
                 <div className="space-y-4">
                   {/* Playback Controls */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={handlePlay}
-                      className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded font-semibold transition-colors"
+                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(34,197,94,0.15)] cursor-pointer"
                     >
                       ▶ Play
                     </button>
                     <button
                       onClick={handlePause}
-                      className="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-semibold transition-colors"
+                      className="flex-1 bg-rose-500 hover:bg-rose-600 text-white px-4 py-2.5 rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(244,63,94,0.15)] cursor-pointer"
                     >
                       ⏸ Pause
                     </button>
                   </div>
 
                   {/* Seek Controls */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => handleSeek(-10)}
-                      className="flex-1 bg-slate-600 hover:bg-slate-700 px-4 py-2 rounded text-sm transition-colors"
+                      className="flex-1 bg-background/50 hover:bg-background/80 text-foreground/80 border border-glass-border px-4 py-2.5 rounded-xl text-sm font-semibold hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
                     >
                       ⏪ -10s
                     </button>
                     <button
                       onClick={() => handleSeek(10)}
-                      className="flex-1 bg-slate-600 hover:bg-slate-700 px-4 py-2 rounded text-sm transition-colors"
+                      className="flex-1 bg-background/50 hover:bg-background/80 text-foreground/80 border border-glass-border px-4 py-2.5 rounded-xl text-sm font-semibold hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
                     >
                       ⏩ +10s
                     </button>
@@ -357,21 +424,21 @@ export default function YouTubeStreamingDemo() {
           {/* Sidebar - Info & Settings */}
           <div className="space-y-6">
             {/* Room Settings */}
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h3 className="text-lg font-bold mb-4">📡 Room Settings</h3>
+            <div className="glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-6 shadow-2xl border border-glass-border">
+              <h3 className="text-lg font-bold mb-4 text-foreground">📡 Room Settings</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-slate-400">Room ID</label>
+                  <label className="text-xs text-foreground/50">Room ID</label>
                   <div className="flex gap-2 mt-1">
                     <input
                       type="text"
                       value={roomId}
                       readOnly
-                      className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-blue-400"
+                      className="flex-1 bg-background/40 border border-glass-border rounded-xl px-3 py-2 text-sm font-mono text-accent-primary focus:outline-none"
                     />
                     <button
                       onClick={copyRoomLink}
-                      className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm font-semibold transition-colors"
+                      className="bg-accent-primary text-white hover:scale-105 active:scale-95 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)] cursor-pointer"
                     >
                       Copy Link
                     </button>
@@ -381,58 +448,56 @@ export default function YouTubeStreamingDemo() {
             </div>
 
             {/* Sync Info */}
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h3 className="text-lg font-bold mb-4">🔄 Sync Status</h3>
+            <div className="glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-6 shadow-2xl border border-glass-border">
+              <h3 className="text-lg font-bold mb-4 text-foreground">🔄 Sync Status</h3>
               <div className="space-y-3 text-sm">
                 <div>
-                  <span className="text-slate-400">Current Position</span>
-                  <p className="text-blue-400 font-mono">
+                  <span className="text-foreground/50 text-xs">Current Position</span>
+                  <p className="text-accent-primary font-semibold font-mono mt-0.5">
                     {formatTime(streamTest.position)}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Sync Interval</span>
-                  <p className="text-green-400">Every 3 seconds</p>
+                  <span className="text-foreground/50 text-xs">Sync Interval</span>
+                  <p className="text-green-500 font-semibold mt-0.5">Every 3 seconds</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Drift Threshold</span>
-                  <p className="text-yellow-400">±1 second</p>
+                  <span className="text-foreground/50 text-xs">Drift Threshold</span>
+                  <p className="text-amber-500 font-semibold mt-0.5">±1 second</p>
                 </div>
-                <div className="pt-3 border-t border-slate-600">
-                  <p className="text-slate-400 text-xs">
-                    ℹ️ When multiple devices are in the same room, they will sync
-                    position every 3 seconds if drift exceeds ±1 second.
+                <div className="pt-3 border-t border-glass-border">
+                  <p className="text-foreground/50 text-xs leading-relaxed">
+                    ℹ️ When multiple devices are in the same room, they will sync position automatically if drift exceeds the 1s threshold.
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Test Results */}
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h3 className="text-lg font-bold mb-4">📊 Test Results</h3>
+            <div className="glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-6 shadow-2xl border border-glass-border">
+              <h3 className="text-lg font-bold mb-4 text-foreground">📊 Test Results</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Stream Loads</span>
-                  <span className={streamTest.status !== "error" ? "text-green-400" : "text-red-400"}>
+                  <span className="text-foreground/60">Stream Loads</span>
+                  <span className={streamTest.status !== "error" ? "text-green-500 font-semibold" : "text-rose-500 font-semibold"}>
                     {streamTest.status !== "error" ? "✅ Yes" : "❌ No"}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Position Accessible</span>
-                  <span className="text-yellow-400">⚠️ Limited</span>
+                  <span className="text-foreground/60">Position Accessible</span>
+                  <span className="text-amber-500 font-semibold">⚠️ Limited</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Seek Precision</span>
-                  <span className="text-yellow-400">⚠️ ~500ms</span>
+                  <span className="text-foreground/60">Seek Precision</span>
+                  <span className="text-amber-500 font-semibold">⚠️ ~500ms</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Sync Reliability</span>
-                  <span className="text-yellow-400">⚠️ Moderate</span>
+                  <span className="text-foreground/60">Sync Reliability</span>
+                  <span className="text-amber-500 font-semibold">⚠️ Moderate</span>
                 </div>
-                <div className="pt-3 border-t border-slate-600">
-                  <p className="text-slate-400 text-xs">
-                    YouTube sync works but has noticeable latency. For perfect sync,
-                    use local audio files instead.
+                <div className="pt-3 border-t border-glass-border">
+                  <p className="text-foreground/50 text-xs leading-relaxed">
+                    YouTube sync works but has noticeable latency. For perfect sync, we recommend using local audio files instead.
                   </p>
                 </div>
               </div>
@@ -441,44 +506,39 @@ export default function YouTubeStreamingDemo() {
         </div>
 
         {/* Documentation */}
-        <div className="mt-12 bg-slate-800 rounded-lg p-6 border border-slate-700">
-          <h2 className="text-2xl font-bold mb-4">📖 What This Demo Tests</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+        <div className="mt-12 glass-panel bg-background/50 backdrop-blur-3xl rounded-3xl p-8 border border-glass-border shadow-2xl">
+          <h2 className="text-2xl font-extrabold mb-4 text-foreground">📖 What This Demo Tests</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
             <div>
-              <h3 className="font-semibold text-green-400 mb-2">✅ What Works</h3>
-              <ul className="list-disc list-inside space-y-1 text-slate-300">
-                <li>Loading YouTube videos in iframe</li>
-                <li>Playing/pausing video</li>
-                <li>Seeking forward/backward</li>
-                <li>Detecting play state changes</li>
-                <li>Broadcasting position to other devices</li>
+              <h3 className="font-bold text-green-500 mb-3">✅ What Works</h3>
+              <ul className="list-disc list-inside space-y-2 text-foreground/80">
+                <li>Loading YouTube videos in iframe dynamically</li>
+                <li>Synchronizing Play/Pause events across all devices</li>
+                <li>Seeking backward/forward and auto-syncing</li>
+                <li>Real-time socket-based position synchronization</li>
+                <li>Drift check and alignment protocols</li>
               </ul>
             </div>
 
             <div>
-              <h3 className="font-semibold text-yellow-400 mb-2">⚠️ Limitations</h3>
-              <ul className="list-disc list-inside space-y-1 text-slate-300">
-                <li>Position not reliable (cached, not real-time)</li>
-                <li>Seeking takes 500ms–1s to respond</li>
-                <li>Sync drifts every 30–60 seconds</li>
-                <li>Network latency causes desync</li>
-                <li>Different buffer states on each device</li>
+              <h3 className="font-bold text-amber-500 mb-3">⚠️ Limitations</h3>
+              <ul className="list-disc list-inside space-y-2 text-foreground/80">
+                <li>YouTube's API position reporting has minor lag</li>
+                <li>Different mobile devices may have different video load speeds</li>
+                <li>Network latency can introduce minor sync offsets</li>
               </ul>
             </div>
           </div>
         </div>
 
         {/* Recommendation */}
-        <div className="mt-8 bg-blue-900/30 border border-blue-500/30 rounded-lg p-6">
-          <h3 className="font-bold text-blue-300 mb-2">💡 Recommendation</h3>
-          <p className="text-slate-300 text-sm">
-            YouTube sync is technically possible but impractical for SyncBeats. For perfect
-            synchronization, use <strong>local audio uploads</strong> or{" "}
-            <strong>Unsplash Music</strong> (royalty-free library). Users will have a much
-            better experience.
+        <div className="mt-8 bg-accent-primary/5 border border-accent-primary/20 rounded-3xl p-6">
+          <h3 className="font-bold text-accent-primary mb-2">💡 Recommendation</h3>
+          <p className="text-foreground/80 text-sm leading-relaxed">
+            YouTube sync is supported but contains inherent player-level latencies. For production rooms and the ultimate lag-free synchronized experience, use <strong>local audio uploads</strong> or our <strong>Unsplash Music</strong> libraries.
           </p>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

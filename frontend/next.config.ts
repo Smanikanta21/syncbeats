@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   output: "standalone",
-  allowedDevOrigins: ['10.7.15.243','169.254.175.141'],
+  allowedDevOrigins: ['10.7.15.243', '169.254.175.141'],
   images: {
     remotePatterns: [
       {
@@ -12,6 +11,15 @@ const nextConfig: NextConfig = {
         pathname: "/v1/create-qr-code/**",
       },
     ],
+  },
+  async redirects() {
+    return [
+      {
+        source: '/register',
+        destination: '/login',
+        permanent: true,
+      },
+    ];
   },
 };
 

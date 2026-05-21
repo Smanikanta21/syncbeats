@@ -131,8 +131,10 @@ jobs:
           V_CDN_DOMAIN:            ${{ vars.CDN_DOMAIN }}
         run: |
           APP_DIR="sync-beats"
+          DB_HOST="postgres"
           if [ "${{ github.ref_name }}" != "main" ]; then
             APP_DIR="sync-beats-dev"
+            DB_HOST="10.7.15.243"
           fi
 
           {
@@ -143,7 +145,7 @@ jobs:
             echo "POSTGRES_USER=${V_POSTGRES_USER}"
             echo "POSTGRES_PASSWORD=${V_POSTGRES_PASSWORD}"
             echo "POSTGRES_DB=${V_POSTGRES_DB}"
-            echo "DATABASE_URL=postgresql://${V_POSTGRES_USER}:${V_POSTGRES_PASSWORD}@postgres:5432/${V_POSTGRES_DB}"
+            echo "DATABASE_URL=postgresql://${V_POSTGRES_USER}:${V_POSTGRES_PASSWORD}@${DB_HOST}:5432/${V_POSTGRES_DB}"
             echo "JWT_SECRET=${V_JWT_SECRET}"
             echo "GOOGLE_CLIENT_ID=${V_GOOGLE_CLIENT_ID}"
             echo "FRONTEND_URL=${V_FRONTEND_URL}"
@@ -158,6 +160,11 @@ jobs:
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env
+
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            # Strip postgres service and depends_on blocks from docker-compose for staging
+            yq -i 'del(.services.postgres) | del(.services.server.depends_on) | del(.services.studio.depends_on)' docker-compose.yml
+          fi
 
           # Ensure target dir exists and is writable
           ssh -o StrictHostKeyChecking=yes \
@@ -226,23 +233,28 @@ jobs:
           set -a; source .env; set +a
 
           docker compose --project-directory "$APP" down --remove-orphans || true
-          docker compose --project-directory "$APP" up -d postgres
 
-          echo "Waiting for Postgres..."
-          for i in $(seq 1 60); do
-            if docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
-              echo "Postgres ready"
-              break
-            fi
-            sleep 2
-          done
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            docker compose --project-directory "$APP" up -d postgres
 
-          # Final check — fail hard if still not ready
-          docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" || {
-            echo "Postgres failed to start"
-            docker compose --project-directory "$APP" logs postgres
-            exit 1
-          }
+            echo "Waiting for Postgres..."
+            for i in $(seq 1 60); do
+              if docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
+                echo "Postgres ready"
+                break
+              fi
+              sleep 2
+            done
+
+            # Final check — fail hard if still not ready
+            docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" || {
+              echo "Postgres failed to start"
+              docker compose --project-directory "$APP" logs postgres
+              exit 1
+            }
+          else
+            echo "Staging deployment: skipping local postgres container startup and health checks."
+          fi
           ENDSSH
 
       - name: Run database migrations
@@ -412,7 +424,9 @@ jobs:
           if [ "$PREV" != "none" ]; then
             docker compose --project-directory "$APP" down --remove-orphans || true
             docker tag "$PREV" ghcr.io/smanikanta21/syncbeats-server:${{ github.ref_name }}
-            docker compose --project-directory "$APP" up -d postgres
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              docker compose --project-directory "$APP" up -d postgres
+            fi
             docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy
             docker compose --project-directory "$APP" up -d server studio
           fi
