@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { io } from "socket.io-client";
 import { getServerUrl } from "@/lib/api";
 import { Navbar } from "./Navbar";
@@ -31,6 +31,14 @@ export default function YouTubeStreamingDemo() {
   const socketRef = useRef<any>(null);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initialPositionRef = useRef<number>(0);
+  const initialIsPlayingRef = useRef<boolean>(false);
+  // Refs to avoid stale closures inside socket handlers and player callbacks
+  const roomIdRef = useRef<string>("");
+  const videoIdRef = useRef<string>("");
+
+  // Keep refs in sync with state
+  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
+  useEffect(() => { videoIdRef.current = streamTest.videoId; }, [streamTest.videoId]);
 
   // Initialize room ID on mount to prevent SSR hydration mismatches
   useEffect(() => {
@@ -48,7 +56,148 @@ export default function YouTubeStreamingDemo() {
     }
   }, []);
 
-  // Initialize Socket.IO connection
+  // Create the YouTube player for a given videoId
+  const createPlayer = useCallback((videoId: string) => {
+    // Destroy existing player first to avoid duplicate iframes
+    if (playerRef.current && typeof playerRef.current.destroy === "function") {
+      playerRef.current.destroy();
+      playerRef.current = null;
+    }
+
+    playerRef.current = new (window as any).YT.Player("youtube-player", {
+      height: "390",
+      width: "640",
+      videoId: videoId,
+      playerVars: {
+        autoplay: initialIsPlayingRef.current ? 1 : 0,
+        controls: 1,
+        modestbranding: 1,
+      },
+      events: {
+        onReady: (event: any) => {
+          setStreamTest((prev) => ({
+            ...prev,
+            status: "ready",
+            duration: event.target.getDuration(),
+          }));
+
+          if (initialPositionRef.current > 0) {
+            console.log(`⏱️ Seeking to initial position: ${initialPositionRef.current}s`);
+            event.target.seekTo(initialPositionRef.current);
+            initialPositionRef.current = 0;
+          }
+
+          if (initialIsPlayingRef.current) {
+            event.target.playVideo();
+            initialIsPlayingRef.current = false;
+          }
+
+          // Clear any previous sync interval
+          if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+
+          // Start sync every 3 seconds — uses refs for latest values
+          syncIntervalRef.current = setInterval(() => {
+            if (playerRef.current && socketRef.current?.connected) {
+              const position = playerRef.current.getCurrentTime();
+              const isPlaying = playerRef.current.getPlayerState() === 1;
+
+              setStreamTest((prev) => ({
+                ...prev,
+                position,
+                isPlaying,
+              }));
+
+              socketRef.current.emit("youtube:position", {
+                position,
+                timestamp: Date.now(),
+                videoId: videoIdRef.current,
+                roomId: roomIdRef.current,
+                isPlaying,
+              });
+            }
+          }, 3000);
+        },
+        onStateChange: (event: any) => {
+          const state = event.data;
+          const isPlaying = state === 1;
+          setStreamTest((prev) => ({
+            ...prev,
+            isPlaying,
+            status: isPlaying ? "playing" : "paused",
+          }));
+
+          if (socketRef.current?.connected) {
+            if (isPlaying) {
+              socketRef.current.emit("youtube:play", {
+                videoId: videoIdRef.current,
+                roomId: roomIdRef.current,
+              });
+            } else if (state === 2) {
+              socketRef.current.emit("youtube:pause", {
+                roomId: roomIdRef.current,
+              });
+            }
+          }
+        },
+        onError: (event: any) => {
+          const errors: { [key: number]: string } = {
+            2: "Invalid parameter",
+            5: "HTML5 player error",
+            100: "Video not found (removed or private)",
+            101: "Owner does not allow embedding",
+            150: "Same as 101 (blocked)",
+          };
+
+          setStreamTest((prev) => ({
+            ...prev,
+            status: "error",
+            error: errors[event.data] || `YouTube error: ${event.data}`,
+          }));
+        },
+      },
+    });
+  }, []);
+
+  // Load YouTube IFrame API and create player
+  const loadYouTubeAPI = useCallback((videoId: string) => {
+    // If player already exists, just load the new video ID dynamically
+    if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
+      setStreamTest((prev) => ({ ...prev, status: "loading" }));
+      if (initialIsPlayingRef.current) {
+        playerRef.current.loadVideoById(videoId);
+      } else {
+        playerRef.current.cueVideoById(videoId);
+      }
+      return;
+    }
+
+    // Check if YouTube API is already loaded
+    if ((window as any).YT && (window as any).YT.Player) {
+      createPlayer(videoId);
+      return;
+    }
+
+    // Set the callback BEFORE loading the script to avoid the race condition
+    // where the API calls onYouTubeIframeAPIReady during script execution,
+    // before tag.onload fires.
+    (window as any).onYouTubeIframeAPIReady = () => {
+      createPlayer(videoId);
+    };
+
+    // Load YouTube API script
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    tag.onerror = () => {
+      setStreamTest((prev) => ({
+        ...prev,
+        status: "error",
+        error: "Failed to load YouTube API. Check your internet connection.",
+      }));
+    };
+    document.body.appendChild(tag);
+  }, [createPlayer]);
+
+  // Initialize Socket.IO connection — depends ONLY on roomId (stable connection)
   useEffect(() => {
     if (!roomId) return;
 
@@ -68,10 +217,13 @@ export default function YouTubeStreamingDemo() {
       socketRef.current.emit("youtube:join-room", { roomId, videoId: "" });
     });
 
+    // When joining a room that already has state, load that video
     socketRef.current.on("youtube:sync-state", (state: any) => {
-      if (state && state.videoId && state.videoId !== streamTest.videoId) {
+      if (state && state.videoId && state.videoId !== videoIdRef.current) {
         console.log(`📥 Received sync-state: ${state.videoId} at ${state.position}s`);
         initialPositionRef.current = state.position;
+        initialIsPlayingRef.current = state.isPlaying;
+        videoIdRef.current = state.videoId;
         setYoutubeUrl(`https://www.youtube.com/watch?v=${state.videoId}`);
         setStreamTest((prev) => ({
           ...prev,
@@ -83,8 +235,26 @@ export default function YouTubeStreamingDemo() {
       }
     });
 
+    // When another device loads a new video into the room
+    socketRef.current.on("youtube:load-video", (data: any) => {
+      if (data && data.videoId && data.videoId !== videoIdRef.current) {
+        console.log(`📥 Remote device loaded video: ${data.videoId}`);
+        initialPositionRef.current = 0;
+        initialIsPlayingRef.current = false;
+        videoIdRef.current = data.videoId;
+        setYoutubeUrl(`https://www.youtube.com/watch?v=${data.videoId}`);
+        setStreamTest((prev) => ({
+          ...prev,
+          videoId: data.videoId,
+          status: "loading",
+          isPlaying: false,
+        }));
+        loadYouTubeAPI(data.videoId);
+      }
+    });
+
     socketRef.current.on("youtube:play", (data: any) => {
-      if (playerRef.current && data.videoId === streamTest.videoId) {
+      if (playerRef.current && data.videoId === videoIdRef.current) {
         playerRef.current.playVideo();
       }
     });
@@ -115,7 +285,7 @@ export default function YouTubeStreamingDemo() {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
       socketRef.current?.disconnect();
     };
-  }, [roomId, streamTest.videoId]); // Add streamTest.videoId dependency so the play/pause callbacks always have the correct videoId in scope or we can keep it as is. Actually the original had [] but let's keep it robust.
+  }, [roomId, loadYouTubeAPI]);
 
   // Extract video ID from YouTube URL
   const extractVideoId = (url: string): string | null => {
@@ -144,6 +314,9 @@ export default function YouTubeStreamingDemo() {
       return;
     }
 
+    videoIdRef.current = videoId;
+    initialIsPlayingRef.current = false;
+
     setStreamTest((prev) => ({
       ...prev,
       videoId,
@@ -152,126 +325,13 @@ export default function YouTubeStreamingDemo() {
       error: null,
     }));
 
+    // Broadcast to room so other devices load the video too
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("youtube:load-video", { videoId, roomId });
+    }
+
     // Load YouTube API
     loadYouTubeAPI(videoId);
-  };
-
-  const loadYouTubeAPI = (videoId: string) => {
-    // If player already exists, just load the new video ID dynamically
-    if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
-      setStreamTest((prev) => ({
-        ...prev,
-        status: "loading",
-      }));
-      playerRef.current.loadVideoById(videoId);
-      return;
-    }
-
-    // Check if YouTube API is already loaded
-    if ((window as any).YT && (window as any).YT.Player) {
-      createPlayer(videoId);
-      return;
-    }
-
-    // Load YouTube API script
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    tag.onload = () => {
-      (window as any).onYouTubeIframeAPIReady = () => {
-        createPlayer(videoId);
-      };
-    };
-    tag.onerror = () => {
-      setStreamTest((prev) => ({
-        ...prev,
-        status: "error",
-        error: "Failed to load YouTube API. Check your internet connection.",
-      }));
-    };
-    document.body.appendChild(tag);
-  };
-
-  const createPlayer = (videoId: string) => {
-    playerRef.current = new (window as any).YT.Player("youtube-player", {
-      height: "390",
-      width: "640",
-      videoId: videoId,
-      playerVars: {
-        autoplay: 0,
-        controls: 1,
-        modestbranding: 1,
-      },
-      events: {
-        onReady: (event: any) => {
-          setStreamTest((prev) => ({
-            ...prev,
-            status: "ready",
-            duration: event.target.getDuration(),
-          }));
-
-          if (initialPositionRef.current > 0) {
-            console.log(`⏱️ Seeking to initial position: ${initialPositionRef.current}s`);
-            event.target.seekTo(initialPositionRef.current);
-            initialPositionRef.current = 0;
-          }
-
-          if (streamTest.isPlaying) {
-            event.target.playVideo();
-          }
-
-          // Start sync every 3 seconds
-          syncIntervalRef.current = setInterval(() => {
-            if (playerRef.current) {
-              const position = playerRef.current.getCurrentTime();
-              const isPlaying = playerRef.current.getPlayerState() === 1;
-
-              setStreamTest((prev) => ({
-                ...prev,
-                position,
-                isPlaying,
-              }));
-
-              socketRef.current.emit("youtube:position", {
-                position,
-                timestamp: Date.now(),
-                videoId,
-                roomId,
-              });
-            }
-          }, 3000);
-        },
-        onStateChange: (event: any) => {
-          const state = event.data;
-          const isPlaying = state === 1;
-          setStreamTest((prev) => ({
-            ...prev,
-            isPlaying,
-            status: isPlaying ? "playing" : "paused",
-          }));
-
-          if (isPlaying) {
-            socketRef.current.emit("youtube:play", { videoId, roomId });
-          } else if (state === 2) {
-            socketRef.current.emit("youtube:pause", { roomId });
-          }
-        },
-        onError: (event: any) => {
-          const errors: { [key: number]: string } = {
-            2: "Invalid parameter",
-            5: "HTML5 player error",
-            100: "Video not found (removed or private)",
-            101: "Owner does not allow embedding",
-            150: "Same as 101 (blocked)",
-          };
-
-          setStreamTest((prev) => ({
-            ...prev,
-            status: "error",
-            error: errors[event.data] || `YouTube error: ${event.data}`,
-          }));
-        },
-      },
-    });
   };
 
   const handlePlay = () => {
@@ -523,7 +583,7 @@ export default function YouTubeStreamingDemo() {
             <div>
               <h3 className="font-bold text-amber-500 mb-3">⚠️ Limitations</h3>
               <ul className="list-disc list-inside space-y-2 text-foreground/80">
-                <li>YouTube's API position reporting has minor lag</li>
+                <li>YouTube&apos;s API position reporting has minor lag</li>
                 <li>Different mobile devices may have different video load speeds</li>
                 <li>Network latency can introduce minor sync offsets</li>
               </ul>

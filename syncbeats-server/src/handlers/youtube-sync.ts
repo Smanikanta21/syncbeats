@@ -26,11 +26,31 @@ export function setupYouTubeSyncHandlers(io: Server) {
       }
     });
 
-    // Broadcast play event
-    socket.on("youtube:play", (data: { roomId: string; videoId: string }) => {
+    // Load a new video into the room — sets state immediately
+    socket.on("youtube:load-video", (data: { roomId: string; videoId: string }) => {
       const state: YouTubeSyncState = {
         videoId: data.videoId,
         position: 0,
+        isPlaying: false,
+        timestamp: Date.now(),
+      };
+      roomStates.set(data.roomId, state);
+
+      // Broadcast to everyone else in the room
+      socket.to(data.roomId).emit("youtube:load-video", {
+        videoId: data.videoId,
+        timestamp: Date.now(),
+      });
+
+      console.log(`📺 Video loaded in room ${data.roomId}: ${data.videoId}`);
+    });
+
+    // Broadcast play event — preserve existing position
+    socket.on("youtube:play", (data: { roomId: string; videoId: string }) => {
+      const existing = roomStates.get(data.roomId);
+      const state: YouTubeSyncState = {
+        videoId: data.videoId,
+        position: existing?.position ?? 0,
         isPlaying: true,
         timestamp: Date.now(),
       };
@@ -63,11 +83,11 @@ export function setupYouTubeSyncHandlers(io: Server) {
     // Broadcast position for sync
     socket.on(
       "youtube:position",
-      (data: { roomId: string; position: number; videoId: string; timestamp: number }) => {
+      (data: { roomId: string; position: number; videoId: string; timestamp: number; isPlaying?: boolean }) => {
         const state: YouTubeSyncState = {
           videoId: data.videoId,
           position: data.position,
-          isPlaying: true,
+          isPlaying: data.isPlaying ?? true,
           timestamp: data.timestamp,
         };
         roomStates.set(data.roomId, state);
