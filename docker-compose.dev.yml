@@ -20,6 +20,7 @@ services:
     build: 
       context: ./syncbeats-server
       dockerfile: Dockerfile
+      target: builder
     restart: unless-stopped
     depends_on:
       postgres:
@@ -41,11 +42,13 @@ services:
       - ./syncbeats-server:/app
       - uploads:/app/uploads
       - /app/node_modules
+    command: npm run dev
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: deps
     platform: linux/amd64
     restart: unless-stopped
     depends_on:
@@ -59,6 +62,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    command: npm run dev
 
   studio:
     container_name: studio-1
