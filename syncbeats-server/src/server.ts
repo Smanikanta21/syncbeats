@@ -11,6 +11,7 @@ import { Server } from 'socket.io';
 import { RoomManager }         from './core/RoomManager';
 import { SyncEngine }          from './sync/SyncEngine';
 import { SocketHandler }       from './handlers/SocketHandler';
+import { setupYouTubeSyncHandlers } from './handlers/youtube-sync';
 import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes }  from './handlers/DeviceRoutes';
@@ -112,6 +113,7 @@ export class SyncBeatsServer {
     this.io.on('connection', (socket) => {
       this.socketHandler.register(socket);
     });
+    setupYouTubeSyncHandlers(this.io);
   }
 
   private setupRoomCleanup(): void {

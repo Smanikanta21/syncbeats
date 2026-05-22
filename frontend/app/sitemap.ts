@@ -8,13 +8,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: BASE_URL,
       lastModified: new Date(),
       changeFrequency: "weekly",
-      priority: 1,
+      priority: 1.0,
     },
     {
-      url: `${BASE_URL}/login`,
+      url: `${BASE_URL}/listen-together`,
       lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
+      changeFrequency: "weekly",
+      priority: 0.9,
     },
     {
       url: `${BASE_URL}/privacy-policy`,
@@ -27,12 +27,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(),
       changeFrequency: "yearly",
       priority: 0.3,
-    },
-    {
-      url: `${BASE_URL}/cookie-settings`,
-      lastModified: new Date(),
-      changeFrequency: "yearly",
-      priority: 0.3,
-    },
+    }
   ];
 }

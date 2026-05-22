@@ -1,6 +1,4 @@
 // app/robots.ts
-// Next.js generates /robots.txt automatically from this file.
-
 import { MetadataRoute } from "next";
 
 const BASE_URL = "https://syncbeats.app";
@@ -10,11 +8,19 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-
-        allow: ["/","/login","/privacy-policy","/terms-of-service","/cookie-settings","/_next/static/","/_next/image/",],
+        allow: [
+          "/",
+          "/_next/static/",
+          "/_next/image/"
+        ],
         disallow: [
           "/room/",
           "/api/",
+          "/login",
+          "/cookie-settings",
+          "/forgot-password",
+          "/verify-email",
+          "/verify-email-sent"
         ],
       },
     ],
