@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, LogOut, Edit3, Shield, Activity, Music, Laptop, Smartphone, X, KeyRound } from "lucide-react";
+import { CheckCircle2, LogOut, Edit3, Shield, Activity, Heart, Laptop, Smartphone, X, KeyRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
@@ -230,13 +230,19 @@ export default function ProfilePage() {
               </div>
             </motion.div>
 
-          {/* 4. Integrations */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-foreground/10 transition-colors cursor-pointer">
-            <div className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center mb-4"><Music className="w-5 h-5 text-foreground/70" /></div>
+          {/* 4. GitHub Sponsors */}
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            transition={{ delay: 0.3 }}
+            onClick={() => window.open("https://github.com/sponsors/Smanikanta21", "_blank")}
+            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-pink-500/30 hover:bg-pink-500/5 transition-all cursor-pointer">
+            <div className="w-10 h-10 rounded-full bg-pink-500/10 flex items-center justify-center mb-4 group-hover:bg-pink-500/20 transition-colors">
+              <Heart className="w-5 h-5 text-pink-500" />
+            </div>
             <div className="mt-auto">
-              <h3 className="text-xl font-bold text-foreground mb-1">Link Spotify</h3>
-              <p className="text-foreground/50 text-sm font-medium">Sync your library</p>
+              <h3 className="text-xl font-bold text-pink-500 mb-1">GitHub Sponsors</h3>
+              <p className="text-foreground/50 text-sm font-medium">Support us on GitHub</p>
             </div>
           </motion.div>
 

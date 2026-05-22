@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+// app/layout.tsx
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -10,30 +11,38 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
   preload: true,
+  display: "swap",  
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   preload: true,
+  display: "swap",  
 });
-
-
 
 const BASE_URL = "https://syncbeats.app";
 
-export const metadata: Metadata = {
-    metadataBase: new URL(BASE_URL),
 
-  // ── Primary ──────────────────────────────────────────────────────────────
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
+};
+
+export const metadata: Metadata = {
+  metadataBase: new URL(BASE_URL),
   title: {
     default: "SyncBeats — Listen to music in sync with friends",
-    template: "%s | SyncBeats",          // page-level titles use this
+    template: "%s | SyncBeats",
   },
   description:
     "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together — no lag, no drift.",
-
-  // ── Keywords (long-tail phrases people actually search) ──────────────────
   keywords: [
     "sync music with friends",
     "listen to music together online",
@@ -50,13 +59,9 @@ export const metadata: Metadata = {
     "watch party music",
     "music listening party",
   ],
-
-  // ── Canonical + alternates ────────────────────────────────────────────────
   alternates: {
     canonical: BASE_URL,
   },
-
-  // ── Robots ───────────────────────────────────────────────────────────────
   robots: {
     index: true,
     follow: true,
@@ -68,8 +73,6 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-
-  // ── Open Graph ────────────────────────────────────────────────────────────
   openGraph: {
     title: "SyncBeats — Listen to music in sync with friends",
     description:
@@ -87,8 +90,6 @@ export const metadata: Metadata = {
     locale: "en_US",
     type: "website",
   },
-
-  // ── Twitter / X ───────────────────────────────────────────────────────────
   twitter: {
     card: "summary_large_image",
     title: "SyncBeats — Listen to music in sync with friends",
@@ -98,22 +99,16 @@ export const metadata: Metadata = {
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
   },
-
-  // ── Icons ─────────────────────────────────────────────────────────────────
   icons: {
     icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
     shortcut: "/syncbeats-icon.svg",
     apple: "/syncbeats-icon.svg",
   },
-
-  // ── App metadata ──────────────────────────────────────────────────────────
   applicationName: "SyncBeats",
   authors: [{ name: "SyncBeats", url: BASE_URL }],
   category: "music",
 };
 
-// ── JSON-LD structured data ───────────────────────────────────────────────────
-// Tells Google this is a WebApplication — shows up in rich results
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
@@ -122,7 +117,7 @@ const jsonLd = {
   description:
     "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together in real time.",
   applicationCategory: "MusicApplication",
-  operatingSystem: "All",                // browser-based, works everywhere
+  operatingSystem: "All",
   offers: {
     "@type": "Offer",
     price: "0",
@@ -136,9 +131,6 @@ const jsonLd = {
   ],
 };
 
-
-
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -151,12 +143,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* JSON-LD — injected once in the root layout */}
+        {/* JSON-LD structured data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
+
+      {/* Google Analytics */}
       <Script
         async
         src="https://www.googletagmanager.com/gtag/js?id=G-9D67M1G5XC"
@@ -171,7 +165,13 @@ export default function RootLayout({
         `}
       </Script>
 
-      <Script src="https://analytics.ahrefs.com/analytics.js" data-key="+9fzuLLzZbLhEJcB+CsBWA" strategy="lazyOnload" />
+      {/* Ahrefs Analytics */}
+      <Script 
+        src="https://analytics.ahrefs.com/analytics.js" 
+        data-key="+9fzuLLzZbLhEJcB+CsBWA" 
+        strategy="lazyOnload" 
+      />
+
       <body className="min-h-full flex flex-col transition-colors duration-300">
         <ThemeProvider>
           <AuthProvider>
@@ -181,9 +181,6 @@ export default function RootLayout({
           </AuthProvider>
         </ThemeProvider>
       </body>
-
     </html>
-
-
   );
 }
