@@ -328,8 +328,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const msUntilStart = localAtEpoch - Date.now();
 
       if (msUntilStart > 50) {
-        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: payload.fromPosition });
-        ytPlayerRef.current.pauseVideo();
+        ytPlayerRef.current.cueVideoById({ videoId, startSeconds: payload.fromPosition });
         
         setTimeout(() => {
           ytPlayerRef.current.playVideo();
