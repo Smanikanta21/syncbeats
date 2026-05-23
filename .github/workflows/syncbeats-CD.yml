@@ -406,7 +406,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [deploy-backend, deploy-frontend]
-    if: failure()
+    if: failure() && github.ref_name == 'main'
     environment: ${{ github.ref_name }}
 
     steps:
