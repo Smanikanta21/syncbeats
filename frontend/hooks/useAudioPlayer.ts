@@ -180,10 +180,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         if (typeof ytPlayerRef.current.unMute === "function") ytPlayerRef.current.unMute();
         if (typeof ytPlayerRef.current.setVolume === "function") ytPlayerRef.current.setVolume(100);
         
-        // If not playing, explicitly play and pause to register the user gesture with iOS Safari
-        if (typeof ytPlayerRef.current.playVideo === "function" && !isPlaying) {
-          if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
+        // ALWAYS call playVideo inside the user gesture to satisfy iOS
+        if (typeof ytPlayerRef.current.playVideo === "function") {
           ytPlayerRef.current.playVideo();
+        }
+        
+        // If the room state is actually paused, we immediately pause it after unlocking
+        if (!isPlaying) {
+          if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
           unlockTimeoutRef.current = window.setTimeout(() => {
             if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
               ytPlayerRef.current.pauseVideo();
