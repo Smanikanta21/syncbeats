@@ -88,7 +88,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (!document.getElementById("global-youtube-player")) {
       const div = document.createElement("div");
       div.id = "global-youtube-player";
-      div.style.display = "none";
+      div.style.position = "fixed";
+      div.style.bottom = "20px";
+      div.style.right = "20px";
+      div.style.zIndex = "9999";
+      div.style.width = "200px";
+      div.style.height = "150px";
+      div.style.pointerEvents = "none"; // so it doesn't block clicks
       document.body.appendChild(div);
     }
 
@@ -102,8 +108,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const initYT = () => {
       if (ytPlayerRef.current) return;
       ytPlayerRef.current = new (window as any).YT.Player("global-youtube-player", {
-        height: "0",
-        width: "0",
+        height: "150",
+        width: "200",
         playerVars: {
           controls: 0,
           disablekb: 1,
