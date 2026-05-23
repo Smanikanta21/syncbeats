@@ -8,6 +8,7 @@ export interface Participant {
   joinedAt:    number; // epoch ms
   isReady:     boolean;
   volume:      number; // 0-100
+  isBlocked?:  boolean;
 }
 
 export interface TrackQueueItem {

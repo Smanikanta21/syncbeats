@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
@@ -56,6 +56,7 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
+  const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
@@ -430,7 +431,9 @@ export default function RoomPage() {
                             )}
                           </div>
                           <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5 mt-0.5">
-                            {p.isReady
+                            {p.isBlocked
+                              ? <><VolumeX className="w-3 h-3 text-rose-500 animate-pulse" /><span className="text-rose-500 font-bold">Autoplay Blocked</span></>
+                              : p.isReady
                               ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
                               : audio.hasTrack
                               ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
@@ -804,6 +807,26 @@ export default function RoomPage() {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isLocalPlayBlocked && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            onClick={() => audio.unlockAudio()}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md p-4 rounded-3xl bg-[#FF0000]/10 hover:bg-[#FF0000]/15 dark:bg-[#FF0000]/20 dark:hover:bg-[#FF0000]/25 backdrop-blur-xl border border-[#FF0000]/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-[0_10px_40px_rgba(239,68,68,0.2)] flex items-center gap-3"
+          >
+            <div className="w-10 h-10 rounded-full bg-[#FF0000]/20 flex items-center justify-center shrink-0">
+              <Speaker className="w-5 h-5 text-[#FF0000] animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-bold text-foreground">Autoplay Blocked!</p>
+              <p className="text-xs text-foreground/60 mt-0.5">Tap anywhere here to unlock sound and join sync.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
