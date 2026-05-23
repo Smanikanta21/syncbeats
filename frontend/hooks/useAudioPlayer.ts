@@ -98,7 +98,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       div.style.zIndex = "9999";
       div.style.width = "200px";
       div.style.height = "150px";
-      div.style.pointerEvents = "none"; // so it doesn't block clicks
+      div.style.pointerEvents = "auto";
       document.body.appendChild(div);
     }
 
@@ -115,14 +115,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         height: "150",
         width: "200",
         playerVars: {
-          controls: 0,
+          controls: 1,
           disablekb: 1,
           fs: 0,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
           autoplay: 1,
-          mute: 1,
           origin: window.location.origin,
         },
         events: {
@@ -382,18 +381,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const msUntilStart = localAtEpoch - Date.now();
       const correctPosition = Math.max(0, payload.fromPosition - msUntilStart / 1000);
 
-      // If this video was already loaded during the user gesture (iOS unlock),
-      // just seekTo — iOS allows this without a new gesture.
-      // Otherwise fall back to loadVideoById (works on desktop).
-      if (ytGestureVideoIdRef.current === videoId) {
-        ytPlayerRef.current.seekTo(correctPosition, true);
-        ytPlayerRef.current.playVideo();
-        ytGestureVideoIdRef.current = null; // consumed
-      } else {
-        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: correctPosition });
-      }
-      setIsPlaying(true);
+      // Seek to correct synchronized position and play!
+      ytPlayerRef.current.seekTo(correctPosition, true);
+      ytPlayerRef.current.playVideo();
       
+      setIsPlaying(true);
       startTimeRef.current = Date.now();
       pauseOffsetRef.current = correctPosition;
       return;
