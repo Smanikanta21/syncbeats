@@ -241,6 +241,12 @@ export const roomsApi = {
       method: 'PATCH',
       body: JSON.stringify({ newHostEmail }),
     }, true),
+
+  enqueueYoutube: (roomId: string, youtubeUrl: string) =>
+    request<any>(`/rooms/${roomId}/enqueue-youtube`, {
+      method: 'POST',
+      body: JSON.stringify({ youtubeUrl }),
+    }, true),
 };
 
 export const devicesApi = {

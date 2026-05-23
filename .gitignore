@@ -18,3 +18,4 @@ syncbeats-server/src/scripts/sendUiUpdateEmail.ts
 SYSTEM_DESIGN.md
 v2_design.md
 syncbeats_hld_architecture.svg
+context.md

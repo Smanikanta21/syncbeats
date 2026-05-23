@@ -13,6 +13,7 @@ export interface Participant {
   joinedAt:    number;
   isReady:     boolean;
   volume:      number;
+  isBlocked?:  boolean;
 }
 
 export interface TrackQueueItem {

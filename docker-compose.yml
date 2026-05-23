@@ -17,8 +17,6 @@ services:
       start_period: 15s
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
 
   server:
     image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}

@@ -166,7 +166,10 @@ export class Room extends EventEmitter {
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
     this.timeline.pauseOffset = 0;
-    for (const p of this.participants.values()) p.isReady = false;
+    for (const p of this.participants.values()) {
+      p.isReady = false;
+      p.isBlocked = false;
+    }
     this.snapshotTime = Date.now();
     if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
     this.emit('trackSet', { trackUrl: next.trackUrl, title: next.title });
@@ -186,6 +189,13 @@ export class Room extends EventEmitter {
     }
   }
 
+  setParticipantBlocked(socketId: string, blocked: boolean): void {
+    const p = this.participants.get(socketId);
+    if (!p) return;
+    p.isBlocked = blocked;
+    this.emit('stateChanged', this.snapshot());
+  }
+
   allReady(): boolean {
     if (this.participants.size === 0) return false;
     return Array.from(this.participants.values()).every(p => p.isReady);
@@ -196,6 +206,7 @@ export class Room extends EventEmitter {
   addParticipant(p: Participant): void {
     if (!this.hostId) this.hostId = p.socketId;
     p.isReady = false;
+    p.isBlocked = false;
     p.volume = this.clampVolume(p.volume ?? 100);
     this.participants.set(p.socketId, p);
     this.emit('participantJoined', p);

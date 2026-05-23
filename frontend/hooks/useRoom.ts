@@ -58,6 +58,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seqRef = useRef(0);
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
+  const reportedBlockedRef = useRef<boolean | null>(null);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     const currentQueueItem = queue.find((item) => item.isCurrent);
@@ -183,7 +184,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const actual = audioRef.current.getTruePosition();
       const driftMs = Math.abs(actual - expected) * 1000;
 
-      if (driftMs > DRIFT_HARD_SEEK_MS) {
+      const isYoutube = snap.trackUrl?.startsWith("youtube:");
+      const tolerance = isYoutube ? 2000 : DRIFT_HARD_SEEK_MS;
+
+      if (driftMs > tolerance) {
         audioRef.current.playNow(expected);
       }
     }, DRIFT_CHECK_INTERVAL_MS);
@@ -300,6 +304,33 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     document.addEventListener('audioEnded', handleAudioEnded);
     return () => document.removeEventListener('audioEnded', handleAudioEnded);
+  }, [roomId, socket]);
+
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      const snap = snapshotRef.current;
+      if (!snap || !snap.trackUrl) {
+        if (reportedBlockedRef.current !== false) {
+          reportedBlockedRef.current = false;
+          socket.emit('playback:blocked', { roomId, blocked: false });
+        }
+        return;
+      }
+
+      const nowServer = Date.now() + clockOffsetRef.current;
+      const isPastStart = snap.startEpoch == null || nowServer >= snap.startEpoch;
+      const shouldBePlaying = snap.isPlaying && isPastStart;
+
+      // Local state is blocked if we should be playing, but local audio is not playing
+      const isBlocked = !!(shouldBePlaying && audioRef.current.isReady && !audioRef.current.isPlaying);
+
+      if (reportedBlockedRef.current !== isBlocked) {
+        reportedBlockedRef.current = isBlocked;
+        socket.emit('playback:blocked', { roomId, blocked: isBlocked });
+      }
+    }, 2000);
+
+    return () => clearInterval(checkInterval);
   }, [roomId, socket]);
 
   useEffect(() => {

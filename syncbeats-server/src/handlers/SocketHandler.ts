@@ -208,6 +208,14 @@ export class SocketHandler {
       console.log(`[Room ${roomId}] ${socket.id} is ready`);
     });
 
+    socket.on('playback:blocked', ({ roomId, blocked }: { roomId: string; blocked: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+
+      room.setParticipantBlocked(socket.id, blocked);
+      console.log(`[Room ${roomId}] ${socket.id} is blocked: ${blocked}`);
+    });
+
     // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {

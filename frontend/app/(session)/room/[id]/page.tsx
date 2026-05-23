@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
@@ -56,6 +56,7 @@ export default function RoomPage() {
     roomId,
     displayName,
   });
+  const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
@@ -430,7 +431,9 @@ export default function RoomPage() {
                             )}
                           </div>
                           <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5 mt-0.5">
-                            {p.isReady
+                            {p.isBlocked
+                              ? <><VolumeX className="w-3 h-3 text-rose-500 animate-pulse" /><span className="text-rose-500 font-bold">Autoplay Blocked</span></>
+                              : p.isReady
                               ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
                               : audio.hasTrack
                               ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
