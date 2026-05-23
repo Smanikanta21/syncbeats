@@ -88,6 +88,7 @@ export function DynamicIsland() {
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
+    audio.unlockAudio();
     if (isRoom && roomId) {
       if (effectivePlaying) {
         const exactPos = audio.getTruePosition();
@@ -103,11 +104,13 @@ export function DynamicIsland() {
 
   const handleNext = (e: React.MouseEvent) => {
     e.stopPropagation();
+    audio.unlockAudio();
     if (isRoom && roomId) getSocket().emit('playback:next', { roomId });
   };
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
+    audio.unlockAudio();
     if (isRoom && roomId) getSocket().emit('playback:prev', { roomId });
   };
 
@@ -156,6 +159,7 @@ export function DynamicIsland() {
     setIsYoutubeLoading(true);
 
     try {
+      audio.unlockAudio();
       await roomsApi.enqueueYoutube(roomId, youtubeLink);
 
       setYoutubeLink("");
