@@ -60,10 +60,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   
+  // YouTube state
+  const isYoutubeMode = !!trackUrl?.startsWith("youtube:");
+  const ytPlayerRef = useRef<any>(null);
+  const ytReadyRef = useRef(false);
+
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
   const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
 
+  // Initialize AudioContext
   useEffect(() => {
     if (typeof window !== "undefined") {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -72,6 +78,75 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         gainNodeRef.current = audioCtxRef.current.createGain();
         gainNodeRef.current.connect(audioCtxRef.current.destination);
       }
+    }
+  }, []);
+
+  // Initialize YouTube IFrame
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!document.getElementById("global-youtube-player")) {
+      const div = document.createElement("div");
+      div.id = "global-youtube-player";
+      div.style.display = "none";
+      document.body.appendChild(div);
+    }
+
+    if (!(window as any).YT) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    const initYT = () => {
+      if (ytPlayerRef.current) return;
+      ytPlayerRef.current = new (window as any).YT.Player("global-youtube-player", {
+        height: "0",
+        width: "0",
+        playerVars: {
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          rel: 0,
+          modestbranding: 1,
+          playsinline: 1,
+        },
+        events: {
+          onReady: (event: any) => {
+            ytReadyRef.current = true;
+            event.target.setVolume(volume);
+          },
+          onStateChange: (event: any) => {
+            // 0 = ended
+            if (event.data === 0) {
+              setIsPlaying(false);
+              setCurrentTime(0);
+              document.dispatchEvent(new CustomEvent('audioEnded'));
+            }
+          }
+        }
+      });
+    };
+
+    if ((window as any).YT && (window as any).YT.Player) {
+      initYT();
+    } else {
+      (window as any).onYouTubeIframeAPIReady = initYT;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopCurrentSource = useCallback(() => {
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.onended = null;
+      try {
+        sourceNodeRef.current.stop();
+      } catch (e) {}
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
+      ytPlayerRef.current.pauseVideo();
     }
   }, []);
 
@@ -88,31 +163,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     } else {
       setAudioUnlocked(true);
     }
-    // Flush any pending schedule that arrived before user interaction
+
     setTimeout(() => {
       const pending = pendingScheduleRef.current;
       if (pending) {
         pendingScheduleRef.current = null;
-        // Recalculate: the original atEpoch is likely in the past now.
-        // Compute where the song SHOULD be right now based on startEpoch.
         const serverNow = Date.now() + pending.clockOffset;
         const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
         const adjustedPayload = {
           ...pending.payload,
-          atEpoch: Date.now() + pending.clockOffset + 100, // start in 100ms
+          atEpoch: Date.now() + pending.clockOffset + 100,
           fromPosition: elapsed,
         };
-        console.log(`[Audio] Flushing pending schedule: seeking to ${elapsed.toFixed(1)}s`);
         scheduleStartRef.current?.(adjustedPayload, pending.clockOffset);
       }
     }, 50);
   }, []);
 
   useEffect(() => {
-    const unlock = () => {
-      unlockAudio();
-    };
-    // Use multiple events to ensure iOS Safari catches the user gesture
+    const unlock = () => { unlockAudio(); };
     document.addEventListener('touchstart', unlock, { once: true, passive: true });
     document.addEventListener('click', unlock, { once: true, passive: true });
     document.addEventListener('pointerdown', unlock, { once: true, passive: true });
@@ -125,8 +194,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const fetchAndDecode = async (url: string) => {
     if (!audioCtxRef.current) return null;
-    
-    // If already fetching this url, return the existing promise
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
 
     const promise = (async () => {
@@ -152,28 +219,65 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   };
 
   useEffect(() => {
-    if (trackUrl) {
-      fetchAndDecode(trackUrl);
-    } else {
+    if (!trackUrl) {
       audioBufferRef.current = null;
       fetchPromiseRef.current = null;
       setDuration(0);
       setIsReady(false);
+      pauseAt(0);
+      return;
     }
-    pauseAt(0);
-  }, [trackUrl]);
+
+    if (trackUrl.startsWith("youtube:")) {
+      const videoId = trackUrl.split(":")[1];
+      const loadYT = () => {
+        if (ytPlayerRef.current && ytReadyRef.current) {
+          setIsReady(false);
+          ytPlayerRef.current.cueVideoById(videoId);
+          
+          const checkReady = setInterval(() => {
+            const dur = ytPlayerRef.current.getDuration();
+            if (dur > 0) {
+              clearInterval(checkReady);
+              setDuration(dur);
+              setIsReady(true);
+            }
+          }, 100);
+          setTimeout(() => clearInterval(checkReady), 5000);
+        } else {
+          setTimeout(loadYT, 100);
+        }
+      };
+      loadYT();
+      pauseAt(0);
+    } else {
+      fetchAndDecode(trackUrl);
+      pauseAt(0);
+    }
+  }, [trackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
     }
+    if (ytPlayerRef.current && ytReadyRef.current && typeof ytPlayerRef.current.setVolume === "function") {
+      ytPlayerRef.current.setVolume(Math.max(0, Math.min(100, Math.round(volume))));
+    }
   }, [volume]);
 
   useEffect(() => {
     const tick = () => {
-      if (isPlaying && audioCtxRef.current) {
-        const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
-        setCurrentTime(pauseOffsetRef.current + elapsed);
+      if (isPlaying) {
+        if (isYoutubeMode) {
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
+            setCurrentTime(ytPlayerRef.current.getCurrentTime());
+          }
+        } else {
+          if (audioCtxRef.current) {
+            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+            setCurrentTime(pauseOffsetRef.current + elapsed);
+          }
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -183,45 +287,55 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       cancelAnimationFrame(rafRef.current);
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying]);
+  }, [isPlaying, isYoutubeMode]);
 
-  const stopCurrentSource = useCallback(() => {
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.onended = null;
-      try {
-        sourceNodeRef.current.stop();
-      } catch (e) {}
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-  }, []);
-
-  // Ref to latest scheduleStart so pendingSchedule flush can call it
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
+    stopCurrentSource();
+
+    if (isYoutubeMode) {
+      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      const videoId = payload.trackUrl.split(":")[1];
+      
+      const localAtEpoch = payload.atEpoch - clockOffset;
+      const msUntilStart = localAtEpoch - Date.now();
+
+      if (msUntilStart > 50) {
+        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: payload.fromPosition });
+        ytPlayerRef.current.pauseVideo();
+        
+        setTimeout(() => {
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        }, msUntilStart);
+        
+        startTimeRef.current = Date.now() + msUntilStart;
+        pauseOffsetRef.current = payload.fromPosition;
+      } else {
+        const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000;
+        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: correctPosition });
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+      }
+      return;
+    }
+
     if (!audioCtxRef.current) return;
     
     let buffer = audioBufferRef.current;
     if (!buffer && payload.trackUrl) {
        buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(payload.trackUrl);
     }
-    if (!buffer) {
-      console.warn('[Audio] No buffer available, cannot play');
-      return;
-    }
+    if (!buffer) return;
 
     if (audioCtxRef.current.state === 'suspended') {
-      // Store for replay once user unlocks audio
-      console.warn("AudioContext suspended — queuing schedule for after user gesture");
       pendingScheduleRef.current = { payload, clockOffset };
       return;
     }
 
     const localAtEpoch = payload.atEpoch - clockOffset;
     const msUntilStart = localAtEpoch - Date.now();
-
-    stopCurrentSource();
 
     const source = audioCtxRef.current.createBufferSource();
     source.buffer = buffer;
@@ -234,27 +348,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
 
     if (msUntilStart > 50) {
-      // Schedule in the future — normal sync path
-      // Compensate for hardware output latency to ensure perfect beat alignment
-      const baseLatency = audioCtxRef.current.baseLatency || 0;
-      const outputLatency = audioCtxRef.current.outputLatency || 0;
-      const hardwareLatency = baseLatency + outputLatency;
-      
+      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
       const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
-      
       source.start(audioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
-      // atEpoch is in the past (stale pending or late arrival) — play NOW at the correct position
-      const baseLatency = audioCtxRef.current.baseLatency || 0;
-      const outputLatency = audioCtxRef.current.outputLatency || 0;
-      const hardwareLatency = baseLatency + outputLatency;
-
+      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
       const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000 + hardwareLatency;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
-      console.log(`[Audio] Late start: jumping to ${clampedPosition.toFixed(1)}s`);
       source.start(0, Math.max(0, clampedPosition));
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxRef.current.currentTime;
@@ -263,16 +366,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     setIsPlaying(true);
     setCurrentTime(pauseOffsetRef.current);
-  }, [audioUnlocked, stopCurrentSource]);
+  }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
-  // Keep ref in sync so unlockAudio can flush pending schedule
   scheduleStartRef.current = scheduleStart;
 
   const playNow = useCallback((expectedPosition: number) => {
+    stopCurrentSource();
+
+    if (isYoutubeMode) {
+      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      ytPlayerRef.current.seekTo(expectedPosition, true);
+      ytPlayerRef.current.playVideo();
+      setIsPlaying(true);
+      return;
+    }
+
     if (!audioCtxRef.current || !audioBufferRef.current) return;
     if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) return;
-    
-    stopCurrentSource();
     
     const source = audioCtxRef.current.createBufferSource();
     source.buffer = audioBufferRef.current;
@@ -284,10 +394,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    const baseLatency = audioCtxRef.current.baseLatency || 0;
-    const outputLatency = audioCtxRef.current.outputLatency || 0;
-    const hardwareLatency = baseLatency + outputLatency;
-
+    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
     const actualPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition + hardwareLatency);
 
     source.start(0, Math.max(0, actualPosition));
@@ -297,44 +404,54 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     pauseOffsetRef.current = actualPosition;
     setIsPlaying(true);
     setCurrentTime(actualPosition);
-  }, [audioUnlocked, stopCurrentSource]);
+  }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
   const pauseAt = useCallback((position: number) => {
     stopCurrentSource();
     setIsPlaying(false);
     pauseOffsetRef.current = position;
     setCurrentTime(position);
-  }, [stopCurrentSource]);
+    
+    if (isYoutubeMode && ytPlayerRef.current && ytReadyRef.current) {
+      ytPlayerRef.current.seekTo(position, true);
+      ytPlayerRef.current.pauseVideo();
+    }
+  }, [stopCurrentSource, isYoutubeMode]);
 
   const getTruePosition = useCallback(() => {
-    if (!isPlaying || !audioCtxRef.current) return pauseOffsetRef.current;
-    const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
-    return pauseOffsetRef.current + elapsed;
-  }, [isPlaying]);
+    if (!isPlaying) return pauseOffsetRef.current;
+    if (isYoutubeMode && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
+      return ytPlayerRef.current.getCurrentTime();
+    }
+    if (audioCtxRef.current) {
+      const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+      return pauseOffsetRef.current + elapsed;
+    }
+    return pauseOffsetRef.current;
+  }, [isPlaying, isYoutubeMode]);
 
   const play = useCallback(() => {}, []);
   const pause = useCallback(() => {}, []);
   const toggle = useCallback(() => {}, []);
   const seek = useCallback((time: number) => {
-    if (isPlaying) {
-      playNow(time);
-    } else {
-      pauseAt(time);
-    }
+    if (isPlaying) playNow(time);
+    else pauseAt(time);
   }, [isPlaying, playNow, pauseAt]);
 
   const seekPct = useCallback((pct: number) => {
-    if (!audioBufferRef.current) return;
-    const time = pct * audioBufferRef.current.duration;
+    const time = pct * duration;
     seek(time);
-  }, [seek]);
+  }, [seek, duration]);
+
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
     setVolumeState(clamped);
   }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    const absoluteUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:')) 
+      ? `${getServerUrl()}/${url}` 
+      : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
     setTrackTitle(title);
     setTrackArtist(artist);

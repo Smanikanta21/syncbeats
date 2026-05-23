@@ -173,5 +173,70 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // POST /rooms/:roomId/enqueue-youtube
+  router.post('/:roomId/enqueue-youtube', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { roomId } = req.params;
+      const { youtubeUrl } = req.body as { youtubeUrl?: string };
+      const userId = req.user!.sub;
+
+      if (!youtubeUrl) {
+        res.status(400).json({ error: 'Missing youtubeUrl' });
+        return;
+      }
+
+      // Extract video ID
+      const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+        /^([a-zA-Z0-9_-]{11})$/,
+      ];
+
+      let videoId = null;
+      for (const pattern of patterns) {
+        const match = youtubeUrl.match(pattern);
+        if (match) {
+          videoId = match[1];
+          break;
+        }
+      }
+
+      if (!videoId) {
+        res.status(400).json({ error: 'Invalid YouTube URL' });
+        return;
+      }
+
+      // Fetch title via oEmbed
+      let title = "YouTube Video";
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const oembedRes = await fetch(oembedUrl);
+        if (oembedRes.ok) {
+          const data = await oembedRes.json() as { title?: string };
+          if (data.title) title = data.title;
+        }
+      } catch (e) {
+        console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);
+      }
+
+      const { item, activated } = await repo.enqueueTrack(roomId as string, userId, {
+        trackUrl: `youtube:${videoId}`,
+        title,
+        fileName: `youtube_${videoId}.yt`,
+        mimeType: 'video/youtube',
+        sizeBytes: 0,
+      });
+
+      const room = roomManager.getOrCreate(roomId as string);
+      room.addToQueue(item);
+
+      console.log(`[Rooms] Enqueued YouTube video ${videoId} in room ${roomId}`);
+      res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
+    } catch (err) {
+      console.error('[Rooms] enqueue youtube error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   return router;
 }
