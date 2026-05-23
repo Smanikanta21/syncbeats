@@ -93,12 +93,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const div = document.createElement("div");
       div.id = "global-youtube-player";
       div.style.position = "fixed";
-      div.style.bottom = "20px";
-      div.style.right = "20px";
-      div.style.zIndex = "9999";
-      div.style.width = "200px";
-      div.style.height = "150px";
-      div.style.pointerEvents = "auto";
+      div.style.left = "-9999px";
+      div.style.top = "-9999px";
+      div.style.width = "1px";
+      div.style.height = "1px";
+      div.style.opacity = "0.01";
+      div.style.zIndex = "-9999";
+      div.style.pointerEvents = "none";
       document.body.appendChild(div);
     }
 
@@ -115,7 +116,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         height: "150",
         width: "200",
         playerVars: {
-          controls: 1,
+          controls: 0,
           disablekb: 1,
           fs: 0,
           rel: 0,
