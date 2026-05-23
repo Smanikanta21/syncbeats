@@ -64,6 +64,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const isYoutubeMode = !!trackUrl?.startsWith("youtube:");
   const ytPlayerRef = useRef<any>(null);
   const ytReadyRef = useRef(false);
+  // Track which video ID was loaded during a user gesture (for iOS unlock)
+  const ytGestureVideoIdRef = useRef<string | null>(null);
 
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
@@ -174,25 +176,34 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setAudioUnlocked(true);
     }
 
-    // Attempt to unlock YouTube audio on mobile by forcing an unmute and play/pause during a user gesture
+    // Pre-load the YouTube video DURING the user gesture so iOS allows playback.
+    // iOS blocks loadVideoById in non-gesture contexts (like socket callbacks),
+    // but allows seekTo/playVideo on an already-loaded video.
     if (ytPlayerRef.current && ytReadyRef.current) {
       try {
         if (typeof ytPlayerRef.current.unMute === "function") ytPlayerRef.current.unMute();
         if (typeof ytPlayerRef.current.setVolume === "function") ytPlayerRef.current.setVolume(100);
         
-        // ALWAYS call playVideo inside the user gesture to satisfy iOS
-        if (typeof ytPlayerRef.current.playVideo === "function") {
-          ytPlayerRef.current.playVideo();
+        // If we have a YouTube track queued, load it NOW inside the gesture
+        if (trackUrl?.startsWith("youtube:")) {
+          const videoId = trackUrl.split(":")[1];
+          ytPlayerRef.current.loadVideoById({ videoId, startSeconds: 0 });
+          ytGestureVideoIdRef.current = videoId;
+        } else {
+          // No specific video — just play whatever is loaded to unlock the iframe
+          if (typeof ytPlayerRef.current.playVideo === "function") {
+            ytPlayerRef.current.playVideo();
+          }
         }
         
-        // If the room state is actually paused, we immediately pause it after unlocking
+        // If the room state is actually paused, pause after unlocking
         if (!isPlaying) {
           if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
           unlockTimeoutRef.current = window.setTimeout(() => {
             if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
               ytPlayerRef.current.pauseVideo();
             }
-          }, 300);
+          }, 400);
         }
       } catch (e) {
         console.warn("Failed to unlock YouTube iframe", e);
@@ -338,7 +349,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const msUntilStart = localAtEpoch - Date.now();
       const correctPosition = Math.max(0, payload.fromPosition - msUntilStart / 1000);
 
-      ytPlayerRef.current.loadVideoById({ videoId, startSeconds: correctPosition });
+      // If this video was already loaded during the user gesture (iOS unlock),
+      // just seekTo — iOS allows this without a new gesture.
+      // Otherwise fall back to loadVideoById (works on desktop).
+      if (ytGestureVideoIdRef.current === videoId) {
+        ytPlayerRef.current.seekTo(correctPosition, true);
+        ytPlayerRef.current.playVideo();
+        ytGestureVideoIdRef.current = null; // consumed
+      } else {
+        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: correctPosition });
+      }
       setIsPlaying(true);
       
       startTimeRef.current = Date.now();
