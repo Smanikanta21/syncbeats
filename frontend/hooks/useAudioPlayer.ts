@@ -170,6 +170,26 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setAudioUnlocked(true);
     }
 
+    // Attempt to unlock YouTube audio on mobile by forcing an unmute and play/pause during a user gesture
+    if (ytPlayerRef.current && ytReadyRef.current) {
+      try {
+        if (typeof ytPlayerRef.current.unMute === "function") ytPlayerRef.current.unMute();
+        if (typeof ytPlayerRef.current.setVolume === "function") ytPlayerRef.current.setVolume(100);
+        
+        // If not playing, explicitly play and pause to register the user gesture with iOS Safari
+        if (typeof ytPlayerRef.current.playVideo === "function" && !isPlaying) {
+          ytPlayerRef.current.playVideo();
+          setTimeout(() => {
+            if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
+              ytPlayerRef.current.pauseVideo();
+            }
+          }, 100);
+        }
+      } catch (e) {
+        console.warn("Failed to unlock YouTube iframe", e);
+      }
+    }
+
     setTimeout(() => {
       const pending = pendingScheduleRef.current;
       if (pending) {

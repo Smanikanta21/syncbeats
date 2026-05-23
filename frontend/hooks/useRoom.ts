@@ -183,7 +183,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const actual = audioRef.current.getTruePosition();
       const driftMs = Math.abs(actual - expected) * 1000;
 
-      if (driftMs > DRIFT_HARD_SEEK_MS) {
+      const isYoutube = snap.trackUrl?.startsWith("youtube:");
+      const tolerance = isYoutube ? 2000 : DRIFT_HARD_SEEK_MS;
+
+      if (driftMs > tolerance) {
         audioRef.current.playNow(expected);
       }
     }, DRIFT_CHECK_INTERVAL_MS);
