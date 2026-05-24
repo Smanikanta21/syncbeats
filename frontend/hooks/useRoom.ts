@@ -168,31 +168,85 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     syncInFlightRef.current = false;
   }, [pingOnce]);
 
-  // Handle drift correction
+  // Handle drift correction with performance.now() for sub-ms precision
   useEffect(() => {
-    const driftInterval = setInterval(() => {
+    // Capture a baseline to convert between performance.now() and Date.now()
+    const perfBaseline = performance.now();
+    const dateBaseline = Date.now();
+
+    const getServerNow = () => {
+      const perfElapsed = performance.now() - perfBaseline;
+      return dateBaseline + perfElapsed + clockOffsetRef.current;
+    };
+
+    const correctDrift = () => {
       const snap = snapshotRef.current;
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
 
-      const nowServer = Date.now() + clockOffsetRef.current;
+      const nowServer = getServerNow();
       
       // Do not run drift correction before the song is actually scheduled to start
       if (nowServer < snap.startEpoch!) return;
 
       const expected = Math.max(0, (nowServer - snap.startEpoch!) / 1000);
       const actual = audioRef.current.getTruePosition();
-      const driftMs = Math.abs(actual - expected) * 1000;
+      
+      // Skip correction if YouTube is buffering (getTruePosition returns -1)
+      if (actual < 0) return;
+
+      const drift = expected - actual; // Positive = we are behind server, Negative = we are ahead
+      const driftMs = Math.abs(drift) * 1000;
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
-      const tolerance = isYoutube ? 2000 : DRIFT_HARD_SEEK_MS;
+      const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
 
-      if (driftMs > tolerance) {
+      if (driftMs > hardSeekTolerance) {
+        // Severe drift: Hard seek and reset playback rate
         audioRef.current.playNow(expected);
+        if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
+      } else if (driftMs > 30) { 
+        // Micro-drift (30ms - 500ms): Soft correction via playback rate
+        if (audioRef.current.setPlaybackRate) {
+          if (isYoutube) {
+            // YouTube ignores 1.05, so we use officially supported 1.25 / 0.75
+            // To catch up `driftMs` playing at 1.25x (0.25x faster), we need driftMs / 0.25 ms.
+            const rate = drift > 0 ? 1.25 : 0.75;
+            const correctionDurationMs = driftMs / 0.25; 
+            
+            audioRef.current.setPlaybackRate(rate);
+            
+            // Revert back to normal speed after we've caught up
+            setTimeout(() => {
+              if (audioRef.current?.setPlaybackRate) {
+                audioRef.current.setPlaybackRate(1);
+              }
+            }, Math.min(correctionDurationMs, 2000)); // Cap at 2s just in case
+          } else {
+            // WebAudio handles fine-grained rates beautifully
+            const rate = drift > 0 ? 1.05 : 0.95;
+            audioRef.current.setPlaybackRate(rate);
+          }
+        }
+      } else {
+        // Perfectly in sync (< 30ms): Normal playback rate
+        if (audioRef.current.setPlaybackRate) {
+          audioRef.current.setPlaybackRate(1);
+        }
       }
-    }, DRIFT_CHECK_INTERVAL_MS);
+    };
 
-    return () => clearInterval(driftInterval);
+    const driftInterval = setInterval(correctDrift, DRIFT_CHECK_INTERVAL_MS);
+
+    const handleYtBufferEnd = () => {
+      setTimeout(correctDrift, 200);
+    };
+    document.addEventListener('ytBufferEnd', handleYtBufferEnd);
+
+    return () => {
+      clearInterval(driftInterval);
+      document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
+    };
   }, []);
 
   useEffect(() => {

@@ -501,7 +501,9 @@ export function DynamicIsland() {
                   <button onClick={handlePrev}><SkipBack className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
                   <button onClick={handleToggle} className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)] relative">
                     <AnimatePresence mode="wait" initial={false}>
-                      {effectivePlaying ? (
+                      {audio.isBuffering && effectivePlaying ? (
+                        <motion.div key="buffer" initial={{ opacity: 0, scale: 0.5, rotate: -90 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 90 }} transition={{ duration: 0.2 }} className="absolute"><Loader2 className="w-6 h-6 animate-spin" /></motion.div>
+                      ) : effectivePlaying ? (
                         <motion.div key="pause" initial={{ opacity: 0, scale: 0.5, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Pause className="w-6 h-6" fill="currentColor" /></motion.div>
                       ) : (
                         <motion.div key="play" initial={{ opacity: 0, scale: 0.5, rotate: 45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: -45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Play className="w-6 h-6 ml-0.5" fill="currentColor" /></motion.div>
@@ -557,10 +559,13 @@ export function DynamicIsland() {
                   <button onClick={handlePrev}><SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
                   <button onClick={handleToggle} className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative">
                     <AnimatePresence mode="wait" initial={false}>
-                      {effectivePlaying
-                        ? <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
-                        : <motion.div key="r" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Play className="w-3 h-3 ml-0.5" fill="currentColor" /></motion.div>
-                      }
+                      {audio.isBuffering && effectivePlaying ? (
+                        <motion.div key="b" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Loader2 className="w-3 h-3 animate-spin" /></motion.div>
+                      ) : effectivePlaying ? (
+                        <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
+                      ) : (
+                        <motion.div key="r" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Play className="w-3 h-3 ml-0.5" fill="currentColor" /></motion.div>
+                      )}
                     </AnimatePresence>
                   </button>
                   <button onClick={handleNext}><SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
