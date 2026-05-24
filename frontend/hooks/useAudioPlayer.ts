@@ -32,6 +32,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   playNow:     (expectedPosition: number) => void;
   pauseAt:     (position: number) => void;
   getTruePosition: () => number;
+  setPlaybackRate: (rate: number) => void;
   audioEl:     HTMLAudioElement | null;
 }
 
@@ -604,6 +605,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     seek(time);
   }, [seek, duration]);
 
+  const setPlaybackRate = useCallback((rate: number) => {
+    if (isYoutubeMode && ytPlayerRef.current && typeof ytPlayerRef.current.setPlaybackRate === "function") {
+      ytPlayerRef.current.setPlaybackRate(rate);
+    } else if (sourceNodeRef.current && sourceNodeRef.current.playbackRate) {
+      sourceNodeRef.current.playbackRate.value = rate;
+    }
+  }, [isYoutubeMode]);
+
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
     setVolumeState(clamped);
@@ -639,7 +648,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
-    scheduleStart, playNow, pauseAt, getTruePosition,
+    scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
   };
 }

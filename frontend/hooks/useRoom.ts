@@ -195,13 +195,28 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       // Skip correction if YouTube is buffering (getTruePosition returns -1)
       if (actual < 0) return;
 
-      const driftMs = Math.abs(actual - expected) * 1000;
+      const drift = expected - actual; // Positive = we are behind server, Negative = we are ahead
+      const driftMs = Math.abs(drift) * 1000;
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
-      const tolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
+      const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
 
-      if (driftMs > tolerance) {
+      if (driftMs > hardSeekTolerance) {
+        // Severe drift: Hard seek and reset playback rate
         audioRef.current.playNow(expected);
+        if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
+      } else if (driftMs > 30) { 
+        // Micro-drift (30ms - 500ms): Soft correction via playback rate
+        if (audioRef.current.setPlaybackRate) {
+          // If we are behind, speed up (1.05). If we are ahead, slow down (0.95)
+          const rate = drift > 0 ? 1.05 : 0.95;
+          audioRef.current.setPlaybackRate(rate);
+        }
+      } else {
+        // Perfectly in sync (< 30ms): Normal playback rate
+        if (audioRef.current.setPlaybackRate) {
+          audioRef.current.setPlaybackRate(1);
+        }
       }
     };
 
