@@ -168,31 +168,56 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     syncInFlightRef.current = false;
   }, [pingOnce]);
 
-  // Handle drift correction
+  // Handle drift correction with performance.now() for sub-ms precision
   useEffect(() => {
-    const driftInterval = setInterval(() => {
+    // Capture a baseline to convert between performance.now() and Date.now()
+    const perfBaseline = performance.now();
+    const dateBaseline = Date.now();
+
+    const getServerNow = () => {
+      const perfElapsed = performance.now() - perfBaseline;
+      return dateBaseline + perfElapsed + clockOffsetRef.current;
+    };
+
+    const correctDrift = () => {
       const snap = snapshotRef.current;
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
 
-      const nowServer = Date.now() + clockOffsetRef.current;
+      const nowServer = getServerNow();
       
       // Do not run drift correction before the song is actually scheduled to start
       if (nowServer < snap.startEpoch!) return;
 
       const expected = Math.max(0, (nowServer - snap.startEpoch!) / 1000);
       const actual = audioRef.current.getTruePosition();
+      
+      // Skip correction if YouTube is buffering (getTruePosition returns -1)
+      if (actual < 0) return;
+
       const driftMs = Math.abs(actual - expected) * 1000;
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
-      const tolerance = isYoutube ? 2000 : DRIFT_HARD_SEEK_MS;
+      const tolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
 
       if (driftMs > tolerance) {
         audioRef.current.playNow(expected);
       }
-    }, DRIFT_CHECK_INTERVAL_MS);
+    };
 
-    return () => clearInterval(driftInterval);
+    const driftInterval = setInterval(correctDrift, DRIFT_CHECK_INTERVAL_MS);
+
+    // When YouTube finishes buffering, do an immediate drift correction
+    // so we snap back to the right position without waiting for the next interval tick
+    const handleYtBufferEnd = () => {
+      setTimeout(correctDrift, 200); // Small delay to let YT player stabilize
+    };
+    document.addEventListener('ytBufferEnd', handleYtBufferEnd);
+
+    return () => {
+      clearInterval(driftInterval);
+      document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
+    };
   }, []);
 
   useEffect(() => {

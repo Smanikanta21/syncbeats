@@ -67,6 +67,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   // Track which video ID was loaded during a user gesture (for iOS unlock)
   const ytGestureVideoIdRef = useRef<string | null>(null);
   const ytLoadedVideoIdRef = useRef<string | null>(null);
+  // Track buffering state to prevent drift correction seek spam
+  const ytBufferingRef = useRef(false);
+  // Cooldown: timestamp of last drift-correction seek (prevents re-seek while YT buffers)
+  const ytLastSeekRef = useRef<number>(0);
 
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
@@ -139,8 +143,26 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           },
           onStateChange: (event: any) => {
-            // 0 = ended
-            if (event.data === 0) {
+            const YT_STATES = { BUFFERING: 3, PLAYING: 1, ENDED: 0 };
+            
+            if (event.data === YT_STATES.BUFFERING) {
+              ytBufferingRef.current = true;
+            }
+            
+            if (event.data === YT_STATES.PLAYING) {
+              const wasBuffering = ytBufferingRef.current;
+              ytBufferingRef.current = false;
+              
+              // After buffering ends, the YT player may have drifted.
+              // Dispatch a custom event so the drift checker can do an
+              // immediate correction on the next tick.
+              if (wasBuffering) {
+                document.dispatchEvent(new CustomEvent('ytBufferEnd'));
+              }
+            }
+            
+            if (event.data === YT_STATES.ENDED) {
+              ytBufferingRef.current = false;
               setIsPlaying(false);
               setCurrentTime(0);
               document.dispatchEvent(new CustomEvent('audioEnded'));
@@ -173,10 +195,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const getTruePosition = useCallback(() => {
     if (!isPlaying) return pauseOffsetRef.current;
-    if (isYoutubeMode && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
-      const ytTime = ytPlayerRef.current.getCurrentTime();
-      if (ytTime > 0) return ytTime;
+    
+    if (isYoutubeMode) {
+      // Return -1 while buffering so callers know to skip drift correction
+      if (ytBufferingRef.current) return -1;
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
+        const ytTime = ytPlayerRef.current.getCurrentTime();
+        if (ytTime > 0) return ytTime;
+      }
     }
+    
+    // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
+    // This avoids drift caused by comparing server NTP time against Date.now()
+    if (audioCtxRef.current && !isYoutubeMode) {
+      const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+      return pauseOffsetRef.current + elapsed;
+    }
+    // Fallback for YouTube when getCurrentTime returns 0
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     return pauseOffsetRef.current + elapsed;
   }, [isPlaying, isYoutubeMode]);
@@ -380,15 +415,28 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       
       const localAtEpoch = payload.atEpoch - clockOffset;
       const msUntilStart = localAtEpoch - Date.now();
-      const correctPosition = Math.max(0, payload.fromPosition - msUntilStart / 1000);
 
-      // Seek to correct synchronized position and play!
-      ytPlayerRef.current.seekTo(correctPosition, true);
-      ytPlayerRef.current.playVideo();
-      
-      setIsPlaying(true);
-      startTimeRef.current = Date.now();
-      pauseOffsetRef.current = correctPosition;
+      const startPlayback = () => {
+        if (!ytPlayerRef.current) return;
+        ytPlayerRef.current.seekTo(payload.fromPosition, true);
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        startTimeRef.current = Date.now();
+        pauseOffsetRef.current = payload.fromPosition;
+      };
+
+      if (msUntilStart > 50) {
+        // Wait until the synchronized epoch, then start
+        setTimeout(startPlayback, msUntilStart);
+      } else {
+        // Already past the epoch — seek to the corrected position
+        const correctPosition = Math.max(0, payload.fromPosition + Math.abs(msUntilStart) / 1000);
+        ytPlayerRef.current.seekTo(correctPosition, true);
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        startTimeRef.current = Date.now();
+        pauseOffsetRef.current = correctPosition;
+      }
       return;
     }
 
@@ -447,6 +495,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     if (isYoutubeMode) {
       if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      // Cooldown: don't re-seek if we just sought < 3s ago (YT may still be buffering)
+      if (Date.now() - ytLastSeekRef.current < 3000) return;
+      ytLastSeekRef.current = Date.now();
       ytPlayerRef.current.seekTo(expectedPosition, true);
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
@@ -468,16 +519,17 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
-    const actualPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition + hardwareLatency);
+    // No hardware latency adjustment here — playNow is for drift correction,
+    // not initial scheduling. Adding latency here would overshoot the target.
+    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
 
-    source.start(0, Math.max(0, actualPosition));
+    source.start(0, Math.max(0, clampedPosition));
     sourceNodeRef.current = source;
     
     startTimeRef.current = audioCtxRef.current.currentTime;
-    pauseOffsetRef.current = actualPosition;
+    pauseOffsetRef.current = clampedPosition;
     setIsPlaying(true);
-    setCurrentTime(actualPosition);
+    setCurrentTime(clampedPosition);
   }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
   const pauseAt = useCallback((position: number) => {
