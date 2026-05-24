@@ -208,9 +208,25 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       } else if (driftMs > 30) { 
         // Micro-drift (30ms - 500ms): Soft correction via playback rate
         if (audioRef.current.setPlaybackRate) {
-          // If we are behind, speed up (1.05). If we are ahead, slow down (0.95)
-          const rate = drift > 0 ? 1.05 : 0.95;
-          audioRef.current.setPlaybackRate(rate);
+          if (isYoutube) {
+            // YouTube ignores 1.05, so we use officially supported 1.25 / 0.75
+            // To catch up `driftMs` playing at 1.25x (0.25x faster), we need driftMs / 0.25 ms.
+            const rate = drift > 0 ? 1.25 : 0.75;
+            const correctionDurationMs = driftMs / 0.25; 
+            
+            audioRef.current.setPlaybackRate(rate);
+            
+            // Revert back to normal speed after we've caught up
+            setTimeout(() => {
+              if (audioRef.current?.setPlaybackRate) {
+                audioRef.current.setPlaybackRate(1);
+              }
+            }, Math.min(correctionDurationMs, 2000)); // Cap at 2s just in case
+          } else {
+            // WebAudio handles fine-grained rates beautifully
+            const rate = drift > 0 ? 1.05 : 0.95;
+            audioRef.current.setPlaybackRate(rate);
+          }
         }
       } else {
         // Perfectly in sync (< 30ms): Normal playback rate
@@ -222,10 +238,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
     const driftInterval = setInterval(correctDrift, DRIFT_CHECK_INTERVAL_MS);
 
-    // When YouTube finishes buffering, do an immediate drift correction
-    // so we snap back to the right position without waiting for the next interval tick
     const handleYtBufferEnd = () => {
-      setTimeout(correctDrift, 200); // Small delay to let YT player stabilize
+      setTimeout(correctDrift, 200);
     };
     document.addEventListener('ytBufferEnd', handleYtBufferEnd);
 
