@@ -6,6 +6,7 @@ import { getServerUrl } from '../lib/api';
 export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
+  isBuffering:   boolean;
   hasTrack:      boolean;       
   audioUnlocked: boolean;       
   currentTime:   number;       
@@ -46,6 +47,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -71,6 +73,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const ytBufferingRef = useRef(false);
   // Cooldown: timestamp of last drift-correction seek (prevents re-seek while YT buffers)
   const ytLastSeekRef = useRef<number>(0);
+  // Active schedule: stores the server timeline so we can re-sync after buffering
+  const ytScheduleRef = useRef<{ startEpoch: number; clockOffset: number } | null>(null);
 
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
@@ -143,29 +147,51 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           },
           onStateChange: (event: any) => {
-            const YT_STATES = { BUFFERING: 3, PLAYING: 1, ENDED: 0 };
+            const YT_STATES = { BUFFERING: 3, PLAYING: 1, ENDED: 0, PAUSED: 2 };
             
             if (event.data === YT_STATES.BUFFERING) {
               ytBufferingRef.current = true;
+              setIsBuffering(true);
             }
             
             if (event.data === YT_STATES.PLAYING) {
               const wasBuffering = ytBufferingRef.current;
               ytBufferingRef.current = false;
+              setIsBuffering(false);
               
-              // After buffering ends, the YT player may have drifted.
-              // Dispatch a custom event so the drift checker can do an
-              // immediate correction on the next tick.
-              if (wasBuffering) {
-                document.dispatchEvent(new CustomEvent('ytBufferEnd'));
+              // After buffering → playing, snap to the correct server-synchronized position.
+              // This is the KEY fix: YouTube takes variable time to buffer after seekTo(),
+              // so we re-calculate where we should be RIGHT NOW and seek there.
+              if (wasBuffering && ytScheduleRef.current && ytPlayerRef.current) {
+                const { startEpoch, clockOffset } = ytScheduleRef.current;
+                const nowServer = Date.now() + clockOffset;
+                const expected = Math.max(0, (nowServer - startEpoch) / 1000);
+                const actual = ytPlayerRef.current.getCurrentTime();
+                const driftMs = Math.abs(actual - expected) * 1000;
+                
+                // If we're more than 300ms off after buffering, correct immediately
+                if (driftMs > 300) {
+                  ytPlayerRef.current.seekTo(expected, true);
+                  pauseOffsetRef.current = expected;
+                  startTimeRef.current = Date.now();
+                }
               }
+              
+              document.dispatchEvent(new CustomEvent('ytBufferEnd'));
             }
             
             if (event.data === YT_STATES.ENDED) {
               ytBufferingRef.current = false;
+              ytScheduleRef.current = null;
+              setIsBuffering(false);
               setIsPlaying(false);
               setCurrentTime(0);
               document.dispatchEvent(new CustomEvent('audioEnded'));
+            }
+            
+            if (event.data === YT_STATES.PAUSED) {
+              ytBufferingRef.current = false;
+              setIsBuffering(false);
             }
           }
         }
@@ -284,6 +310,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         pendingScheduleRef.current = null;
         const serverNow = Date.now() + pending.clockOffset;
         const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
+        
+        // For YouTube, store the schedule timeline for re-sync after buffering
+        if (pending.payload.trackUrl?.startsWith('youtube:')) {
+          ytScheduleRef.current = { startEpoch: pending.payload.startEpoch, clockOffset: pending.clockOffset };
+        }
+        
         const adjustedPayload = {
           ...pending.payload,
           atEpoch: Date.now() + pending.clockOffset + 100,
@@ -410,8 +442,24 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
 
     if (isYoutubeMode) {
-      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      // If YouTube player isn't ready OR the video isn't loaded yet, save as pending
+      // This mirrors the WebAudio behavior when AudioContext is suspended
+      if (!ytPlayerRef.current || !ytReadyRef.current) {
+        pendingScheduleRef.current = { payload, clockOffset };
+        return;
+      }
+      
       const videoId = payload.trackUrl.split(":")[1];
+      
+      // If the video isn't loaded in the iframe yet, we need to save as pending
+      // The user gesture (touch/click) will load the video via unlockAudio
+      if (ytLoadedVideoIdRef.current !== videoId) {
+        pendingScheduleRef.current = { payload, clockOffset };
+        return;
+      }
+      
+      // Store the schedule timeline so onStateChange can re-sync after buffering
+      ytScheduleRef.current = { startEpoch: payload.startEpoch, clockOffset };
       
       const localAtEpoch = payload.atEpoch - clockOffset;
       const msUntilStart = localAtEpoch - Date.now();
@@ -588,7 +636,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
+    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition,
