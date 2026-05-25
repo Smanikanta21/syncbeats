@@ -18,8 +18,46 @@ export function ThemeToggle() {
     return <div className="p-2 w-10 h-10" />;
   }
 
-  const toggleTheme = () => {
-    setTheme(resolvedTheme === "dark" ? "light" : "dark");
+  const toggleTheme = (e: React.MouseEvent) => {
+    const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
+
+    if (!document.startViewTransition) {
+      setTheme(nextTheme);
+      return;
+    }
+
+    // Get the click position, or default to center of the screen
+    const x = e.clientX ?? window.innerWidth / 2;
+    const y = e.clientY ?? window.innerHeight / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const transition = document.startViewTransition(() => {
+      // Manually set the attribute so the browser calculates CSS instantly 
+      // without waiting for React's massive context re-render tree to finish
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      setTheme(nextTheme);
+    });
+
+    transition.ready.then(() => {
+      const clipPath = [
+        `circle(0px at ${x}px ${y}px)`,
+        `circle(${endRadius}px at ${x}px ${y}px)`,
+      ];
+
+      document.documentElement.animate(
+        {
+          clipPath: clipPath,
+        },
+        {
+          duration: 1000, // Reduced from 700ms for snappier feel
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)", // Fast out, slow in (buttery smooth)
+          pseudoElement: "::view-transition-new(root)",
+        }
+      );
+    });
   };
 
   return (

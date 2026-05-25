@@ -186,3 +186,18 @@ input[type="range"].volume-slider:focus-visible::-webkit-slider-thumb,
 input[type="range"].volume-slider:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.45), 0 10px 20px rgba(0, 0, 0, 0.35);
 }
+
+/* Theme View Transition (Circular Wipe) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
