@@ -18,9 +18,9 @@ export function Hero() {
   };
   return (
     <header className="relative min-h-[90vh] flex items-center justify-center pt-24 md:pt-32 px-4 sm:px-6 lg:px-8 overflow-hidden pb-20" role="banner">
-      {/* Decorative Orbs behind hero (Minute Silver Glow) */}
-      <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-foreground/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" aria-hidden="true" />
-      <div className="absolute bottom-1/4 right-1/4 w-[250px] h-[250px] sm:w-[500px] sm:h-[500px] bg-foreground/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" aria-hidden="true" />
+      {/* Decorative Orbs behind hero (Minute Silver Glow) - Hidden on mobile for INP performance */}
+      <div className="hidden sm:block absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-foreground/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" aria-hidden="true" />
+      <div className="hidden sm:block absolute bottom-1/4 right-1/4 w-[250px] h-[250px] sm:w-[500px] sm:h-[500px] bg-foreground/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" aria-hidden="true" />
 
       <div className="relative z-10 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 

@@ -56,9 +56,7 @@ export class Room extends EventEmitter {
 
   play(requesterId: string): void {
     if (this.timeline.isPlaying) return;
-    
-    // Scheduled start protocol: 2.5s buffer window
-    const scheduleDelay = 2500;
+    const scheduleDelay = 400;
     const atEpoch = Date.now() + scheduleDelay;
     
     this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;

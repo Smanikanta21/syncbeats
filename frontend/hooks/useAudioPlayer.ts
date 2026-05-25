@@ -380,7 +380,22 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const loadYT = () => {
         if (ytPlayerRef.current && ytReadyRef.current) {
           setIsReady(false);
-          ytPlayerRef.current.cueVideoById(videoId);
+          
+          if (audioUnlocked) {
+            // If already unlocked, aggressively load to enable instant buffering for Next Song
+            ytPlayerRef.current.loadVideoById({ videoId });
+            ytLoadedVideoIdRef.current = videoId;
+            // Prevent it from blasting audio if the room is currently paused
+            if (!isPlaying) {
+              setTimeout(() => {
+                if (ytPlayerRef.current && !isPlaying) {
+                  ytPlayerRef.current.pauseVideo();
+                }
+              }, 150);
+            }
+          } else {
+            ytPlayerRef.current.cueVideoById(videoId);
+          }
           
           const checkReady = setInterval(() => {
             const dur = ytPlayerRef.current.getDuration();
@@ -401,7 +416,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       fetchAndDecode(trackUrl);
       pauseAt(0);
     }
-  }, [trackUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trackUrl, audioUnlocked]); // added audioUnlocked so we know if we can load aggressively
 
   useEffect(() => {
     if (gainNodeRef.current) {
