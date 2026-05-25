@@ -1,13 +1,23 @@
 "use client";
-
-import { motion } from "framer-motion";
-import { Play, ArrowRight, Pause, SkipForward, SkipBack, Share2, Smartphone, Speaker } from "lucide-react";
+import {useState, useEffect} from 'react'
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import { Play, ArrowRight, Pause, SkipForward, SkipBack, Share2, Smartphone, Speaker ,X,Minus,Plus} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 
 export function Hero() {
   const router = useRouter();
   const { user } = useAuth();
+  const [isPlaying, setIsPlaying] = useState(true);
+  const progressControls = useAnimation();
+
+  useEffect(() => {
+    if (isPlaying) {
+      progressControls.start({ width: "100%", transition: { duration: 240, ease: "linear" } });
+    } else {
+      progressControls.stop();
+    }
+  }, [isPlaying, progressControls]);
 
   const handleCTA = () => {
     if (user) {
@@ -95,13 +105,19 @@ export function Hero() {
 
             {/* Top Bar */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-foreground/10">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <div className="w-2.5 h-2.5 sm:w-3 border border-foreground/10 h-3 rounded-full bg-foreground/20" />
-                <div className="w-2.5 h-2.5 sm:w-3 border border-foreground/10 h-3 rounded-full bg-foreground/20" />
-                <div className="w-2.5 h-2.5 sm:w-3 border border-foreground/10 h-3 rounded-full bg-foreground/20" />
+              <div className="flex items-center gap-1.5 sm:gap-2 group/mac">
+                <div className="w-4 h-4 border border-foreground/10 rounded-full bg-red-500 flex justify-center items-center ">
+                  <X className="w-2.5 h-2.5 text-black/70 stroke-3 opacity-0 group-hover/mac:opacity-100 transition-opacity" />
+                </div>
+                <div className="w-4 h-4 border border-foreground/10 rounded-full bg-yellow-500 flex justify-center items-center">
+                  <Minus className="w-2.5 h-2.5 text-black/70 stroke-3 opacity-0 group-hover/mac:opacity-100 transition-opacity" />
+                </div>
+                <div className="w-4 h-4 border border-foreground/10 rounded-full bg-green-500 flex justify-center items-center">
+                  <Plus className="w-2.5 h-2.5 text-black/70 stroke-3 opacity-0 group-hover/mac:opacity-100 transition-opacity" />
+                </div>
               </div>
-              <span className="text-[10px] sm:text-xs font-semibold text-foreground/40 tracking-wider">LIVING ROOM SESSION</span>
-              <Share2 className="w-3.5 h-3.5 sm:w-4 h-4 text-foreground/40 hover:text-foreground cursor-pointer transition-colors" />
+              <p className="text-[10px] sm:text-xs font-semibold text-foreground/40 tracking-wider">LIVING ROOM SESSION</p>
+              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-foreground/40 hover:text-foreground cursor-pointer transition-colors" />
             </div>
 
             {/* Player Body */}
@@ -114,11 +130,11 @@ export function Hero() {
               >
                 <div className="absolute inset-0 bg-background/10" />
                 <div className="absolute inset-0 flex items-center justify-center gap-2">
-                  {[...Array(5)].map((_, i) => (
+                  {[...Array(8)].map((_, i) => (
                     <motion.div
                       key={i}
-                      animate={{ height: ["20px", "60px", "20px"] }}
-                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                      animate={isPlaying ? { height: ["20px", "60px", "20px"] } : { height: "20px" }}
+                      transition={isPlaying ? { duration: 0.6, repeat: Infinity, delay: i * 0.15 } : { duration: 0.3 }}
                       className="w-3 bg-foreground/60 rounded-full"
                     />
                   ))}
@@ -133,9 +149,8 @@ export function Hero() {
               <div className="w-full mb-6 sm:mb-8 px-2 sm:px-0">
                 <div className="w-full h-1 sm:h-1.5 bg-foreground/10 rounded-full overflow-hidden relative">
                   <motion.div
-                    initial={{ width: "0%" }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 240, ease: "linear" }}
+                    initial={{ width: "30%" }} // Start at ~1:14
+                    animate={progressControls}
                     className="absolute top-0 left-0 h-full bg-foreground/60"
                   />
                 </div>
@@ -148,8 +163,19 @@ export function Hero() {
               {/* Controls */}
               <div className="flex items-center justify-center gap-6 sm:gap-8 w-full">
                 <SkipBack className="w-6 h-6 sm:w-8 sm:h-8 text-foreground/30 hover:text-foreground cursor-pointer transition-colors" />
-                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-foreground text-background flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-lg">
-                  <Pause className="w-5 h-5 sm:w-8 sm:h-8 fill-currentColor" />
+                <div onClick={()=>{setIsPlaying(!isPlaying)}} className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-foreground text-background flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-all shadow-lg overflow-hidden">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={isPlaying ? "pause" : "play"}
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.5, opacity: 0 }}
+                      transition={{ duration: 0.15, ease: "easeInOut" }}
+                      className="flex items-center justify-center"
+                    >
+                      {isPlaying ? <Pause className="w-5 h-5 sm:w-8 sm:h-8 fill-currentColor" /> : <Play className="w-5 h-5 sm:w-8 sm:h-8 fill-currentColor" />}
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
                 <SkipForward className="w-6 h-6 sm:w-8 sm:h-8 text-foreground/30 hover:text-foreground cursor-pointer transition-colors" />
               </div>
