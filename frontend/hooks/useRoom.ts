@@ -369,6 +369,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   useEffect(() => {
     socket.on('playback:prepare', ({ roomId: r }) => {
       if (r !== roomId) return;
+      console.log("[SyncEngine] ⏳ Received playback:prepare - waiting for buffers");
       isReadyRef.current = false;
       audioRef.current.preparePlayback();
     });
@@ -410,9 +411,13 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
-  const setReady = useCallback((isReady: boolean) => {
-    socket.emit('room:clientReady', { roomId, isReady });
-  }, [socket, roomId]);
+  const setReady = useCallback((ready: boolean) => {
+    if (!roomId || !currentSocketId) return;
+    if (ready === isReadyRef.current) return;
+    console.log(`[SyncEngine] 🟢 Signaling readiness to server: isReady = ${ready}`);
+    isReadyRef.current = ready;
+    socket.emit('room:clientReady', { roomId, isReady: ready });
+  }, [roomId, currentSocketId, socket]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
