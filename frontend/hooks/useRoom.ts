@@ -58,6 +58,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seqRef = useRef(0);
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
+  const isReadyRef = useRef(false);
   const reportedBlockedRef = useRef<boolean | null>(null);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
