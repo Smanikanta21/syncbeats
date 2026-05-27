@@ -116,6 +116,11 @@ export class SocketHandler {
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
+      
+      // Broadcast unlock hint to ALL devices before scheduling playback
+      // This allows locked mobile devices to show "Tap to Sync" UI
+      this.io.to(roomId).emit('playback:unlock-hint', { roomId, trackUrl: room.getTrackUrl() });
+      
       try {
         room.play(socket.id);
       } catch (err) {

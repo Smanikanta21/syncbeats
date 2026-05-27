@@ -238,5 +238,44 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // GET /rooms/:roomId/youtube-search
+  router.get('/:roomId/youtube-search', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      if (!q || typeof q !== 'string') {
+        res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+
+      // Try multiple Piped API instances for reliability
+      const instances = [
+        'https://pipedapi.kavin.rocks',
+        'https://pipedapi.adminforge.de', 
+        'https://api.piped.projectsegfau.lt'
+      ];
+      
+      for (const base of instances) {
+        try {
+          const resp = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=music_songs`);
+          if (!resp.ok) continue;
+          const data = await resp.json() as any;
+          if (data.items) {
+            const results = data.items.filter((i: any) => i.type === 'stream').slice(0, 10);
+            res.json(results);
+            return;
+          }
+        } catch (e) {
+          // ignore and try next instance
+        }
+      }
+      
+      res.status(502).json({ error: 'YouTube search unavailable' });
+    } catch (err) {
+      console.error('[Rooms] search youtube error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   return router;
 }

@@ -16,6 +16,7 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
+  needsGesture:  boolean;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -63,6 +64,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   
+  // Expose needsGesture to prompt mobile users to interact
+  const [needsGesture, setNeedsGesture] = useState(false);
+  
   // YouTube state
   const isYoutubeMode = !!trackUrl?.startsWith("youtube:");
   const ytPlayerRef = useRef<any>(null);
@@ -76,6 +80,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const ytLastSeekRef = useRef<number>(0);
   // Active schedule: stores the server timeline so we can re-sync after buffering
   const ytScheduleRef = useRef<{ startEpoch: number; clockOffset: number } | null>(null);
+  
+  // Position interpolation state
+  const ytLastKnownPosRef = useRef<number>(0);
+  const ytLastKnownTimeRef = useRef<number>(0);
 
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
@@ -228,7 +236,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (ytBufferingRef.current) return -1;
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
         const ytTime = ytPlayerRef.current.getCurrentTime();
-        if (ytTime > 0) return ytTime;
+        if (ytTime > 0) {
+          const now = performance.now();
+          // Update interpolation state if YouTube returned a new time
+          if (ytTime !== ytLastKnownPosRef.current) {
+             ytLastKnownPosRef.current = ytTime;
+             ytLastKnownTimeRef.current = now;
+             return ytTime;
+          }
+          // Interpolate position based on elapsed time since last distinct value
+          // This smooths out YouTube's ~250ms polling rate for much tighter sync
+          const elapsed = (now - ytLastKnownTimeRef.current) / 1000;
+          return ytTime + elapsed;
+        }
       }
     }
     
@@ -432,7 +452,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (isPlaying) {
         if (isYoutubeMode) {
           if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
-            setCurrentTime(ytPlayerRef.current.getCurrentTime());
+            // Use getTruePosition which includes our new interpolation logic for smooth progress bar
+            setCurrentTime(getTruePosition());
           }
         } else {
           if (audioCtxRef.current) {
@@ -449,7 +470,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       cancelAnimationFrame(rafRef.current);
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying, isYoutubeMode]);
+  }, [isPlaying, isYoutubeMode, getTruePosition]);
 
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
@@ -559,8 +580,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     if (isYoutubeMode) {
       if (!ytPlayerRef.current || !ytReadyRef.current) return;
-      // Cooldown: don't re-seek if we just sought < 3s ago (YT may still be buffering)
-      if (Date.now() - ytLastSeekRef.current < 3000) return;
+      // Cooldown: don't re-seek if we just sought < 1.5s ago (YT may still be buffering)
+      if (Date.now() - ytLastSeekRef.current < 1500) return;
       ytLastSeekRef.current = Date.now();
       ytPlayerRef.current.seekTo(expectedPosition, true);
       ytPlayerRef.current.playVideo();
@@ -659,9 +680,22 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
+  useEffect(() => {
+    if (!hasTrack) {
+      setNeedsGesture(false);
+      return;
+    }
+    if (isYoutubeMode) {
+      const videoId = trackUrl?.split(":")[1];
+      setNeedsGesture(ytLoadedVideoIdRef.current !== videoId);
+    } else {
+      setNeedsGesture(audioCtxRef.current?.state === 'suspended');
+    }
+  }, [hasTrack, isYoutubeMode, trackUrl, audioUnlocked, isPlaying]);
+
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist,
+    trackUrl, trackTitle, trackArtist, needsGesture,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,

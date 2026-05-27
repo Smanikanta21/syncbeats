@@ -18,6 +18,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useSyncInfo } from "../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
 import { NetworkPill, NetworkExpanded } from "./NetworkStats";
+import { YouTubeSearchModal } from "./YouTubeSearchModal";
 
 export function DynamicIsland() {
   const pathname = usePathname();
@@ -37,6 +38,10 @@ export function DynamicIsland() {
   const [youtubeErr, setYoutubeErr] = useState("");
   const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
   const netStats = useNetworkStats(isRoom);
+  
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -156,20 +161,50 @@ export function DynamicIsland() {
   const handleYoutubeSubmit = async () => {
     if (!roomId) return;
     setYoutubeErr("");
-    setIsYoutubeLoading(true);
+    
+    const input = youtubeLink.trim();
+    if (!input) return;
 
-    try {
-      audio.unlockAudio();
-      await roomsApi.enqueueYoutube(roomId, youtubeLink);
+    // Check if it's a URL
+    const isUrl = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(input) || /^([a-zA-Z0-9_-]{11})$/.test(input);
 
-      setYoutubeLink("");
-      setExpanded(false);
-      setPillView("player");
-    } catch (err: any) {
-      setYoutubeErr(err.message);
-    } finally {
-      setIsYoutubeLoading(false);
+    if (isUrl) {
+      setIsYoutubeLoading(true);
+      try {
+        audio.unlockAudio();
+        await roomsApi.enqueueYoutube(roomId, input);
+        setYoutubeLink("");
+        setExpanded(false);
+        setPillView("player");
+      } catch (err: any) {
+        setYoutubeErr(err.message);
+      } finally {
+        setIsYoutubeLoading(false);
+      }
+    } else {
+      // It's a search query
+      setIsYoutubeLoading(true);
+      try {
+        const results = await roomsApi.searchYoutube(roomId, input);
+        setSearchResults(results);
+        setSearchQuery(input);
+        setShowSearchModal(true);
+        setYoutubeLink("");
+      } catch (err: any) {
+        setYoutubeErr(err.message);
+      } finally {
+        setIsYoutubeLoading(false);
+      }
     }
+  };
+
+  const handleSearchResultSelect = async (url: string) => {
+    if (!roomId) return;
+    audio.unlockAudio();
+    await roomsApi.enqueueYoutube(roomId, url);
+    setShowSearchModal(false);
+    setExpanded(false);
+    setPillView("player");
   };
 
   if (!isRoom) {
@@ -314,14 +349,14 @@ export function DynamicIsland() {
 
                 {pillView === "youtube" ? (
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Paste a YouTube link</label>
+                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Add YouTube Music</label>
                     <div className="flex gap-2">
                       <input
                         type="url"
                         value={youtubeLink}
                         onChange={(e) => setYoutubeLink(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
-                        placeholder="https://youtube.com/watch?v=..."
+                        placeholder="Paste a link or type a song name..."
                         className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
                       />
                       <button
@@ -426,14 +461,14 @@ export function DynamicIsland() {
 
                 {pillView === "youtube" ? (
                   <div className="flex flex-col gap-2 mb-7">
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Queue a YouTube video</label>
+                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Add YouTube Music</label>
                     <div className="flex gap-2">
                       <input
                         type="url"
                         value={youtubeLink}
                         onChange={(e) => setYoutubeLink(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
-                        placeholder="https://youtube.com/watch?v=..."
+                        placeholder="Paste a link or type a song name..."
                         className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
                       />
                       <button
@@ -450,11 +485,16 @@ export function DynamicIsland() {
                 ) : null}
 
                 <div className="flex items-center gap-5 mb-7">
-                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-gradient-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
+                  <div className={`relative overflow-hidden w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-gradient-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
                     {audio.trackUrl?.startsWith("youtube:") ? (
                       <Youtube className={`w-8 h-8 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
                     ) : (
                       <Disc className={`w-8 h-8 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                    )}
+                    {audio.needsGesture && (
+                      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center cursor-pointer animate-pulse" onClick={(e) => { e.stopPropagation(); audio.unlockAudio(); }}>
+                         <span className="text-[9px] font-black uppercase text-[#FF0000] leading-none text-center">Tap to<br/>Sync</span>
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -543,11 +583,15 @@ export function DynamicIsland() {
                 className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between"
               >
                 <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={(e) => { e.stopPropagation(); setExpanded(true); }}>
-                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
-                    {audio.trackUrl?.startsWith("youtube:") ? (
+                  <div className={`relative overflow-hidden w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
+                    {audio.needsGesture ? (
+                      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm rounded-full flex flex-col items-center justify-center cursor-pointer animate-pulse text-[#FF0000]" onClick={(e) => { e.stopPropagation(); audio.unlockAudio(); }}>
+                         <Youtube className="w-4 h-4" />
+                      </div>
+                    ) : audio.trackUrl?.startsWith("youtube:") ? (
                       <Youtube className={`w-4 h-4 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
                     ) : (
-                      <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                      <Disc className={`w-4 h-4 text-foreground/50 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
                     )}
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
@@ -634,6 +678,14 @@ export function DynamicIsland() {
           )}
         </AnimatePresence>
       </div>
+      <YouTubeSearchModal 
+        isOpen={showSearchModal} 
+        onClose={() => setShowSearchModal(false)} 
+        results={searchResults} 
+        roomId={roomId} 
+        onSelect={handleSearchResultSelect} 
+        query={searchQuery} 
+      />
     </>
   );
 }

@@ -323,6 +323,12 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     socket.on('playback:pause', handlePause);
 
+    // Listen for unlock hint BEFORE schedule happens to prepare mobile devices
+    const handleUnlockHint = () => {
+      audioRef.current.unlockAudio();
+    };
+    socket.on('playback:unlock-hint', handleUnlockHint);
+
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
