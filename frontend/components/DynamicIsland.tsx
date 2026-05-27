@@ -89,7 +89,7 @@ export function DynamicIsland() {
   const onPointerUp = () => clearPress();
   const onPointerCancel = () => clearPress();
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
-  const isPreparing = snapshot?.state === "PREPARING";
+  const isPreparing = playbackState === "PREPARING";
   const showBuffering = (audio.isBuffering && effectivePlaying) || isPreparing;
   const isBufferingOverlay = audio.isBuffering && !effectivePlaying;
 
