@@ -35,7 +35,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   pauseAt:     (position: number) => void;
   getTruePosition: () => number;
   setPlaybackRate: (rate: number) => void;
-  preparePlayback: () => void;
+  preparePlayback: (position?: number) => void;
   audioEl:     HTMLAudioElement | null;
 }
 
