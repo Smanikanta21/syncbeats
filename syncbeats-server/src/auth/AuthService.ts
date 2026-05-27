@@ -86,6 +86,69 @@ export class AuthService {
     );
   }
 
+  private buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: string, footerText: string = ''): string {
+    return `
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#0b0b0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e4e4e7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px;background:#0b0b0d;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#121217;border:1px solid #27272a;border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="padding:24px 24px 8px 24px;">
+                <p style="margin:0;color:#a1a1aa;font-size:11px;letter-spacing:0.18em;font-weight:700;text-transform:uppercase;">SyncBeats</p>
+                <h1 style="margin:14px 0 0 0;color:#fafafa;font-size:26px;line-height:1.2;">Welcome to SyncBeats, ${name}! 🎵</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px 0 24px;">
+                <p style="margin:0;color:#d4d4d8;font-size:15px;line-height:1.6;">We're thrilled to have you on board! SyncBeats is the best way to listen to music in perfect sync with your friends, no matter where they are.</p>
+                <p style="margin:16px 0 0 0;color:#d4d4d8;font-size:15px;line-height:1.6;"><strong>Here is a quick guide to get you started:</strong></p>
+                <ul style="margin:12px 0 0 0;padding-left:20px;color:#d4d4d8;font-size:14px;line-height:1.6;">
+                  <li style="margin-bottom:8px;"><strong>1. Create a Room:</strong> Head to the Hub and start a new listening session.</li>
+                  <li style="margin-bottom:8px;"><strong>2. Add Music:</strong> Search for your favorite YouTube tracks or upload local files.</li>
+                  <li style="margin-bottom:8px;"><strong>3. Invite Friends:</strong> Click the "Share" button to copy your room code and send it to friends.</li>
+                  <li><strong>4. Sync & Listen:</strong> Hit play and enjoy perfectly synchronized playback across all devices!</li>
+                </ul>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:26px 24px 0 24px;">
+                <a href="${actionUrl}" style="display:inline-block;background:#f4f4f5;color:#09090b;text-decoration:none;padding:12px 18px;border-radius:12px;font-size:14px;font-weight:700;">${actionLabel}</a>
+              </td>
+            </tr>
+            ${footerText ? `
+            <tr>
+              <td style="padding:18px 24px 0 24px;">
+                <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">${footerText}</p>
+              </td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding:18px 24px 24px 24px;">
+                <p style="margin:0;color:#71717a;font-size:12px;line-height:1.6;">
+                  If the button does not work, copy and paste this link into your browser:<br />
+                  <a href="${actionUrl}" style="color:#d4d4d8;word-break:break-all;">${actionUrl}</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  }
+
+  private buildWelcomeHtml(name: string): string {
+    return this.buildWelcomeEmailContent(name, 'Go to Hub', `${this.getPublicAppUrl()}/hub`);
+  }
+
+  private buildWelcomeWithVerificationHtml(name: string, verifyUrl: string): string {
+    return this.buildWelcomeEmailContent(name, 'Verify Email & Start Listening', verifyUrl, 'This verification link expires in 24 hours.');
+  }
+
   private buildResetPasswordOtpHtml(name: string, otp: string): string {
     return `
 <!doctype html>
@@ -168,7 +231,7 @@ export class AuthService {
     console.info(`[Auth] Email queued via Resend to ${to}. response=${rawBody}`);
   }
 
-  private async issueEmailVerification(user: PublicUser): Promise<void> {
+  private async issueEmailVerification(user: PublicUser, isNewUser: boolean = false): Promise<void> {
     if (user.email_verified_at) return;
     const rawToken = this.makeRawToken();
     const tokenHash = this.hashToken(rawToken);
@@ -177,11 +240,20 @@ export class AuthService {
     await this.repo.setEmailVerificationToken(user.id, tokenHash, expiresAt);
 
     const verifyUrl = `${this.getPublicAppUrl()}/verify-email?token=${encodeURIComponent(rawToken)}`;
-    await this.sendEmail(
-      user.email,
-      'Verify your SyncBeats email',
-      this.buildVerifyEmailHtml(user.name, verifyUrl)
-    );
+    
+    if (isNewUser) {
+      await this.sendEmail(
+        user.email,
+        'Welcome to SyncBeats! Please verify your email 🎵',
+        this.buildWelcomeWithVerificationHtml(user.name, verifyUrl)
+      );
+    } else {
+      await this.sendEmail(
+        user.email,
+        'Verify your SyncBeats email',
+        this.buildVerifyEmailHtml(user.name, verifyUrl)
+      );
+    }
   }
 
   async checkEmail(email: string): Promise<boolean> {
@@ -206,7 +278,7 @@ export class AuthService {
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await this.repo.create(name, email, hash);
-    await this.issueEmailVerification(user);
+    await this.issueEmailVerification(user, true);
   }
 
   async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
@@ -223,7 +295,7 @@ export class AuthService {
     if (!valid) throw new Error('Invalid password');
 
     if (!row.email_verified_at) {
-      await this.issueEmailVerification(row as unknown as PublicUser);
+      await this.issueEmailVerification(row as unknown as PublicUser, false);
       throw new Error('UNVERIFIED_EMAIL: We have sent a new verification link to your email. Please verify before logging in.');
     }
 
@@ -250,6 +322,8 @@ export class AuthService {
     const name = payload.name?.trim() || email.split('@')[0] || 'Google User';
 
     let row = await this.repo.findByGoogleId(googleId);
+    let isNewUser = false;
+    
     if (!row) {
       const existingByEmail = await this.repo.findByEmail(email);
       if (existingByEmail) {
@@ -258,10 +332,21 @@ export class AuthService {
       } else {
         await this.repo.createGoogleUser(name, email, googleId);
         row = await this.repo.findByGoogleId(googleId);
+        isNewUser = true;
       }
     }
 
     if (!row) throw new Error('Unable to create Google account');
+
+    if (isNewUser) {
+      await this.sendEmail(
+        row.email,
+        'Welcome to SyncBeats! 🎵',
+        this.buildWelcomeHtml(row.name)
+      ).catch(err => {
+        console.error('[Auth] Failed to send welcome email for Google OAuth:', err);
+      });
+    }
 
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
@@ -282,7 +367,7 @@ export class AuthService {
       email_verified_at: row.email_verified_at,
       last_login_at: row.last_login_at,
       created_at: row.created_at,
-    });
+    }, false);
   }
 
   async verifyEmail(token: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
