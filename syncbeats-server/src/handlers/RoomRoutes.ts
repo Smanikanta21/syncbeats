@@ -6,12 +6,43 @@ import { RoomRepository } from '../db/RoomRepository';
 import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
+import ytSearch from 'yt-search';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
 
 export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
+
+  // GET /rooms/:roomId/youtube-search
+  router.get('/:roomId/youtube-search', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      if (!q || typeof q !== 'string') {
+        res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+
+      const r = await ytSearch(q);
+      const videos = r.videos.slice(0, 10);
+      
+      const results = videos.map(v => ({
+        url: v.url,
+        type: 'stream',
+        title: v.title,
+        thumbnail: v.thumbnail,
+        uploaderName: v.author.name,
+        duration: v.seconds,
+        views: v.views,
+      }));
+      
+      res.json(results);
+    } catch (err) {
+      console.error('[Rooms] search youtube error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
 
   // GET /rooms/mine
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {

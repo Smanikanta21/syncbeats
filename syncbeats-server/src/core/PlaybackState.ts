@@ -2,6 +2,7 @@
 
 export enum PlaybackState {
   IDLE     = 'IDLE',
+  PREPARING = 'PREPARING',
   PLAYING  = 'PLAYING',
   PAUSED   = 'PAUSED',
   SEEKING  = 'SEEKING',

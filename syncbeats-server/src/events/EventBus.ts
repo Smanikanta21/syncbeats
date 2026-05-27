@@ -25,6 +25,7 @@ export const EVENTS = {
   HOST_CHANGED:       'room:hostChanged',
   TRACK_SET:          'room:trackSet',
   QUEUE_CHANGED:      'room:queueChanged',
+  PLAYBACK_PREPARE:   'playback:prepare',
   PLAYBACK_SCHEDULE:  'playback:schedule',
   PLAYBACK_PAUSE:     'playback:pause',
 } as const;

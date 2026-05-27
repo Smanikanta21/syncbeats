@@ -54,8 +54,33 @@ export class Room extends EventEmitter {
 
   // ── Playback (no host gate — any participant) ─────────────────────────
 
+  private prepareTimeout: NodeJS.Timeout | null = null;
+
   play(requesterId: string): void {
-    if (this.timeline.isPlaying) return;
+    if (this.timeline.isPlaying || this.state === PlaybackState.PREPARING) return;
+    
+    this.state = PlaybackState.PREPARING;
+    this.participants.forEach(p => p.isReady = false);
+    
+    this.snapshotTime = Date.now();
+    this.emit('prepare', { position: this.timeline.pauseOffset });
+    this.emit('stateChanged', this.snapshot());
+    
+    // Fallback: If not everyone is ready in 10s, force play anyway
+    if (this.prepareTimeout) clearTimeout(this.prepareTimeout);
+    this.prepareTimeout = setTimeout(() => {
+      if (this.state === PlaybackState.PREPARING) {
+        this._executePlay(requesterId);
+      }
+    }, 10000);
+  }
+
+  private _executePlay(requesterId: string): void {
+    if (this.prepareTimeout) {
+      clearTimeout(this.prepareTimeout);
+      this.prepareTimeout = null;
+    }
+    
     const scheduleDelay = 400;
     const atEpoch = Date.now() + scheduleDelay;
     
@@ -184,6 +209,9 @@ export class Room extends EventEmitter {
 
     if (ready && this.allReady()) {
       this.emit('allReady');
+      if (this.state === PlaybackState.PREPARING) {
+        this._executePlay(this.hostId || 'auto');
+      }
     }
   }
 

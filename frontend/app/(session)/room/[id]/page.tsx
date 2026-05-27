@@ -28,6 +28,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
+import { DevConsole } from "../../../../components/DevConsole";
 
 function DeviceIcon({ index }: { index: number }) {
   const icons = [Smartphone, Laptop, Speaker];
@@ -57,7 +58,7 @@ export default function RoomPage() {
     displayName,
   });
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPlaybackState: pushPlaybackState } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
@@ -68,6 +69,11 @@ export default function RoomPage() {
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
   }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
+  // Push server-side state (PREPARING, PLAYING) so DynamicIsland shows buffering correctly
+  useEffect(() => {
+    pushPlaybackState(snapshot?.state ?? 'IDLE');
+  }, [snapshot?.state, pushPlaybackState]);
 
   // Push participants so DynamicIsland can show per-device network stats
   useEffect(() => {
@@ -93,10 +99,12 @@ export default function RoomPage() {
 
   // ── Signal ready when audio buffers ───────────────────────────────────────
   useEffect(() => {
-    if (audio.isReady && audio.hasTrack) {
+    if (audio.isReady && audio.hasTrack && !audio.isBuffering) {
       setReady(true);
+    } else {
+      setReady(false);
     }
-  }, [audio.isReady, audio.hasTrack, setReady]);
+  }, [audio.isReady, audio.hasTrack, audio.isBuffering, audio.bufferEndCount, setReady]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
   const dragCounter = useRef(0); // track enter/leave nesting
@@ -529,6 +537,7 @@ export default function RoomPage() {
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
+      <DevConsole />
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {audio.isBuffering && audio.isPlaying && (
@@ -542,13 +551,13 @@ export default function RoomPage() {
             <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
               {/* Animated gradient ring */}
               <div className="absolute inset-0 rounded-full overflow-hidden">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#FF0000]/10 via-accent-primary/10 to-[#FF0000]/10 animate-pulse" />
               </div>
               
               {/* Spinner */}
               <div className="relative w-5 h-5 shrink-0">
                 <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
-                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#FF0000] border-r-[#FF0000]/50 animate-spin" />
               </div>
               
               {/* Text */}
@@ -561,7 +570,7 @@ export default function RoomPage() {
                 {[0, 1, 2].map(i => (
                   <motion.div
                     key={i}
-                    className="w-1 h-1 rounded-full bg-violet-400/60"
+                    className="w-1 h-1 rounded-full bg-[#FF0000]/60"
                     animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
                     transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
                   />
