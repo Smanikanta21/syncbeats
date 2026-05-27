@@ -57,7 +57,7 @@ export default function RoomPage() {
     displayName,
   });
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPlaybackState: pushPlaybackState } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
@@ -68,6 +68,11 @@ export default function RoomPage() {
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
   }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
+  // Push server-side state (PREPARING, PLAYING) so DynamicIsland shows buffering correctly
+  useEffect(() => {
+    pushPlaybackState(snapshot?.state ?? 'IDLE');
+  }, [snapshot?.state, pushPlaybackState]);
 
   // Push participants so DynamicIsland can show per-device network stats
   useEffect(() => {
