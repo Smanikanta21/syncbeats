@@ -368,11 +368,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   }, [roomId, socket]);
 
   useEffect(() => {
-    socket.on('playback:prepare', ({ roomId: r }) => {
+    socket.on('playback:prepare', ({ roomId: r, position }) => {
       if (r !== roomId) return;
-      console.log("[SyncEngine] ⏳ Received playback:prepare - waiting for buffers");
+      console.log("[SyncEngine] Received playback:prepare - waiting for buffers");
       isReadyRef.current = false;
-      audioRef.current.preparePlayback();
+      audioRef.current.preparePlayback(position);
     });
 
     const checkInterval = setInterval(() => {
@@ -415,7 +415,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const setReady = useCallback((ready: boolean) => {
     if (!roomId || !currentSocketId) return;
     if (ready === isReadyRef.current) return;
-    console.log(`[SyncEngine] 🟢 Signaling readiness to server: isReady = ${ready}`);
+    console.log(`[SyncEngine] Signaling readiness to server: isReady = ${ready}`);
     isReadyRef.current = ready;
     socket.emit('room:clientReady', { roomId, isReady: ready });
   }, [roomId, currentSocketId, socket]);

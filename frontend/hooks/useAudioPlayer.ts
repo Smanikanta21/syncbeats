@@ -176,7 +176,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 // If we hit playing during the PREPARING phase, pause immediately and unmute
                 ytPrebufferingRef.current = false;
                 ytPlayerRef.current.pauseVideo();
-                ytPlayerRef.current.unMute();
+                ytPlayerRef.current.setVolume(Math.max(0, Math.min(100, Math.round(volume))));
                 setIsBuffering(false);
                 return;
               }
@@ -193,13 +193,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 
                 // If we're off by more than 500ms after buffering, correct it once.
                 if (driftMs > 500) {
-                  console.log(`[SyncEngine] 🔄 Drift ${driftMs.toFixed(0)}ms > 500ms. Applying one-time correction.`);
+                  console.log(`[SyncEngine] Drift ${driftMs.toFixed(0)}ms > 500ms. Applying one-time correction.`);
                   const predictedBufferTime = 0.5; // Add 500ms to anticipate the time it takes to buffer
                   ytPlayerRef.current.seekTo(expected + predictedBufferTime, true);
                   pauseOffsetRef.current = expected + predictedBufferTime;
                   startTimeRef.current = Date.now();
                 } else {
-                  console.log(`[SyncEngine] ✨ Perfect sync achieved. Drift: ${driftMs.toFixed(0)}ms`);
+                  console.log(`[SyncEngine] Perfect sync achieved. Drift: ${driftMs.toFixed(0)}ms`);
                 }
                 
                 // CRITICAL FIX: Clear the schedule ref so we don't enter an infinite buffering/seeking loop!
@@ -670,11 +670,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [isYoutubeMode]);
 
-  const preparePlayback = useCallback(() => {
+  const preparePlayback = useCallback((position?: number) => {
     if (isYoutubeMode) {
       if (!ytPlayerRef.current || !ytReadyRef.current) return;
       ytPrebufferingRef.current = true;
-      ytPlayerRef.current.mute(); // Mute so the user doesn't hear the 0.1s of audio before it pauses
+      if (position !== undefined) {
+        ytPlayerRef.current.seekTo(position, true);
+      }
+      // Use volume=1 instead of mute() so we don't trigger Safari's autoplay block for unmuting later
+      ytPlayerRef.current.setVolume(1); 
       ytPlayerRef.current.playVideo();
       
       // Safety net: if mobile Safari blocks playVideo() entirely (meaning it never hits PLAYING),

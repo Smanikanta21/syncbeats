@@ -63,7 +63,7 @@ export class Room extends EventEmitter {
     this.participants.forEach(p => p.isReady = false);
     
     this.snapshotTime = Date.now();
-    this.emit('prepare');
+    this.emit('prepare', { position: this.timeline.pauseOffset });
     this.emit('stateChanged', this.snapshot());
     
     // Fallback: If not everyone is ready in 10s, force play anyway

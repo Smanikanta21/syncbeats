@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { getSocket } from "../lib/socket";
-import { Terminal, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Terminal, X, ChevronUp, ChevronDown, Activity, AlignLeft } from "lucide-react";
 
 interface LogEntry {
   id: string;
@@ -15,18 +15,22 @@ export function DevConsole() {
   const [allowed, setAllowed] = useState(false);
   const [visible, setVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<"logs" | "sync">("logs");
+  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
+  const [syncLogs, setSyncLogs] = useState<LogEntry[]>([]);
   
-  // High-frequency events we want to ignore in the console
+  const consoleEndRef = useRef<HTMLDivElement>(null);
+  const syncEndRef = useRef<HTMLDivElement>(null);
+  
+  // High-frequency events we ignore in the general "logs" tab but keep in "sync"
   const IGNORED_EVENTS = ["sync:ping", "sync:pong", "playback:position", "room:state"];
 
   const deviceName = typeof window !== "undefined" 
-    ? (/iPhone|iPad|iPod/.test(navigator.userAgent) ? "📱 iOS" 
-      : /Android/.test(navigator.userAgent) ? "📱 Android" 
-      : /Macintosh/.test(navigator.userAgent) ? "💻 Mac" 
-      : /Windows/.test(navigator.userAgent) ? "💻 Win" 
-      : "💻 Web") 
+    ? (/iPhone|iPad|iPod/.test(navigator.userAgent) ? "iOS" 
+      : /Android/.test(navigator.userAgent) ? "Android" 
+      : /Macintosh/.test(navigator.userAgent) ? "Mac" 
+      : /Windows/.test(navigator.userAgent) ? "Win" 
+      : "Web") 
     : "";
 
   useEffect(() => {
@@ -43,41 +47,43 @@ export function DevConsole() {
     const origWarn = console.warn;
     const origError = console.error;
 
-    const addLog = (type: LogEntry["type"], args: any[]) => {
-      const message = args.map(a => {
-        if (typeof a === "object") {
-          try {
-            return JSON.stringify(a);
-          } catch (e) {
-            return "[Object]";
-          }
+    const formatArgs = (args: any[]) => args.map(a => {
+      if (typeof a === "object") {
+        try {
+          return JSON.stringify(a);
+        } catch (e) {
+          return "[Object]";
         }
-        return String(a);
-      }).join(" ");
-      
-      setLogs(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        type,
-        time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 }),
-        message
-      }].slice(-200)); // Keep last 200 logs
-    };
+      }
+      return String(a);
+    }).join(" ");
 
-    console.log = (...args) => { addLog("log", args); origLog(...args); };
-    console.warn = (...args) => { addLog("warn", args); origWarn(...args); };
-    console.error = (...args) => { addLog("error", args); origError(...args); };
+    const createLog = (type: LogEntry["type"], msg: string): LogEntry => ({
+      id: Math.random().toString(36).slice(2),
+      type,
+      time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 }),
+      message: msg
+    });
+
+    console.log = (...args) => { setConsoleLogs(p => [...p, createLog("log", formatArgs(args))].slice(-200)); origLog(...args); };
+    console.warn = (...args) => { setConsoleLogs(p => [...p, createLog("warn", formatArgs(args))].slice(-200)); origWarn(...args); };
+    console.error = (...args) => { setConsoleLogs(p => [...p, createLog("error", formatArgs(args))].slice(-200)); origError(...args); };
 
     const socket = getSocket();
     
     const onAny = (event: string, ...args: any[]) => {
+      const log = createLog("socket_in", `↓ [${event}] ${formatArgs(args)}`);
+      setSyncLogs(p => [...p, log].slice(-300));
       if (!IGNORED_EVENTS.includes(event)) {
-        addLog("socket_in", [`↓ [${event}]`, ...args]);
+        setConsoleLogs(p => [...p, log].slice(-200));
       }
     };
     
     const onAnyOutgoing = (event: string, ...args: any[]) => {
+      const log = createLog("socket_out", `↑ [${event}] ${formatArgs(args)}`);
+      setSyncLogs(p => [...p, log].slice(-300));
       if (!IGNORED_EVENTS.includes(event)) {
-        addLog("socket_out", [`↑ [${event}]`, ...args]);
+        setConsoleLogs(p => [...p, log].slice(-200));
       }
     };
 
@@ -94,12 +100,15 @@ export function DevConsole() {
   }, [allowed]);
 
   useEffect(() => {
-    if (visible && !isHovered && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (visible && !isHovered) {
+      if (activeTab === "logs" && consoleEndRef.current) consoleEndRef.current.scrollIntoView({ behavior: "smooth" });
+      if (activeTab === "sync" && syncEndRef.current) syncEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [logs, visible, isHovered]);
+  }, [consoleLogs, syncLogs, visible, isHovered, activeTab]);
 
   if (!allowed) return null;
+
+  const currentLogs = activeTab === "logs" ? consoleLogs : syncLogs;
 
   return (
     <div className="fixed bottom-0 right-0 z-[9999] p-4 pointer-events-none w-full max-w-md">
@@ -120,22 +129,33 @@ export function DevConsole() {
           onTouchStart={() => setIsHovered(true)}
           onTouchEnd={() => setIsHovered(false)}
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5 shrink-0">
-            <div className="flex items-center gap-2 text-white/80 text-xs font-mono">
-              <Terminal className="w-4 h-4 text-[#FF0000]" />
-              <span>{deviceName} {isHovered && <span className="text-yellow-400 text-[10px] ml-1">(Paused)</span>}</span>
+          <div className="flex items-center justify-between px-2 pt-2 border-b border-white/10 bg-white/5 shrink-0">
+            <div className="flex gap-1 h-full">
+              <button 
+                onClick={() => setActiveTab("logs")}
+                className={`px-3 py-2 text-xs font-mono font-bold flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === 'logs' ? 'text-white border-[#FF0000]' : 'text-white/40 border-transparent hover:text-white/80'}`}
+              >
+                <AlignLeft className="w-3.5 h-3.5" /> Logs
+              </button>
+              <button 
+                onClick={() => setActiveTab("sync")}
+                className={`px-3 py-2 text-xs font-mono font-bold flex items-center gap-1.5 border-b-2 transition-colors ${activeTab === 'sync' ? 'text-white border-[#FF0000]' : 'text-white/40 border-transparent hover:text-white/80'}`}
+              >
+                <Activity className="w-3.5 h-3.5" /> Sync Engine
+              </button>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setLogs([])} className="text-white/40 hover:text-white text-xs px-2 py-1 rounded bg-white/5">Clear</button>
-              <button onClick={() => setVisible(false)} className="text-white/40 hover:text-white p-1 bg-white/5 rounded"><ChevronDown className="w-4 h-4" /></button>
+            <div className="flex items-center gap-2 pb-1">
+              <span className="text-white/40 text-[10px] font-mono mr-2">{deviceName} {isHovered && <span className="text-yellow-400 ml-1">(Paused)</span>}</span>
+              <button onClick={() => activeTab === 'logs' ? setConsoleLogs([]) : setSyncLogs([])} className="text-white/40 hover:text-white text-[10px] px-2 py-1 rounded bg-white/5 font-mono uppercase tracking-wider">Clear</button>
+              <button onClick={() => setVisible(false)} className="text-white/40 hover:text-white p-1 bg-white/5 rounded mr-1"><ChevronDown className="w-4 h-4" /></button>
             </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-2 font-mono text-[10px] sm:text-xs space-y-1 custom-scrollbar">
-            {logs.length === 0 ? (
-              <div className="text-white/30 text-center py-4">Waiting for logs...</div>
+            {currentLogs.length === 0 ? (
+              <div className="text-white/30 text-center py-4">Waiting for {activeTab}...</div>
             ) : (
-              logs.map((log) => (
+              currentLogs.map((log) => (
                 <div key={log.id} className="flex gap-2 items-start break-words border-b border-white/5 pb-1">
                   <span className="text-white/30 shrink-0">[{log.time}]</span>
                   <span className={`flex-1 ${
@@ -150,7 +170,7 @@ export function DevConsole() {
                 </div>
               ))
             )}
-            <div ref={logsEndRef} />
+            <div ref={activeTab === 'logs' ? consoleEndRef : syncEndRef} />
           </div>
         </div>
       )}
