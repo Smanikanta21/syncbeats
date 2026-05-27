@@ -191,12 +191,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 const actual = ytPlayerRef.current.getCurrentTime();
                 const driftMs = Math.abs(actual - expected) * 1000;
                 
-                // If we're more than 300ms off after buffering, correct immediately
-                if (driftMs > 300) {
-                  ytPlayerRef.current.seekTo(expected, true);
-                  pauseOffsetRef.current = expected;
+                // If we're off by more than 500ms after buffering, correct it once.
+                if (driftMs > 500) {
+                  console.log(`[SyncEngine] 🔄 Drift ${driftMs.toFixed(0)}ms > 500ms. Applying one-time correction.`);
+                  const predictedBufferTime = 0.5; // Add 500ms to anticipate the time it takes to buffer
+                  ytPlayerRef.current.seekTo(expected + predictedBufferTime, true);
+                  pauseOffsetRef.current = expected + predictedBufferTime;
                   startTimeRef.current = Date.now();
+                } else {
+                  console.log(`[SyncEngine] ✨ Perfect sync achieved. Drift: ${driftMs.toFixed(0)}ms`);
                 }
+                
+                // CRITICAL FIX: Clear the schedule ref so we don't enter an infinite buffering/seeking loop!
+                ytScheduleRef.current = null;
               }
               
               setBufferEndCount(c => c + 1);
