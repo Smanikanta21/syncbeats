@@ -6,6 +6,12 @@ import crypto    from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { UserRepository, PublicUser } from './UserRepository';
 import { DeviceRepository, PublicDevice } from '../db/DeviceRepository';
+import {
+  buildVerifyEmailHtml,
+  buildWelcomeHtml,
+  buildWelcomeWithVerificationHtml,
+  buildResetPasswordOtpHtml,
+} from './EmailTemplates';
 
 const SALT_ROUNDS = 12;
 const VERIFY_TOKEN_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -30,162 +36,7 @@ export class AuthService {
   private devices = new DeviceRepository();
   private googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-  private buildEmailLayout(title: string, intro: string, actionLabel: string, actionUrl: string, expiryText: string): string {
-    return `
-<!doctype html>
-<html lang="en">
-  <body style="margin:0;padding:0;background:#0b0b0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e4e4e7;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px;background:#0b0b0d;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#121217;border:1px solid #27272a;border-radius:18px;overflow:hidden;">
-            <tr>
-              <td style="padding:24px 24px 8px 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:11px;letter-spacing:0.18em;font-weight:700;text-transform:uppercase;">SyncBeats</p>
-                <h1 style="margin:14px 0 0 0;color:#fafafa;font-size:26px;line-height:1.2;">${title}</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0;color:#d4d4d8;font-size:15px;line-height:1.6;">${intro}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:22px 24px 0 24px;">
-                <a href="${actionUrl}" style="display:inline-block;background:#f4f4f5;color:#09090b;text-decoration:none;padding:12px 18px;border-radius:12px;font-size:14px;font-weight:700;">${actionLabel}</a>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px 0 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">${expiryText}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px 24px 24px;">
-                <p style="margin:0;color:#71717a;font-size:12px;line-height:1.6;">
-                  If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${actionUrl}" style="color:#d4d4d8;word-break:break-all;">${actionUrl}</a>
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-  }
 
-  private buildVerifyEmailHtml(name: string, verifyUrl: string): string {
-    return this.buildEmailLayout(
-      'Verify your email',
-      `Hi ${name}, thanks for joining SyncBeats. Verify your email to finish setting up your account.`,
-      'Verify Email',
-      verifyUrl,
-      'This verification link expires in 24 hours.'
-    );
-  }
-
-  private buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: string, footerText: string = ''): string {
-    return `
-<!doctype html>
-<html lang="en">
-  <body style="margin:0;padding:0;background:#0b0b0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e4e4e7;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px;background:#0b0b0d;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#121217;border:1px solid #27272a;border-radius:18px;overflow:hidden;">
-            <tr>
-              <td style="padding:24px 24px 8px 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:11px;letter-spacing:0.18em;font-weight:700;text-transform:uppercase;">SyncBeats</p>
-                <h1 style="margin:14px 0 0 0;color:#fafafa;font-size:26px;line-height:1.2;">Welcome to SyncBeats, ${name}! 🎵</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0;color:#d4d4d8;font-size:15px;line-height:1.6;">We're thrilled to have you on board! SyncBeats is the best way to listen to music in perfect sync with your friends, no matter where they are.</p>
-                <p style="margin:16px 0 0 0;color:#d4d4d8;font-size:15px;line-height:1.6;"><strong>Here is a quick guide to get you started:</strong></p>
-                <ul style="margin:12px 0 0 0;padding-left:20px;color:#d4d4d8;font-size:14px;line-height:1.6;">
-                  <li style="margin-bottom:8px;"><strong>1. Create a Room:</strong> Head to the Hub and start a new listening session.</li>
-                  <li style="margin-bottom:8px;"><strong>2. Add Music:</strong> Search for your favorite YouTube tracks or upload local files.</li>
-                  <li style="margin-bottom:8px;"><strong>3. Invite Friends:</strong> Click the "Share" button to copy your room code and send it to friends.</li>
-                  <li><strong>4. Sync & Listen:</strong> Hit play and enjoy perfectly synchronized playback across all devices!</li>
-                </ul>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:26px 24px 0 24px;">
-                <a href="${actionUrl}" style="display:inline-block;background:#f4f4f5;color:#09090b;text-decoration:none;padding:12px 18px;border-radius:12px;font-size:14px;font-weight:700;">${actionLabel}</a>
-              </td>
-            </tr>
-            ${footerText ? `
-            <tr>
-              <td style="padding:18px 24px 0 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">${footerText}</p>
-              </td>
-            </tr>
-            ` : ''}
-            <tr>
-              <td style="padding:18px 24px 24px 24px;">
-                <p style="margin:0;color:#71717a;font-size:12px;line-height:1.6;">
-                  If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${actionUrl}" style="color:#d4d4d8;word-break:break-all;">${actionUrl}</a>
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-  }
-
-  private buildWelcomeHtml(name: string): string {
-    return this.buildWelcomeEmailContent(name, 'Go to Hub', `${this.getPublicAppUrl()}/hub`);
-  }
-
-  private buildWelcomeWithVerificationHtml(name: string, verifyUrl: string): string {
-    return this.buildWelcomeEmailContent(name, 'Verify Email & Start Listening', verifyUrl, 'This verification link expires in 24 hours.');
-  }
-
-  private buildResetPasswordOtpHtml(name: string, otp: string): string {
-    return `
-<!doctype html>
-<html lang="en">
-  <body style="margin:0;padding:0;background:#0b0b0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e4e4e7;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px;background:#0b0b0d;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#121217;border:1px solid #27272a;border-radius:18px;overflow:hidden;">
-            <tr>
-              <td style="padding:24px 24px 8px 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:11px;letter-spacing:0.18em;font-weight:700;text-transform:uppercase;">SyncBeats</p>
-                <h1 style="margin:14px 0 0 0;color:#fafafa;font-size:26px;line-height:1.2;">Reset your password</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:12px 24px 0 24px;">
-                <p style="margin:0;color:#d4d4d8;font-size:15px;line-height:1.6;">Hi ${name}, use the OTP below to reset your SyncBeats password.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:20px 24px 0 24px;">
-                <div style="display:inline-block;border:1px solid #3f3f46;background:#18181b;border-radius:14px;padding:12px 16px;color:#fafafa;font-size:28px;letter-spacing:0.2em;font-weight:800;">${otp}</div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px 24px 24px;">
-                <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">This OTP expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-  }
 
   private hashToken(rawToken: string): string {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -244,14 +95,14 @@ export class AuthService {
     if (isNewUser) {
       await this.sendEmail(
         user.email,
-        'Welcome to SyncBeats! Please verify your email 🎵',
-        this.buildWelcomeWithVerificationHtml(user.name, verifyUrl)
+        'Welcome to SyncBeats! Please verify your email',
+        buildWelcomeWithVerificationHtml(user.name, verifyUrl)
       );
     } else {
       await this.sendEmail(
         user.email,
         'Verify your SyncBeats email',
-        this.buildVerifyEmailHtml(user.name, verifyUrl)
+        buildVerifyEmailHtml(user.name, verifyUrl)
       );
     }
   }
@@ -341,8 +192,8 @@ export class AuthService {
     if (isNewUser) {
       await this.sendEmail(
         row.email,
-        'Welcome to SyncBeats! 🎵',
-        this.buildWelcomeHtml(row.name)
+        'Welcome to SyncBeats!',
+        buildWelcomeHtml(row.name, `${this.getPublicAppUrl()}/hub`)
       ).catch(err => {
         console.error('[Auth] Failed to send welcome email for Google OAuth:', err);
       });
@@ -406,7 +257,7 @@ export class AuthService {
     await this.sendEmail(
       row.email,
       'Your SyncBeats password reset OTP',
-      this.buildResetPasswordOtpHtml(row.name, otp),
+      buildResetPasswordOtpHtml(row.name, otp),
       `Hi ${row.name}, your SyncBeats password reset OTP is ${otp}. This OTP expires in 30 minutes.`
     );
 
