@@ -17,6 +17,7 @@ export interface AudioPlayerState {
   trackTitle:    string;
   trackArtist:   string;
   needsGesture:  boolean;
+  bufferEndCount: number;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -58,6 +59,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [bufferEndCount, setBufferEndCount] = useState(0);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -197,6 +199,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
               }
               
+              setBufferEndCount(c => c + 1);
               document.dispatchEvent(new CustomEvent('ytBufferEnd'));
             }
             
@@ -666,6 +669,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       ytPrebufferingRef.current = true;
       ytPlayerRef.current.mute(); // Mute so the user doesn't hear the 0.1s of audio before it pauses
       ytPlayerRef.current.playVideo();
+      
+      // Safety net: if mobile Safari blocks playVideo() entirely (meaning it never hits PLAYING),
+      // or if it's already perfectly buffered and ignores the command, we force a resolution
+      // so the room doesn't hang.
+      setTimeout(() => {
+        if (ytPrebufferingRef.current) {
+          console.warn("preparePlayback timeout: Forcing pre-buffer completion");
+          ytPrebufferingRef.current = false;
+          setIsBuffering(false);
+          setBufferEndCount(c => c + 1);
+        }
+      }, 1500);
     }
   }, [isYoutubeMode]);
 
@@ -715,7 +730,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist, needsGesture,
+    trackUrl, trackTitle, trackArtist, needsGesture, bufferEndCount,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate, preparePlayback,
     audioEl: null,

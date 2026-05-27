@@ -367,6 +367,12 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   }, [roomId, socket]);
 
   useEffect(() => {
+    socket.on('playback:prepare', ({ roomId: r }) => {
+      if (r !== roomId) return;
+      isReadyRef.current = false;
+      audioRef.current.preparePlayback();
+    });
+
     const checkInterval = setInterval(() => {
       const snap = snapshotRef.current;
       if (!snap || !snap.trackUrl) {
