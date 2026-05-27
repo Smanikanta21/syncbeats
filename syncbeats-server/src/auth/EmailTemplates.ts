@@ -17,8 +17,8 @@ function buildEmailLayout(title: string, intro: string, actionLabel: string, act
       }
       
       @keyframes borderGlow {
-        0%, 100% { border-color: rgba(139, 92, 246, 0.15); box-shadow: 0 0 15px rgba(139, 92, 246, 0.05); }
-        50% { border-color: rgba(139, 92, 246, 0.35); box-shadow: 0 0 25px rgba(139, 92, 246, 0.15); }
+        0%, 100% { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 0 15px rgba(255, 255, 255, 0.03); }
+        50% { border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 0 25px rgba(255, 255, 255, 0.08); }
       }
 
       body {
@@ -48,17 +48,14 @@ function buildEmailLayout(title: string, intro: string, actionLabel: string, act
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
             <tr>
               <td style="font-size:24px;font-weight:800;letter-spacing:-0.03em;color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;">
-                Sync<span style="color:#8b5cf6;">Beats</span>
+                SYNC<span style="color:#71717a;">BEATS</span>
               </td>
             </tr>
           </table>
 
           <!-- Main Card Container -->
           <table role="presentation" class="animated-card" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#0c0c0e;border:1px solid #1f1f23;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.6);">
-            <!-- Sleek Top Accent Line -->
-            <tr>
-              <td height="4" style="background:linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);"></td>
-            </tr>
+            <!-- Removed Gradient Accent Line -->
             <!-- Card Body -->
             <tr>
               <td style="padding:40px 32px;text-align:center;">
@@ -79,7 +76,7 @@ function buildEmailLayout(title: string, intro: string, actionLabel: string, act
                 <!-- Fallback Link -->
                 <p style="margin:0;padding-top:20px;border-top:1px solid #1f1f23;color:#52525b;font-size:12px;line-height:1.5;word-break:break-all;">
                   If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${actionUrl}" style="color:#8b5cf6;text-decoration:none;word-break:break-all;">${actionUrl}</a>
+                  <a href="${actionUrl}" style="color:#ffffff;text-decoration:underline;word-break:break-all;">${actionUrl}</a>
                 </p>
               </td>
             </tr>
@@ -108,8 +105,8 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
       }
       
       @keyframes borderGlow {
-        0%, 100% { border-color: rgba(139, 92, 246, 0.15); box-shadow: 0 0 15px rgba(139, 92, 246, 0.05); }
-        50% { border-color: rgba(139, 92, 246, 0.35); box-shadow: 0 0 25px rgba(139, 92, 246, 0.15); }
+        0%, 100% { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 0 15px rgba(255, 255, 255, 0.03); }
+        50% { border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 0 25px rgba(255, 255, 255, 0.08); }
       }
 
       body {
@@ -139,17 +136,14 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
             <tr>
               <td style="font-size:24px;font-weight:800;letter-spacing:-0.03em;color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;">
-                Sync<span style="color:#8b5cf6;">Beats</span>
+                SYNC<span style="color:#71717a;">BEATS</span>
               </td>
             </tr>
           </table>
 
           <!-- Main Card Container -->
           <table role="presentation" class="animated-card" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#0c0c0e;border:1px solid #1f1f23;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.6);">
-            <!-- Sleek Top Accent Line -->
-            <tr>
-              <td height="4" style="background:linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);"></td>
-            </tr>
+            <!-- Removed Gradient Accent Line -->
             <!-- Card Body -->
             <tr>
               <td style="padding:40px 32px;text-align:left;">
@@ -163,7 +157,7 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
                       <!-- Card Step 1 -->
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:12px;padding:16px;">
                         <tr>
-                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#8b5cf6;">01</td>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#ffffff;">01</td>
                           <td valign="top">
                             <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:600;">Create a Room</h4>
                             <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.5;">Launch a synchronized listening room instantly from your dashboard.</p>
@@ -177,7 +171,7 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
                       <!-- Card Step 2 -->
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:12px;padding:16px;">
                         <tr>
-                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#3b82f6;">02</td>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#ffffff;">02</td>
                           <td valign="top">
                             <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:600;">Queue Your Sound</h4>
                             <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.5;">Search and add YouTube tracks or upload local files effortlessly.</p>
@@ -191,7 +185,7 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
                       <!-- Card Step 3 -->
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:12px;padding:16px;">
                         <tr>
-                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#ec4899;">03</td>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:700;color:#ffffff;">03</td>
                           <td valign="top">
                             <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:600;">Sync and Vibe</h4>
                             <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.5;">Share your invite link to experience perfectly synchronized audio with your group.</p>
@@ -216,7 +210,7 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
                 <!-- Fallback Link -->
                 <p style="margin:0;padding-top:20px;border-top:1px solid #1f1f23;color:#52525b;font-size:12px;line-height:1.5;word-break:break-all;">
                   If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${actionUrl}" style="color:#8b5cf6;text-decoration:none;word-break:break-all;">${actionUrl}</a>
+                  <a href="${actionUrl}" style="color:#ffffff;text-decoration:underline;word-break:break-all;">${actionUrl}</a>
                 </p>
               </td>
             </tr>
@@ -263,8 +257,8 @@ export function buildResetPasswordOtpHtml(name: string, otp: string): string {
       }
       
       @keyframes borderGlow {
-        0%, 100% { border-color: rgba(139, 92, 246, 0.15); box-shadow: 0 0 15px rgba(139, 92, 246, 0.05); }
-        50% { border-color: rgba(139, 92, 246, 0.35); box-shadow: 0 0 25px rgba(139, 92, 246, 0.15); }
+        0%, 100% { border-color: rgba(255, 255, 255, 0.08); box-shadow: 0 0 15px rgba(255, 255, 255, 0.03); }
+        50% { border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 0 25px rgba(255, 255, 255, 0.08); }
       }
 
       body {
@@ -288,17 +282,14 @@ export function buildResetPasswordOtpHtml(name: string, otp: string): string {
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
             <tr>
               <td style="font-size:24px;font-weight:800;letter-spacing:-0.03em;color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;">
-                Sync<span style="color:#8b5cf6;">Beats</span>
+                SYNC<span style="color:#71717a;">BEATS</span>
               </td>
             </tr>
           </table>
 
           <!-- Main Card Container -->
           <table role="presentation" class="animated-card" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#0c0c0e;border:1px solid #1f1f23;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.6);">
-            <!-- Sleek Top Accent Line -->
-            <tr>
-              <td height="4" style="background:linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);"></td>
-            </tr>
+            <!-- Removed Gradient Accent Line -->
             <!-- Card Body -->
             <tr>
               <td style="padding:40px 32px;text-align:center;">
