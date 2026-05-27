@@ -93,10 +93,12 @@ export default function RoomPage() {
 
   // ── Signal ready when audio buffers ───────────────────────────────────────
   useEffect(() => {
-    if (audio.isReady && audio.hasTrack) {
+    if (audio.isReady && audio.hasTrack && !audio.isBuffering) {
       setReady(true);
+    } else {
+      setReady(false);
     }
-  }, [audio.isReady, audio.hasTrack, setReady]);
+  }, [audio.isReady, audio.hasTrack, audio.isBuffering, setReady]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
   const dragCounter = useRef(0); // track enter/leave nesting

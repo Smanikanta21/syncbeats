@@ -405,7 +405,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
   const setReady = useCallback((isReady: boolean) => {
-    if (isReady) socket.emit('room:clientReady', { roomId });
+    socket.emit('room:clientReady', { roomId, isReady });
   }, [socket, roomId]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);

@@ -500,10 +500,15 @@ export function DynamicIsland() {
                   <div className="flex-1 min-w-0">
                     <h3 className="text-xl sm:text-2xl font-black text-foreground truncate leading-tight">{audio.trackTitle || "Unknown Track"}</h3>
                     <div className="flex items-center gap-2 mt-1.5">
-                      {audio.isReady
-                        ? <span className="text-xs text-green-500 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span>
-                        : <span className="text-xs text-foreground/40 font-semibold flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</span>
-                      }
+                      {snapshot?.state === "PREPARING" ? (
+                        <span className="text-xs text-amber-500 font-semibold flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Waiting for others to buffer...
+                        </span>
+                      ) : audio.isReady && !audio.isBuffering ? (
+                        <span className="text-xs text-green-500 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span>
+                      ) : (
+                        <span className="text-xs text-foreground/40 font-semibold flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -596,7 +601,13 @@ export function DynamicIsland() {
                   </div>
                   <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
                     <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
-                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
+                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">
+                      {snapshot?.state === "PREPARING" ? (
+                        <span className="text-amber-500 font-semibold flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Waiting for others to buffer...</span>
+                      ) : (
+                        `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`
+                      )}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">

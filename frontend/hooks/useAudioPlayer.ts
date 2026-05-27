@@ -34,6 +34,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   pauseAt:     (position: number) => void;
   getTruePosition: () => number;
   setPlaybackRate: (rate: number) => void;
+  preparePlayback: () => void;
   audioEl:     HTMLAudioElement | null;
 }
 
@@ -78,6 +79,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const ytBufferingRef = useRef(false);
   // Cooldown: timestamp of last drift-correction seek (prevents re-seek while YT buffers)
   const ytLastSeekRef = useRef<number>(0);
+  const ytPrebufferingRef = useRef<boolean>(false);
   // Active schedule: stores the server timeline so we can re-sync after buffering
   const ytScheduleRef = useRef<{ startEpoch: number; clockOffset: number } | null>(null);
   
@@ -168,6 +170,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               ytBufferingRef.current = false;
               setIsBuffering(false);
               
+              if (ytPrebufferingRef.current) {
+                // If we hit playing during the PREPARING phase, pause immediately and unmute
+                ytPrebufferingRef.current = false;
+                ytPlayerRef.current.pauseVideo();
+                ytPlayerRef.current.unMute();
+                setIsBuffering(false);
+                return;
+              }
+
               // After buffering → playing, snap to the correct server-synchronized position.
               // This is the KEY fix: YouTube takes variable time to buffer after seekTo(),
               // so we re-calculate where we should be RIGHT NOW and seek there.
@@ -649,6 +660,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [isYoutubeMode]);
 
+  const preparePlayback = useCallback(() => {
+    if (isYoutubeMode) {
+      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      ytPrebufferingRef.current = true;
+      ytPlayerRef.current.mute(); // Mute so the user doesn't hear the 0.1s of audio before it pauses
+      ytPlayerRef.current.playVideo();
+    }
+  }, [isYoutubeMode]);
+
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
     setVolumeState(clamped);
@@ -697,7 +717,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist, needsGesture,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
-    scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
+    scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate, preparePlayback,
     audioEl: null,
   };
 }

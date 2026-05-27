@@ -49,6 +49,10 @@ export class SocketHandler {
       this.io.to(roomId).emit('room:queueChanged', { queue });
     });
 
+    eventBus.on(EVENTS.PLAYBACK_PREPARE, (payload: any) => {
+      this.io.to(payload.roomId).emit('playback:prepare', payload);
+    });
+
     eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
       this.io.to(payload.roomId).emit('playback:schedule', payload);
     });
@@ -116,10 +120,6 @@ export class SocketHandler {
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
-      
-      // Broadcast unlock hint to ALL devices before scheduling playback
-      // This allows locked mobile devices to show "Tap to Sync" UI
-      this.io.to(roomId).emit('playback:unlock-hint', { roomId, trackUrl: room.getTrackUrl() });
       
       try {
         room.play(socket.id);
@@ -205,12 +205,11 @@ export class SocketHandler {
 
     // ── Client ready — sent when audio is buffered (canplaythrough) ───────
 
-    socket.on('room:clientReady', ({ roomId }: { roomId: string }) => {
+    socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string; isReady?: boolean }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
 
-      room.setParticipantReady(socket.id, true);
-      console.log(`[Room ${roomId}] ${socket.id} is ready`);
+      room.setParticipantReady(socket.id, isReady);
     });
 
     socket.on('playback:blocked', ({ roomId, blocked }: { roomId: string; blocked: boolean }) => {

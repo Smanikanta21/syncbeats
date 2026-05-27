@@ -65,6 +65,7 @@ export class RoomManager {
     room.on('hostChanged', (hostId) => eventBus.emit(EVENTS.HOST_CHANGED, { roomId: room.roomId, hostId }));
     room.on('trackSet', ({ trackUrl, title }) => eventBus.emit(EVENTS.TRACK_SET, { roomId: room.roomId, trackUrl, title }));
     room.on('queueChanged', (queue) => eventBus.emit(EVENTS.QUEUE_CHANGED, { roomId: room.roomId, queue }));
+    room.on('prepare', () => eventBus.emit(EVENTS.PLAYBACK_PREPARE, { roomId: room.roomId }));
     room.on('schedule', (payload) => eventBus.emit(EVENTS.PLAYBACK_SCHEDULE, { roomId: room.roomId, ...payload }));
     room.on('pause', (payload) => eventBus.emit(EVENTS.PLAYBACK_PAUSE, { roomId: room.roomId, ...payload }));
     room.on('playError', ({ requesterId, message }) => {
