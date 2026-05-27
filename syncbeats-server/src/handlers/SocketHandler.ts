@@ -49,10 +49,6 @@ export class SocketHandler {
       this.io.to(roomId).emit('room:queueChanged', { queue });
     });
 
-    eventBus.on(EVENTS.PLAYBACK_PREPARE, (payload: any) => {
-      this.io.to(payload.roomId).emit('playback:prepare', payload);
-    });
-
     eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
       this.io.to(payload.roomId).emit('playback:schedule', payload);
     });
@@ -120,7 +116,6 @@ export class SocketHandler {
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
-      
       try {
         room.play(socket.id);
       } catch (err) {
@@ -205,11 +200,12 @@ export class SocketHandler {
 
     // ── Client ready — sent when audio is buffered (canplaythrough) ───────
 
-    socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string; isReady?: boolean }) => {
+    socket.on('room:clientReady', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
 
-      room.setParticipantReady(socket.id, isReady);
+      room.setParticipantReady(socket.id, true);
+      console.log(`[Room ${roomId}] ${socket.id} is ready`);
     });
 
     socket.on('playback:blocked', ({ roomId, blocked }: { roomId: string; blocked: boolean }) => {

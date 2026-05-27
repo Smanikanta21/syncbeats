@@ -247,9 +247,6 @@ export const roomsApi = {
       method: 'POST',
       body: JSON.stringify({ youtubeUrl }),
     }, true),
-
-  searchYoutube: (roomId: string, query: string) =>
-    request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
 };
 
 export const devicesApi = {

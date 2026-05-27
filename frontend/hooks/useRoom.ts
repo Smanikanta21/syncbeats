@@ -58,7 +58,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seqRef = useRef(0);
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
-  const isReadyRef = useRef(false);
   const reportedBlockedRef = useRef<boolean | null>(null);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
@@ -324,12 +323,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     socket.on('playback:pause', handlePause);
 
-    // Listen for unlock hint BEFORE schedule happens to prepare mobile devices
-    const handleUnlockHint = () => {
-      audioRef.current.unlockAudio();
-    };
-    socket.on('playback:unlock-hint', handleUnlockHint);
-
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
@@ -368,13 +361,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   }, [roomId, socket]);
 
   useEffect(() => {
-    socket.on('playback:prepare', ({ roomId: r, position }) => {
-      if (r !== roomId) return;
-      console.log("[SyncEngine] Received playback:prepare - waiting for buffers");
-      isReadyRef.current = false;
-      audioRef.current.preparePlayback(position);
-    });
-
     const checkInterval = setInterval(() => {
       const snap = snapshotRef.current;
       if (!snap || !snap.trackUrl) {
@@ -412,13 +398,9 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
-  const setReady = useCallback((ready: boolean) => {
-    if (!roomId || !currentSocketId) return;
-    if (ready === isReadyRef.current) return;
-    console.log(`[SyncEngine] Signaling readiness to server: isReady = ${ready}`);
-    isReadyRef.current = ready;
-    socket.emit('room:clientReady', { roomId, isReady: ready });
-  }, [roomId, currentSocketId, socket]);
+  const setReady = useCallback((isReady: boolean) => {
+    if (isReady) socket.emit('room:clientReady', { roomId });
+  }, [socket, roomId]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
