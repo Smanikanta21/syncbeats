@@ -531,7 +531,7 @@ export default function RoomPage() {
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
-        {audio.isBuffering && audio.isPlaying && (
+        {((audio.isBuffering && audio.isPlaying) || (snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked))) && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -553,7 +553,7 @@ export default function RoomPage() {
               
               {/* Text */}
               <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
-                Buffering…
+                {audio.isBuffering && audio.isPlaying ? "Buffering…" : "Devices Buffering…"}
               </span>
               
               {/* Animated dots */}

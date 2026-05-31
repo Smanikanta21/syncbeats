@@ -73,23 +73,26 @@ export function DynamicIsland() {
   const clearHover = () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
 
   const onMouseEnter = () => {
-    if (!isRoom) return;
+    if (!isRoom || upload.isUploading || upload.isDownloadingYt) return;
     clearHover();
     hoverTimerRef.current = setTimeout(() => setExpanded(true), 800);
   };
   const onMouseLeave = () => {
     clearHover();
-    if (!upload.isUploading) setExpanded(false);
+    if (!upload.isUploading && !upload.isDownloadingYt) setExpanded(false);
   };
 
   const onPointerDown = () => {
-    if (!isRoom) return;
+    if (!isRoom || upload.isUploading || upload.isDownloadingYt) return;
     pressTimer.current = setTimeout(() => setExpanded(true), 400);
   };
   const onPointerUp = () => clearPress();
   const onPointerCancel = () => clearPress();
 
+  const hasTrack = audio.hasTrack;
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
+  const isAnyDeviceBuffering = effectivePlaying && hasTrack && roomParticipants.some(p => !p.isReady && !p.isBlocked);
+  const isPillBuffering = (audio.isBuffering || isAnyDeviceBuffering) && effectivePlaying && hasTrack;
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -228,7 +231,6 @@ export function DynamicIsland() {
 
   const isDragTarget = upload.isDragging;
   const isUploading = upload.isUploading;
-  const hasTrack = audio.hasTrack;
 
   return (
     <>
@@ -310,7 +312,25 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !hasTrack && expanded && (
+            {!isDragTarget && !isUploading && upload.isDownloadingYt && (
+              <motion.div
+                key="yt-downloading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="px-6 py-3.5 flex items-center gap-4 w-[280px] sm:w-[320px]"
+              >
+                <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="w-4 h-4 text-foreground animate-spin" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-foreground leading-tight truncate">Downloading track…</p>
+                  <p className="text-[10px] text-foreground/50 font-medium truncate mt-0.5">{upload.ytDownloadTitle}</p>
+                </div>
+              </motion.div>
+            )}
+
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !hasTrack && expanded && (
               <motion.div
                 key="upload-ui"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -412,7 +432,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !hasTrack && !expanded && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !hasTrack && !expanded && (
               <motion.div
                 key="empty-pill"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -434,7 +454,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && hasTrack && expanded && (pillView === "player" || pillView === "youtube") && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && expanded && (pillView === "player" || pillView === "youtube") && (
               <motion.div
                 key="player-full"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -545,7 +565,7 @@ export function DynamicIsland() {
                   <button onClick={handlePrev}><SkipBack className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
                   <button onClick={handleToggle} className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)] relative">
                     <AnimatePresence mode="wait" initial={false}>
-                      {audio.isBuffering && effectivePlaying ? (
+                      {isPillBuffering ? (
                         <motion.div key="buffer" initial={{ opacity: 0, scale: 0.5, rotate: -90 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 90 }} transition={{ duration: 0.2 }} className="absolute"><Loader2 className="w-6 h-6 animate-spin" /></motion.div>
                       ) : effectivePlaying ? (
                         <motion.div key="pause" initial={{ opacity: 0, scale: 0.5, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Pause className="w-6 h-6" fill="currentColor" /></motion.div>
@@ -559,7 +579,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && hasTrack && expanded && pillView === "network" && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && expanded && pillView === "network" && (
               <motion.div
                 key="net-full-wrap"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -578,7 +598,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && hasTrack && !expanded && pillView !== "network" && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && !expanded && pillView !== "network" && (
               <motion.div
                 key="player-pill"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -603,7 +623,7 @@ export function DynamicIsland() {
                   <button onClick={handlePrev}><SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
                   <button onClick={handleToggle} className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative">
                     <AnimatePresence mode="wait" initial={false}>
-                      {audio.isBuffering && effectivePlaying ? (
+                      {isPillBuffering ? (
                         <motion.div key="b" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Loader2 className="w-3 h-3 animate-spin" /></motion.div>
                       ) : effectivePlaying ? (
                         <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
@@ -617,7 +637,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
               <motion.div
                 key="net-collapsed"
                 initial={{ opacity: 0, scale: 0.95 }}

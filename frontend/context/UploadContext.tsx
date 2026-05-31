@@ -7,7 +7,7 @@ import {
   createContext, useContext, useState, useCallback,
   useRef, type ReactNode,
 } from "react";
-import { getAuthToken, getServerUrl } from "../lib/api";
+import { getAuthToken, getServerUrl, roomsApi } from "../lib/api";
 
 interface UploadResult {
   trackUrl: string;
@@ -20,6 +20,9 @@ interface UploadCtx {
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
+  isDownloadingYt:  boolean;
+  ytDownloadTitle:  string;
+  downloadYoutube:  (roomId: string, videoId: string, title: string) => Promise<any>;
 }
 
 const Ctx = createContext<UploadCtx | null>(null);
@@ -32,6 +35,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
   const [isUploading,    setIsUploading]    = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDownloadingYt, setIsDownloadingYt] = useState(false);
+  const [ytDownloadTitle, setYtDownloadTitle] = useState("");
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   const uploadFile = useCallback(async (file: File, roomId: string): Promise<UploadResult> => {
@@ -79,8 +84,29 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const downloadYoutube = useCallback(async (roomId: string, videoId: string, title: string): Promise<any> => {
+    setIsDownloadingYt(true);
+    setYtDownloadTitle(title);
+    try {
+      const res = await roomsApi.downloadYoutubeTrack(roomId, videoId, title);
+      return res;
+    } finally {
+      setIsDownloadingYt(false);
+      setYtDownloadTitle("");
+    }
+  }, []);
+
   return (
-    <Ctx.Provider value={{ isDragging, isUploading, uploadProgress, setIsDragging, uploadFile }}>
+    <Ctx.Provider value={{
+      isDragging,
+      isUploading,
+      uploadProgress,
+      setIsDragging,
+      uploadFile,
+      isDownloadingYt,
+      ytDownloadTitle,
+      downloadYoutube
+    }}>
       {children}
     </Ctx.Provider>
   );
