@@ -29,6 +29,7 @@ interface YouTubeSearchModalProps {
 
 export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect, query }: YouTubeSearchModalProps) {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -37,6 +38,24 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
     await onSelect(url);
     setSelectedUrl(null);
   };
+
+  const handleDownloadAndPlay = async (result: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      setDownloadingUrl(result.url);
+      const videoId = result.url.split('v=')[1]?.split('&')[0] || result.url.split('youtu.be/')[1]?.split('?')[0];
+      if (!videoId) throw new Error("Invalid YouTube URL");
+      await roomsApi.downloadYoutubeTrack(roomId, videoId, result.title);
+      onClose();
+    } catch (error) {
+      console.error(error);
+      alert("Failed to download track.");
+    } finally {
+      setDownloadingUrl(null);
+    }
+  };
+
+
 
   const formatDuration = (seconds: number) => {
     if (seconds < 0) return "0:00";
@@ -92,43 +111,53 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
             </div>
           ) : (
             results.map((result) => (
-              <button
+              <div
                 key={result.url}
-                onClick={() => handleSelect(result.url)}
-                disabled={!!selectedUrl}
-                className="w-full flex gap-4 p-3 rounded-2xl hover:bg-foreground/5 border border-transparent hover:border-foreground/10 transition-all text-left group disabled:opacity-50"
+                className="w-full flex flex-col sm:flex-row gap-4 p-3 rounded-2xl hover:bg-foreground/5 border border-transparent hover:border-foreground/10 transition-all text-left group"
               >
-                {/* Thumbnail */}
-                <div className="relative w-32 md:w-40 aspect-video rounded-xl overflow-hidden shrink-0 bg-foreground/5">
-                  <img src={result.thumbnail} alt={result.title} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-bold text-white">
-                    {formatDuration(result.duration)}
+                <div className="flex gap-4 flex-1 cursor-pointer" onClick={() => handleSelect(result.url)}>
+                  {/* Thumbnail */}
+                  <div className="relative w-32 md:w-40 aspect-video rounded-xl overflow-hidden shrink-0 bg-foreground/5">
+                    <img src={result.thumbnail} alt={result.title} className="w-full h-full object-cover" />
+                    <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-bold text-white">
+                      {formatDuration(result.duration)}
+                    </div>
                   </div>
-                  {/* Hover Overlay */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    {selectedUrl === result.url ? (
-                      <Loader2 className="w-8 h-8 text-white animate-spin" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-[#FF0000] flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                        <Play className="w-5 h-5 text-white ml-1" />
-                      </div>
-                    )}
+
+                  {/* Details */}
+                  <div className="flex flex-col justify-center flex-1 min-w-0">
+                    <h3 className="font-bold text-sm md:text-base line-clamp-2 leading-snug mb-1 group-hover:text-[#FF0000] transition-colors">
+                      {result.title}
+                    </h3>
+                    <p className="text-xs text-foreground/50 line-clamp-1 mb-0.5">
+                      {result.uploaderName}
+                    </p>
+                    <p className="text-[11px] text-foreground/40 font-medium">
+                      {new Intl.NumberFormat('en-US', { notation: "compact" }).format(result.views)} views
+                    </p>
                   </div>
                 </div>
 
-                {/* Details */}
-                <div className="flex flex-col justify-center flex-1 min-w-0">
-                  <h3 className="font-bold text-sm md:text-base line-clamp-2 leading-snug mb-1 group-hover:text-[#FF0000] transition-colors">
-                    {result.title}
-                  </h3>
-                  <p className="text-xs text-foreground/50 line-clamp-1 mb-0.5">
-                    {result.uploaderName}
-                  </p>
-                  <p className="text-[11px] text-foreground/40 font-medium">
-                    {new Intl.NumberFormat('en-US', { notation: "compact" }).format(result.views)} views
-                  </p>
+                {/* Actions */}
+                <div className="flex flex-row sm:flex-col gap-2 shrink-0 justify-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSelect(result.url); }}
+                    disabled={!!selectedUrl || !!downloadingUrl}
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {selectedUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                    Play <span className="bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded text-[10px] ml-1">Beta</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleDownloadAndPlay(result, e)}
+                    disabled={!!selectedUrl || !!downloadingUrl}
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-red-500/20"
+                  >
+                    {downloadingUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5 hidden" />}
+                    {downloadingUrl === result.url ? "Downloading..." : "Download & Play"}
+                  </button>
                 </div>
-              </button>
+              </div>
             ))
           )}
         </div>

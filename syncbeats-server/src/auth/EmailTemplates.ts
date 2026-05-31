@@ -148,7 +148,7 @@ function buildWelcomeEmailContent(name: string, actionLabel: string, actionUrl: 
             <tr>
               <td style="padding:40px 32px;text-align:left;">
                 <h1 style="margin:0 0 12px 0;color:#ffffff;font-size:24px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;">Welcome to SyncBeats, ${name}</h1>
-                <p style="margin:0 0 32px 0;color:#a1a1aa;font-size:15px;line-height:1.6;font-weight:400;">We are thrilled to have you! SyncBeats allows you to listen to your favorite tracks in absolute real-time sync with friends. Here is how to get started:</p>
+                <p style="margin:0 0 32px 0;color:#a1a1aa;font-size:15px;line-height:1.6;font-weight:400;">We are thrilled to have you! SyncBeats allows you to listen to your favorite tracks in absolute real-time sync with friends. <br/><br/><strong style="color:#ef4444;">Note:</strong> The direct YouTube sync feature is currently in Beta and may be unstable on certain devices. We highly recommend using the <strong>"Download & Play"</strong> option in the YouTube modal, or uploading your own local files for the most reliable sync experience.</p>
                 
                 <!-- Steps Container Table -->
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
@@ -229,6 +229,16 @@ export function buildVerifyEmailHtml(name: string, verifyUrl: string): string {
     'Verify Email',
     verifyUrl,
     'This link will expire in 24 hours.'
+  );
+}
+
+export function buildAnnouncementHtml(title: string, message: string): string {
+  return buildEmailLayout(
+    title,
+    message,
+    'Open SyncBeats',
+    'https://syncbeats.app/hub',
+    ''
   );
 }
 

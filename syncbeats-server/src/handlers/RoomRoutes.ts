@@ -26,7 +26,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const r = await ytSearch(q);
       const videos = r.videos.slice(0, 10);
       
-      const results = videos.map(v => ({
+      const results = videos.map((v: any) => ({
         url: v.url,
         type: 'stream',
         title: v.title,

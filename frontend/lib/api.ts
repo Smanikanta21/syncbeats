@@ -248,6 +248,12 @@ export const roomsApi = {
       body: JSON.stringify({ youtubeUrl }),
     }, true),
 
+  downloadYoutubeTrack: (roomId: string, videoId: string, title: string) =>
+    request<any>(`/rooms/${roomId}/yt-download`, {
+      method: 'POST',
+      body: JSON.stringify({ videoId, title }),
+    }, true),
+
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
 };
