@@ -105,6 +105,11 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
       res.status(201).json({ trackUrl: publicUrl, title, queued: !activated });
 
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'Room not found') {
+        res.status(404).json({ error: 'Room not found' });
+        return;
+      }
       console.error('[YT Download] failed:', err);
       res.status(500).json({ error: 'Failed to download YouTube track' });
     }
