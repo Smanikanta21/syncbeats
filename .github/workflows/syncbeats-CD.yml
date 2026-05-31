@@ -134,7 +134,6 @@ jobs:
           DB_HOST="postgres"
           if [ "${{ github.ref_name }}" != "main" ]; then
             APP_DIR="sync-beats-dev"
-            DB_HOST="PLACEHOLDER_VM_IP"
           fi
 
           {
@@ -163,7 +162,16 @@ jobs:
 
           if [ "${{ github.ref_name }}" != "main" ]; then
             # Strip postgres service and depends_on blocks from docker-compose for staging
-            yq -i 'del(.services.postgres) | del(.services.server.depends_on) | del(.services.studio.depends_on)' docker-compose.yml
+            # Attach server/studio to the shared prod network so they can reach the postgres container by name
+            yq -i '
+              del(.services.postgres) |
+              del(.services.server.depends_on) |
+              del(.services.studio.depends_on) |
+              .services.server.networks = ["default", "prod_network"] |
+              .services.studio.networks = ["default", "prod_network"] |
+              .networks.prod_network.external = true |
+              .networks.prod_network.name = "sync-beats_default"
+            ' docker-compose.yml
           fi
 
           # Ensure target dir exists and is writable
@@ -181,12 +189,7 @@ jobs:
             docker-compose.yml \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:~/$APP_DIR/docker-compose.yml
 
-          # Dynamic VM Host Private IP Injection for Staging
-          if [ "${{ github.ref_name }}" != "main" ]; then
-            ssh -o StrictHostKeyChecking=yes \
-              ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-              "VM_IP=\$(hostname -I | awk '{print \$1}') && sed -i \"s/PLACEHOLDER_VM_IP/\$VM_IP/g\" ~/$APP_DIR/.env"
-          fi
+          # No IP injection needed — staging uses shared prod Docker network to reach postgres by container name
 
           # Lock down .env
           ssh -o StrictHostKeyChecking=yes \
