@@ -134,7 +134,7 @@ jobs:
           DB_HOST="postgres"
           if [ "${{ github.ref_name }}" != "main" ]; then
             APP_DIR="sync-beats-dev"
-            DB_HOST="${{ secrets.VM_HOST }}"
+            DB_HOST="PLACEHOLDER_VM_IP"
           fi
 
           {
