@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
@@ -10,10 +10,10 @@ COPY src/ ./src/
 RUN DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder" npx prisma generate
 RUN npx tsc
 
-FROM node:20-alpine
+FROM node:20-slim
 
 # Install ffmpeg (required by yt-dlp for audio conversion) and curl
-RUN apk add --no-cache ffmpeg curl python3
+RUN apt-get update && apt-get install -y ffmpeg curl python3 openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package*.json ./
