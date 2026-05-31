@@ -51,7 +51,7 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
 
       console.log(`[YT Download] Starting download for ${videoId} to ${tempPathTemplate}`);
 
-      await execFileAsync(YTDLP_BIN, [
+      const ytDlpArgs = [
         '-f', 'bestaudio',
         '-x',
         '--audio-format', 'mp3',
@@ -59,8 +59,17 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         '--no-progress',
         '--extractor-args', 'youtube:player_client=ios',
         '-o', tempPathTemplate,
-        videoUrl,
-      ]);
+      ];
+
+      const cookiesPath = path.resolve(process.cwd(), 'cookies.txt');
+      if (fs.existsSync(cookiesPath)) {
+        ytDlpArgs.push('--cookies', cookiesPath);
+        console.log(`[YT Download] Using cookies.txt found at: ${cookiesPath}`);
+      }
+
+      ytDlpArgs.push(videoUrl);
+
+      await execFileAsync(YTDLP_BIN, ytDlpArgs);
 
       if (!fs.existsSync(filePath)) {
         throw new Error('Downloaded file not found in uploads directory');
