@@ -40,7 +40,6 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
         return;
       }
-      }
 
       // Download audio using yt-dlp (force MP3 so local /files streaming uses the correct content-type)
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
