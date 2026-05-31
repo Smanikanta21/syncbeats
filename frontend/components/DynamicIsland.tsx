@@ -333,8 +333,32 @@ export function DynamicIsland() {
                 </div>
 
                 {pillView === "youtube" ? (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Paste a YouTube link</label>
+                  <div className="flex flex-col gap-3">
+                    {/* Search */}
+                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Search YouTube</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={youtubeQuery}
+                        onChange={(e) => setYoutubeQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeSearch()}
+                        placeholder="Search for a song..."
+                        className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                      />
+                      <button
+                        onClick={handleYoutubeSearch}
+                        disabled={!youtubeQuery.trim() || isSearching}
+                        className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
+                      >
+                        {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                        Search
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 my-1">
+                      <div className="flex-1 h-px bg-foreground/10" />
+                      <span className="text-[10px] text-foreground/30 font-bold">OR PASTE URL DIRECTLY</span>
+                      <div className="flex-1 h-px bg-foreground/10" />
+                    </div>
                     <div className="flex gap-2">
                       <input
                         type="url"
@@ -347,10 +371,10 @@ export function DynamicIsland() {
                       <button
                         onClick={handleYoutubeSubmit}
                         disabled={!youtubeLink.trim() || isYoutubeLoading}
-                        className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
+                        className="px-4 py-2.5 rounded-xl bg-foreground/10 text-foreground font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
                       >
                         {isYoutubeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                        Play
+                        Play <span className="bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded text-[10px]">Beta</span>
                       </button>
                     </div>
                     {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
@@ -654,6 +678,29 @@ export function DynamicIsland() {
           )}
         </AnimatePresence>
       </div>
+
+      <YouTubeSearchModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        results={searchResults}
+        roomId={roomId}
+        query={youtubeQuery}
+        onSelect={async (url) => {
+          setIsYoutubeLoading(true);
+          try {
+            audio.unlockAudio();
+            await roomsApi.enqueueYoutube(roomId, url);
+            setIsModalOpen(false);
+            setYoutubeQuery("");
+            setExpanded(false);
+            setPillView("player");
+          } catch (err: any) {
+            setYoutubeErr(err.message);
+          } finally {
+            setIsYoutubeLoading(false);
+          }
+        }}
+      />
     </>
   );
 }
