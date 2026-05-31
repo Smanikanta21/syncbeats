@@ -1,36 +1,49 @@
 import { Router, Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
-import { execFile } from 'child_process';
+import axios from 'axios';
+import { Upload } from '@aws-sdk/lib-storage';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { requireAuth } from '../auth/authMiddleware';
 import { RoomManager } from '../core/RoomManager';
-import { RoomRepository } from '../db/RoomRepository';
-import { uploadToS3 } from '../utils/s3';
-import { promisify } from 'util';
-import { Readable } from 'stream';
+import { getS3Client, getBucket } from '../utils/s3';
+import prisma from '../db/prisma';
 
-const execFileAsync = promisify(execFile);
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
-const YTDLP_BIN = path.resolve(process.cwd(), 'bin', 'yt-dlp');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-const MAX_USER_STORAGE_BYTES = 100 * 1024 * 1024;
+// Helper to stream the audio file from RapidAPI response directly to S3
+async function streamToS3(mp3DownloadUrl: string, youtubeId: string): Promise<string> {
+  const response = await axios({
+    method: 'GET',
+    url: mp3DownloadUrl,
+    responseType: 'stream',
+    timeout: 120_000, // 2-minute download timeout
+  });
 
-// ── Residential Worker Config ───────────────────────────────────────────
-const YT_WORKER_URL = process.env.YT_WORKER_URL || '';       // e.g. https://yt-worker.syncbeats.app
-const YT_WORKER_SECRET = process.env.YT_WORKER_SECRET || ''; // Shared secret for worker auth
+  const bucket = getBucket();
+  const s3Key = `tracks/${youtubeId}.mp3`;
+
+  const parallelUpload = new Upload({
+    client: getS3Client(),
+    params: {
+      Bucket: bucket,
+      Key: s3Key,
+      Body: response.data,
+      ContentType: 'audio/mpeg',
+    },
+  });
+
+  await parallelUpload.done();
+
+  // Return S3 CloudFront/S3 URL
+  const cdnDomain = process.env.CDN_DOMAIN;
+  if (cdnDomain) {
+    return `https://${cdnDomain}/${s3Key}`;
+  }
+  const region = process.env.AWS_REGION || 'ap-south-1';
+  return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
+}
 
 export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
   const router = Router();
-  const repo = new RoomRepository();
-
-  if (YT_WORKER_URL) {
-    console.log(`[YT Download] Residential worker enabled: ${YT_WORKER_URL}`);
-  } else {
-    console.log(`[YT Download] No YT_WORKER_URL set — using local yt-dlp fallback`);
-  }
 
   router.post('/:roomId/yt-download', requireAuth, async (req: Request, res: Response) => {
-    const roomId = req.params.roomId as string;
     const { videoId, title } = req.body as { videoId?: string; title?: string };
     const userId = req.user!.sub;
 
@@ -45,33 +58,96 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
     }
 
     try {
-      // Basic quota check
-      const usedBytes = await repo.getUserStorageUsageBytes(userId);
-      if (usedBytes >= MAX_USER_STORAGE_BYTES) {
-        res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
-        return;
-      }
+      // 1. THE CACHE CHECK (Cost: $0, Time: 5ms)
+      const cachedTrack = await prisma.cachedTrack.findUnique({
+        where: { youtubeId: videoId },
+      });
 
-      // ─── Strategy 1: Proxy through Residential Worker (Cloudflare Tunnel) ───
-      if (YT_WORKER_URL) {
-        try {
-          await proxyThroughWorker(res, videoId, title);
+      if (cachedTrack) {
+        console.log(`[YT Download] Cache HIT for ${videoId}. Serving from S3.`);
+
+        const s3Key = `tracks/${videoId}.mp3`;
+        const bucket = getBucket();
+        const getObjectCommand = new GetObjectCommand({
+          Bucket: bucket,
+          Key: s3Key,
+        });
+
+        const s3Response = await getS3Client().send(getObjectCommand);
+        if (s3Response.Body) {
+          res.setHeader('Content-Type', 'audio/mpeg');
+          if (s3Response.ContentLength) {
+            res.setHeader('Content-Length', s3Response.ContentLength);
+          }
+          res.setHeader('Content-Disposition', `attachment; filename="${cachedTrack.title}.mp3"`);
+          (s3Response.Body as any).pipe(res);
           return;
-        } catch (workerErr) {
-          console.warn(`[YT Download] Worker proxy failed, falling back to local yt-dlp:`, workerErr);
-          // Fall through to local yt-dlp below
+        } else {
+          throw new Error('S3 response body is empty for cache hit');
         }
       }
 
-      // ─── Strategy 2: Local yt-dlp fallback (with optional cookies) ──────────
-      await downloadLocally(res, videoId, title);
+      // 2. THE API FETCH (Cost: 1 Quota, Time: ~2s)
+      console.log(`[YT Download] Cache MISS for ${videoId}. Contacting RapidAPI...`);
+      const RAPID_API_KEY = process.env.RAPID_API_KEY || '';
+      if (!RAPID_API_KEY) {
+        throw new Error('RAPID_API_KEY is not configured in the environment');
+      }
+
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const apiResponse = await axios.request({
+        method: 'GET',
+        url: 'https://youtube-mp310.p.rapidapi.com/download/mp3',
+        params: { url: youtubeUrl },
+        headers: {
+          'x-rapidapi-key': RAPID_API_KEY,
+          'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
+        },
+        timeout: 30000,
+      });
+
+      const temporaryMp3Url = apiResponse.data.downloadUrl;
+      if (!temporaryMp3Url) {
+        throw new Error('RapidAPI failed to return a valid download link. Response: ' + JSON.stringify(apiResponse.data));
+      }
+
+      // 3. DIRECT UPLOAD TO S3
+      console.log(`[YT Download] Uploading stream to S3...`);
+      const permanentS3Url = await streamToS3(temporaryMp3Url, videoId);
+
+      // 4. UPDATE THE GLOBAL CACHE
+      console.log(`[YT Download] Saving track to database cache...`);
+      const newTrack = await prisma.cachedTrack.create({
+        data: {
+          youtubeId: videoId,
+          title: title || 'Unknown Title',
+          s3Url: permanentS3Url,
+          requestedBy: userId,
+        }
+      });
+
+      // 5. Stream the newly downloaded track to client response
+      console.log(`[YT Download] Streaming newly downloaded track from S3 to client...`);
+      const s3Key = `tracks/${videoId}.mp3`;
+      const bucket = getBucket();
+      const getObjectCommand = new GetObjectCommand({
+        Bucket: bucket,
+        Key: s3Key,
+      });
+
+      const s3Response = await getS3Client().send(getObjectCommand);
+      if (s3Response.Body) {
+        res.setHeader('Content-Type', 'audio/mpeg');
+        if (s3Response.ContentLength) {
+          res.setHeader('Content-Length', s3Response.ContentLength);
+        }
+        res.setHeader('Content-Disposition', `attachment; filename="${newTrack.title}.mp3"`);
+        (s3Response.Body as any).pipe(res);
+      } else {
+        throw new Error('S3 response body is empty after successful upload');
+      }
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message === 'Room not found') {
-        res.status(404).json({ error: 'Room not found' });
-        return;
-      }
       console.error('[YT Download] failed:', err);
       res.status(500).json({ error: 'Failed to download YouTube track' });
     }
@@ -80,102 +156,3 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
   return router;
 }
 
-// ─── Proxy download through the residential worker via Cloudflare Tunnel ────
-async function proxyThroughWorker(res: Response, videoId: string, title: string): Promise<void> {
-  console.log(`[YT Download] Proxying to residential worker: ${YT_WORKER_URL}`);
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (YT_WORKER_SECRET) {
-    headers['Authorization'] = `Bearer ${YT_WORKER_SECRET}`;
-  }
-
-  const workerRes = await fetch(`${YT_WORKER_URL}/download`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ videoId, title }),
-    signal: AbortSignal.timeout(120_000), // 2 min timeout
-  });
-
-  if (!workerRes.ok) {
-    const body = await workerRes.text().catch(() => '');
-    throw new Error(`Worker responded ${workerRes.status}: ${body.slice(0, 200)}`);
-  }
-
-  console.log(`[YT Download] Worker streaming response — piping to client`);
-
-  // Forward headers from worker response
-  const contentType = workerRes.headers.get('content-type');
-  const contentLength = workerRes.headers.get('content-length');
-  const contentDisposition = workerRes.headers.get('content-disposition');
-
-  if (contentType) res.setHeader('Content-Type', contentType);
-  if (contentLength) res.setHeader('Content-Length', contentLength);
-  if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
-
-  // Pipe the ReadableStream from fetch() into the Express response
-  if (workerRes.body) {
-    const readable = Readable.fromWeb(workerRes.body as any);
-    readable.pipe(res);
-    await new Promise<void>((resolve, reject) => {
-      readable.on('end', resolve);
-      readable.on('error', reject);
-    });
-    console.log(`[YT Download] Worker stream completed successfully`);
-  } else {
-    throw new Error('Worker response has no body');
-  }
-}
-
-// ─── Local yt-dlp fallback (runs on this server's IP) ───────────────────────
-async function downloadLocally(res: Response, videoId: string, title: string): Promise<void> {
-  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const safeTitle = title.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-  const filenameBase = `${Date.now()}_yt_${safeTitle}`;
-  const tempPathTemplate = path.join(UPLOADS_DIR, `${filenameBase}.%(ext)s`);
-  const downloadedFile = `${filenameBase}.mp3`;
-  const filePath = path.join(UPLOADS_DIR, downloadedFile);
-
-  console.log(`[YT Download] Local fallback — downloading ${videoId}`);
-
-  const ytDlpArgs = [
-    '-f', 'bestaudio',
-    '-x',
-    '--audio-format', 'mp3',
-    '--no-playlist',
-    '--no-progress',
-    '-o', tempPathTemplate,
-  ];
-
-  const cookiesPath = path.resolve(process.cwd(), 'cookies.txt');
-  if (fs.existsSync(cookiesPath)) {
-    ytDlpArgs.push('--cookies', cookiesPath);
-    console.log(`[YT Download] Using cookies.txt found at: ${cookiesPath}`);
-  }
-
-  ytDlpArgs.push(videoUrl);
-
-  await execFileAsync(YTDLP_BIN, ytDlpArgs);
-
-  if (!fs.existsSync(filePath)) {
-    throw new Error('Downloaded file not found in uploads directory');
-  }
-
-  console.log(`[YT Download] Sending file ${downloadedFile} back to client transiently.`);
-
-  // Send the file directly in the response and delete it from the server's disk instantly
-  res.sendFile(filePath, (err) => {
-    if (err) {
-      console.error('[YT Download] Error sending file:', err);
-    }
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        console.log(`[YT Download] Temp file successfully unlinked: ${filePath}`);
-      }
-    } catch (unlinkErr) {
-      console.error('[YT Download] Error deleting temp file:', unlinkErr);
-    }
-  });
-}

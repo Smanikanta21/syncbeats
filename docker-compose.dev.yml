@@ -40,9 +40,8 @@ services:
       # Email
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      # Residential YT Worker (Cloudflare Tunnel)
-      YT_WORKER_URL: ${YT_WORKER_URL:-}
-      YT_WORKER_SECRET: ${YT_WORKER_SECRET:-}
+      # RapidAPI Configuration
+      RAPID_API_KEY: ${RAPID_API_KEY:-}
     volumes:
       - ./syncbeats-server:/app
       - uploads:/app/uploads

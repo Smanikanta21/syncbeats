@@ -96,3 +96,16 @@ model RoomParticipant {
   @@id([roomId, userId])
   @@map("room_participants")
 }
+
+model CachedTrack {
+  id          String   @id @default(cuid())
+  youtubeId   String   @unique @map("youtube_id")
+  title       String
+  s3Url       String   @map("s3_url")
+  requestedBy String?  @map("requested_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([youtubeId], map: "idx_cached_tracks_youtube_id")
+  @@map("cached_tracks")
+}
+
