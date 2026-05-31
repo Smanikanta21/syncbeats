@@ -36,30 +36,30 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         return;
       }
 
-      // Download audio using yt-dlp
+      // Download audio using yt-dlp (force MP3 so local /files streaming uses the correct content-type)
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const safeTitle = title.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeTitle = title.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
       const filenameBase = `${Date.now()}_yt_${safeTitle}`;
       const tempPathTemplate = path.join(UPLOADS_DIR, `${filenameBase}.%(ext)s`);
+      const downloadedFile = `${filenameBase}.mp3`;
+      const filePath = path.join(UPLOADS_DIR, downloadedFile);
 
       console.log(`[YT Download] Starting download for ${videoId} to ${tempPathTemplate}`);
-      
+
       await execFileAsync(YTDLP_BIN, [
         '-f', 'bestaudio',
+        '-x',
+        '--audio-format', 'mp3',
         '--no-playlist',
+        '--no-progress',
         '-o', tempPathTemplate,
-        videoUrl
+        videoUrl,
       ]);
 
-      // yt-dlp replaces %(ext)s with the actual extension, so we need to find the file
-      const files = fs.readdirSync(UPLOADS_DIR);
-      const downloadedFile = files.find(f => f.startsWith(filenameBase));
-
-      if (!downloadedFile) {
+      if (!fs.existsSync(filePath)) {
         throw new Error('Downloaded file not found in uploads directory');
       }
 
-      const filePath = path.join(UPLOADS_DIR, downloadedFile);
       const stat = fs.statSync(filePath);
 
       // Final quota check now that we know the file size
