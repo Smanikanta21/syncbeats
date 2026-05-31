@@ -37,9 +37,7 @@ async function main() {
   console.log(`Found ${users.length} users. Sending announcements...`);
 
   const title = "Important Update: YouTube Sync Beta";
-  const message = `We wanted to give you a quick update regarding YouTube Sync. The direct YouTube sync feature is currently in Beta and we've noticed it may not work perfectly on all devices due to browser restrictions.
-
-We highly recommend using the new <strong>"Download & Play"</strong> option in the YouTube modal, or uploading your own local audio files. This ensures you get the absolute best real-time synchronization experience!`;
+  const message = `We wanted to give you a quick update regarding YouTube Sync. The direct YouTube sync feature is currently in Beta and we've noticed it may not work perfectly on all devices due to browser restrictions.<br/><br/>We highly recommend using the new <strong>"Download & Play"</strong> option in the YouTube modal, or uploading your own local audio files. This ensures you get the absolute best real-time synchronization experience!`;
 
   const html = buildAnnouncementHtml(title, message);
 
