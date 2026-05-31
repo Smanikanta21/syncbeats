@@ -57,6 +57,7 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         '--audio-format', 'mp3',
         '--no-playlist',
         '--no-progress',
+        '--extractor-args', 'youtube:player_client=ios',
         '-o', tempPathTemplate,
         videoUrl,
       ]);
