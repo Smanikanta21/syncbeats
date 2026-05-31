@@ -36,9 +36,10 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
     try {
       // Basic quota check (this is an estimate since we don't know the exact file size yet)
       const usedBytes = await repo.getUserStorageUsageBytes(userId);
-      if (usedBytes > MAX_USER_STORAGE_BYTES) {
+      if (usedBytes >= MAX_USER_STORAGE_BYTES) {
         res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
         return;
+      }
       }
 
       // Download audio using yt-dlp (force MP3 so local /files streaming uses the correct content-type)
