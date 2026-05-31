@@ -115,7 +115,7 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                 key={result.url}
                 className="w-full flex flex-col sm:flex-row gap-4 p-3 rounded-2xl hover:bg-foreground/5 border border-transparent hover:border-foreground/10 transition-all text-left group"
               >
-                <div className="flex gap-4 flex-1 cursor-pointer" onClick={() => handleSelect(result.url)}>
+                <div className="flex gap-4 flex-1 cursor-pointer" role="button" tabIndex={0} onClick={() => { if (selectedUrl || downloadingUrl) return; void handleSelect(result.url); }} onKeyDown={(e) => { if (selectedUrl || downloadingUrl) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleSelect(result.url); } }}>
                   {/* Thumbnail */}
                   <div className="relative w-32 md:w-40 aspect-video rounded-xl overflow-hidden shrink-0 bg-foreground/5">
                     <img src={result.thumbnail} alt={result.title} className="w-full h-full object-cover" />
