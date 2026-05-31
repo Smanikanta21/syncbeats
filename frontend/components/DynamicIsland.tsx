@@ -18,6 +18,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useSyncInfo } from "../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
 import { NetworkPill, NetworkExpanded } from "./NetworkStats";
+import { YouTubeSearchModal } from "./YouTubeSearchModal";
 
 export function DynamicIsland() {
   const pathname = usePathname();
@@ -36,6 +37,10 @@ export function DynamicIsland() {
   const [youtubeLink, setYoutubeLink] = useState("");
   const [youtubeErr, setYoutubeErr] = useState("");
   const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
+  const [youtubeQuery, setYoutubeQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const netStats = useNetworkStats(isRoom);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,6 +174,21 @@ export function DynamicIsland() {
       setYoutubeErr(err.message);
     } finally {
       setIsYoutubeLoading(false);
+    }
+  };
+
+  const handleYoutubeSearch = async () => {
+    if (!roomId || !youtubeQuery.trim()) return;
+    setIsSearching(true);
+    setYoutubeErr("");
+    try {
+      const results = await roomsApi.searchYoutube(roomId, youtubeQuery.trim());
+      setSearchResults(results);
+      setIsModalOpen(true);
+    } catch (err: any) {
+      setYoutubeErr(err.message ?? "Search failed");
+    } finally {
+      setIsSearching(false);
     }
   };
 
