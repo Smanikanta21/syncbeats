@@ -20,11 +20,16 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
 
   router.post('/:roomId/yt-download', requireAuth, async (req: Request, res: Response) => {
     const roomId = req.params.roomId as string;
-    const { videoId, title } = req.body;
+    const { videoId, title } = req.body as { videoId?: string; title?: string };
     const userId = req.user!.sub;
 
-    if (!videoId || !title) {
+    if (!videoId?.trim() || !title?.trim()) {
       res.status(400).json({ error: 'videoId and title are required' });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      res.status(400).json({ error: 'Invalid YouTube videoId' });
       return;
     }
 
