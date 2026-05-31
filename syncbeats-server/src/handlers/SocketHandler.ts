@@ -216,6 +216,24 @@ export class SocketHandler {
       console.log(`[Room ${roomId}] ${socket.id} is blocked: ${blocked}`);
     });
 
+    // ── Peer-to-Peer file sharing relays via WebSockets ──────────────────────
+
+    socket.on('track:request_file', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
+      // Broadcast to everyone else in the room (excludes the sender) to find who has this file
+      socket.to(roomId).emit('track:request_file', { requesterSocketId: socket.id, trackUrl });
+    });
+
+    socket.on('track:send_chunk', ({ targetSocketId, trackUrl, chunkIndex, totalChunks, data }: { 
+      targetSocketId: string; 
+      trackUrl: string; 
+      chunkIndex: number; 
+      totalChunks: number; 
+      data: any; 
+    }) => {
+      // Relay the chunk directly to the target socket!
+      this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+    });
+
     // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {

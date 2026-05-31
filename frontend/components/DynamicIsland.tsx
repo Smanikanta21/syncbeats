@@ -73,17 +73,17 @@ export function DynamicIsland() {
   const clearHover = () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
 
   const onMouseEnter = () => {
-    if (!isRoom || upload.isUploading || upload.isDownloadingYt) return;
+    if (!isRoom || upload.isUploading || upload.isDownloadingYt || isSyncing) return;
     clearHover();
     hoverTimerRef.current = setTimeout(() => setExpanded(true), 800);
   };
   const onMouseLeave = () => {
     clearHover();
-    if (!upload.isUploading && !upload.isDownloadingYt) setExpanded(false);
+    if (!upload.isUploading && !upload.isDownloadingYt && !isSyncing) setExpanded(false);
   };
 
   const onPointerDown = () => {
-    if (!isRoom || upload.isUploading || upload.isDownloadingYt) return;
+    if (!isRoom || upload.isUploading || upload.isDownloadingYt || isSyncing) return;
     pressTimer.current = setTimeout(() => setExpanded(true), 400);
   };
   const onPointerUp = () => clearPress();
@@ -93,6 +93,10 @@ export function DynamicIsland() {
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
   const isAnyDeviceBuffering = effectivePlaying && hasTrack && roomParticipants.some(p => !p.isReady && !p.isBlocked);
   const isPillBuffering = (audio.isBuffering || isAnyDeviceBuffering) && effectivePlaying && hasTrack;
+
+  const currentTrackUrl = audio.trackUrl;
+  const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
+  const isSyncing = !!activeTransfer;
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -330,7 +334,25 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !hasTrack && expanded && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && activeTransfer && (
+              <motion.div
+                key="p2p-syncing"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="px-6 py-3.5 flex items-center gap-4 w-[280px] sm:w-[320px]"
+              >
+                <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="w-4 h-4 text-foreground animate-spin" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-foreground leading-tight truncate">Syncing track…</p>
+                  <p className="text-[10px] text-foreground/50 font-medium truncate mt-0.5">{audio.trackTitle || "Audio Track"} — {activeTransfer.progress}%</p>
+                </div>
+              </motion.div>
+            )}
+
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && !hasTrack && expanded && (
               <motion.div
                 key="upload-ui"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -432,7 +454,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !hasTrack && !expanded && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && !hasTrack && !expanded && (
               <motion.div
                 key="empty-pill"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -454,7 +476,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && expanded && (pillView === "player" || pillView === "youtube") && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && hasTrack && expanded && (pillView === "player" || pillView === "youtube") && (
               <motion.div
                 key="player-full"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -579,7 +601,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && expanded && pillView === "network" && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && hasTrack && expanded && pillView === "network" && (
               <motion.div
                 key="net-full-wrap"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -598,7 +620,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && !expanded && pillView !== "network" && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && hasTrack && !expanded && pillView !== "network" && (
               <motion.div
                 key="player-pill"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -637,7 +659,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !upload.isDownloadingYt && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
+            {!isDragTarget && !isUploading && !upload.isDownloadingYt && !isSyncing && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
               <motion.div
                 key="net-collapsed"
                 initial={{ opacity: 0, scale: 0.95 }}

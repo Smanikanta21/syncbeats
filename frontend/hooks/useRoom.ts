@@ -5,6 +5,7 @@ import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
+import { trackDB } from '../lib/db';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -60,6 +61,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const hasClockSync = useRef(false);
   const reportedBlockedRef = useRef<boolean | null>(null);
 
+  const setReady = useCallback((isReady: boolean) => {
+    if (isReady) socket.emit('room:clientReady', { roomId });
+  }, [socket, roomId]);
+
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     const currentQueueItem = queue.find((item) => item.isCurrent);
     if (currentQueueItem?.title) return currentQueueItem.title;
@@ -67,6 +72,34 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const fileName = trackUrl.split('/').pop() ?? '';
     return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
   }, []);
+
+  const loadAndSetTrack = useCallback(async (trackUrl: string | null | undefined, title: string) => {
+    if (!trackUrl) {
+      audioRef.current.clearTrack();
+      return;
+    }
+
+    if (trackUrl.startsWith("local:")) {
+      const blob = await trackDB.getTrack(trackUrl);
+      if (blob) {
+        audioRef.current.setTrack(URL.createObjectURL(blob), title);
+        setReady(true);
+      } else {
+        setReady(false);
+        socket.emit("track:request_file", { roomId, trackUrl });
+
+        const onSynced = (e: Event) => {
+          const syncedBlob = (e as CustomEvent).detail.blob;
+          audioRef.current.setTrack(URL.createObjectURL(syncedBlob), title);
+          setReady(true);
+          window.removeEventListener(`trackSynced:${trackUrl}`, onSynced);
+        };
+        window.addEventListener(`trackSynced:${trackUrl}`, onSynced);
+      }
+    } else {
+      audioRef.current.setTrack(trackUrl, title);
+    }
+  }, [roomId, socket, setReady]);
 
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;
@@ -113,7 +146,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       if (currentParticipant) audioRef.current.setVolume(currentParticipant.volume);
 
       if (snap.trackUrl) {
-        audioRef.current.setTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
       }
     }
   }, [roomId, currentSocketId, getTrackTitle]);
@@ -290,7 +323,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('room:participantLeft', handleParticipantLeft);
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
-      audioRef.current.setTrack(trackUrl, title);
+      loadAndSetTrack(trackUrl, title);
     };
     socket.on('room:trackSet', handleTrackSet);
 
@@ -304,7 +337,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
         if (playingUrl && playingUrl !== newCurrentItem.trackUrl) {
-          audioRef.current.setTrack(newCurrentItem.trackUrl, newCurrentItem.title);
+          loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
         }
       }
       // If queue has songs but none is isCurrent, let room:trackSet / room:stateChanged handle it
@@ -398,9 +431,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
-  const setReady = useCallback((isReady: boolean) => {
-    if (isReady) socket.emit('room:clientReady', { roomId });
-  }, [socket, roomId]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 

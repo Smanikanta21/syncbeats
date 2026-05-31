@@ -531,30 +531,45 @@ export default function RoomPage() {
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
-        {((audio.isBuffering && audio.isPlaying) || (snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked))) && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
-          >
-            <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-              {/* Animated gradient ring */}
-              <div className="absolute inset-0 rounded-full overflow-hidden">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
-              </div>
-              
-              {/* Spinner */}
-              <div className="relative w-5 h-5 shrink-0">
-                <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
-                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
-              </div>
-              
-              {/* Text */}
-              <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
-                {audio.isBuffering && audio.isPlaying ? "Buffering…" : "Devices Buffering…"}
-              </span>
+        {(() => {
+          const currentTrackUrl = snapshot?.trackUrl;
+          const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
+          const isSyncing = !!activeTransfer;
+          const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
+          
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+
+          let overlayText = "Buffering…";
+          if (isSyncing) {
+            overlayText = `Syncing track: ${activeTransfer.progress}%…`;
+          } else if (isAnyDeviceBuffering) {
+            overlayText = "Devices Buffering…";
+          }
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+            >
+              <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+                {/* Animated gradient ring */}
+                <div className="absolute inset-0 rounded-full overflow-hidden">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
+                </div>
+                
+                {/* Spinner */}
+                <div className="relative w-5 h-5 shrink-0">
+                  <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
+                </div>
+                
+                {/* Text */}
+                <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
+                  {overlayText}
+                </span>
               
               {/* Animated dots */}
               <div className="relative flex gap-0.5">
@@ -569,8 +584,9 @@ export default function RoomPage() {
               </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        );
+      })()}
+    </AnimatePresence>
 
       {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-[600px] max-h-[600px] md:w-full md:max-w-2xl md:h-[500px] bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />

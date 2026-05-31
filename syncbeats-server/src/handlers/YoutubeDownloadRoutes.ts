@@ -66,43 +66,22 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         throw new Error('Downloaded file not found in uploads directory');
       }
 
-      const stat = fs.statSync(filePath);
+      console.log(`[YT Download] Sending file ${downloadedFile} back to client transiently.`);
 
-      // Final quota check now that we know the file size
-      if (usedBytes + stat.size > MAX_USER_STORAGE_BYTES) {
-        fs.unlinkSync(filePath);
-        res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
-        return;
-      }
-
-      let mimeType = 'audio/mpeg';
-      if (downloadedFile.endsWith('.m4a')) mimeType = 'audio/mp4';
-      else if (downloadedFile.endsWith('.webm')) mimeType = 'audio/webm';
-      else if (downloadedFile.endsWith('.ogg')) mimeType = 'audio/ogg';
-
-      let publicUrl = `/files/${downloadedFile}`;
-      try {
-        publicUrl = await uploadToS3(filePath, downloadedFile, mimeType, roomId, userId);
-        // Delete local file after successful upload to S3
-        fs.unlinkSync(filePath);
-      } catch (s3Err) {
-        console.error('[YT Download] S3 upload failed, falling back to local:', s3Err);
-        // Keep the local file and the local publicUrl
-      }
-
-      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
-        trackUrl: publicUrl,
-        title: title,
-        fileName: downloadedFile,
-        mimeType: mimeType,
-        sizeBytes: stat.size,
+      // Send the file directly in the response and delete it from the server's disk instantly!
+      res.sendFile(filePath, (err) => {
+        if (err) {
+          console.error('[YT Download] Error sending file:', err);
+        }
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`[YT Download] Temp file successfully unlinked: ${filePath}`);
+          }
+        } catch (unlinkErr) {
+          console.error('[YT Download] Error deleting temp file:', unlinkErr);
+        }
       });
-
-      const room = roomManager.getOrCreate(roomId);
-      room.addToQueue(item);
-
-      console.log(`[YT Download] Room ${roomId}: ${title} → ${publicUrl} (queued=${!activated})`);
-      res.status(201).json({ trackUrl: publicUrl, title, queued: !activated });
 
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

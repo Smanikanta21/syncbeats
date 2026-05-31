@@ -8,7 +8,7 @@ const storage = new Storage();
 // Replace with your actual bucket name.
 const bucketName = process.env.GCS_BUCKET_NAME || 'syncbeats-audio-bucket';
 
-export const uploadAudioToGCS = async (file: Express.Multer.File, userId: string): Promise<{ url: string; size: number }> => {
+export const uploadAudioToGCS = async (file: any, userId: string): Promise<{ url: string; size: number }> => {
   const bucket = storage.bucket(bucketName);
   
   // Generate a unique, safe filename
