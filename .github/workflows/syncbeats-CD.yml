@@ -129,6 +129,8 @@ jobs:
           V_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           V_S3_BUCKET_NAME:        ${{ vars.S3_BUCKET_NAME }}
           V_CDN_DOMAIN:            ${{ vars.CDN_DOMAIN }}
+          V_YT_WORKER_URL:         ${{ vars.YT_WORKER_URL }}
+          V_YT_WORKER_SECRET:      ${{ secrets.YT_WORKER_SECRET }}
         run: |
           APP_DIR="sync-beats"
           DB_HOST="postgres"
@@ -156,6 +158,8 @@ jobs:
             echo "AWS_SECRET_ACCESS_KEY=${V_AWS_SECRET_ACCESS_KEY}"
             echo "S3_BUCKET_NAME=${V_S3_BUCKET_NAME}"
             echo "CDN_DOMAIN=${V_CDN_DOMAIN}"
+            echo "YT_WORKER_URL=${V_YT_WORKER_URL}"
+            echo "YT_WORKER_SECRET=${V_YT_WORKER_SECRET}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env

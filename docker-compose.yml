@@ -43,6 +43,9 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-syncbeats-audio}
       CDN_DOMAIN: ${CDN_DOMAIN:-ds4qzxgjm76yj.cloudfront.net}
+      # Residential YT Worker (Cloudflare Tunnel)
+      YT_WORKER_URL: ${YT_WORKER_URL:-}
+      YT_WORKER_SECRET: ${YT_WORKER_SECRET:-}
     volumes:
       - uploads:/app/uploads
 
