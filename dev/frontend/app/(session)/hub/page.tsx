@@ -116,15 +116,9 @@ export default function HubPage() {
     const directMatch = value.match(/^([a-zA-Z0-9_-]{4,20})$/);
     if (directMatch) return directMatch[1].toUpperCase();
 
-    try {
-      const url = new URL(value);
-      const parts = url.pathname.split("/").filter(Boolean);
-      const roomCandidate = parts[parts.length - 1];
-      if (parts.includes("room") && roomCandidate) {
-        return roomCandidate.toUpperCase();
-      }
-    } catch {
-      return null;
+    const roomMatch = value.match(/\/room\/([a-zA-Z0-9_-]{4,20})/);
+    if (roomMatch) {
+      return roomMatch[1].toUpperCase();
     }
 
     return null;
@@ -178,49 +172,77 @@ export default function HubPage() {
         canvasRef.current = document.createElement("canvas");
       }
 
-      scanIntervalRef.current = window.setInterval(async () => {
-        if (!videoRef.current || scanSuccessRef.current) return;
-        if (videoRef.current.readyState < videoRef.current.HAVE_ENOUGH_DATA) return;
+      let active = true;
+      let lastScanTime = 0;
 
-        let rawValue = "";
+      const scanLoop = async (now: number) => {
+        if (!active || scanSuccessRef.current || !mediaStreamRef.current) return;
 
-        try {
-          if (nativeDetector) {
-            // Use native BarcodeDetector (Chrome Android)
-            const codes = await nativeDetector.detect(videoRef.current);
-            if (codes.length) rawValue = codes[0].rawValue ?? "";
-          } else {
-            // Use jsQR fallback (Safari, Firefox, iOS, macOS)
-            const video = videoRef.current;
-            const canvas = canvasRef.current!;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d", { willReadFrequently: true });
-            if (!ctx) return;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-            if (result) rawValue = result.data;
+        if (videoRef.current && videoRef.current.readyState >= videoRef.current.HAVE_ENOUGH_DATA) {
+          // Native detector is hardware-accelerated, we can run it every frame (0ms throttle).
+          // For jsQR CPU fallback, throttle to 80ms to prevent lag and CPU overload.
+          const scanInterval = nativeDetector ? 0 : 80;
+          if (now - lastScanTime >= scanInterval) {
+            lastScanTime = now;
+            let rawValue = "";
+
+            try {
+              if (nativeDetector) {
+                const codes = await nativeDetector.detect(videoRef.current);
+                if (codes.length) rawValue = codes[0].rawValue ?? "";
+              } else {
+                const video = videoRef.current;
+                const canvas = canvasRef.current!;
+                // Downscale image dimension to max 480px to speed up jsQR analysis by 10-20x
+                const scale = Math.min(1, 480 / video.videoWidth);
+                canvas.width = video.videoWidth * scale;
+                canvas.height = video.videoHeight * scale;
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                if (ctx) {
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                  const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                  if (result) rawValue = result.data;
+                }
+              }
+            } catch {
+              // Keep scanning on transient errors.
+            }
+
+            if (rawValue) {
+              const parsedRoomId = parseRoomIdFromScan(rawValue);
+              if (parsedRoomId) {
+                scanSuccessRef.current = true;
+                setScanStatus("success");
+                active = false;
+
+                // Vibrate on successful scan if API is supported
+                if (typeof navigator !== "undefined" && navigator.vibrate) {
+                  try {
+                    navigator.vibrate([100, 50, 100]); // Short double vibration
+                  } catch {
+                    // Ignore vibration errors if blocked by browser context
+                  }
+                }
+
+                // Smooth delay to let the user see the green border & feedback
+                setTimeout(() => {
+                  stopScanner();
+                  router.push(`/room/${parsedRoomId}`);
+                }, 800);
+                return;
+              }
+            }
           }
-        } catch {
-          // Keep scanning on transient detector errors.
-          return;
         }
 
-        if (!rawValue) return;
-
-        const parsedRoomId = parseRoomIdFromScan(rawValue);
-        if (!parsedRoomId) {
-          setScanStatus("error");
-          setScanError("QR scanned, but room format is invalid.");
-          return;
+        if (active && mediaStreamRef.current && !scanSuccessRef.current) {
+          requestAnimationFrame(scanLoop);
         }
+      };
 
-        scanSuccessRef.current = true;
-        setScanStatus("success");
-        stopScanner();
-        router.push(`/room/${parsedRoomId}`);
-      }, 250);
+      requestAnimationFrame(scanLoop);
+
     } catch (err) {
       setScanStatus("error");
       const message = (err as Error).message || "Unable to access camera.";
@@ -360,7 +382,7 @@ export default function HubPage() {
             whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+            <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Plus className="w-10 h-10 text-foreground" />
             </div>
 
@@ -386,7 +408,7 @@ export default function HubPage() {
             whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+            <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Search className="w-10 h-10 text-foreground" />
             </div>
 
@@ -542,47 +564,109 @@ export default function HubPage() {
         </motion.div>
 
         {roomMenu && (
-          <div
-            className="fixed z-[80] min-w-[220px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
-            style={{ left: roomMenu.x, top: roomMenu.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              onClick={() => {
-                setRoomToEnd(roomMenu.room);
-                setRoomMenu(null);
+          <>
+            {/* Mobile Bottom Sheet Menu */}
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="fixed bottom-0 left-0 right-0 rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+                <h3 className="text-lg font-black text-foreground text-center mb-1">Room Settings</h3>
+                <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Room: {roomMenu.room.id}</p>
+                
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={() => {
+                      setRoomToEnd(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-400" />
+                    End session
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoomInfo(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <QrCode className="w-5 h-5 text-foreground/70" />
+                    Room info + QR
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoomToTransfer(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <UserRoundCog className="w-5 h-5 text-foreground/70" />
+                    Change host
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setRoomMenu(null)}
+                  className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Desktop Context Menu */}
+            <div
+              className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              style={{
+                left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : roomMenu.x),
+                top: roomMenu.y,
               }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              onClick={(event) => event.stopPropagation()}
             >
-              <Trash2 className="w-4 h-4 text-red-400" />
-              End session
-            </button>
-            <button
-              onClick={() => {
-                setRoomInfo(roomMenu.room);
-                setRoomMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <QrCode className="w-4 h-4 text-foreground/70" />
-              Room info + QR
-            </button>
-            <button
-              onClick={() => {
-                setRoomToTransfer(roomMenu.room);
-                setRoomMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <UserRoundCog className="w-4 h-4 text-foreground/70" />
-              Change host
-            </button>
-          </div>
+              <button
+                onClick={() => {
+                  setRoomToEnd(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4 text-red-400" />
+                End session
+              </button>
+              <button
+                onClick={() => {
+                  setRoomInfo(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <QrCode className="w-4 h-4 text-foreground/70" />
+                Room info + QR
+              </button>
+              <button
+                onClick={() => {
+                  setRoomToTransfer(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <UserRoundCog className="w-4 h-4 text-foreground/70" />
+                Change host
+              </button>
+            </div>
+          </>
         )}
 
         {roomToEnd && (
           <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">End Session?</h2>
                 <button onClick={() => setRoomToEnd(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -600,7 +684,7 @@ export default function HubPage() {
 
         {roomInfo && (
           <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Room Info</h2>
                 <button onClick={() => setRoomInfo(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -633,7 +717,7 @@ export default function HubPage() {
 
         {roomToTransfer && (
           <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Change Host</h2>
                 <button onClick={() => setRoomToTransfer(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -664,7 +748,7 @@ export default function HubPage() {
 
         {showDeviceRename && (
           <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Rename Device</h2>
                 <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -691,16 +775,52 @@ export default function HubPage() {
 
         {showScanner && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-black text-foreground">Scan Room QR</h2>
                 <button onClick={stopScanner} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-foreground/10 bg-background/60 relative aspect-[3/4] flex items-center justify-center">
+              <div className={`rounded-2xl overflow-hidden border bg-background/60 relative aspect-3/4 flex items-center justify-center transition-all duration-300 ${
+                scanStatus === "success"
+                  ? "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]"
+                  : scanStatus === "scanning"
+                    ? "border-foreground/30 shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+                    : "border-foreground/10"
+              }`}>
                 <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+
+                {/* Laser animation */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute inset-x-0 h-0.5 bg-green-400 shadow-[0_0_8px_#4ade80] animate-scan-laser z-10 pointer-events-none" />
+                )}
+
+                {/* Target crop corner brackets */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute inset-10 border border-white/5 rounded-2xl pointer-events-none">
+                    <div className="absolute -top-1 -left-1 w-5 h-5 border-t-2 border-l-2 border-green-400 rounded-tl-md" />
+                    <div className="absolute -top-1 -right-1 w-5 h-5 border-t-2 border-r-2 border-green-400 rounded-tr-md" />
+                    <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-2 border-l-2 border-green-400 rounded-bl-md" />
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-2 border-r-2 border-green-400 rounded-br-md" />
+                  </div>
+                )}
+
+                {/* Status Badges */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 border border-white/10 backdrop-blur-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Scanning</span>
+                  </div>
+                )}
+                {scanStatus === "success" && (
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 border border-green-500/30 backdrop-blur-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">Success</span>
+                  </div>
+                )}
+
                 {scanStatus === "idle" && (
-                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6">
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6 z-20">
                     <Camera className="w-8 h-8 text-foreground/70 mb-3" />
                     <p className="text-sm text-foreground/70">To scan room QR codes, allow camera permission.</p>
                     <button
@@ -713,10 +833,10 @@ export default function HubPage() {
                   </div>
                 )}
                 {scanStatus === "starting" && (
-                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center text-foreground/70 text-sm font-semibold">Starting camera...</div>
+                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center text-foreground/70 text-sm font-semibold z-20">Starting camera...</div>
                 )}
                 {scanStatus === "error" && (
-                  <div className="absolute inset-0 bg-background/75 flex flex-col items-center justify-center text-center px-6">
+                  <div className="absolute inset-0 bg-background/75 flex flex-col items-center justify-center text-center px-6 z-20">
                     <Camera className="w-6 h-6 text-red-400 mb-3" />
                     <p className="text-sm text-red-300">{scanError ?? "Unable to scan QR"}</p>
                     <button

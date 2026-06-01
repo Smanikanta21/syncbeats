@@ -5,7 +5,6 @@ import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
-import { trackDB } from '../lib/db';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -34,7 +33,7 @@ const NTP_RTT_GATE_MS          = 500;   // Reject noisy pings (>500ms round-trip
 const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
 const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
-const DRIFT_HARD_SEEK_MS       = 150;   // Seek if off by >150ms (was 500ms)
+const DRIFT_HARD_SEEK_MS       = 30;    // Crossfade seek if off by >30ms
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
@@ -78,28 +77,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       audioRef.current.clearTrack();
       return;
     }
-
-    if (trackUrl.startsWith("local:")) {
-      const blob = await trackDB.getTrack(trackUrl);
-      if (blob) {
-        audioRef.current.setTrack(URL.createObjectURL(blob), title);
-        setReady(true);
-      } else {
-        setReady(false);
-        socket.emit("track:request_file", { roomId, trackUrl });
-
-        const onSynced = (e: Event) => {
-          const syncedBlob = (e as CustomEvent).detail.blob;
-          audioRef.current.setTrack(URL.createObjectURL(syncedBlob), title);
-          setReady(true);
-          window.removeEventListener(`trackSynced:${trackUrl}`, onSynced);
-        };
-        window.addEventListener(`trackSynced:${trackUrl}`, onSynced);
-      }
-    } else {
-      audioRef.current.setTrack(trackUrl, title);
-    }
-  }, [roomId, socket, setReady]);
+    audioRef.current.setTrack(trackUrl, title);
+  }, []);
 
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;
@@ -235,11 +214,37 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
 
       if (driftMs > hardSeekTolerance) {
-        // Severe drift: Hard seek and reset playback rate
-        audioRef.current.playNow(expected);
-        if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
-      } else if (driftMs > 30) { 
-        // Micro-drift (30ms - 500ms): Soft correction via playback rate
+        // Severe drift: Crossfade seek to avoid jarring jumps
+        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode) {
+          // YouTube or fallback: just hard seek
+          audioRef.current.playNow(expected);
+          if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
+        } else {
+          // WebAudio Crossfade: Fade out over 50ms, seek, fade in over 50ms
+          const { audioCtx, gainNode } = audioRef.current;
+          const currentVol = audioRef.current.volume / 100;
+          
+          // Fade out
+          gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+          gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+          
+          setTimeout(() => {
+            // Seek precisely (add the 50ms delay to expected)
+            const newExpected = Math.max(0, (getServerNow() - snap.startEpoch!) / 1000);
+            audioRef.current.playNow(newExpected);
+            if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
+            
+            // Fade in
+            const newAudioCtx = audioRef.current.audioCtx!;
+            const newGainNode = audioRef.current.gainNode!;
+            newGainNode.gain.cancelScheduledValues(newAudioCtx.currentTime);
+            newGainNode.gain.setValueAtTime(0.01, newAudioCtx.currentTime);
+            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.05);
+          }, 50);
+        }
+      } else if (driftMs > 50) { 
+        // Micro-drift (50ms - hardSeekTolerance): Soft correction via playback rate
         if (audioRef.current.setPlaybackRate) {
           if (isYoutube) {
             // YouTube ignores 1.05, so we use officially supported 1.25 / 0.75
@@ -258,11 +263,19 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
           } else {
             // WebAudio handles fine-grained rates beautifully
             const rate = drift > 0 ? 1.05 : 0.95;
+            const correctionDurationMs = driftMs / 0.05; 
+            
             audioRef.current.setPlaybackRate(rate);
+            
+            setTimeout(() => {
+              if (audioRef.current?.setPlaybackRate) {
+                audioRef.current.setPlaybackRate(1);
+              }
+            }, Math.min(correctionDurationMs, 2000));
           }
         }
       } else {
-        // Perfectly in sync (< 30ms): Normal playback rate
+        // Perfectly in sync (< 50ms): Normal playback rate
         if (audioRef.current.setPlaybackRate) {
           audioRef.current.setPlaybackRate(1);
         }

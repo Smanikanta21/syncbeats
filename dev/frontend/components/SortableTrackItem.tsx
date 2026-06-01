@@ -54,7 +54,7 @@ export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrack
           ? listeners
           : {})}
         {...attributes}
-        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-foreground/30 hover:text-foreground/60 transition-colors md:block hidden md:flex items-center justify-center shrink-0"
+        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-foreground/30 hover:text-foreground/60 transition-colors hidden md:flex items-center justify-center shrink-0"
       >
         <GripVertical className="w-4 h-4" />
       </div>
@@ -64,8 +64,19 @@ export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrack
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold truncate">{item.title}</div>
-        <div className="text-[11px] uppercase tracking-widest opacity-70 flex flex-col gap-0.5 mt-0.5">
-          <span>{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}</span>
+        <div className="text-[11px] uppercase tracking-widest opacity-70 flex flex-col gap-1 mt-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}</span>
+            {item.trackUrl.startsWith("youtube:") ? (
+              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 shrink-0 font-mono">
+                YouTube IFrame
+              </span>
+            ) : (
+              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 font-mono">
+                Local File / S3
+              </span>
+            )}
+          </div>
           <span className="text-[9px] opacity-60 normal-case tracking-normal truncate">Added by: {addedByName}</span>
         </div>
       </div>

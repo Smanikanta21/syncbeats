@@ -45,6 +45,19 @@
 
   --animate-blob: blob 10s infinite alternate;
   --animate-float: float 6s ease-in-out infinite;
+  --animate-scan-laser: scan-laser 2s ease-in-out infinite;
+
+  @keyframes scan-laser {
+    0% {
+      top: 0%;
+    }
+    50% {
+      top: 100%;
+    }
+    100% {
+      top: 0%;
+    }
+  }
 
   @keyframes blob {
     0% {

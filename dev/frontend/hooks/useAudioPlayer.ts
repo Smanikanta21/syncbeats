@@ -34,6 +34,8 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   getTruePosition: () => number;
   setPlaybackRate: (rate: number) => void;
   audioEl:     HTMLAudioElement | null;
+  audioCtx?:   AudioContext | null;
+  gainNode?:   GainNode | null;
 }
 
 export function formatTime(seconds: number): string {
@@ -347,6 +349,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setIsReady(false);
       try {
         const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+        }
         const arrayBuffer = await response.arrayBuffer();
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
@@ -416,7 +421,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       fetchAndDecode(trackUrl);
       pauseAt(0);
     }
-  }, [trackUrl, audioUnlocked]); // added audioUnlocked so we know if we can load aggressively
+  }, [trackUrl]); 
 
   useEffect(() => {
     if (gainNodeRef.current) {
@@ -508,7 +513,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     let buffer = audioBufferRef.current;
     if (!buffer && payload.trackUrl) {
-       buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(payload.trackUrl);
+      // Always check if a decode is already in-flight first (e.g. from the blob URL
+      // that loadAndSetTrack created). This is the common fast path.
+      if (fetchPromiseRef.current) {
+        buffer = await fetchPromiseRef.current;
+      }
+      
+      // For remote tracks, resolve the URL and fetch+decode
+      if (!buffer) {
+        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
+          ? `${getServerUrl()}/${payload.trackUrl}` 
+          : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
+        buffer = await fetchAndDecode(absoluteUrl);
+      }
     }
     if (!buffer) return;
 
@@ -607,9 +624,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [stopCurrentSource, isYoutubeMode]);
 
-  const play = useCallback(() => {}, []);
-  const pause = useCallback(() => {}, []);
-  const toggle = useCallback(() => {}, []);
+  const play = useCallback(() => {
+    if (!isPlaying) playNow(pauseOffsetRef.current);
+  }, [isPlaying, playNow]);
+
+  const pause = useCallback(() => {
+    if (isPlaying) pauseAt(getTruePosition());
+  }, [isPlaying, pauseAt, getTruePosition]);
+
+  const toggle = useCallback(() => {
+    if (isPlaying) pause();
+    else play();
+  }, [isPlaying, play, pause]);
+
   const seek = useCallback((time: number) => {
     if (isPlaying) playNow(time);
     else pauseAt(time);
@@ -634,7 +661,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:')) 
+    if (url.startsWith('local:')) {
+      console.warn("Ignoring deprecated local: track url", url);
+      return;
+    }
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
@@ -665,5 +696,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
+    audioCtx: audioCtxRef.current,
+    gainNode: gainNodeRef.current
   };
 }
