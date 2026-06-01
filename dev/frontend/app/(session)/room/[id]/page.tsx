@@ -528,7 +528,7 @@ export default function RoomPage() {
   if (!isMounted) return null;
 
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center select-none">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {

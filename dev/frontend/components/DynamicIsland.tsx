@@ -209,7 +209,7 @@ export function DynamicIsland() {
   if (!isRoom) {
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <motion.div layout className="pointer-events-auto glass-panel bg-background/80 backdrop-blur-3xl w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl">
+        <motion.div layout className="pointer-events-auto glass-panel bg-background/80 backdrop-blur-3xl w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
           <Link href="/hub" className="flex items-center gap-2 sm:gap-3 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
               <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
@@ -272,7 +272,7 @@ export function DynamicIsland() {
           onPointerCancel={onPointerCancel}
           transition={{ layout: { type: "spring", bounce: 0.3, duration: 0.65 } }}
           style={{ borderRadius: expanded ? 40 : 48 }}
-          className={`pointer-events-auto bg-background/85 backdrop-blur-3xl border overflow-hidden
+          className={`pointer-events-auto bg-background/85 backdrop-blur-3xl border overflow-hidden select-none
           ${isDragTarget
               ? "border-foreground/40 shadow-[0_0_80px_rgba(0,0,0,0.12)] dark:shadow-[0_0_80px_rgba(255,255,255,0.12)] w-11/12 max-w-sm"
               : expanded

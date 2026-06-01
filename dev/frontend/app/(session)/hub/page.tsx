@@ -172,49 +172,77 @@ export default function HubPage() {
         canvasRef.current = document.createElement("canvas");
       }
 
-      scanIntervalRef.current = window.setInterval(async () => {
-        if (!videoRef.current || scanSuccessRef.current) return;
-        if (videoRef.current.readyState < videoRef.current.HAVE_ENOUGH_DATA) return;
+      let active = true;
+      let lastScanTime = 0;
 
-        let rawValue = "";
+      const scanLoop = async (now: number) => {
+        if (!active || scanSuccessRef.current || !mediaStreamRef.current) return;
 
-        try {
-          if (nativeDetector) {
-            // Use native BarcodeDetector (Chrome Android)
-            const codes = await nativeDetector.detect(videoRef.current);
-            if (codes.length) rawValue = codes[0].rawValue ?? "";
-          } else {
-            // Use jsQR fallback (Safari, Firefox, iOS, macOS)
-            const video = videoRef.current;
-            const canvas = canvasRef.current!;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d", { willReadFrequently: true });
-            if (!ctx) return;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-            if (result) rawValue = result.data;
+        if (videoRef.current && videoRef.current.readyState >= videoRef.current.HAVE_ENOUGH_DATA) {
+          // Native detector is hardware-accelerated, we can run it every frame (0ms throttle).
+          // For jsQR CPU fallback, throttle to 80ms to prevent lag and CPU overload.
+          const scanInterval = nativeDetector ? 0 : 80;
+          if (now - lastScanTime >= scanInterval) {
+            lastScanTime = now;
+            let rawValue = "";
+
+            try {
+              if (nativeDetector) {
+                const codes = await nativeDetector.detect(videoRef.current);
+                if (codes.length) rawValue = codes[0].rawValue ?? "";
+              } else {
+                const video = videoRef.current;
+                const canvas = canvasRef.current!;
+                // Downscale image dimension to max 480px to speed up jsQR analysis by 10-20x
+                const scale = Math.min(1, 480 / video.videoWidth);
+                canvas.width = video.videoWidth * scale;
+                canvas.height = video.videoHeight * scale;
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                if (ctx) {
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                  const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                  if (result) rawValue = result.data;
+                }
+              }
+            } catch {
+              // Keep scanning on transient errors.
+            }
+
+            if (rawValue) {
+              const parsedRoomId = parseRoomIdFromScan(rawValue);
+              if (parsedRoomId) {
+                scanSuccessRef.current = true;
+                setScanStatus("success");
+                active = false;
+
+                // Vibrate on successful scan if API is supported
+                if (typeof navigator !== "undefined" && navigator.vibrate) {
+                  try {
+                    navigator.vibrate([100, 50, 100]); // Short double vibration
+                  } catch {
+                    // Ignore vibration errors if blocked by browser context
+                  }
+                }
+
+                // Smooth delay to let the user see the green border & feedback
+                setTimeout(() => {
+                  stopScanner();
+                  router.push(`/room/${parsedRoomId}`);
+                }, 800);
+                return;
+              }
+            }
           }
-        } catch {
-          // Keep scanning on transient detector errors.
-          return;
         }
 
-        if (!rawValue) return;
-
-        const parsedRoomId = parseRoomIdFromScan(rawValue);
-        if (!parsedRoomId) {
-          setScanStatus("error");
-          setScanError("QR scanned, but room format is invalid.");
-          return;
+        if (active && mediaStreamRef.current && !scanSuccessRef.current) {
+          requestAnimationFrame(scanLoop);
         }
+      };
 
-        scanSuccessRef.current = true;
-        setScanStatus("success");
-        stopScanner();
-        router.push(`/room/${parsedRoomId}`);
-      }, 250);
+      requestAnimationFrame(scanLoop);
+
     } catch (err) {
       setScanStatus("error");
       const message = (err as Error).message || "Unable to access camera.";
@@ -753,10 +781,46 @@ export default function HubPage() {
                 <button onClick={stopScanner} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-foreground/10 bg-background/60 relative aspect-3/4 flex items-center justify-center">
+              <div className={`rounded-2xl overflow-hidden border bg-background/60 relative aspect-3/4 flex items-center justify-center transition-all duration-300 ${
+                scanStatus === "success"
+                  ? "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]"
+                  : scanStatus === "scanning"
+                    ? "border-foreground/30 shadow-[0_0_20px_rgba(255,255,255,0.05)]"
+                    : "border-foreground/10"
+              }`}>
                 <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+
+                {/* Laser animation */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute inset-x-0 h-0.5 bg-green-400 shadow-[0_0_8px_#4ade80] animate-scan-laser z-10 pointer-events-none" />
+                )}
+
+                {/* Target crop corner brackets */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute inset-10 border border-white/5 rounded-2xl pointer-events-none">
+                    <div className="absolute -top-1 -left-1 w-5 h-5 border-t-2 border-l-2 border-green-400 rounded-tl-md" />
+                    <div className="absolute -top-1 -right-1 w-5 h-5 border-t-2 border-r-2 border-green-400 rounded-tr-md" />
+                    <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-2 border-l-2 border-green-400 rounded-bl-md" />
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-2 border-r-2 border-green-400 rounded-br-md" />
+                  </div>
+                )}
+
+                {/* Status Badges */}
+                {scanStatus === "scanning" && (
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 border border-white/10 backdrop-blur-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Scanning</span>
+                  </div>
+                )}
+                {scanStatus === "success" && (
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 border border-green-500/30 backdrop-blur-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">Success</span>
+                  </div>
+                )}
+
                 {scanStatus === "idle" && (
-                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6">
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6 z-20">
                     <Camera className="w-8 h-8 text-foreground/70 mb-3" />
                     <p className="text-sm text-foreground/70">To scan room QR codes, allow camera permission.</p>
                     <button
@@ -769,10 +833,10 @@ export default function HubPage() {
                   </div>
                 )}
                 {scanStatus === "starting" && (
-                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center text-foreground/70 text-sm font-semibold">Starting camera...</div>
+                  <div className="absolute inset-0 bg-background/60 flex items-center justify-center text-foreground/70 text-sm font-semibold z-20">Starting camera...</div>
                 )}
                 {scanStatus === "error" && (
-                  <div className="absolute inset-0 bg-background/75 flex flex-col items-center justify-center text-center px-6">
+                  <div className="absolute inset-0 bg-background/75 flex flex-col items-center justify-center text-center px-6 z-20">
                     <Camera className="w-6 h-6 text-red-400 mb-3" />
                     <p className="text-sm text-red-300">{scanError ?? "Unable to scan QR"}</p>
                     <button
