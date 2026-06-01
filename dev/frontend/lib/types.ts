@@ -49,6 +49,7 @@ export interface RoomSnapshot {
 }
 
 export interface PlaybackSchedulePayload {
+  atEpoch: number;
   startEpoch: number;
   fromPosition: number;
   trackUrl?: string;

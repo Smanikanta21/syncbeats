@@ -112,10 +112,7 @@ export function DynamicIsland() {
     audio.unlockAudio();
     if (isRoom && roomId) {
       if (effectivePlaying) {
-        const exactPos = audio.getTruePosition();
-        const safePos = exactPos === -1 ? audio.currentTime : exactPos;
-        audio.pauseAt(safePos);
-        getSocket().emit('playback:pause', { roomId, positionMs: safePos * 1000 });
+        getSocket().emit('playback:pause', { roomId });
       } else {
         getSocket().emit('playback:play', { roomId });
       }

@@ -34,6 +34,8 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   getTruePosition: () => number;
   setPlaybackRate: (rate: number) => void;
   audioEl:     HTMLAudioElement | null;
+  audioCtx?:   AudioContext | null;
+  gainNode?:   GainNode | null;
 }
 
 export function formatTime(seconds: number): string {
@@ -694,5 +696,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
+    audioCtx: audioCtxRef.current,
+    gainNode: gainNodeRef.current
   };
 }
