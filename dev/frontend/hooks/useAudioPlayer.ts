@@ -634,7 +634,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:')) 
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);

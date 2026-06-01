@@ -1,7 +1,7 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Music2, Trash2, GripVertical } from "lucide-react";
+import { Music2, Trash2, GripVertical, Play as Youtube } from "lucide-react";
 import { TrackQueueItem } from "../lib/types";
 
 interface SortableTrackItemProps {
@@ -59,8 +59,12 @@ export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrack
         <GripVertical className="w-4 h-4" />
       </div>
 
-      <div className="w-8 h-8 rounded-lg bg-foreground/10 flex items-center justify-center shrink-0 md:ml-0 ml-1">
-        <Music2 className="w-3.5 h-3.5 text-foreground/50" />
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 md:ml-0 ml-1 ${item.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border border-[#FF0000]/20" : "bg-foreground/10"}`}>
+        {item.trackUrl?.startsWith("youtube:") ? (
+          <Youtube className="w-4 h-4 text-[#FF0000]" />
+        ) : (
+          <Music2 className="w-3.5 h-3.5 text-foreground/50" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold truncate">{item.title}</div>
