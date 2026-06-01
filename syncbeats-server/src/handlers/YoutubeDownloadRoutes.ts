@@ -88,27 +88,44 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
       }
 
       // 2. THE API FETCH (Cost: 1 Quota, Time: ~2s)
-      console.log(`[YT Download] Cache MISS for ${videoId}. Contacting RapidAPI...`);
+      console.log(`[YT Download] Cache MISS for ${videoId}. Contacting RapidAPI (youtube-mp36)...`);
       const RAPID_API_KEY = process.env.RAPID_API_KEY || '';
       if (!RAPID_API_KEY) {
         throw new Error('RAPID_API_KEY is not configured in the environment');
       }
 
-      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const apiResponse = await axios.request({
-        method: 'GET',
-        url: 'https://youtube-mp310.p.rapidapi.com/download/mp3',
-        params: { url: youtubeUrl },
-        headers: {
-          'x-rapidapi-key': RAPID_API_KEY,
-          'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
-        },
-        timeout: 30000,
-      });
+      let temporaryMp3Url = '';
+      let attempts = 0;
+      const maxAttempts = 10;
 
-      const temporaryMp3Url = apiResponse.data.downloadUrl;
+      while (attempts < maxAttempts) {
+        console.log(`[YT Download] Calling RapidAPI (Attempt ${attempts + 1}/${maxAttempts})...`);
+        const apiResponse = await axios.request({
+          method: 'GET',
+          url: 'https://youtube-mp36.p.rapidapi.com/dl',
+          params: { id: videoId },
+          headers: {
+            'x-rapidapi-key': RAPID_API_KEY,
+            'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
+          },
+          timeout: 30000,
+        });
+
+        const status = apiResponse.data.status;
+        if (status === 'ok') {
+          temporaryMp3Url = apiResponse.data.link;
+          break;
+        } else if (status === 'processing') {
+          console.log(`[YT Download] Video is processing. Waiting 2s before retry...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          attempts++;
+        } else {
+          throw new Error(`RapidAPI returned error status: ${status}. Message: ${apiResponse.data.msg}`);
+        }
+      }
+
       if (!temporaryMp3Url) {
-        throw new Error('RapidAPI failed to return a valid download link. Response: ' + JSON.stringify(apiResponse.data));
+        throw new Error('RapidAPI failed to return a valid download link within the timeout limit.');
       }
 
       // 3. DIRECT UPLOAD TO S3
