@@ -20,7 +20,7 @@ services:
 
   server:
     build: 
-      context: ./syncbeats-server
+      context: ./dev/syncbeats-server
       dockerfile: Dockerfile
       target: builder
     restart: unless-stopped
@@ -43,14 +43,14 @@ services:
       # RapidAPI Configuration
       RAPID_API_KEY: ${RAPID_API_KEY:-}
     volumes:
-      - ./syncbeats-server:/app
+      - ./dev/syncbeats-server:/app
       - uploads:/app/uploads
       - /app/node_modules
     command: npm run dev
 
   frontend:
     build:
-      context: ./frontend
+      context: ./dev/frontend
       dockerfile: Dockerfile
       target: deps
     platform: linux/amd64
@@ -63,7 +63,7 @@ services:
       NODE_ENV: development
       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:-http://localhost:4000}
     volumes:
-      - ./frontend:/app
+      - ./dev/frontend:/app
       - /app/node_modules
       - /app/.next
     command: npm run dev
@@ -71,7 +71,7 @@ services:
   studio:
     container_name: studio-1
     build:
-      context: ./syncbeats-server
+      context: ./dev/syncbeats-server
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:

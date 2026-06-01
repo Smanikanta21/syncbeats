@@ -47,7 +47,7 @@ jobs:
 
       - uses: docker/build-push-action@v5
         with:
-          context: ./syncbeats-server
+          context: ./dev/syncbeats-server
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
@@ -84,7 +84,7 @@ jobs:
 
       - uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: ./dev/frontend
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
