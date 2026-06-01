@@ -6,6 +6,7 @@ import { requireAuth } from '../auth/authMiddleware';
 import { RoomManager } from '../core/RoomManager';
 import { getS3Client, getBucket } from '../utils/s3';
 import prisma from '../db/prisma';
+import { RoomRepository } from '../db/RoomRepository';
 
 // Helper to stream the audio file from RapidAPI response directly to S3
 async function streamToS3(mp3DownloadUrl: string, youtubeId: string): Promise<string> {
@@ -50,8 +51,10 @@ function getSafeContentDisposition(title: string): string {
 
 export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
   const router = Router();
+  const repo = new RoomRepository();
 
   router.post('/:roomId/yt-download', requireAuth, async (req: Request, res: Response) => {
+    const { roomId } = req.params as { roomId: string };
     const { videoId, title } = req.body as { videoId?: string; title?: string };
     const userId = req.user!.sub;
 
@@ -74,25 +77,19 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
       if (cachedTrack) {
         console.log(`[YT Download] Cache HIT for ${videoId}. Serving from S3.`);
 
-        const s3Key = `tracks/${videoId}.mp3`;
-        const bucket = getBucket();
-        const getObjectCommand = new GetObjectCommand({
-          Bucket: bucket,
-          Key: s3Key,
+        const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+          trackUrl: cachedTrack.s3Url,
+          title: cachedTrack.title,
+          fileName: `${videoId}.mp3`,
+          mimeType: 'audio/mpeg',
+          sizeBytes: 0,
         });
 
-        const s3Response = await getS3Client().send(getObjectCommand);
-        if (s3Response.Body) {
-          res.setHeader('Content-Type', 'audio/mpeg');
-          if (s3Response.ContentLength) {
-            res.setHeader('Content-Length', s3Response.ContentLength);
-          }
-          res.setHeader('Content-Disposition', getSafeContentDisposition(cachedTrack.title));
-          (s3Response.Body as any).pipe(res);
-          return;
-        } else {
-          throw new Error('S3 response body is empty for cache hit');
-        }
+        const room = roomManager.getOrCreate(roomId);
+        room.addToQueue(item);
+
+        res.status(200).json({ trackUrl: cachedTrack.s3Url, title: cachedTrack.title, queued: !activated });
+        return;
       }
 
       // 2. THE API FETCH (Cost: 1 Quota, Time: ~2s)
@@ -151,26 +148,19 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         }
       });
 
-      // 5. Stream the newly downloaded track to client response
-      console.log(`[YT Download] Streaming newly downloaded track from S3 to client...`);
-      const s3Key = `tracks/${videoId}.mp3`;
-      const bucket = getBucket();
-      const getObjectCommand = new GetObjectCommand({
-        Bucket: bucket,
-        Key: s3Key,
+      // 5. Enqueue track in room
+      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+        trackUrl: permanentS3Url,
+        title: title || 'Unknown Title',
+        fileName: `${videoId}.mp3`,
+        mimeType: 'audio/mpeg',
+        sizeBytes: 0,
       });
 
-      const s3Response = await getS3Client().send(getObjectCommand);
-      if (s3Response.Body) {
-        res.setHeader('Content-Type', 'audio/mpeg');
-        if (s3Response.ContentLength) {
-          res.setHeader('Content-Length', s3Response.ContentLength);
-        }
-        res.setHeader('Content-Disposition', getSafeContentDisposition(newTrack.title));
-        (s3Response.Body as any).pipe(res);
-      } else {
-        throw new Error('S3 response body is empty after successful upload');
-      }
+      const room = roomManager.getOrCreate(roomId);
+      room.addToQueue(item);
+
+      res.status(201).json({ trackUrl: permanentS3Url, title: title || 'Unknown Title', queued: !activated });
 
     } catch (err) {
       console.error('[YT Download] failed:', err);

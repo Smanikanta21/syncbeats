@@ -347,6 +347,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setIsReady(false);
       try {
         const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+        }
         const arrayBuffer = await response.arrayBuffer();
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
@@ -656,6 +659,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
+    if (url.startsWith('local:')) {
+      console.warn("Ignoring deprecated local: track url", url);
+      return;
+    }
     const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
