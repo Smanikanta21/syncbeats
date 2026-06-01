@@ -40,6 +40,14 @@ async function streamToS3(mp3DownloadUrl: string, youtubeId: string): Promise<st
   return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
 }
 
+// Helper to safely format Content-Disposition headers with UTF-8 filename support
+function getSafeContentDisposition(title: string): string {
+  // Strip non-ASCII and double quotes for the fallback filename parameter
+  const safeAsciiTitle = title.replace(/[^\x20-\x7E]/g, '').replace(/"/g, '');
+  const encodedTitle = encodeURIComponent(title);
+  return `attachment; filename="${safeAsciiTitle}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`;
+}
+
 export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
   const router = Router();
 
@@ -79,7 +87,7 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
           if (s3Response.ContentLength) {
             res.setHeader('Content-Length', s3Response.ContentLength);
           }
-          res.setHeader('Content-Disposition', `attachment; filename="${cachedTrack.title}.mp3"`);
+          res.setHeader('Content-Disposition', getSafeContentDisposition(cachedTrack.title));
           (s3Response.Body as any).pipe(res);
           return;
         } else {
@@ -158,7 +166,7 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
         if (s3Response.ContentLength) {
           res.setHeader('Content-Length', s3Response.ContentLength);
         }
-        res.setHeader('Content-Disposition', `attachment; filename="${newTrack.title}.mp3"`);
+        res.setHeader('Content-Disposition', getSafeContentDisposition(newTrack.title));
         (s3Response.Body as any).pipe(res);
       } else {
         throw new Error('S3 response body is empty after successful upload');
