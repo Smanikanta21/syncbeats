@@ -1,9 +1,9 @@
-/frontend/node_modules
-/syncbeats-server/node_modules
-/syncbeats-server/dist
+/dev/frontend/node_modules
+/dev/syncbeats-server/node_modules
+/dev/syncbeats-server/dist
 
-/syncbeats-server/.env
-/frontend/.env
+/dev/syncbeats-server/.env
+/dev/frontend/.env
 .DS_Store
 
 # Note: typically package-lock.json is committed to version control for CI/CD consistency.
@@ -14,7 +14,7 @@
 node_modules
 npm-debug.log
 syncbeats.pem
-syncbeats-server/src/scripts/sendUiUpdateEmail.ts
+dev/syncbeats-server/src/scripts/sendUiUpdateEmail.ts
 SYSTEM_DESIGN.md
 v2_design.md
 syncbeats_hld_architecture.svg
