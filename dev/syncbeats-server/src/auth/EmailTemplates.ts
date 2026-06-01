@@ -452,3 +452,103 @@ export function buildResetPasswordOtpHtml(name: string, otp: string): string {
   </body>
 </html>`;
 }
+
+export function buildReleaseAnnouncementHtml(name: string): string {
+  const year = new Date().getFullYear();
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Major Upgrades: Perfect Sync & YouTube Sync Improvements</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      body { margin:0;padding:0;background-color:#050507;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background-color:#050507;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050507;padding:40px 16px;">
+      <tr><td align="center" valign="top">
+
+        <!-- Logo -->
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+          <tr><td style="font-size:24px;font-weight:800;letter-spacing:-0.03em;color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;">SYNC<span style="color:#71717a;">BEATS</span></td></tr>
+        </table>
+
+        <!-- Card -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background-color:#0c0c0e;border:1px solid #1f1f23;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.6);">
+          <!-- Indigo/Violet gradient accent bar -->
+          <tr><td style="height:4px;background:linear-gradient(90deg,#6366f1,#06b6d4);"></td></tr>
+
+          <tr><td style="padding:36px 32px 32px 32px;">
+
+            <h1 style="margin:0 0 8px 0;color:#ffffff;font-size:22px;font-weight:700;line-height:1.3;letter-spacing:-0.02em;">Perfect Sync & YouTube Sync Upgrades Live, ${name}</h1>
+            <p style="margin:0 0 24px 0;color:#a1a1aa;font-size:14px;line-height:1.7;">We've rolled out a suite of major improvements to your listening experience on SyncBeats. Here are the big upgrades now live in your rooms:</p>
+
+            <!-- Major Upgrade 1 -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:14px;margin-bottom:12px;">
+              <tr><td style="padding:18px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top">
+                    <h4 style="margin:0 0 6px 0;color:#ffffff;font-size:14px;font-weight:700;">✨ Zero-Drift "Perfect Sync" (Smooth Crossfade)</h4>
+                    <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">No more jarring skips or continuous buffering. When a device starts to drift from the host, our advanced Web Audio engine smoothly fades down the audio volume, performs a seamless micro-seek, and fades it back up in less than a second. Real-time sync has never felt so premium and invisible.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>
+
+            <!-- Major Upgrade 2 -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:14px;margin-bottom:12px;">
+              <tr><td style="padding:18px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top">
+                    <h4 style="margin:0 0 6px 0;color:#ffffff;font-size:14px;font-weight:700;">📺 Upgraded YouTube Sync & Download Engines</h4>
+                    <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">Our YouTube integration has been fully optimized. Searching for songs directly in the room is faster, direct streams are more stable, and the high-speed <strong>"Download & Play"</strong> feature has been improved for flawless, low-latency playback across all connected devices.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>
+
+            <!-- Major Upgrade 3 -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#121215;border:1px solid #27272a;border-radius:14px;margin-bottom:28px;">
+              <tr><td style="padding:18px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top">
+                    <h4 style="margin:0 0 6px 0;color:#ffffff;font-size:14px;font-weight:700;">⚡ Instant QR Scan-To-Join & Haptic Feedback</h4>
+                    <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">The scan-to-join camera is now 10x faster using a hardware-accelerated frame analysis loop. We've added glowing green neon target borders, scanning animations, and a double vibration pulse when a room QR is successfully recognized.</p>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>
+
+            <!-- CTA button -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr><td align="center" style="border-radius:12px;background-color:#f4f4f5;">
+                <a href="https://syncbeats.app/hub" style="display:block;padding:14px 24px;font-size:14px;font-weight:700;color:#09090b;text-decoration:none;border-radius:12px;text-align:center;">Launch Your Room Now</a>
+              </td></tr>
+            </table>
+
+            <!-- Issues link -->
+            <p style="margin:0 0 24px 0;color:#52525b;font-size:12px;text-align:center;line-height:1.6;">
+              Ran into an issue or have feedback? We fast-track community reports! <br/>
+              <a href="https://github.com/Smanikanta21/syncbeats/issues" style="color:#6366f1;font-weight:600;text-decoration:underline;">File a report on GitHub Issues</a>
+            </p>
+
+            <!-- Footer -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="border-top:1px solid #1f1f23;padding-top:20px;">
+                <p style="margin:0;color:#3f3f46;font-size:11px;text-align:center;line-height:1.5;">
+                  You are receiving this because you have a SyncBeats account.<br/>
+                  &copy; ${year} SyncBeats. All rights reserved.
+                </p>
+              </td></tr>
+            </table>
+
+          </td></tr>
+        </table>
+
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import prisma from '../src/db/prisma';
-import { buildAnnouncementHtml } from '../src/auth/EmailTemplates';
+import { buildReleaseAnnouncementHtml } from '../src/auth/EmailTemplates';
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -36,13 +36,11 @@ async function main() {
 
   console.log(`Found ${users.length} users. Sending announcements...`);
 
-  const title = "Important Update: YouTube Sync Beta";
-  const message = `We wanted to give you a quick update regarding YouTube Sync. The direct YouTube sync feature is currently in Beta and we've noticed it may not work perfectly on all devices due to browser restrictions.<br/><br/>We highly recommend using the new <strong>"Download & Play"</strong> option in the YouTube modal, or uploading your own local audio files. This ensures you get the absolute best real-time synchronization experience!<br/><br/>If you run into any other issues, please feel free to <a href="https://github.com/Smanikanta21/syncbeats/issues" style="color:#ffffff;text-decoration:underline;">raise them directly on our GitHub issues page</a>!`;
-
-  const html = buildAnnouncementHtml(title, message);
+  const title = "Perfect Sync & YouTube Sync Upgrades Now Live!";
 
   for (const user of users) {
     try {
+      const html = buildReleaseAnnouncementHtml(user.name);
       await sendEmail(user.email, title, html);
       // Rate limiting precaution (Resend allows ~10 emails/sec, but good to be safe)
       await new Promise(r => setTimeout(r, 100));
