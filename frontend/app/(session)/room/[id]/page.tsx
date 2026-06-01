@@ -866,6 +866,36 @@ export default function RoomPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Tap to Sync Mobile/iOS Audio Context Unlock Overlay ── */}
+      {isLocalPlayBlocked && (
+        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-[99999] px-6 text-center">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="max-w-md w-full bg-foreground/[0.03] border border-foreground/10 p-8 rounded-3xl shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-6"
+          >
+            <div className="w-16 h-16 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center text-2xl animate-pulse">
+              🎵
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Sync Audio</h2>
+              <p className="text-xs text-foreground/50 leading-relaxed max-w-[280px] mx-auto">
+                Mobile browsers require a physical tap to enable synchronized player audio. Tap below to join.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                audio.unlockAudio();
+              }}
+              className="w-full bg-foreground hover:bg-foreground/90 text-background font-bold tracking-widest uppercase text-xs py-4 px-6 rounded-full transition-transform active:scale-95 shadow-xl shadow-foreground/5 border border-foreground/10"
+            >
+              Sync Audio Now
+            </button>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }
