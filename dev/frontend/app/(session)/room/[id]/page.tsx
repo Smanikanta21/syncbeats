@@ -557,33 +557,33 @@ export default function RoomPage() {
               <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
                 {/* Animated gradient ring */}
                 <div className="absolute inset-0 rounded-full overflow-hidden">
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
                 </div>
                 
                 {/* Spinner */}
                 <div className="relative w-5 h-5 shrink-0">
                   <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
-                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-foreground animate-spin" />
                 </div>
                 
                 {/* Text */}
                 <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
                   {overlayText}
                 </span>
-              
-              {/* Animated dots */}
-              <div className="relative flex gap-0.5">
-                {[0, 1, 2].map(i => (
-                  <motion.div
-                    key={i}
-                    className="w-1 h-1 rounded-full bg-violet-400/60"
-                    animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
+                
+                {/* Animated dots */}
+                <div className="relative flex gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <motion.div
+                      key={i}
+                      className="w-1 h-1 rounded-full bg-foreground/60"
+                      animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
         );
       })()}
     </AnimatePresence>
