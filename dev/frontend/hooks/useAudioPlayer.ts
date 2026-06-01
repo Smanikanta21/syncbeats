@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
+import { trackDB } from '../lib/db';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -508,7 +509,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     let buffer = audioBufferRef.current;
     if (!buffer && payload.trackUrl) {
-       buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(payload.trackUrl);
+      if (payload.trackUrl.startsWith("local:")) {
+        const cachedBlob = await trackDB.getTrack(payload.trackUrl);
+        if (cachedBlob && audioCtxRef.current) {
+          try {
+            const arrayBuffer = await cachedBlob.arrayBuffer();
+            buffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+            audioBufferRef.current = buffer;
+            setDuration(buffer.duration);
+            setIsReady(true);
+          } catch (err) {
+            console.error("[AudioPlayer] Error decoding cached local track in scheduleStart:", err);
+          }
+        }
+      } else {
+        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
+          ? `${getServerUrl()}/${payload.trackUrl}` 
+          : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
+        buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(absoluteUrl);
+      }
     }
     if (!buffer) return;
 
@@ -634,7 +653,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:')) 
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);

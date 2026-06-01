@@ -101,6 +101,11 @@ export function DynamicIsland() {
   const currentTrackUrl = audio.trackUrl;
   const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
   const isSyncing = !!activeTransfer;
+  const isCurrentTrackIframeYt = !!audio.trackUrl?.startsWith("youtube:");
+  const showPlayerUi = hasTrack && (
+    (pillView === "player" && !isCurrentTrackIframeYt) ||
+    (pillView === "youtube" && isCurrentTrackIframeYt)
+  );
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -504,7 +509,7 @@ export function DynamicIsland() {
 
                 <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-5 self-start">
                   <button onClick={() => setPillView("player")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "player" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
-                    Player
+                    Files
                   </button>
                   <button onClick={() => setPillView("network")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === ("network" as string) ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
                     Network
@@ -514,94 +519,153 @@ export function DynamicIsland() {
                   </button>
                 </div>
 
-                {pillView === "youtube" ? (
-                  <div className="flex flex-col gap-2 mb-7">
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Queue a YouTube video</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        value={youtubeLink}
-                        onChange={(e) => setYoutubeLink(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
-                        placeholder="https://youtube.com/watch?v=..."
-                        className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                      />
-                      <button
-                        onClick={handleYoutubeSubmit}
-                        disabled={!youtubeLink.trim() || isYoutubeLoading}
-                        className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
-                      >
-                        {isYoutubeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                        Add
-                      </button>
-                    </div>
-                    {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
-                  </div>
-                ) : null}
-
-                <div className="flex items-center gap-5 mb-7">
-                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-gradient-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
-                    {audio.trackUrl?.startsWith("youtube:") ? (
-                      <Youtube className={`w-8 h-8 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
-                    ) : (
-                      <Disc className={`w-8 h-8 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-xl sm:text-2xl font-black text-foreground truncate leading-tight">{audio.trackTitle || "Unknown Track"}</h3>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      {audio.isReady
-                        ? <span className="text-xs text-green-500 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span>
-                        : <span className="text-xs text-foreground/40 font-semibold flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</span>
-                      }
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-7">
-                  <div className="relative group">
-                    <div className="absolute inset-0 flex items-center pointer-events-none">
-                      <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-foreground transition-[width] duration-100"
-                          style={{ width: `${audio.progress * 100}%` }}
-                        />
+                {showPlayerUi ? (
+                  <>
+                    <div className="flex items-center gap-5 mb-7">
+                      <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-gradient-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
+                        {audio.trackUrl?.startsWith("youtube:") ? (
+                          <Youtube className={`w-8 h-8 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
+                        ) : (
+                          <Disc className={`w-8 h-8 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xl sm:text-2xl font-black text-foreground truncate leading-tight">{audio.trackTitle || "Unknown Track"}</h3>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {audio.isReady
+                            ? <span className="text-xs text-green-500 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span>
+                            : <span className="text-xs text-foreground/40 font-semibold flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</span>
+                          }
+                        </div>
                       </div>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={audio.duration || 100}
-                      value={audio.currentTime || 0}
-                      onChange={(e) => handleSeek(Number(e.target.value))}
-                      className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
-                    />
-                    <div 
-                      className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
-                      style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-2 text-xs text-foreground/50 font-mono font-medium">
-                    <span>{formatTime(audio.currentTime)}</span>
-                    <span>{formatTime(audio.duration)}</span>
-                  </div>
-                </div>
 
-                <div className="flex justify-center items-center gap-8">
-                  <button onClick={handlePrev}><SkipBack className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
-                  <button onClick={handleToggle} className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)] relative">
-                    <AnimatePresence mode="wait" initial={false}>
-                      {isPillBuffering ? (
-                        <motion.div key="buffer" initial={{ opacity: 0, scale: 0.5, rotate: -90 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 90 }} transition={{ duration: 0.2 }} className="absolute"><Loader2 className="w-6 h-6 animate-spin" /></motion.div>
-                      ) : effectivePlaying ? (
-                        <motion.div key="pause" initial={{ opacity: 0, scale: 0.5, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Pause className="w-6 h-6" fill="currentColor" /></motion.div>
-                      ) : (
-                        <motion.div key="play" initial={{ opacity: 0, scale: 0.5, rotate: 45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: -45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Play className="w-6 h-6 ml-0.5" fill="currentColor" /></motion.div>
-                      )}
-                    </AnimatePresence>
-                  </button>
-                  <button onClick={handleNext}><SkipForward className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
-                </div>
+                    <div className="mb-7">
+                      <div className="relative group">
+                        <div className="absolute inset-0 flex items-center pointer-events-none">
+                          <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-foreground transition-[width] duration-100"
+                              style={{ width: `${audio.progress * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={audio.duration || 100}
+                          value={audio.currentTime || 0}
+                          onChange={(e) => handleSeek(Number(e.target.value))}
+                          className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
+                        />
+                        <div 
+                          className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
+                          style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs text-foreground/50 font-mono font-medium">
+                        <span>{formatTime(audio.currentTime)}</span>
+                        <span>{formatTime(audio.duration)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center items-center gap-8">
+                      <button onClick={handlePrev}><SkipBack className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
+                      <button onClick={handleToggle} className="w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-[0_0_25px_rgba(0,0,0,0.1)] dark:shadow-[0_0_25px_rgba(255,255,255,0.15)] relative">
+                        <AnimatePresence mode="wait" initial={false}>
+                          {isPillBuffering ? (
+                            <motion.div key="buffer" initial={{ opacity: 0, scale: 0.5, rotate: -90 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 90 }} transition={{ duration: 0.2 }} className="absolute"><Loader2 className="w-6 h-6 animate-spin" /></motion.div>
+                          ) : effectivePlaying ? (
+                            <motion.div key="pause" initial={{ opacity: 0, scale: 0.5, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: 45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Pause className="w-6 h-6" fill="currentColor" /></motion.div>
+                          ) : (
+                            <motion.div key="play" initial={{ opacity: 0, scale: 0.5, rotate: 45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5, rotate: -45 }} transition={{ duration: 0.2, ease: "backOut" }} className="absolute"><Play className="w-6 h-6 ml-0.5" fill="currentColor" /></motion.div>
+                          )}
+                        </AnimatePresence>
+                      </button>
+                      <button onClick={handleNext}><SkipForward className="w-7 h-7 text-foreground/30 hover:text-foreground/70 transition-colors cursor-pointer" /></button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {pillView === "youtube" ? (
+                      <div className="flex flex-col gap-3">
+                        <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Search YouTube</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={youtubeQuery}
+                            onChange={(e) => setYoutubeQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeSearch()}
+                            placeholder="Search for a song..."
+                            className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                          />
+                          <button
+                            onClick={handleYoutubeSearch}
+                            disabled={!youtubeQuery.trim() || isSearching}
+                            className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
+                          >
+                            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                            Search
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 my-1">
+                          <div className="flex-1 h-px bg-foreground/10" />
+                          <span className="text-[10px] text-foreground/30 font-bold">OR PASTE URL DIRECTLY</span>
+                          <div className="flex-1 h-px bg-foreground/10" />
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={youtubeLink}
+                            onChange={(e) => setYoutubeLink(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
+                            placeholder="https://youtube.com/watch?v=..."
+                            className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                          />
+                          <button
+                            onClick={handleYoutubeSubmit}
+                            disabled={!youtubeLink.trim() || isYoutubeLoading}
+                            className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
+                          >
+                            {isYoutubeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                            Add
+                          </button>
+                        </div>
+                        {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-5">
+                        <button
+                          onClick={handlePickFile}
+                          className="w-full h-12 flex items-center justify-center rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                        >
+                          Upload from device
+                        </button>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Or paste a Google Drive link</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              value={driveLink}
+                              onChange={(e) => setDriveLink(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleDriveLink()}
+                              placeholder="https://drive.google.com/file/d/…"
+                              className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                            />
+                            <button
+                              onClick={handleDriveLink}
+                              disabled={!driveLink.trim()}
+                              className="px-4 py-2.5 rounded-xl bg-foreground/10 text-foreground font-bold text-sm disabled:opacity-30 transition-all shrink-0"
+                            >
+                              Add
+                            </button>
+                          </div>
+                          {driveErr && <p className="text-xs text-red-500 font-semibold">{driveErr}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </motion.div>
             )}
 

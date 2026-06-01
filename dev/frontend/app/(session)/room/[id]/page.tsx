@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play as Youtube } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -52,12 +52,10 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const [queueTab, setQueueTab] = useState<"local" | "youtube">("local");
   const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave } = useRoom({
     roomId,
     displayName,
   });
-
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
 
@@ -202,8 +200,6 @@ export default function RoomPage() {
 
   // We maintain a local queue state to provide immediate optimistic UI feedback to the SortableContext
   const [localQueue, setLocalQueue] = useState<TrackQueueItem[]>([]);
-  const localTracks = localQueue.filter(item => !item.trackUrl?.startsWith("youtube:"));
-  const youtubeTracks = localQueue.filter(item => item.trackUrl?.startsWith("youtube:"));
   
   // Sync the local queue whenever the canonical snapshot changes, unless we are currently dragging
   useEffect(() => {
@@ -485,86 +481,49 @@ export default function RoomPage() {
     </div>
   );
 
-  const renderQueuePanel = () => {
-    const filteredTracks = queueTab === "local" ? localTracks : youtubeTracks;
-    
-    return (
-      <div className={PANEL_CLASSES}>
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-            <ListMusic className="w-4 h-4" /> Queue ({localQueue.length})
-          </h2>
-        </div>
-
-        {/* Tab Buttons */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-4 self-start shrink-0">
-          <button
-            onClick={() => setQueueTab("local")}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-              queueTab === "local"
-                ? "bg-foreground text-background shadow-sm"
-                : "text-foreground/40 hover:text-foreground/60"
-            }`}
-          >
-            Local ({localTracks.length})
-          </button>
-          <button
-            onClick={() => setQueueTab("youtube")}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-              queueTab === "youtube"
-                ? "bg-[#FF0000] text-white shadow-sm"
-                : "text-foreground/40 hover:text-foreground/60"
-            }`}
-          >
-            YouTube ({youtubeTracks.length})
-          </button>
-        </div>
-
-        {filteredTracks.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5 py-12">
-            {queueTab === "local" ? (
-              <>
-                <Music2 className="w-8 h-8 mb-3 opacity-20" />
-                No local songs in queue
-              </>
-            ) : (
-              <>
-                <Youtube className="w-8 h-8 mb-3 opacity-20 text-[#FF0000]" />
-                No YouTube iframe songs in queue
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 pb-4">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={filteredTracks.map((i) => i.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {filteredTracks.map((item: TrackQueueItem) => {
-                  const addedByName = item.addedBy === user?.id
-                    ? "You"
-                    : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
-                  return (
-                    <SortableTrackItem
-                      key={item.id}
-                      item={item}
-                      onRemove={handleRemoveTrack}
-                      addedByName={addedByName}
-                    />
-                  );
-                })}
-              </SortableContext>
-            </DndContext>
-          </div>
-        )}
+  const renderQueuePanel = () => (
+    <div className={PANEL_CLASSES}>
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+          <ListMusic className="w-4 h-4" /> Queue ({localQueue.length})
+        </h2>
       </div>
-    );
-  };
+
+      {localQueue.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5">
+          <Music2 className="w-8 h-8 mb-3 opacity-20" />
+          No songs in queue
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 pb-4">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={localQueue.map((i) => i.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {localQueue.map((item: TrackQueueItem) => {
+                const addedByName = item.addedBy === user?.id
+                  ? "You"
+                  : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
+                return (
+                  <SortableTrackItem
+                    key={item.id}
+                    item={item}
+                    onRemove={handleRemoveTrack}
+                    addedByName={addedByName}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
+    </div>
+  );
 
   if (!isMounted) return null;
 
@@ -827,88 +786,44 @@ export default function RoomPage() {
           </div>
 
           {/* ── Queue ── */}
-          <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+          {localQueue.length ? (
+            <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
               <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
                 <ListMusic className="w-4 h-4" />
                 Room Queue ({localQueue.length})
               </h3>
-              
-              {/* Tab Buttons */}
-              <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06]">
-                <button
-                  onClick={() => setQueueTab("local")}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                    queueTab === "local"
-                      ? "bg-foreground text-background shadow-sm"
-                      : "text-foreground/40 hover:text-foreground/60"
-                  }`}
+              <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
                 >
-                  Local ({localTracks.length})
-                </button>
-                <button
-                  onClick={() => setQueueTab("youtube")}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                    queueTab === "youtube"
-                      ? "bg-[#FF0000] text-white shadow-sm"
-                      : "text-foreground/40 hover:text-foreground/60"
-                  }`}
-                >
-                  YouTube ({youtubeTracks.length})
-                </button>
+                  <SortableContext
+                    items={localQueue.map((i) => i.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {localQueue.map((item: TrackQueueItem) => {
+                      const addedByName = item.addedBy === user?.id
+                        ? "You"
+                        : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
+                      return (
+                        <SortableTrackItem
+                          key={item.id}
+                          item={item}
+                          onRemove={handleRemoveTrack}
+                          addedByName={addedByName}
+                        />
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
               </div>
             </div>
-
-            {(() => {
-              const filteredTracks = queueTab === "local" ? localTracks : youtubeTracks;
-              if (filteredTracks.length === 0) {
-                return (
-                  <div className="rounded-2xl border border-foreground/5 bg-background/40 p-10 text-center flex flex-col items-center justify-center">
-                    {queueTab === "local" ? (
-                      <>
-                        <Music2 className="w-8 h-8 mb-3 opacity-20 text-foreground" />
-                        <span className="text-xs font-bold tracking-widest uppercase text-foreground/40">No local songs in the queue</span>
-                      </>
-                    ) : (
-                      <>
-                        <Youtube className="w-8 h-8 mb-3 opacity-20 text-[#FF0000]" />
-                        <span className="text-xs font-bold tracking-widest uppercase text-foreground/40">No YouTube iframe songs in the queue</span>
-                      </>
-                    )}
-                  </div>
-                );
-              }
-
-              return (
-                <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={filteredTracks.map((i) => i.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      {filteredTracks.map((item: TrackQueueItem) => {
-                        const addedByName = item.addedBy === user?.id
-                          ? "You"
-                          : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
-                        return (
-                          <SortableTrackItem
-                            key={item.id}
-                            item={item}
-                            onRemove={handleRemoveTrack}
-                            addedByName={addedByName}
-                          />
-                        );
-                      })}
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              );
-            })()}
-          </div>
+          ) : (<div className="mt-2 rounded-2xl border border-foreground/5 bg-background/40 max-h-[35vh] p-4">
+            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+              No songs in the queue
+            </h3>
+          </div>)}
         </motion.div>
       </div>
 
