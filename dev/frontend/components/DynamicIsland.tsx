@@ -92,7 +92,11 @@ export function DynamicIsland() {
   const hasTrack = audio.hasTrack;
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
   const isAnyDeviceBuffering = effectivePlaying && hasTrack && roomParticipants.some(p => !p.isReady && !p.isBlocked);
-  const isPillBuffering = (audio.isBuffering || isAnyDeviceBuffering || !audio.isReady) && hasTrack;
+  const isPillBuffering = (
+    audio.isBuffering ||
+    isAnyDeviceBuffering ||
+    (!audio.isReady && (effectivePlaying || !audio.trackUrl?.startsWith("youtube:")))
+  ) && hasTrack;
 
   const currentTrackUrl = audio.trackUrl;
   const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
