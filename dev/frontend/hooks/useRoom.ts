@@ -33,7 +33,7 @@ const NTP_RTT_GATE_MS          = 500;   // Reject noisy pings (>500ms round-trip
 const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
 const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
-const DRIFT_HARD_SEEK_MS       = 150;   // Seek if off by >150ms (was 500ms)
+const DRIFT_HARD_SEEK_MS       = 30;    // Crossfade seek if off by >30ms
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
@@ -220,17 +220,17 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {
-          // WebAudio Crossfade: Fade out over 200ms, seek, fade in over 200ms
+          // WebAudio Crossfade: Fade out over 50ms, seek, fade in over 50ms
           const { audioCtx, gainNode } = audioRef.current;
           const currentVol = audioRef.current.volume / 100;
           
           // Fade out
           gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
           gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
           
           setTimeout(() => {
-            // Seek precisely (add the 200ms delay to expected)
+            // Seek precisely (add the 50ms delay to expected)
             const newExpected = Math.max(0, (getServerNow() - snap.startEpoch!) / 1000);
             audioRef.current.playNow(newExpected);
             if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
@@ -240,8 +240,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             const newGainNode = audioRef.current.gainNode!;
             newGainNode.gain.cancelScheduledValues(newAudioCtx.currentTime);
             newGainNode.gain.setValueAtTime(0.01, newAudioCtx.currentTime);
-            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.2);
-          }, 200);
+            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.05);
+          }, 50);
         }
       } else if (driftMs > 50) { 
         // Micro-drift (50ms - hardSeekTolerance): Soft correction via playback rate

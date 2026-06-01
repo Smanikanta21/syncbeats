@@ -116,15 +116,9 @@ export default function HubPage() {
     const directMatch = value.match(/^([a-zA-Z0-9_-]{4,20})$/);
     if (directMatch) return directMatch[1].toUpperCase();
 
-    try {
-      const url = new URL(value);
-      const parts = url.pathname.split("/").filter(Boolean);
-      const roomCandidate = parts[parts.length - 1];
-      if (parts.includes("room") && roomCandidate) {
-        return roomCandidate.toUpperCase();
-      }
-    } catch {
-      return null;
+    const roomMatch = value.match(/\/room\/([a-zA-Z0-9_-]{4,20})/);
+    if (roomMatch) {
+      return roomMatch[1].toUpperCase();
     }
 
     return null;
@@ -544,7 +538,7 @@ export default function HubPage() {
         {roomMenu && (
           <>
             {/* Mobile Bottom Sheet Menu */}
-            <div className="md:hidden fixed inset-0 z-80 bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
               <motion.div
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
@@ -601,7 +595,7 @@ export default function HubPage() {
 
             {/* Desktop Context Menu */}
             <div
-              className="hidden md:block fixed z-80 min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
               style={{
                 left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : roomMenu.x),
                 top: roomMenu.y,
@@ -643,7 +637,7 @@ export default function HubPage() {
         )}
 
         {roomToEnd && (
-          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">End Session?</h2>
@@ -661,7 +655,7 @@ export default function HubPage() {
         )}
 
         {roomInfo && (
-          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Room Info</h2>
@@ -694,7 +688,7 @@ export default function HubPage() {
         )}
 
         {roomToTransfer && (
-          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Change Host</h2>
@@ -725,7 +719,7 @@ export default function HubPage() {
         )}
 
         {showDeviceRename && (
-          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Rename Device</h2>
@@ -752,7 +746,7 @@ export default function HubPage() {
         )}
 
         {showScanner && (
-          <div className="fixed inset-0 z-90 flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-black text-foreground">Scan Room QR</h2>
