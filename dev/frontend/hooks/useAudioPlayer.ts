@@ -509,7 +509,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     let buffer = audioBufferRef.current;
     if (!buffer && payload.trackUrl) {
-      if (payload.trackUrl.startsWith("local:")) {
+      // Always check if a decode is already in-flight first (e.g. from the blob URL
+      // that loadAndSetTrack created). This is the common fast path for local files.
+      if (fetchPromiseRef.current) {
+        buffer = await fetchPromiseRef.current;
+      }
+      // If still no buffer and it's a local track, try loading from IndexedDB directly
+      if (!buffer && payload.trackUrl.startsWith("local:")) {
         const cachedBlob = await trackDB.getTrack(payload.trackUrl);
         if (cachedBlob && audioCtxRef.current) {
           try {
@@ -522,11 +528,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             console.error("[AudioPlayer] Error decoding cached local track in scheduleStart:", err);
           }
         }
-      } else {
+      }
+      // For remote (non-local, non-youtube) tracks, resolve the URL and fetch+decode
+      if (!buffer && !payload.trackUrl.startsWith("local:")) {
         const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
           ? `${getServerUrl()}/${payload.trackUrl}` 
           : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
-        buffer = fetchPromiseRef.current ? await fetchPromiseRef.current : await fetchAndDecode(absoluteUrl);
+        buffer = await fetchAndDecode(absoluteUrl);
       }
     }
     if (!buffer) return;

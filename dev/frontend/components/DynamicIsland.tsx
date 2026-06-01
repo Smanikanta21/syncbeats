@@ -694,35 +694,44 @@ export function DynamicIsland() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
-                className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between"
+                className="flex flex-col"
               >
-                <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={(e) => { e.stopPropagation(); setExpanded(true); }}>
-                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
-                    {audio.trackUrl?.startsWith("youtube:") ? (
-                      <Youtube className={`w-4 h-4 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
-                    ) : (
-                      <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
-                    )}
+                <div className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between">
+                  <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={(e) => { e.stopPropagation(); setExpanded(true); }}>
+                    <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
+                      {audio.trackUrl?.startsWith("youtube:") ? (
+                        <Youtube className={`w-4 h-4 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
+                      ) : (
+                        <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                      )}
+                    </div>
+                    <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
+                      <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
+                      <p className="text-[10px] text-foreground/50 font-mono">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
-                    <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
-                    <p className="text-[10px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <button onClick={handlePrev}><SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
+                    <button onClick={handleToggle} className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative">
+                      <AnimatePresence mode="wait" initial={false}>
+                        {isPillBuffering ? (
+                          <motion.div key="b" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Loader2 className="w-3 h-3 animate-spin" /></motion.div>
+                        ) : effectivePlaying ? (
+                          <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
+                        ) : (
+                          <motion.div key="r" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Play className="w-3 h-3 ml-0.5" fill="currentColor" /></motion.div>
+                        )}
+                      </AnimatePresence>
+                    </button>
+                    <button onClick={handleNext}><SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button onClick={handlePrev}><SkipBack className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
-                  <button onClick={handleToggle} className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-transform relative">
-                    <AnimatePresence mode="wait" initial={false}>
-                      {isPillBuffering ? (
-                        <motion.div key="b" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Loader2 className="w-3 h-3 animate-spin" /></motion.div>
-                      ) : effectivePlaying ? (
-                        <motion.div key="p" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Pause className="w-3 h-3" fill="currentColor" /></motion.div>
-                      ) : (
-                        <motion.div key="r" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} className="absolute"><Play className="w-3 h-3 ml-0.5" fill="currentColor" /></motion.div>
-                      )}
-                    </AnimatePresence>
-                  </button>
-                  <button onClick={handleNext}><SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
+                {/* Thin bottom progress bar */}
+                <div className="h-[2px] w-full bg-foreground/10 rounded-b-full overflow-hidden">
+                  <div
+                    className="h-full bg-foreground/60 transition-[width] duration-200 ease-linear rounded-full"
+                    style={{ width: `${audio.progress * 100}%` }}
+                  />
                 </div>
               </motion.div>
             )}
