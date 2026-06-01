@@ -5,7 +5,6 @@ import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
-import { trackDB } from '../lib/db';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -78,28 +77,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       audioRef.current.clearTrack();
       return;
     }
-
-    if (trackUrl.startsWith("local:")) {
-      const blob = await trackDB.getTrack(trackUrl);
-      if (blob) {
-        audioRef.current.setTrack(URL.createObjectURL(blob), title);
-        setReady(true);
-      } else {
-        setReady(false);
-        socket.emit("track:request_file", { roomId, trackUrl });
-
-        const onSynced = (e: Event) => {
-          const syncedBlob = (e as CustomEvent).detail.blob;
-          audioRef.current.setTrack(URL.createObjectURL(syncedBlob), title);
-          setReady(true);
-          window.removeEventListener(`trackSynced:${trackUrl}`, onSynced);
-        };
-        window.addEventListener(`trackSynced:${trackUrl}`, onSynced);
-      }
-    } else {
-      audioRef.current.setTrack(trackUrl, title);
-    }
-  }, [roomId, socket, setReady]);
+    audioRef.current.setTrack(trackUrl, title);
+  }, []);
 
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;

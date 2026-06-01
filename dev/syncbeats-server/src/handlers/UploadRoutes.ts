@@ -6,12 +6,22 @@ import { requireAuth }  from '../auth/authMiddleware';
 import { RoomManager }  from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 
+import multer from 'multer';
+import { uploadToS3 } from '../utils/s3';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+// Setup multer for temp storage
+const upload = multer({ dest: os.tmpdir() });
+
 export function createUploadRoutes(roomManager: RoomManager, _baseUrl: string): Router {
   const router = Router();
   const repo = new RoomRepository();
 
-  // POST /rooms/:roomId/upload
+  // POST /rooms/:roomId/upload (JSON metadata)
   router.post('/:roomId/upload', requireAuth, async (req: Request, res: Response) => {
+    // ... existing metadata route (for youtube iframes)
     const { roomId } = req.params as { roomId: string };
     const { title, trackUrl, sizeBytes, mimeType } = req.body as {
       title?: string;
@@ -48,6 +58,50 @@ export function createUploadRoutes(roomManager: RoomManager, _baseUrl: string): 
       }
       console.error('[Metadata Enqueue] failed:', err);
       res.status(500).json({ error: 'Failed to enqueue track metadata' });
+    }
+  });
+
+  // POST /rooms/:roomId/upload-file (Multipart binary)
+  router.post('/:roomId/upload-file', requireAuth, upload.single('file'), async (req: Request, res: Response) => {
+    const { roomId } = req.params as { roomId: string };
+    const userId = req.user!.sub;
+    const title = req.body.title || 'Unknown Title';
+    const file = req.file;
+
+    if (!file) {
+      res.status(400).json({ error: 'No file provided' });
+      return;
+    }
+
+    try {
+      // 1. Upload to S3
+      const s3Url = await uploadToS3(file.path, file.originalname, file.mimetype, roomId, userId);
+
+      // 2. Cleanup temp file
+      fs.unlink(file.path, (err) => {
+        if (err) console.warn('[UploadRoutes] Failed to cleanup temp file:', err);
+      });
+
+      // 3. Enqueue track in room
+      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+        trackUrl: s3Url,
+        title,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+      });
+
+      const room = roomManager.getOrCreate(roomId);
+      room.addToQueue(item);
+
+      console.log(`[File Upload] Room ${roomId}: ${title} → ${s3Url}`);
+      res.status(201).json({ trackUrl: s3Url, title, queued: !activated });
+    } catch (err) {
+      console.error('[File Upload] failed:', err);
+      if (file && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      res.status(500).json({ error: 'Failed to upload file to CDN' });
     }
   });
 

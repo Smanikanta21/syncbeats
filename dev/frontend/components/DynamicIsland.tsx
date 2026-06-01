@@ -113,8 +113,9 @@ export function DynamicIsland() {
     if (isRoom && roomId) {
       if (effectivePlaying) {
         const exactPos = audio.getTruePosition();
-        audio.pauseAt(exactPos);
-        getSocket().emit('playback:pause', { roomId, positionMs: exactPos * 1000 });
+        const safePos = exactPos === -1 ? audio.currentTime : exactPos;
+        audio.pauseAt(safePos);
+        getSocket().emit('playback:pause', { roomId, positionMs: safePos * 1000 });
       } else {
         getSocket().emit('playback:play', { roomId });
       }
@@ -211,7 +212,7 @@ export function DynamicIsland() {
   if (!isRoom) {
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <motion.div layout className="pointer-events-auto glass-panel bg-background/80 backdrop-blur-3xl w-[92%] max-w-5xl rounded-[2rem] px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl">
+        <motion.div layout className="pointer-events-auto glass-panel bg-background/80 backdrop-blur-3xl w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl">
           <Link href="/hub" className="flex items-center gap-2 sm:gap-3 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
               <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
@@ -279,7 +280,7 @@ export function DynamicIsland() {
               ? "border-foreground/40 shadow-[0_0_80px_rgba(0,0,0,0.12)] dark:shadow-[0_0_80px_rgba(255,255,255,0.12)] w-11/12 max-w-sm"
               : expanded
                 ? "border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.9)] w-[95%] md:w-[90%] max-w-4xl"
-                : "border-foreground/10 shadow-[0_0_20px_rgba(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(255,255,255,0.04)] w-fit min-w-[280px] max-w-[95%] md:max-w-3xl"
+                : "border-foreground/10 shadow-[0_0_20px_rgba(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(255,255,255,0.04)] w-fit min-w-70 max-w-[95%] md:max-w-3xl"
             }`}
         >
           <AnimatePresence mode="popLayout" initial={false}>
@@ -331,7 +332,7 @@ export function DynamicIsland() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="px-6 py-3.5 flex items-center gap-4 w-[280px] sm:w-[320px]"
+                className="px-6 py-3.5 flex items-center gap-4 w-70 sm:w-[320px]"
               >
                 <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0">
                   <Loader2 className="w-4 h-4 text-foreground animate-spin" />
@@ -349,7 +350,7 @@ export function DynamicIsland() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="px-6 py-3.5 flex items-center gap-4 w-[280px] sm:w-[320px]"
+                className="px-6 py-3.5 flex items-center gap-4 w-70 sm:w-[320px]"
               >
                 <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center shrink-0">
                   <Loader2 className="w-4 h-4 text-foreground animate-spin" />
@@ -374,7 +375,7 @@ export function DynamicIsland() {
                   <button onClick={() => setExpanded(false)} className="text-xs text-foreground/40 hover:text-foreground/60 font-bold transition-colors">ESC</button>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-2 self-start">
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-2 self-start">
                   <button onClick={() => setPillView("player")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "player" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
                     Files
                   </button>
@@ -507,7 +508,7 @@ export function DynamicIsland() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-5 self-start">
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-5 self-start">
                   <button onClick={() => setPillView("player")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "player" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
                     Files
                   </button>
@@ -522,7 +523,7 @@ export function DynamicIsland() {
                 {showPlayerUi ? (
                   <>
                     <div className="flex items-center gap-5 mb-7">
-                      <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-gradient-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
+                      <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-linear-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-linear-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
                         {audio.trackUrl?.startsWith("youtube:") ? (
                           <Youtube className={`w-8 h-8 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
                         ) : (
@@ -678,7 +679,7 @@ export function DynamicIsland() {
                 className="flex flex-col"
               >
                 <div className="px-6 pt-6 md:px-8 md:pt-8">
-                  <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06] mb-1 self-start">
+                  <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-1 self-start">
                     <button onClick={() => setPillView("player")} className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60">Player</button>
                     <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-foreground text-background shadow-sm">Network</button>
                     <button onClick={() => setPillView("youtube")} className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60">YouTube</button>
@@ -698,16 +699,22 @@ export function DynamicIsland() {
               >
                 <div className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between">
                   <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={(e) => { e.stopPropagation(); setExpanded(true); }}>
-                    <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-gradient-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
+                    <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
                       {audio.trackUrl?.startsWith("youtube:") ? (
                         <Youtube className={`w-4 h-4 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
                       ) : (
                         <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
                       )}
                     </div>
-                    <div className="flex flex-col pl-1 max-w-[120px] sm:max-w-[200px] md:max-w-[300px]">
+                    <div className="flex flex-col pl-1 justify-center max-w-30 sm:max-w-50 md:max-w-75">
                       <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
-                      <p className="text-[10px] text-foreground/50 font-mono">{formatTime(audio.currentTime)} / {formatTime(audio.duration)}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5 opacity-80">
+                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)}</p>
+                        <div className="h-1 w-16 sm:w-24 bg-foreground/10 rounded-full overflow-hidden shrink-0">
+                          <div className="h-full bg-foreground/50 transition-[width] duration-200 ease-linear rounded-full" style={{ width: `${audio.progress * 100}%` }} />
+                        </div>
+                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.duration)}</p>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
@@ -725,13 +732,6 @@ export function DynamicIsland() {
                     </button>
                     <button onClick={handleNext}><SkipForward className="w-4 h-4 text-foreground/40 hover:text-foreground transition-colors" /></button>
                   </div>
-                </div>
-                {/* Thin bottom progress bar */}
-                <div className="h-[2px] w-full bg-foreground/10 rounded-b-full overflow-hidden">
-                  <div
-                    className="h-full bg-foreground/60 transition-[width] duration-200 ease-linear rounded-full"
-                    style={{ width: `${audio.progress * 100}%` }}
-                  />
                 </div>
               </motion.div>
             )}
@@ -777,7 +777,7 @@ export function DynamicIsland() {
               exit={{ opacity: 0, scale: 0.3 }}
               transition={{ type: "spring", bounce: 0.4, duration: 0.5 }}
               onClick={(e) => { e.stopPropagation(); setPillView(pillView === "network" ? "player" : "network"); }}
-              className="pointer-events-auto ml-2.5 mt-[8px] shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform hidden cursor-pointer border-2 justify-center items-center"
+              className="pointer-events-auto ml-2.5 mt-2 shrink-0 w-10 h-10 rounded-full bg-background/85 backdrop-blur-3xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_20px_rgba(255,255,255,0.06)] hover:scale-110 active:scale-90 transition-transform hidden cursor-pointer border-2 justify-center items-center"
               style={{
                 borderColor: pillView === ("player" as string) || pillView === ("youtube" as string)
                   ? `${qualityColor(netStats.quality)}50`

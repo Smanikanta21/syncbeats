@@ -360,7 +360,7 @@ export default function HubPage() {
             whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+            <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Plus className="w-10 h-10 text-foreground" />
             </div>
 
@@ -386,7 +386,7 @@ export default function HubPage() {
             whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
-            <div className="w-20 h-20 rounded-[1.5rem] bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
+            <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Search className="w-10 h-10 text-foreground" />
             </div>
 
@@ -544,13 +544,13 @@ export default function HubPage() {
         {roomMenu && (
           <>
             {/* Mobile Bottom Sheet Menu */}
-            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
+            <div className="md:hidden fixed inset-0 z-80 bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
               <motion.div
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                className="fixed bottom-0 left-0 right-0 rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-8 flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                className="fixed bottom-0 left-0 right-0 rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
@@ -563,7 +563,7 @@ export default function HubPage() {
                       setRoomToEnd(roomMenu.room);
                       setRoomMenu(null);
                     }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
                   >
                     <Trash2 className="w-5 h-5 text-red-400" />
                     End session
@@ -573,7 +573,7 @@ export default function HubPage() {
                       setRoomInfo(roomMenu.room);
                       setRoomMenu(null);
                     }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
                   >
                     <QrCode className="w-5 h-5 text-foreground/70" />
                     Room info + QR
@@ -583,7 +583,7 @@ export default function HubPage() {
                       setRoomToTransfer(roomMenu.room);
                       setRoomMenu(null);
                     }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
                   >
                     <UserRoundCog className="w-5 h-5 text-foreground/70" />
                     Change host
@@ -601,7 +601,7 @@ export default function HubPage() {
 
             {/* Desktop Context Menu */}
             <div
-              className="hidden md:block fixed z-[80] min-w-[220px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              className="hidden md:block fixed z-80 min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
               style={{
                 left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : roomMenu.x),
                 top: roomMenu.y,
@@ -643,8 +643,8 @@ export default function HubPage() {
         )}
 
         {roomToEnd && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">End Session?</h2>
                 <button onClick={() => setRoomToEnd(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -661,8 +661,8 @@ export default function HubPage() {
         )}
 
         {roomInfo && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Room Info</h2>
                 <button onClick={() => setRoomInfo(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -694,8 +694,8 @@ export default function HubPage() {
         )}
 
         {roomToTransfer && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Change Host</h2>
                 <button onClick={() => setRoomToTransfer(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -725,8 +725,8 @@ export default function HubPage() {
         )}
 
         {showDeviceRename && (
-          <div className="fixed inset-0 z-[85] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-85 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Rename Device</h2>
                 <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
@@ -752,14 +752,14 @@ export default function HubPage() {
         )}
 
         {showScanner && (
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
-            <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+          <div className="fixed inset-0 z-90 flex items-center justify-center bg-background/80 backdrop-blur-xl px-4">
+            <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-black text-foreground">Scan Room QR</h2>
                 <button onClick={stopScanner} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
-              <div className="rounded-2xl overflow-hidden border border-foreground/10 bg-background/60 relative aspect-[3/4] flex items-center justify-center">
+              <div className="rounded-2xl overflow-hidden border border-foreground/10 bg-background/60 relative aspect-3/4 flex items-center justify-center">
                 <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
                 {scanStatus === "idle" && (
                   <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center px-6">

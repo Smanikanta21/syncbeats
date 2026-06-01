@@ -54,7 +54,7 @@ export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrack
           ? listeners
           : {})}
         {...attributes}
-        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-foreground/30 hover:text-foreground/60 transition-colors md:block hidden md:flex items-center justify-center shrink-0"
+        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-foreground/30 hover:text-foreground/60 transition-colors hidden md:flex items-center justify-center shrink-0"
       >
         <GripVertical className="w-4 h-4" />
       </div>
