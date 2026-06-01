@@ -16,6 +16,7 @@ import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes }  from './handlers/DeviceRoutes';
 import { createUploadRoutes }  from './handlers/UploadRoutes';
+import { createYoutubeDownloadRoutes } from './handlers/YoutubeDownloadRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 import { deleteRoomFromS3 }    from './utils/s3';
@@ -106,6 +107,7 @@ export class SyncBeatsServer {
     this.app.use('/auth',    createAuthRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/rooms',   createUploadRoutes(this.roomManager, baseUrl));
+    this.app.use('/rooms',   createYoutubeDownloadRoutes(this.roomManager));
     this.app.use('/devices', createDeviceRoutes());
   }
 

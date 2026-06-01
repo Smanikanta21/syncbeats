@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Search, Play, X, Loader2, ExternalLink } from "lucide-react";
 import { roomsApi } from "../lib/api";
+import { useUpload } from "../context/UploadContext";
 
 interface SearchResult {
   url: string;
@@ -28,6 +29,7 @@ interface YouTubeSearchModalProps {
 }
 
 export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect, query }: YouTubeSearchModalProps) {
+  const upload = useUpload();
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
 
@@ -41,17 +43,20 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
 
   const handleDownloadAndPlay = async (result: SearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
+    const videoId = result.url.split('v=')[1]?.split('&')[0] || result.url.split('youtu.be/')[1]?.split('?')[0];
+    if (!videoId) {
+      alert("Invalid YouTube URL");
+      return;
+    }
+
+    // Close the search modal immediately so the user can return to the room screen and see the Dynamic Island!
+    onClose();
+
     try {
-      setDownloadingUrl(result.url);
-      const videoId = result.url.split('v=')[1]?.split('&')[0] || result.url.split('youtu.be/')[1]?.split('?')[0];
-      if (!videoId) throw new Error("Invalid YouTube URL");
-      await roomsApi.downloadYoutubeTrack(roomId, videoId, result.title);
-      onClose();
+      await upload.downloadYoutube(roomId, videoId, result.title);
     } catch (error) {
-      console.error(error);
-      alert("Failed to download track.");
-    } finally {
-      setDownloadingUrl(null);
+      console.error("YouTube download failed:", error);
+      alert(`Failed to download track: "${result.title}"`);
     }
   };
 
@@ -142,7 +147,7 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                 <div className="flex flex-row sm:flex-col gap-2 shrink-0 justify-center">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleSelect(result.url); }}
-                    disabled={!!selectedUrl || !!downloadingUrl}
+                    disabled={!!selectedUrl || !!downloadingUrl || upload.isDownloadingYt}
                     className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {selectedUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -150,7 +155,7 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                   </button>
                   <button
                     onClick={(e) => handleDownloadAndPlay(result, e)}
-                    disabled={!!selectedUrl || !!downloadingUrl}
+                    disabled={!!selectedUrl || !!downloadingUrl || upload.isDownloadingYt}
                     className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-red-500/20"
                   >
                     {downloadingUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5 hidden" />}

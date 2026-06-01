@@ -3,7 +3,7 @@ import fs from "fs";
 
 let _s3Client: S3Client | null = null;
 
-function getS3Client(): S3Client {
+export function getS3Client(): S3Client {
   if (!_s3Client) {
     const region = (process.env.AWS_REGION || "ap-south-1").trim();
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
@@ -23,9 +23,10 @@ function getS3Client(): S3Client {
   return _s3Client;
 }
 
-function getBucket(): string {
+export function getBucket(): string {
   return (process.env.S3_BUCKET_NAME || "syncbeats-audio").trim();
 }
+
 
 export async function uploadToS3(filePath: string, fileName: string, mimeType: string, roomId: string, userId: string): Promise<string> {
   const fileStream = fs.createReadStream(filePath);

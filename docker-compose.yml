@@ -43,6 +43,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-syncbeats-audio}
       CDN_DOMAIN: ${CDN_DOMAIN:-ds4qzxgjm76yj.cloudfront.net}
+      # RapidAPI Configuration
+      RAPID_API_KEY: ${RAPID_API_KEY:-}
     volumes:
       - uploads:/app/uploads
 

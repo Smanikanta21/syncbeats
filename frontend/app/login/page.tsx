@@ -93,6 +93,11 @@ export default function AuthPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+      (window as any).google.accounts.id.cancel();
+    }
+
     try {
       if (isLogin) {
         await login(email, password);
@@ -217,6 +222,9 @@ export default function AuthPage() {
       initGoogle();
       return () => {
         cancelled = true;
+        if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+          (window as any).google.accounts.id.cancel();
+        }
       };
     }
 
@@ -229,6 +237,9 @@ export default function AuthPage() {
 
     return () => {
       cancelled = true;
+      if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+        (window as any).google.accounts.id.cancel();
+      }
     };
   }, [googleLogin, router]);
 

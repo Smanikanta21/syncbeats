@@ -129,6 +129,7 @@ jobs:
           V_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           V_S3_BUCKET_NAME:        ${{ vars.S3_BUCKET_NAME }}
           V_CDN_DOMAIN:            ${{ vars.CDN_DOMAIN }}
+          V_RAPID_API_KEY:         ${{ secrets.RAPID_API_KEY }}
         run: |
           APP_DIR="sync-beats"
           DB_HOST="postgres"
@@ -156,6 +157,7 @@ jobs:
             echo "AWS_SECRET_ACCESS_KEY=${V_AWS_SECRET_ACCESS_KEY}"
             echo "S3_BUCKET_NAME=${V_S3_BUCKET_NAME}"
             echo "CDN_DOMAIN=${V_CDN_DOMAIN}"
+            echo "RAPID_API_KEY=${V_RAPID_API_KEY}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env
@@ -225,6 +227,9 @@ jobs:
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          # Aggressively clean up disk space before pulling
+          docker system prune -a -f --volumes || true
 
           docker pull ghcr.io/${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
           ENDSSH
@@ -344,6 +349,9 @@ jobs:
 
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          # Aggressively clean up disk space before pulling
+          docker system prune -a -f --volumes || true
 
           docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
 

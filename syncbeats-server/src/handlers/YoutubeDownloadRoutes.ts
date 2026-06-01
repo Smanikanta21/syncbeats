@@ -1,25 +1,49 @@
 import { Router, Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
-import { execFile } from 'child_process';
+import axios from 'axios';
+import { Upload } from '@aws-sdk/lib-storage';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { requireAuth } from '../auth/authMiddleware';
 import { RoomManager } from '../core/RoomManager';
-import { RoomRepository } from '../db/RoomRepository';
-import { uploadToS3 } from '../utils/s3';
-import { promisify } from 'util';
+import { getS3Client, getBucket } from '../utils/s3';
+import prisma from '../db/prisma';
 
-const execFileAsync = promisify(execFile);
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
-const YTDLP_BIN = path.resolve(process.cwd(), 'bin', 'yt-dlp');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-const MAX_USER_STORAGE_BYTES = 100 * 1024 * 1024;
+// Helper to stream the audio file from RapidAPI response directly to S3
+async function streamToS3(mp3DownloadUrl: string, youtubeId: string): Promise<string> {
+  const response = await axios({
+    method: 'GET',
+    url: mp3DownloadUrl,
+    responseType: 'stream',
+    timeout: 120_000, // 2-minute download timeout
+  });
+
+  const bucket = getBucket();
+  const s3Key = `tracks/${youtubeId}.mp3`;
+
+  const parallelUpload = new Upload({
+    client: getS3Client(),
+    params: {
+      Bucket: bucket,
+      Key: s3Key,
+      Body: response.data,
+      ContentType: 'audio/mpeg',
+    },
+  });
+
+  await parallelUpload.done();
+
+  // Return S3 CloudFront/S3 URL
+  const cdnDomain = process.env.CDN_DOMAIN;
+  if (cdnDomain) {
+    return `https://${cdnDomain}/${s3Key}`;
+  }
+  const region = process.env.AWS_REGION || 'ap-south-1';
+  return `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
+}
 
 export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
   const router = Router();
-  const repo = new RoomRepository();
 
   router.post('/:roomId/yt-download', requireAuth, async (req: Request, res: Response) => {
-    const roomId = req.params.roomId as string;
     const { videoId, title } = req.body as { videoId?: string; title?: string };
     const userId = req.user!.sub;
 
@@ -34,81 +58,96 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
     }
 
     try {
-      // Basic quota check (this is an estimate since we don't know the exact file size yet)
-      const usedBytes = await repo.getUserStorageUsageBytes(userId);
-      if (usedBytes >= MAX_USER_STORAGE_BYTES) {
-        res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
-        return;
-      }
-
-      // Download audio using yt-dlp (force MP3 so local /files streaming uses the correct content-type)
-      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const safeTitle = title.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-      const filenameBase = `${Date.now()}_yt_${safeTitle}`;
-      const tempPathTemplate = path.join(UPLOADS_DIR, `${filenameBase}.%(ext)s`);
-      const downloadedFile = `${filenameBase}.mp3`;
-      const filePath = path.join(UPLOADS_DIR, downloadedFile);
-
-      console.log(`[YT Download] Starting download for ${videoId} to ${tempPathTemplate}`);
-
-      await execFileAsync(YTDLP_BIN, [
-        '-f', 'bestaudio',
-        '-x',
-        '--audio-format', 'mp3',
-        '--no-playlist',
-        '--no-progress',
-        '-o', tempPathTemplate,
-        videoUrl,
-      ]);
-
-      if (!fs.existsSync(filePath)) {
-        throw new Error('Downloaded file not found in uploads directory');
-      }
-
-      const stat = fs.statSync(filePath);
-
-      // Final quota check now that we know the file size
-      if (usedBytes + stat.size > MAX_USER_STORAGE_BYTES) {
-        fs.unlinkSync(filePath);
-        res.status(413).json({ error: 'Storage quota exceeded (100MB per user)' });
-        return;
-      }
-
-      let mimeType = 'audio/mpeg';
-      if (downloadedFile.endsWith('.m4a')) mimeType = 'audio/mp4';
-      else if (downloadedFile.endsWith('.webm')) mimeType = 'audio/webm';
-      else if (downloadedFile.endsWith('.ogg')) mimeType = 'audio/ogg';
-
-      let publicUrl = `/files/${downloadedFile}`;
-      try {
-        publicUrl = await uploadToS3(filePath, downloadedFile, mimeType, roomId, userId);
-        // Delete local file after successful upload to S3
-        fs.unlinkSync(filePath);
-      } catch (s3Err) {
-        console.error('[YT Download] S3 upload failed, falling back to local:', s3Err);
-        // Keep the local file and the local publicUrl
-      }
-
-      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
-        trackUrl: publicUrl,
-        title: title,
-        fileName: downloadedFile,
-        mimeType: mimeType,
-        sizeBytes: stat.size,
+      // 1. THE CACHE CHECK (Cost: $0, Time: 5ms)
+      const cachedTrack = await prisma.cachedTrack.findUnique({
+        where: { youtubeId: videoId },
       });
 
-      const room = roomManager.getOrCreate(roomId);
-      room.addToQueue(item);
+      if (cachedTrack) {
+        console.log(`[YT Download] Cache HIT for ${videoId}. Serving from S3.`);
 
-      console.log(`[YT Download] Room ${roomId}: ${title} → ${publicUrl} (queued=${!activated})`);
-      res.status(201).json({ trackUrl: publicUrl, title, queued: !activated });
+        const s3Key = `tracks/${videoId}.mp3`;
+        const bucket = getBucket();
+        const getObjectCommand = new GetObjectCommand({
+          Bucket: bucket,
+          Key: s3Key,
+        });
+
+        const s3Response = await getS3Client().send(getObjectCommand);
+        if (s3Response.Body) {
+          res.setHeader('Content-Type', 'audio/mpeg');
+          if (s3Response.ContentLength) {
+            res.setHeader('Content-Length', s3Response.ContentLength);
+          }
+          res.setHeader('Content-Disposition', `attachment; filename="${cachedTrack.title}.mp3"`);
+          (s3Response.Body as any).pipe(res);
+          return;
+        } else {
+          throw new Error('S3 response body is empty for cache hit');
+        }
+      }
+
+      // 2. THE API FETCH (Cost: 1 Quota, Time: ~2s)
+      console.log(`[YT Download] Cache MISS for ${videoId}. Contacting RapidAPI...`);
+      const RAPID_API_KEY = process.env.RAPID_API_KEY || '';
+      if (!RAPID_API_KEY) {
+        throw new Error('RAPID_API_KEY is not configured in the environment');
+      }
+
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const apiResponse = await axios.request({
+        method: 'GET',
+        url: 'https://youtube-mp310.p.rapidapi.com/download/mp3',
+        params: { url: youtubeUrl },
+        headers: {
+          'x-rapidapi-key': RAPID_API_KEY,
+          'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
+        },
+        timeout: 30000,
+      });
+
+      const temporaryMp3Url = apiResponse.data.downloadUrl;
+      if (!temporaryMp3Url) {
+        throw new Error('RapidAPI failed to return a valid download link. Response: ' + JSON.stringify(apiResponse.data));
+      }
+
+      // 3. DIRECT UPLOAD TO S3
+      console.log(`[YT Download] Uploading stream to S3...`);
+      const permanentS3Url = await streamToS3(temporaryMp3Url, videoId);
+
+      // 4. UPDATE THE GLOBAL CACHE
+      console.log(`[YT Download] Saving track to database cache...`);
+      const newTrack = await prisma.cachedTrack.create({
+        data: {
+          youtubeId: videoId,
+          title: title || 'Unknown Title',
+          s3Url: permanentS3Url,
+          requestedBy: userId,
+        }
+      });
+
+      // 5. Stream the newly downloaded track to client response
+      console.log(`[YT Download] Streaming newly downloaded track from S3 to client...`);
+      const s3Key = `tracks/${videoId}.mp3`;
+      const bucket = getBucket();
+      const getObjectCommand = new GetObjectCommand({
+        Bucket: bucket,
+        Key: s3Key,
+      });
+
+      const s3Response = await getS3Client().send(getObjectCommand);
+      if (s3Response.Body) {
+        res.setHeader('Content-Type', 'audio/mpeg');
+        if (s3Response.ContentLength) {
+          res.setHeader('Content-Length', s3Response.ContentLength);
+        }
+        res.setHeader('Content-Disposition', `attachment; filename="${newTrack.title}.mp3"`);
+        (s3Response.Body as any).pipe(res);
+      } else {
+        throw new Error('S3 response body is empty after successful upload');
+      }
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message === 'Room not found') {
-        res.status(404).json({ error: 'Room not found' });
-        return;
-      }
       console.error('[YT Download] failed:', err);
       res.status(500).json({ error: 'Failed to download YouTube track' });
     }
@@ -116,3 +155,4 @@ export function createYoutubeDownloadRoutes(roomManager: RoomManager): Router {
 
   return router;
 }
+

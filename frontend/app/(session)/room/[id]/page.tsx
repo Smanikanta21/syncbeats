@@ -531,30 +531,45 @@ export default function RoomPage() {
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
-        {audio.isBuffering && audio.isPlaying && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
-          >
-            <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-              {/* Animated gradient ring */}
-              <div className="absolute inset-0 rounded-full overflow-hidden">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
-              </div>
-              
-              {/* Spinner */}
-              <div className="relative w-5 h-5 shrink-0">
-                <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
-                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
-              </div>
-              
-              {/* Text */}
-              <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
-                Buffering…
-              </span>
+        {(() => {
+          const currentTrackUrl = snapshot?.trackUrl;
+          const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
+          const isSyncing = !!activeTransfer;
+          const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
+          
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+
+          let overlayText = "Buffering…";
+          if (isSyncing) {
+            overlayText = `Syncing track: ${activeTransfer.progress}%…`;
+          } else if (isAnyDeviceBuffering) {
+            overlayText = "Devices Buffering…";
+          }
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+            >
+              <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+                {/* Animated gradient ring */}
+                <div className="absolute inset-0 rounded-full overflow-hidden">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-violet-500/10 animate-pulse" />
+                </div>
+                
+                {/* Spinner */}
+                <div className="relative w-5 h-5 shrink-0">
+                  <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 border-r-cyan-400 animate-spin" />
+                </div>
+                
+                {/* Text */}
+                <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
+                  {overlayText}
+                </span>
               
               {/* Animated dots */}
               <div className="relative flex gap-0.5">
@@ -569,8 +584,9 @@ export default function RoomPage() {
               </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        );
+      })()}
+    </AnimatePresence>
 
       {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-[600px] max-h-[600px] md:w-full md:max-w-2xl md:h-[500px] bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
@@ -850,6 +866,36 @@ export default function RoomPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Tap to Sync Mobile/iOS Audio Context Unlock Overlay ── */}
+      {isLocalPlayBlocked && (
+        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-[99999] px-6 text-center">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="max-w-md w-full bg-foreground/[0.03] border border-foreground/10 p-8 rounded-3xl shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-6"
+          >
+            <div className="w-16 h-16 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center text-2xl animate-pulse">
+              🎵
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Sync Audio</h2>
+              <p className="text-xs text-foreground/50 leading-relaxed max-w-[280px] mx-auto">
+                Mobile browsers require a physical tap to enable synchronized player audio. Tap below to join.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                audio.unlockAudio();
+              }}
+              className="w-full bg-foreground hover:bg-foreground/90 text-background font-bold tracking-widest uppercase text-xs py-4 px-6 rounded-full transition-transform active:scale-95 shadow-xl shadow-foreground/5 border border-foreground/10"
+            >
+              Sync Audio Now
+            </button>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }
