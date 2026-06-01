@@ -542,42 +542,104 @@ export default function HubPage() {
         </motion.div>
 
         {roomMenu && (
-          <div
-            className="fixed z-[80] min-w-[220px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
-            style={{ left: roomMenu.x, top: roomMenu.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              onClick={() => {
-                setRoomToEnd(roomMenu.room);
-                setRoomMenu(null);
+          <>
+            {/* Mobile Bottom Sheet Menu */}
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="fixed bottom-0 left-0 right-0 rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-8 flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+                <h3 className="text-lg font-black text-foreground text-center mb-1">Room Settings</h3>
+                <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Room: {roomMenu.room.id}</p>
+                
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={() => {
+                      setRoomToEnd(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-400" />
+                    End session
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoomInfo(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                  >
+                    <QrCode className="w-5 h-5 text-foreground/70" />
+                    Room info + QR
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoomToTransfer(roomMenu.room);
+                      setRoomMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/[0.02] active:scale-[0.99] transition-all"
+                  >
+                    <UserRoundCog className="w-5 h-5 text-foreground/70" />
+                    Change host
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setRoomMenu(null)}
+                  className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Desktop Context Menu */}
+            <div
+              className="hidden md:block fixed z-[80] min-w-[220px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              style={{
+                left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : roomMenu.x),
+                top: roomMenu.y,
               }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              onClick={(event) => event.stopPropagation()}
             >
-              <Trash2 className="w-4 h-4 text-red-400" />
-              End session
-            </button>
-            <button
-              onClick={() => {
-                setRoomInfo(roomMenu.room);
-                setRoomMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <QrCode className="w-4 h-4 text-foreground/70" />
-              Room info + QR
-            </button>
-            <button
-              onClick={() => {
-                setRoomToTransfer(roomMenu.room);
-                setRoomMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <UserRoundCog className="w-4 h-4 text-foreground/70" />
-              Change host
-            </button>
-          </div>
+              <button
+                onClick={() => {
+                  setRoomToEnd(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4 text-red-400" />
+                End session
+              </button>
+              <button
+                onClick={() => {
+                  setRoomInfo(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <QrCode className="w-4 h-4 text-foreground/70" />
+                Room info + QR
+              </button>
+              <button
+                onClick={() => {
+                  setRoomToTransfer(roomMenu.room);
+                  setRoomMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <UserRoundCog className="w-4 h-4 text-foreground/70" />
+                Change host
+              </button>
+            </div>
+          </>
         )}
 
         {roomToEnd && (

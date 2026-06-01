@@ -426,6 +426,13 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
 
+  const queueLength = snapshot?.queue?.length;
+  useEffect(() => {
+    if (queueLength === 0) {
+      audioRef.current.clearTrack();
+    }
+  }, [queueLength]);
+
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
