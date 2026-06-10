@@ -64,6 +64,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
+  const playbackRateRef = useRef<number>(1);
   
   // YouTube state
   const isYoutubeMode = !!trackUrl?.startsWith("youtube:");
@@ -237,11 +238,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
     // This avoids drift caused by comparing server NTP time against Date.now()
     if (audioCtxRef.current && !isYoutubeMode) {
-      const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+      const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
       return pauseOffsetRef.current + elapsed;
     }
     // Fallback for YouTube when getCurrentTime returns 0
-    const elapsed = (Date.now() - startTimeRef.current) / 1000;
+    const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
   }, [isPlaying, isYoutubeMode]);
 
@@ -441,7 +442,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           }
         } else {
           if (audioCtxRef.current) {
-            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current);
+            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
             setCurrentTime(pauseOffsetRef.current + elapsed);
           }
         }
@@ -648,12 +649,22 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [seek, duration]);
 
   const setPlaybackRate = useCallback((rate: number) => {
+    const currentTruePosition = getTruePosition();
+    
     if (isYoutubeMode && ytPlayerRef.current && typeof ytPlayerRef.current.setPlaybackRate === "function") {
       ytPlayerRef.current.setPlaybackRate(rate);
+      playbackRateRef.current = rate;
     } else if (sourceNodeRef.current && sourceNodeRef.current.playbackRate) {
       sourceNodeRef.current.playbackRate.value = rate;
+      pauseOffsetRef.current = currentTruePosition;
+      if (audioCtxRef.current) {
+        startTimeRef.current = audioCtxRef.current.currentTime;
+      } else {
+        startTimeRef.current = Date.now();
+      }
+      playbackRateRef.current = rate;
     }
-  }, [isYoutubeMode]);
+  }, [isYoutubeMode, getTruePosition]);
 
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));

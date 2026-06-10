@@ -95,6 +95,7 @@ export function DynamicIsland() {
   const isPillBuffering = (
     audio.isBuffering ||
     isAnyDeviceBuffering ||
+    snapshot?.pendingPlay ||
     (!audio.isReady && (effectivePlaying || !audio.trackUrl?.startsWith("youtube:")))
   ) && hasTrack;
 
@@ -111,7 +112,7 @@ export function DynamicIsland() {
     e.stopPropagation();
     audio.unlockAudio();
     if (isRoom && roomId) {
-      if (effectivePlaying) {
+      if (effectivePlaying || snapshot?.pendingPlay) {
         getSocket().emit('playback:pause', { roomId });
       } else {
         getSocket().emit('playback:play', { roomId });
@@ -801,11 +802,11 @@ export function DynamicIsland() {
         results={searchResults}
         roomId={roomId}
         query={youtubeQuery}
-        onSelect={async (url) => {
+        onSelect={async (url, title) => {
           setIsYoutubeLoading(true);
           try {
             audio.unlockAudio();
-            await roomsApi.enqueueYoutube(roomId, url);
+            await roomsApi.enqueueYoutube(roomId, url, title);
             setIsModalOpen(false);
             setYoutubeQuery("");
             setExpanded(false);

@@ -208,7 +208,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   router.post('/:roomId/enqueue-youtube', requireAuth, async (req: Request, res: Response) => {
     try {
       const { roomId } = req.params;
-      const { youtubeUrl } = req.body as { youtubeUrl?: string };
+      const { youtubeUrl, title: customTitle } = req.body as { youtubeUrl?: string; title?: string };
       const userId = req.user!.sub;
 
       if (!youtubeUrl) {
@@ -236,17 +236,19 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      // Fetch title via oEmbed
-      let title = "YouTube Video";
-      try {
-        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-        const oembedRes = await fetch(oembedUrl);
-        if (oembedRes.ok) {
-          const data = await oembedRes.json() as { title?: string };
-          if (data.title) title = data.title;
+      // Fetch title via oEmbed if not provided
+      let title = customTitle || "YouTube Video";
+      if (!customTitle) {
+        try {
+          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          const oembedRes = await fetch(oembedUrl);
+          if (oembedRes.ok) {
+            const data = await oembedRes.json() as { title?: string };
+            if (data.title) title = data.title;
+          }
+        } catch (e) {
+          console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);
         }
-      } catch (e) {
-        console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);
       }
 
       const { item, activated } = await repo.enqueueTrack(roomId as string, userId, {

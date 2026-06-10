@@ -14,7 +14,9 @@ export class RoomManager {
   private constructor() { }
 
   static getInstance(): RoomManager {
-    if (!RoomManager.instance) RoomManager.instance = new RoomManager();
+    if (!RoomManager.instance) {
+      RoomManager.instance = new RoomManager();
+    }
     return RoomManager.instance;
   }
 

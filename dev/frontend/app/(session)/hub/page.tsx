@@ -566,13 +566,13 @@ export default function HubPage() {
         {roomMenu && (
           <>
             {/* Mobile Bottom Sheet Menu */}
-            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm" onClick={() => setRoomMenu(null)}>
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setRoomMenu(null)}>
               <motion.div
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                className="fixed bottom-0 left-0 right-0 rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />

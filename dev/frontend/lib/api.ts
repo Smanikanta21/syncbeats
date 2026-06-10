@@ -242,17 +242,12 @@ export const roomsApi = {
       body: JSON.stringify({ newHostEmail }),
     }, true),
 
-  enqueueYoutube: (roomId: string, youtubeUrl: string) =>
+  enqueueYoutube: (roomId: string, youtubeUrl: string, title?: string) =>
     request<any>(`/rooms/${roomId}/enqueue-youtube`, {
       method: 'POST',
-      body: JSON.stringify({ youtubeUrl }),
+      body: JSON.stringify({ youtubeUrl, title }),
     }, true),
 
-  downloadYoutubeTrack: (roomId: string, videoId: string, title: string) =>
-    request<any>(`/rooms/${roomId}/yt-download`, {
-      method: 'POST',
-      body: JSON.stringify({ videoId, title }),
-    }, true),
 
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),

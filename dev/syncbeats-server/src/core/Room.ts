@@ -54,8 +54,21 @@ export class Room extends EventEmitter {
 
   // ── Playback (no host gate — any participant) ─────────────────────────
 
+  private pendingPlay: boolean = false;
+
   play(requesterId: string): void {
     if (this.timeline.isPlaying) return;
+    
+    if (!this.allReady()) {
+      this.pendingPlay = true;
+      return;
+    }
+
+    this._startPlayback();
+  }
+
+  private _startPlayback(): void {
+    this.pendingPlay = false;
     const scheduleDelay = 400;
     const atEpoch = Date.now() + scheduleDelay;
     
@@ -74,6 +87,7 @@ export class Room extends EventEmitter {
   }
 
   pause(_requesterId: string, positionMs?: number): void {
+    this.pendingPlay = false;
     if (!this.timeline.isPlaying) return;
     
     if (typeof positionMs === 'number') {
@@ -182,8 +196,16 @@ export class Room extends EventEmitter {
     p.isReady = ready;
     this.emit('stateChanged', this.snapshot());
 
-    if (ready && this.allReady()) {
+    if (this.allReady()) {
       this.emit('allReady');
+      if (this.pendingPlay) {
+        this._startPlayback();
+      }
+    } else {
+      if (this.timeline.isPlaying) {
+        this.pause("system");
+        this.pendingPlay = true;
+      }
     }
   }
 
@@ -254,6 +276,7 @@ export class Room extends EventEmitter {
       startEpoch:   this.timeline.startEpoch,
       pauseOffset:  this.timeline.pauseOffset,
       isPlaying:    this.timeline.isPlaying,
+      pendingPlay:  this.pendingPlay,
     };
   }
 

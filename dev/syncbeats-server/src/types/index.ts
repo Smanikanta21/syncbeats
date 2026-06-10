@@ -36,6 +36,7 @@ export interface RoomSnapshot {
   startEpoch?:  number | null;
   pauseOffset?: number;
   isPlaying?:   boolean;
+  pendingPlay?: boolean;
 }
 
 export interface SpatialPosition {
