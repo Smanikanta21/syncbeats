@@ -286,6 +286,44 @@ export class RoomRepository {
     });
   }
 
+  async jumpToQueueItem(roomId: string, itemId: string): Promise<TrackQueueItem | null> {
+    return prisma.$transaction(async (tx) => {
+      const target = await tx.roomQueueItem.findUnique({
+        where: { id: itemId },
+        include: { uploader: { select: { name: true } } }
+      });
+
+      if (!target || target.roomId !== roomId) return null;
+
+      const current = await tx.roomQueueItem.findFirst({
+        where: { roomId, isCurrent: true },
+      });
+
+      if (current && current.id !== target.id) {
+        await tx.roomQueueItem.update({
+          where: { id: current.id },
+          data: { isCurrent: false },
+        });
+      }
+
+      await tx.roomQueueItem.update({
+        where: { id: target.id },
+        data: { isCurrent: true },
+      });
+
+      await tx.room.update({
+        where: { id: roomId },
+        data: {
+          trackUrl: target.trackUrl,
+          playbackState: 'PAUSED',
+          positionMs: 0n,
+        },
+      });
+
+      return this.mapQueueItem({ ...target, isCurrent: true });
+    });
+  }
+
   async transferHost(roomId: string, currentHostId: string, newHostId: string): Promise<boolean> {
     const result = await prisma.room.updateMany({
       where: {
@@ -331,12 +369,21 @@ export class RoomRepository {
       queueItems.splice(safeNewIndex, 0, movingItem);
       
       // Persist the new sequence indices
-      await Promise.all(queueItems.map((item, index) => 
-        tx.roomQueueItem.update({
-          where: { id: item.id },
-          data: { queueIndex: index }
-        })
-      ));
+      // First, map to temporary negative values to avoid @@unique([roomId, queueIndex]) constraint violations
+      for (let i = 0; i < queueItems.length; i++) {
+        await tx.roomQueueItem.update({
+          where: { id: queueItems[i].id },
+          data: { queueIndex: -(i + 1) }
+        });
+      }
+
+      // Then map to the final correct indices
+      for (let i = 0; i < queueItems.length; i++) {
+        await tx.roomQueueItem.update({
+          where: { id: queueItems[i].id },
+          data: { queueIndex: i }
+        });
+      }
       
       return true;
     });

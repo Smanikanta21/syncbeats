@@ -11,6 +11,7 @@ import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
 import { getAuthToken, getServerUrl } from "../../../../lib/api";
+import { getSocket } from "../../../../lib/socket";
 import { useSyncInfo } from "../../../../context/SyncContext";
 
 import {
@@ -190,6 +191,19 @@ export default function RoomPage() {
       }
     } catch (err) {
       console.error("[Room] Error removing track:", err);
+    }
+  };
+
+  const handlePlayTrack = async (e: React.MouseEvent, trackId: string) => {
+    e.stopPropagation();
+    if (snapshot?.isPlaying || audio.hasTrack) {
+      const confirmPlay = window.confirm("This will stop the currently playing song. Are you sure you want to play this track?");
+      if (!confirmPlay) return;
+    }
+    try {
+      getSocket().emit('playback:jumpTo', { roomId, trackId });
+    } catch (err) {
+      console.error("[Room] Error playing track:", err);
     }
   };
 
@@ -520,6 +534,7 @@ export default function RoomPage() {
                     key={item.id}
                     item={item}
                     onRemove={handleRemoveTrack}
+                    onPlay={handlePlayTrack}
                     addedByName={addedByName}
                   />
                 );
@@ -534,7 +549,7 @@ export default function RoomPage() {
   if (!isMounted) return null;
 
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center select-none">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
@@ -624,7 +639,7 @@ export default function RoomPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
       {/* ── DESKTOP VIEW (Original unchanged layout) ── */}
-      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-30 md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0">
+      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-30 md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-y-auto custom-scrollbar">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -843,6 +858,7 @@ export default function RoomPage() {
                           key={item.id}
                           item={item}
                           onRemove={handleRemoveTrack}
+                          onPlay={handlePlayTrack}
                           addedByName={addedByName}
                         />
                       );

@@ -188,6 +188,19 @@ export class SocketHandler {
       }
     });
 
+    socket.on('playback:jumpTo', async ({ roomId, trackId }: { roomId: string, trackId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        const target = await this.roomRepo.jumpToQueueItem(roomId, trackId);
+        const latestQueue = await this.roomRepo.getQueue(roomId);
+        room.syncQueue(latestQueue, target?.id ?? null);
+        if (target) room.play(socket.id);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
     socket.on('room:setParticipantVolume', ({ roomId, targetSocketId, volume }: SetParticipantVolumePayload) => {
       try {
         const room = this.roomManager.get(roomId);

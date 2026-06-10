@@ -7,10 +7,11 @@ import { TrackQueueItem } from "../lib/types";
 interface SortableTrackItemProps {
   item: TrackQueueItem;
   onRemove: (e: React.MouseEvent, id: string) => void;
+  onPlay?: (e: React.MouseEvent, id: string) => void;
   addedByName?: string;
 }
 
-export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrackItemProps) {
+export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: SortableTrackItemProps) {
   const {
     attributes,
     listeners,
@@ -80,6 +81,17 @@ export function SortableTrackItem({ item, onRemove, addedByName }: SortableTrack
           <span className="text-[9px] opacity-60 normal-case tracking-normal truncate">Added by: {addedByName}</span>
         </div>
       </div>
+
+      {onPlay && (
+        <button
+          type="button"
+          onClick={(e) => onPlay(e, item.id)}
+          title="Play this track now"
+          className="w-8 h-8 rounded-full hover:bg-green-500/10 text-foreground/20 hover:text-green-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        </button>
+      )}
 
       <button
         type="button"
