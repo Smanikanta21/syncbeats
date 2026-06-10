@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Play, X, Loader2, ExternalLink } from "lucide-react";
+import { Search, Play, X, Loader2, ExternalLink, Edit3, Check } from "lucide-react";
 import { roomsApi } from "../lib/api";
 import { useUpload } from "../context/UploadContext";
 
@@ -24,7 +24,7 @@ interface YouTubeSearchModalProps {
   onClose: () => void;
   results: SearchResult[];
   roomId: string;
-  onSelect: (url: string) => Promise<void>;
+  onSelect: (url: string, title?: string) => Promise<void>;
   query: string;
 }
 
@@ -33,11 +33,16 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
 
+  // Editing track title before playing/downloading
+  const [customTitles, setCustomTitles] = useState<Record<string, string>>({});
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>("");
+
   if (!isOpen) return null;
 
   const handleSelect = async (url: string) => {
     setSelectedUrl(url);
-    await onSelect(url);
+    await onSelect(url, customTitles[url]);
     setSelectedUrl(null);
   };
 
@@ -53,11 +58,24 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
     onClose();
 
     try {
-      await upload.downloadYoutube(roomId, videoId, result.title);
+      await upload.downloadYoutube(roomId, videoId, customTitles[result.url] || result.title);
     } catch (error) {
       console.error("YouTube download failed:", error);
-      alert(`Failed to download track: "${result.title}"`);
+      alert(`Failed to download track: "${customTitles[result.url] || result.title}"`);
     }
+  };
+
+  const startEditing = (result: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTitleId(result.url);
+    setEditingTitle(customTitles[result.url] || result.title);
+  };
+
+  const saveEditing = () => {
+    if (editingTitleId && editingTitle.trim()) {
+      setCustomTitles(prev => ({ ...prev, [editingTitleId]: editingTitle.trim() }));
+    }
+    setEditingTitleId(null);
   };
 
 
@@ -131,9 +149,38 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
 
                   {/* Details */}
                   <div className="flex flex-col justify-center flex-1 min-w-0">
-                    <h3 className="font-bold text-sm md:text-base line-clamp-2 leading-snug mb-1 group-hover:text-[#FF0000] transition-colors">
-                      {result.title}
-                    </h3>
+                    {editingTitleId === result.url ? (
+                      <div className="flex items-center gap-2 mb-1" onClick={e => e.stopPropagation()}>
+                        <input
+                          autoFocus
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onBlur={saveEditing}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') saveEditing();
+                            if (e.key === 'Escape') setEditingTitleId(null);
+                          }}
+                          className="flex-1 bg-background/50 border border-foreground/20 rounded px-2 py-1 text-sm md:text-base font-bold text-foreground focus:outline-none focus:border-foreground/40"
+                        />
+                        <button onClick={(e) => { e.stopPropagation(); saveEditing(); }} className="p-1.5 rounded bg-green-500/20 text-green-500 hover:bg-green-500/30 transition-colors">
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2 mb-1 group/title">
+                        <h3 className="font-bold text-sm md:text-base line-clamp-2 leading-snug group-hover:text-[#FF0000] transition-colors flex-1">
+                          {customTitles[result.url] || result.title}
+                        </h3>
+                        <button 
+                          onClick={(e) => startEditing(result, e)}
+                          className="p-1.5 rounded-full hover:bg-foreground/10 text-foreground/40 hover:text-foreground opacity-0 group-hover/title:opacity-100 transition-all shrink-0 focus:opacity-100"
+                          title="Edit track title"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                     <p className="text-xs text-foreground/50 line-clamp-1 mb-0.5">
                       {result.uploaderName}
                     </p>

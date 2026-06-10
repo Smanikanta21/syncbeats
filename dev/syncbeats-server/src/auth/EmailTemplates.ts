@@ -448,6 +448,198 @@ export function buildResetPasswordOtpHtml(name: string, otp: string): string {
           </table>
         </td>
       </tr>
+</html>`;
+}
+
+export function buildReleaseAnnouncementHtml(name: string): string {
+  const year = new Date().getFullYear();
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Introducing Streamlined Sync: Share and Listen in Real-Time</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      body { margin: 0; padding: 0; background-color: #050507; font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; }
+      .btn-hover:hover { background-color: #ffffff !important; color: #050507 !important; transform: scale(1.02); }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background-color:#050507;">
+    <table style="background-color:#050507;padding:40px 16px;" cellpadding="0" cellspacing="0" width="100%">
+      <tbody>
+        <tr>
+          <td valign="top" align="center">
+            <!-- Logo Header -->
+            <table style="margin-bottom:28px;" cellpadding="0" cellspacing="0">
+              <tbody>
+                <tr>
+                  <td style="font-size:24px;font-weight:800;letter-spacing:-0.03em;color:#ffffff;">
+                    SYNC<span style="color:#71717a;">BEATS</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Card Container (Top Gradient Accent Border Removed) -->
+            <table
+              style="max-width:580px;background-color:#0c0c0e;border:1px solid #1f1f23;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.6);"
+              cellpadding="0"
+              cellspacing="0"
+              width="100%"
+            >
+              <tbody>
+                <tr>
+                  <td style="padding:44px 36px 36px 36px;text-align:left;">
+                    <h1
+                      style="margin:0 0 12px 0;color:#ffffff;font-size:22px;font-weight:800;line-height:1.3;letter-spacing:-0.03em;"
+                    >
+                      A New Way to Listen Together, ${name}
+                    </h1>
+                    <p style="margin:0 0 32px 0;color:#a1a1aa;font-size:14px;line-height:1.6;font-weight:400;">
+                      We are excited to introduce a completely redesigned, high-energy playback experience on SyncBeats. We have streamlined the entire synchronization pipeline, simplifying the flow from room creation to playback so you and your group can share high-fidelity audio with zero friction.
+                    </p>
+
+                    <!-- Section: What's New -->
+                    <h3 style="margin:0 0 16px 0;color:#ffffff;font-size:12px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;">Major Core Improvements</h3>
+
+                    <!-- Sync Card -->
+                    <table
+                      style="background-color:#121215;border:1px solid #222226;border-radius:14px;margin-bottom:12px;"
+                      cellpadding="0"
+                      cellspacing="0"
+                      width="100%"
+                    >
+                      <tbody>
+                        <tr>
+                          <td style="padding:18px 20px;">
+                            <h4 style="margin:0 0 6px 0;color:#ffffff;font-size:14px;font-weight:700;">
+                              Zero-Drift Perfect Sync (Smooth Crossfade)
+                            </h4>
+                            <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">
+                              No more jarring skips or continuous buffering. When a device drifts, our advanced Web Audio engine smoothly fades down the volume, performs a seamless micro-seek, and fades it back up in less than a second, rendering real-time sync completely transparent.
+                            </p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- YouTube Sync Card -->
+                    <table
+                      style="background-color:#121215;border:1px solid #222226;border-radius:14px;margin-bottom:12px;"
+                      cellpadding="0"
+                      cellspacing="0"
+                      width="100%"
+                    >
+                      <tbody>
+                        <tr>
+                          <td style="padding:18px 20px;">
+                            <h4 style="margin:0 0 6px 0;color:#ffffff;font-size:14px;font-weight:700;">
+                              Upgraded YouTube Sync &amp; Download Engines
+                            </h4>
+                            <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">
+                              Our YouTube integration has been fully optimized. Direct streams are more stable, search results inside the room are faster, and the high-speed "Download &amp; Play" feature has been improved for flawless, low-latency playback.
+                            </p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Section: How to use -->
+                    <h3 style="margin:0 0 16px 0;color:#ffffff;font-size:12px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;">The Streamlined Flow</h3>
+
+                    <!-- Step 1 -->
+                    <table style="margin-bottom:10px;" cellpadding="0" cellspacing="0" width="100%">
+                      <tbody>
+                        <tr>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:800;color:#6366f1;font-family:monospace;padding-top:2px;">01</td>
+                          <td valign="top" style="padding-left:8px;">
+                            <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:700;">Create a Session</h4>
+                            <p style="margin:0 0 12px 0;color:#a1a1aa;font-size:13px;line-height:1.5;">Click "Start Session" on the Hub dashboard to immediately open a synchronized room.</p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Step 2 -->
+                    <table style="margin-bottom:10px;" cellpadding="0" cellspacing="0" width="100%">
+                      <tbody>
+                        <tr>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:800;color:#6366f1;font-family:monospace;padding-top:2px;">02</td>
+                          <td valign="top" style="padding-left:8px;">
+                            <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:700;">Add Your Tracks</h4>
+                            <p style="margin:0 0 12px 0;color:#a1a1aa;font-size:13px;line-height:1.5;">Search YouTube, paste a direct link, or drag and drop local audio files. We recommend selecting "Download &amp; Play" for the most solid sync.</p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Step 3 -->
+                    <table style="margin-bottom:28px;" cellpadding="0" cellspacing="0" width="100%">
+                      <tbody>
+                        <tr>
+                          <td valign="top" style="width:28px;font-size:14px;font-weight:800;color:#6366f1;font-family:monospace;padding-top:2px;">03</td>
+                          <td valign="top" style="padding-left:8px;">
+                            <h4 style="margin:0 0 4px 0;color:#ffffff;font-size:14px;font-weight:700;">Connect &amp; Listen</h4>
+                            <p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.5;">Share your 6-digit room code or show your room QR. Participants scan or enter the code to join instantly, with new haptic camera vibration confirming successful entry.</p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- CTA Button -->
+                    <table style="margin-bottom:24px;" cellpadding="0" cellspacing="0" width="100%">
+                      <tbody>
+                        <tr>
+                          <td style="border-radius:12px;background-color:#f4f4f5;" align="center">
+                            <a
+                              target="_blank"
+                              rel="noopener noreferrer nofollow"
+                              style="display: block; padding: 14px 24px; font-size: 14px; font-weight: 700; color: #09090b; text-decoration: none; border-radius: 12px; text-align: center;"
+                              href="https://syncbeats.app/hub"
+                              class="btn-hover"
+                              >Launch Your Room Now</a
+                            >
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Issues link -->
+                    <p
+                      style="margin:0 0 24px 0;color:#52525b;font-size:12px;text-align:center;line-height:1.6;"
+                      align="center"
+                    >
+                      Ran into an issue or have feedback? We fast-track community reports! <br />
+                      <a
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        style="color: #6366f1; font-weight: 600; text-decoration: underline;"
+                        href="https://github.com/Smanikanta21/syncbeats/issues"
+                        >File a report on GitHub Issues</a
+                      >
+                    </p>
+
+                    <!-- Footer -->
+                    <table style="border-top:1px solid #1f1f23;padding-top:20px;" cellpadding="0" cellspacing="0" width="100%">
+                      <tbody>
+                        <tr>
+                          <td>
+                            <p style="margin:0;color:#3f3f46;font-size:11px;text-align:center;line-height:1.5;">
+                              You are receiving this because you have a SyncBeats account.<br/>
+                              &copy; ${year} SyncBeats. All rights reserved.
+                            </p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
     </table>
   </body>
 </html>`;

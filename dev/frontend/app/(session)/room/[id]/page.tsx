@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2 } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import { useUpload } from "../../../../context/UploadContext";
 import { PlaybackState, Participant, TrackQueueItem } from "../../../../lib/types";
 import { useAuth }   from "../../../../context/AuthContext";
 import { getAuthToken, getServerUrl } from "../../../../lib/api";
+import { getSocket } from "../../../../lib/socket";
 import { useSyncInfo } from "../../../../context/SyncContext";
 
 import {
@@ -57,7 +58,7 @@ export default function RoomPage() {
     displayName,
   });
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
@@ -68,6 +69,11 @@ export default function RoomPage() {
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
   }, [snapshot?.isPlaying, setIsRoomPlaying]);
+
+  // Push pendingPlay to shared context
+  useEffect(() => {
+    pushPendingPlay(snapshot?.pendingPlay ?? false);
+  }, [snapshot?.pendingPlay, pushPendingPlay]);
 
   // Push participants so DynamicIsland can show per-device network stats
   useEffect(() => {
@@ -93,10 +99,14 @@ export default function RoomPage() {
 
   // ── Signal ready when audio buffers ───────────────────────────────────────
   useEffect(() => {
-    if (audio.isReady && audio.hasTrack) {
-      setReady(true);
+    if (audio.hasTrack) {
+      if (audio.isReady && !audio.isBuffering) {
+        setReady(true);
+      } else {
+        setReady(false);
+      }
     }
-  }, [audio.isReady, audio.hasTrack, setReady]);
+  }, [audio.isReady, audio.isBuffering, audio.hasTrack, setReady]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
   const dragCounter = useRef(0); // track enter/leave nesting
@@ -162,7 +172,7 @@ export default function RoomPage() {
 
   const handleLeave = () => {
     audio.pause();
-    audio.setTrack("", "", "");
+    audio.clearTrack();
     leave();
     router.push("/hub");
   };
@@ -181,6 +191,19 @@ export default function RoomPage() {
       }
     } catch (err) {
       console.error("[Room] Error removing track:", err);
+    }
+  };
+
+  const handlePlayTrack = async (e: React.MouseEvent, trackId: string) => {
+    e.stopPropagation();
+    if (snapshot?.isPlaying || audio.hasTrack) {
+      const confirmPlay = window.confirm("This will stop the currently playing song. Are you sure you want to play this track?");
+      if (!confirmPlay) return;
+    }
+    try {
+      getSocket().emit('playback:jumpTo', { roomId, trackId });
+    } catch (err) {
+      console.error("[Room] Error playing track:", err);
     }
   };
 
@@ -306,7 +329,7 @@ export default function RoomPage() {
 
   const renderInfoPanel = () => (
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
-      <div className="text-center w-full flex flex-col items-center my-auto">
+      <div className="md:hidden w-full flex flex-col pt-30 pb-20 px-4 space-y-6">
         {/* Badges */}
         <div className="flex items-center gap-3 mb-6">
           <span className="px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
@@ -423,7 +446,7 @@ export default function RoomPage() {
                             <DeviceIcon index={i} />
                           </div>
                         </div>
-                        <div className="min-w-0">
+                        <div className="max-w-50 mx-auto">
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold text-foreground truncate">{p.devName}</h4>
                             {snapshot?.hostId === p.socketId && (
@@ -454,10 +477,7 @@ export default function RoomPage() {
                       </div>
                       <div className="relative h-6 flex items-center">
                         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-zinc-300 to-white shadow-[0_0_10px_rgba(255,255,255,0.3)]"
-                            style={{ width: `${p.volume}%` }}
-                          />
+                          <div className="h-full bg-linear-to-r from-foreground/40 to-foreground/80 rounded-full w-2/3 shadow-[0_0_10px_rgba(var(--foreground-rgb),0.3)]" style={{ width: `${p.volume}%` }} />
                         </div>
                         <input
                           type="range"
@@ -514,6 +534,7 @@ export default function RoomPage() {
                     key={item.id}
                     item={item}
                     onRemove={handleRemoveTrack}
+                    onPlay={handlePlayTrack}
                     addedByName={addedByName}
                   />
                 );
@@ -528,7 +549,7 @@ export default function RoomPage() {
   if (!isMounted) return null;
 
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden md:relative md:overflow-visible bg-background z-0 flex flex-col items-center select-none">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
@@ -557,13 +578,13 @@ export default function RoomPage() {
               <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
                 {/* Animated gradient ring */}
                 <div className="absolute inset-0 rounded-full overflow-hidden">
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
+                  <div className="absolute inset-0 rounded-full bg-linear-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
                 </div>
                 
                 {/* Spinner */}
                 <div className="relative w-5 h-5 shrink-0">
-                  <div className="absolute inset-0 rounded-full border-2 border-foreground/10" />
-                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-foreground animate-spin" />
+                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-4xl -z-10" />
+                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent mix-blend-overlay pointer-events-none" />
                 </div>
                 
                 {/* Text */}
@@ -586,13 +607,39 @@ export default function RoomPage() {
             </motion.div>
         );
       })()}
+
+      {/* ── Unlock Audio Overlay ── */}
+      {snapshot?.isPlaying && !audio.audioUnlocked && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-x-0 bottom-0 z-99999 p-4 pointer-events-none flex items-center justify-center bg-background/60 backdrop-blur-sm px-4 cursor-pointer"
+          onClick={() => audio.unlockAudio()}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="px-8 py-6 rounded-3xl bg-foreground border border-foreground/10 shadow-2xl flex flex-col items-center gap-4 text-background"
+          >
+            <div className="w-16 h-16 rounded-full bg-background flex items-center justify-center text-foreground animate-pulse shadow-lg">
+              <Play className="w-8 h-8 ml-1" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-2xl font-black tracking-tight mb-1">Tap to Sync</h3>
+              <p className="text-background/80 text-sm font-medium">Session is playing. Tap to listen.</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
 
       {/* Ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-[600px] max-h-[600px] md:w-full md:max-w-2xl md:h-[500px] bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
       {/* ── DESKTOP VIEW (Original unchanged layout) ── */}
-      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-[120px] md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0">
+      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-30 md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-y-auto custom-scrollbar">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -616,7 +663,7 @@ export default function RoomPage() {
               <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
               <h1
                 onClick={handleCopy}
-                className="text-[5rem] select-none sm:text-[7rem] font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
+                className="text-[5rem] sm:text-[7rem] font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
               >
                 {roomId}
                 <div className="w-12 h-12 rounded-full bg-foreground/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -715,7 +762,7 @@ export default function RoomPage() {
           <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2 flex flex-col gap-8">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
               <div key={userName} className="w-full flex flex-col gap-4">
-                <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2">{userName}</h4>
+                <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2 select-all">{userName}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                   {userDevices.map((p, i) => (
                     <div
@@ -762,7 +809,7 @@ export default function RoomPage() {
                         <div className="relative h-10 flex items-center">
                           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              className="h-full rounded-full bg-linear-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                               style={{ width: `${p.volume}%` }}
                             />
                           </div>
@@ -811,6 +858,7 @@ export default function RoomPage() {
                           key={item.id}
                           item={item}
                           onRemove={handleRemoveTrack}
+                          onPlay={handlePlayTrack}
                           addedByName={addedByName}
                         />
                       );
@@ -881,7 +929,7 @@ export default function RoomPage() {
             </div>
             <div className="space-y-2">
               <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Sync Audio</h2>
-              <p className="text-xs text-foreground/50 leading-relaxed max-w-[280px] mx-auto">
+              <p className="text-xs text-foreground/40 font-medium max-w-70 mx-auto leading-relaxed">
                 Mobile browsers require a physical tap to enable synchronized player audio. Tap below to join.
               </p>
             </div>

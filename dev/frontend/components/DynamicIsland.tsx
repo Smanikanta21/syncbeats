@@ -26,7 +26,7 @@ export function DynamicIsland() {
   const { user, token } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
-  const { clockOffset, isRoomPlaying, participants: roomParticipants } = useSyncInfo();
+  const { clockOffset, isRoomPlaying, participants: roomParticipants, pendingPlay } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
 
@@ -58,24 +58,25 @@ export function DynamicIsland() {
   useEffect(() => {
     if (upload.isDragging) {
       bounceCtrl.start({
-        y: [0, -14, 4, -7, 0],
-        scale: [1, 1.05, 0.97, 1.02, 1],
-        transition: { duration: 0.55, ease: "easeOut", repeat: Infinity, repeatDelay: 0.4 },
+        scale: [1, 1.05, 1],
+        transition: { repeat: Infinity, duration: 1.5, ease: "easeInOut" }
       });
     } else {
       bounceCtrl.stop();
-      bounceCtrl.set({ y: 0, scale: 1 });
+      bounceCtrl.set({ scale: 1 });
     }
   }, [upload.isDragging, bounceCtrl]);
 
-  const clearPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearHover = () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
+  const clearPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+  };
+  const clearHover = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+  };
 
   const onMouseEnter = () => {
     if (!isRoom || upload.isUploading || upload.isDownloadingYt || isSyncing) return;
-    clearHover();
-    hoverTimerRef.current = setTimeout(() => setExpanded(true), 800);
+    pressTimer.current = setTimeout(() => setExpanded(true), 150);
   };
   const onMouseLeave = () => {
     clearHover();
@@ -95,6 +96,7 @@ export function DynamicIsland() {
   const isPillBuffering = (
     audio.isBuffering ||
     isAnyDeviceBuffering ||
+    pendingPlay ||
     (!audio.isReady && (effectivePlaying || !audio.trackUrl?.startsWith("youtube:")))
   ) && hasTrack;
 
@@ -111,7 +113,7 @@ export function DynamicIsland() {
     e.stopPropagation();
     audio.unlockAudio();
     if (isRoom && roomId) {
-      if (effectivePlaying) {
+      if (effectivePlaying || pendingPlay) {
         getSocket().emit('playback:pause', { roomId });
       } else {
         getSocket().emit('playback:play', { roomId });
@@ -801,11 +803,11 @@ export function DynamicIsland() {
         results={searchResults}
         roomId={roomId}
         query={youtubeQuery}
-        onSelect={async (url) => {
+        onSelect={async (url, title) => {
           setIsYoutubeLoading(true);
           try {
             audio.unlockAudio();
-            await roomsApi.enqueueYoutube(roomId, url);
+            await roomsApi.enqueueYoutube(roomId, url, title);
             setIsModalOpen(false);
             setYoutubeQuery("");
             setExpanded(false);
