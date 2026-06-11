@@ -63,7 +63,7 @@ export class RoomRepository {
     roomId: string,
     state: string,
     positionMs: number,
-    trackUrl?: string
+    trackUrl?: string | null
   ): Promise<void> {
     const data: { playbackState: string; positionMs: bigint; trackUrl?: string | null } = {
       playbackState: state,

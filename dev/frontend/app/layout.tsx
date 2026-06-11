@@ -37,28 +37,41 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
-  title: {
-    default: "SyncBeats — Listen to music in sync with friends",
-    template: "%s | SyncBeats",
+  title: 'SyncBeats | One track. Every phone. Zero lag.',
+  description: 'Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.',
+  keywords: ['music sync', 'listen together', 'spatial audio app', 'sync music across phones', 'AmpMe alternative'],
+  openGraph: {
+    title: 'SyncBeats - 3D audio that hits everyone at once.',
+    description: 'Your crew. Your music. One massive speaker.',
+    url: BASE_URL,
+    siteName: 'SyncBeats',
+    images: [
+      {
+        url: '/syncbeats-og.png',
+        width: 1200,
+        height: 630,
+        alt: 'SyncBeats — synchronized music player',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
   },
-  description:
-    "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together — no lag, no drift.",
-  keywords: [
-    "sync music with friends",
-    "listen to music together online",
-    "synchronized music player",
-    "music sync app",
-    "play music in sync",
-    "syncbeats",
-    "sync beats",
-    "real-time music sync",
-    "listen together app",
-    "group music player",
-    "multi-device music sync",
-    "music room app",
-    "watch party music",
-    "music listening party",
-  ],
+  twitter: {
+    card: "summary_large_image",
+    title: "SyncBeats | One track. Every phone. Zero lag.",
+    description: "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience.",
+    site: "@syncbeatsapp",
+    creator: "@syncbeatsapp",
+    images: ["/syncbeats-og.png"],
+  },
+  icons: {
+    icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
+    shortcut: "/syncbeats-icon.svg",
+    apple: "/syncbeats-icon.svg",
+  },
+  applicationName: "SyncBeats",
+  authors: [{ name: "SyncBeats", url: BASE_URL }],
+  category: "music",
   alternates: {
     canonical: BASE_URL,
   },
@@ -73,40 +86,6 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  openGraph: {
-    title: "SyncBeats — Listen to music in sync with friends",
-    description:
-      "Create a room, share the link, and listen to music in perfect sync across any device. No accounts needed.",
-    url: BASE_URL,
-    siteName: "SyncBeats",
-    images: [
-      {
-        url: "/syncbeats-og.png",
-        width: 1200,
-        height: 630,
-        alt: "SyncBeats — synchronized music player",
-      },
-    ],
-    locale: "en_US",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "SyncBeats — Listen to music in sync with friends",
-    description:
-      "Create a room, share the link, and listen to music in perfect sync across any device.",
-    site: "@syncbeatsapp",
-    creator: "@syncbeatsapp",
-    images: ["/syncbeats-og.png"],
-  },
-  icons: {
-    icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
-    shortcut: "/syncbeats-icon.svg",
-    apple: "/syncbeats-icon.svg",
-  },
-  applicationName: "SyncBeats",
-  authors: [{ name: "SyncBeats", url: BASE_URL }],
-  category: "music",
 };
 
 const jsonLd = {

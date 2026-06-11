@@ -28,12 +28,13 @@ interface UseRoomReturn {
   leave:        () => void;
 }
 
-const NTP_SAMPLE_COUNT         = 20;    // More samples → better median accuracy
-const NTP_RTT_GATE_MS          = 500;   // Reject noisy pings (>500ms round-trip)
-const NTP_PING_GAP_MS          = 40;    // Slightly faster burst
-const NTP_RESYNC_INTERVAL_MS   = 15_000; // Re-sync every 15s to track clock drift
-const DRIFT_CHECK_INTERVAL_MS  = 500;   // Check drift twice per second
-const DRIFT_HARD_SEEK_MS       = 30;    // Crossfade seek if off by >30ms
+const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
+const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip)
+const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
+const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
+const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
+const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
+const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
@@ -44,7 +45,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
-  const [allReady,     setAllReady]     = useState(true); // Default true since barrier sync is removed
+  const [allReady] = useState(true); // Default true since barrier sync is removed
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -61,7 +62,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const reportedBlockedRef = useRef<boolean | null>(null);
 
   const setReady = useCallback((isReady: boolean) => {
-    if (isReady) socket.emit('room:clientReady', { roomId });
+    socket.emit('room:clientReady', { roomId, isReady });
   }, [socket, roomId]);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
@@ -214,6 +215,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
       const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
+      const softSeekTolerance = isYoutube ? 100 : DRIFT_SOFT_SEEK_MS;
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
@@ -245,8 +247,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.05);
           }, 50);
         }
-      } else if (driftMs > 50) { 
-        // Micro-drift (50ms - hardSeekTolerance): Soft correction via playback rate
+      } else if (driftMs > softSeekTolerance) { 
+        // Micro-drift: Soft correction via playback rate
         if (audioRef.current.setPlaybackRate) {
           if (isYoutube) {
             // YouTube ignores 1.05, so we use officially supported 1.25 / 0.75
@@ -264,8 +266,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             }, Math.min(correctionDurationMs, 2000)); // Cap at 2s just in case
           } else {
             // WebAudio handles fine-grained rates beautifully
-            const rate = drift > 0 ? 1.05 : 0.95;
-            const correctionDurationMs = driftMs / 0.05; 
+            // Use extremely precise rate adjustment based on drift magnitude
+            const rateOffset = Math.max(0.01, Math.min(0.05, driftMs / 1000)); 
+            const rate = drift > 0 ? (1 + rateOffset) : (1 - rateOffset);
+            const correctionDurationMs = driftMs / rateOffset; 
             
             audioRef.current.setPlaybackRate(rate);
             
@@ -273,7 +277,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
               if (audioRef.current?.setPlaybackRate) {
                 audioRef.current.setPlaybackRate(1);
               }
-            }, Math.min(correctionDurationMs, 2000));
+            }, correctionDurationMs);
           }
         }
       } else {

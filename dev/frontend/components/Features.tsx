@@ -60,11 +60,11 @@ export function Features() {
           <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-4/5 h-48 bg-foreground/5 blur-[80px] pointer-events-none rounded-full" />
 
           {FEATURES.map((feature, i) => (
-            <motion.div
+            <motion.article
               key={i}
               variants={itemVariants}
               whileHover={{ y: -8, scale: 1.02 }}
-              className="group relative p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col items-start gap-4 sm:gap-6 cursor-pointer overflow-hidden glass-panel transition-all duration-300 z-10"
+              className="group relative p-6 sm:p-8 rounded-3xl sm:rounded-4xl flex flex-col items-start gap-4 sm:gap-6 cursor-pointer overflow-hidden glass-panel transition-all duration-300 z-10"
             >
               {/* Massive hover glow UNDERNEATH the border inside the card - subtle silver */}
               <div className="absolute inset-0 bg-transparent group-hover:bg-foreground/5 transition-all duration-500 pointer-events-none" />
@@ -84,7 +84,7 @@ export function Features() {
                 <h4 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 text-foreground tracking-tight">{feature.title}</h4>
                 <p className="text-sm sm:text-base text-foreground/60 leading-relaxed group-hover:text-foreground/80 transition-colors">{feature.desc}</p>
               </div>
-            </motion.div>
+            </motion.article>
           ))}
         </motion.div>
       </div>

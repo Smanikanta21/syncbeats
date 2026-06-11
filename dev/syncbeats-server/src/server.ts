@@ -1,6 +1,5 @@
 // ─── SyncBeatsServer — Facade ─────────────────────────────────────────────
 import 'dotenv/config';
-
 import express    from 'express';
 import http       from 'http';
 import cors       from 'cors';
@@ -9,7 +8,6 @@ import fs         from 'fs';
 import { Server } from 'socket.io';
 
 import { RoomManager }         from './core/RoomManager';
-import { SyncEngine }          from './sync/SyncEngine';
 import { SocketHandler }       from './handlers/SocketHandler';
 
 import { createRoomRoutes }    from './handlers/RoomRoutes';
@@ -31,13 +29,12 @@ export class SyncBeatsServer {
   });
 
   private roomManager = RoomManager.getInstance();
-  private syncEngine  = new SyncEngine();
   private socketHandler: SocketHandler;
   private roomRepo = new RoomRepository();
 
   constructor() {
     this.socketHandler = new SocketHandler(
-      this.io, this.roomManager, this.syncEngine, this.roomRepo
+      this.io, this.roomManager, this.roomRepo
     );
     this.setupMiddleware();
     this.setupRoutes();
@@ -61,7 +58,7 @@ export class SyncBeatsServer {
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
     this.app.get('/files/:filename', (req, res) => {
-      const filename = path.basename(req.params.filename); // sanitise path traversal
+      const filename = path.basename(req.params.filename);
       const filePath = path.join(uploadsDir, filename);
 
       if (!fs.existsSync(filePath)) { res.status(404).end(); return; }

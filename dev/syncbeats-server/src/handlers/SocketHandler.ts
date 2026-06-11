@@ -2,7 +2,6 @@
 
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
-import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import {
@@ -13,7 +12,6 @@ export class SocketHandler {
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
-    private syncEngine:  SyncEngine,
     private roomRepo:    RoomRepository,
   ) {
     // Listen for play errors and forward to the requesting socket.
@@ -25,6 +23,11 @@ export class SocketHandler {
     // Forward room state changes → socket.io rooms
     eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
+      
+      // Persist state to DB to recover after reloads or server restarts
+      this.roomRepo.updateState(snap.roomId, snap.state, snap.position, snap.trackUrl).catch(err => {
+        console.error(`[DB Sync] Failed to save state for room ${snap.roomId}:`, err);
+      });
     });
 
     eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
@@ -211,14 +214,14 @@ export class SocketHandler {
       }
     });
 
-    // ── Client ready — sent when audio is buffered (canplaythrough) ───────
+    // ── Client ready / buffering state ───────────────────────────────────
 
-    socket.on('room:clientReady', ({ roomId }: { roomId: string }) => {
+    socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string, isReady?: boolean }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
 
-      room.setParticipantReady(socket.id, true);
-      console.log(`[Room ${roomId}] ${socket.id} is ready`);
+      room.setParticipantReady(socket.id, isReady);
+      console.log(`[Room ${roomId}] ${socket.id} is ready: ${isReady}`);
     });
 
     socket.on('playback:blocked', ({ roomId, blocked }: { roomId: string; blocked: boolean }) => {
@@ -250,8 +253,8 @@ export class SocketHandler {
     // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {
-      const { t1, t2 } = this.syncEngine.recordPing(socket.id, t0);
-      socket.emit('sync:pong', { t0, t1, t2, seq });
+      const now = Date.now();
+      socket.emit('sync:pong', { t0, t1: now, t2: now, seq });
     });
 
     // ── Spatial Audio Sync ───────────────────────────────────────────────
@@ -270,7 +273,6 @@ export class SocketHandler {
     socket.on('disconnect', (reason) => {
       console.log(`[WS] disconnected: ${socket.id} (${reason})`);
       this.roomManager.handleDisconnect(socket.id);
-      this.syncEngine.clearSocket(socket.id);
     });
   }
 }

@@ -44,7 +44,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDownloadingYt, setIsDownloadingYt] = useState(false);
   const [ytDownloadTitle, setYtDownloadTitle] = useState("");
-  const [activeTransfers, setActiveTransfers] = useState<Record<string, TransferState>>({});
+  const [activeTransfers] = useState<Record<string, TransferState>>({});
   
 
 

@@ -218,7 +218,7 @@ export class Room extends EventEmitter {
 
   allReady(): boolean {
     if (this.participants.size === 0) return false;
-    return Array.from(this.participants.values()).every(p => p.isReady);
+    return Array.from(this.participants.values()).every(p => p.isReady || p.isBlocked);
   }
 
   // ── Participants ──────────────────────────────────────────────────────
