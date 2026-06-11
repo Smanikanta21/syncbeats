@@ -64,7 +64,7 @@ export function Features() {
               key={i}
               variants={itemVariants}
               whileHover={{ y: -8, scale: 1.02 }}
-              className="group relative p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col items-start gap-4 sm:gap-6 cursor-pointer overflow-hidden glass-panel transition-all duration-300 z-10"
+              className="group relative p-6 sm:p-8 rounded-3xl sm:rounded-4xl flex flex-col items-start gap-4 sm:gap-6 cursor-pointer overflow-hidden glass-panel transition-all duration-300 z-10"
             >
               {/* Massive hover glow UNDERNEATH the border inside the card - subtle silver */}
               <div className="absolute inset-0 bg-transparent group-hover:bg-foreground/5 transition-all duration-500 pointer-events-none" />

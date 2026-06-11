@@ -29,8 +29,8 @@ export function Hero() {
   return (
     <header className="relative min-h-[90vh] flex items-center justify-center pt-24 md:pt-32 px-4 sm:px-6 lg:px-8 overflow-hidden pb-20" role="banner">
       {/* Decorative Orbs behind hero (Minute Silver Glow) - Hidden on mobile for INP performance */}
-      <div className="hidden sm:block absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-foreground/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" aria-hidden="true" />
-      <div className="hidden sm:block absolute bottom-1/4 right-1/4 w-[250px] h-[250px] sm:w-[500px] sm:h-[500px] bg-foreground/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" aria-hidden="true" />
+      <div className="hidden sm:block absolute top-1/4 left-1/4 w-75 h-75 sm:w-150 sm:h-150 bg-foreground/5 rounded-full blur-[80px] sm:blur-[120px] animate-blob pointer-events-none" aria-hidden="true" />
+      <div className="hidden sm:block absolute bottom-1/4 right-1/4 w-62.5 h-62.5 sm:w-125 sm:h-125 bg-foreground/5 rounded-full blur-[60px] sm:blur-[100px] animate-blob animation-delay-2000 pointer-events-none" aria-hidden="true" />
 
       <div className="relative z-10 w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 
@@ -62,7 +62,7 @@ export function Hero() {
             className="relative flex flex-col sm:flex-row gap-4 w-full"
           >
             {/* Subtle silver glow underneath the primary button */}
-            <div className="absolute top-1/2 left-32 -translate-x-1/2 -translate-y-1/2 w-48 h-24 bg-foreground/5 rounded-full blur-[40px] pointer-events-none" aria-hidden="true" />
+            <div className="absolute top-1/2 left-32 -translate-x-1/2 -translate-y-1/2 w-48 h-24 bg-foreground/5 rounded-full blur-2xl pointer-events-none" aria-hidden="true" />
 
             <motion.button
               onClick={handleCTA}
@@ -96,12 +96,12 @@ export function Hero() {
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 1.2, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="relative md:block hidden w-full max-w-[280px] sm:max-w-md lg:max-w-lg mx-auto lg:mx-0 lg:ml-auto mt-8 lg:mt-0"
+          className="relative md:block hidden w-full max-w-70 sm:max-w-md lg:max-w-lg mx-auto lg:mx-0 lg:ml-auto mt-8 lg:mt-0"
         >
           {/* Subtle backlight glow for the player */}
-          <div className="absolute -inset-4 bg-foreground/5 filter blur-[40px] sm:blur-[60px] rounded-[3rem] pointer-events-none opacity-50" />
+          <div className="absolute -inset-4 bg-foreground/5 filter blur-2xl sm:blur-[60px] rounded-[3rem] pointer-events-none opacity-50" />
 
-          <div className="relative glass-panel rounded-[2rem] sm:rounded-3xl shadow-xl backdrop-blur-3xl overflow-hidden group">
+          <div className="relative glass-panel rounded-4xl sm:rounded-3xl shadow-xl backdrop-blur-3xl overflow-hidden group">
 
             {/* Top Bar */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-foreground/10">
@@ -126,7 +126,7 @@ export function Hero() {
               {/* Cover Art Mockup */}
               <motion.div
                 whileHover={{ scale: 1.05 }}
-                className="w-36 h-36 sm:w-64 sm:h-64 rounded-xl sm:rounded-2xl bg-gradient-to-br from-foreground/20 to-foreground/5 shadow-2xl flex items-center justify-center mb-6 sm:mb-8 relative overflow-hidden transition-all duration-500"
+                className="w-36 h-36 sm:w-64 sm:h-64 rounded-xl sm:rounded-2xl bg-linear-to-br from-foreground/20 to-foreground/5 shadow-2xl flex items-center justify-center mb-6 sm:mb-8 relative overflow-hidden transition-all duration-500"
               >
                 <div className="absolute inset-0 bg-background/10" />
                 <div className="absolute inset-0 flex items-center justify-center gap-2">

@@ -136,8 +136,6 @@ export function useNetworkStats(enabled: boolean = true): NetworkStats {
   useEffect(() => {
     if (!enabled) return;
 
-    let pingTimer: ReturnType<typeof setInterval>;
-    let persistTimer: ReturnType<typeof setInterval>;
 
     const doPing = () => {
       if (!socket.connected) return;

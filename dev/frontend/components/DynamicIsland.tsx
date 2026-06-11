@@ -32,9 +32,6 @@ export function DynamicIsland() {
 
   const [expanded, setExpanded] = useState(false);
   const [pillView, setPillView] = useState<"player" | "network" | "youtube">("player");
-  const [driveLink, setDriveLink] = useState("");
-  const [driveErr, setDriveErr] = useState("");
-  const [youtubeLink, setYoutubeLink] = useState("");
   const [youtubeErr, setYoutubeErr] = useState("");
   const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
   const [youtubeQuery, setYoutubeQuery] = useState("");
@@ -164,47 +161,37 @@ export function DynamicIsland() {
     }
   }, [roomId, upload]);
 
-  const handleDriveLink = () => {
-    setDriveErr("");
-    const match = driveLink.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (!match) { setDriveErr("Paste a valid Google Drive share link"); return; }
-    const directUrl = `https://drive.google.com/uc?export=download&id=${match[1]}&confirm=t`;
-    audio.setTrack(directUrl, "Drive Track");
-    setDriveLink("");
-    setExpanded(false);
-  };
-
-  const handleYoutubeSubmit = async () => {
-    if (!roomId) return;
+  const handleYoutubeAction = async () => {
+    const val = youtubeQuery.trim();
+    if (!roomId || !val) return;
+    
     setYoutubeErr("");
-    setIsYoutubeLoading(true);
+    const isUrl = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+$/.test(val);
 
-    try {
-      audio.unlockAudio();
-      await roomsApi.enqueueYoutube(roomId, youtubeLink);
-
-      setYoutubeLink("");
-      setExpanded(false);
-      setPillView("player");
-    } catch (err: any) {
-      setYoutubeErr(err.message);
-    } finally {
-      setIsYoutubeLoading(false);
-    }
-  };
-
-  const handleYoutubeSearch = async () => {
-    if (!roomId || !youtubeQuery.trim()) return;
-    setIsSearching(true);
-    setYoutubeErr("");
-    try {
-      const results = await roomsApi.searchYoutube(roomId, youtubeQuery.trim());
-      setSearchResults(results);
-      setIsModalOpen(true);
-    } catch (err: any) {
-      setYoutubeErr(err.message ?? "Search failed");
-    } finally {
-      setIsSearching(false);
+    if (isUrl) {
+      setIsYoutubeLoading(true);
+      try {
+        audio.unlockAudio();
+        await roomsApi.enqueueYoutube(roomId, val);
+        setYoutubeQuery("");
+        setExpanded(false);
+        setPillView("player");
+      } catch (err: any) {
+        setYoutubeErr(err.message);
+      } finally {
+        setIsYoutubeLoading(false);
+      }
+    } else {
+      setIsSearching(true);
+      try {
+        const results = await roomsApi.searchYoutube(roomId, val);
+        setSearchResults(results);
+        setIsModalOpen(true);
+      } catch (err: any) {
+        setYoutubeErr(err.message ?? "Search failed");
+      } finally {
+        setIsSearching(false);
+      }
     }
   };
 
@@ -386,78 +373,36 @@ export function DynamicIsland() {
                 {pillView === "youtube" ? (
                   <div className="flex flex-col gap-3">
                     {/* Search */}
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Search YouTube</label>
+                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">YouTube Search or Link</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={youtubeQuery}
                         onChange={(e) => setYoutubeQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeSearch()}
-                        placeholder="Search for a song..."
+                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
+                        placeholder="Search for a song or paste link..."
                         className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
                       />
                       <button
-                        onClick={handleYoutubeSearch}
-                        disabled={!youtubeQuery.trim() || isSearching}
+                        onClick={handleYoutubeAction}
+                        disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
                         className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
                       >
-                        {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                        Search
+                        {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                        Go
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 my-1">
-                      <div className="flex-1 h-px bg-foreground/10" />
-                      <span className="text-[10px] text-foreground/30 font-bold">OR PASTE URL DIRECTLY</span>
-                      <div className="flex-1 h-px bg-foreground/10" />
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        value={youtubeLink}
-                        onChange={(e) => setYoutubeLink(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
-                        placeholder="https://youtube.com/watch?v=..."
-                        className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                      />
-                      <button
-                        onClick={handleYoutubeSubmit}
-                        disabled={!youtubeLink.trim() || isYoutubeLoading}
-                        className="px-4 py-2.5 rounded-xl bg-foreground/10 text-foreground font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
-                      >
-                        {isYoutubeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                        Play <span className="bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded text-[10px]">Beta</span>
-                      </button>
-                    </div>
-                    {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
+                    {youtubeErr && <p className="text-xs text-red-500 font-semibold mt-2">{youtubeErr}</p>}
                   </div>
                 ) : (
                   <>
                     <button
                       onClick={handlePickFile}
-                      className="w-full h-12 flex items-center justify-center rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                      className="w-full h-12 flex items-center justify-center rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)] mb-2"
                     >
                       Upload from device
                     </button>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Or paste a Google Drive link</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          value={driveLink}
-                          onChange={(e) => setDriveLink(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleDriveLink()}
-                          placeholder="https://drive.google.com/file/d/…"
-                          className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                        />
-                        <button
-                          onClick={handleDriveLink}
-                          disabled={!driveLink.trim()}
-                          className="px-4 py-2.5 rounded-xl bg-foreground text-background font-bold text-sm disabled:opacity-30 transition-all shrink-0"
-                        >Play</button>
-                      </div>
-                      {driveErr && <p className="text-xs text-red-500 font-semibold">{driveErr}</p>}
-                    </div>
-                    <p className="text-center text-xs text-foreground/40 font-medium">Or drag any audio file anywhere on the page ↗</p>
+                    <p className="text-center text-xs text-foreground/40 font-medium mt-2">Or drag any audio file anywhere on the page ↗</p>
                   </>
                 )}
               </motion.div>
@@ -589,49 +534,26 @@ export function DynamicIsland() {
                   <>
                     {pillView === "youtube" ? (
                       <div className="flex flex-col gap-3">
-                        <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Search YouTube</label>
+                        <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">YouTube Search or Link</label>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             value={youtubeQuery}
                             onChange={(e) => setYoutubeQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeSearch()}
-                            placeholder="Search for a song..."
+                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
+                            placeholder="Search for a song or paste link..."
                             className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
                           />
                           <button
-                            onClick={handleYoutubeSearch}
-                            disabled={!youtubeQuery.trim() || isSearching}
+                            onClick={handleYoutubeAction}
+                            disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
                             className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
                           >
-                            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                            Search
+                            {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                            Go
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 my-1">
-                          <div className="flex-1 h-px bg-foreground/10" />
-                          <span className="text-[10px] text-foreground/30 font-bold">OR PASTE URL DIRECTLY</span>
-                          <div className="flex-1 h-px bg-foreground/10" />
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            type="url"
-                            value={youtubeLink}
-                            onChange={(e) => setYoutubeLink(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeSubmit()}
-                            placeholder="https://youtube.com/watch?v=..."
-                            className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                          />
-                          <button
-                            onClick={handleYoutubeSubmit}
-                            disabled={!youtubeLink.trim() || isYoutubeLoading}
-                            className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
-                          >
-                            {isYoutubeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                            Add
-                          </button>
-                        </div>
-                        {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
+                        {youtubeErr && <p className="text-xs text-red-500 font-semibold mt-2">{youtubeErr}</p>}
                       </div>
                     ) : (
                       <div className="flex flex-col gap-5">
@@ -641,27 +563,6 @@ export function DynamicIsland() {
                         >
                           Upload from device
                         </button>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Or paste a Google Drive link</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="url"
-                              value={driveLink}
-                              onChange={(e) => setDriveLink(e.target.value)}
-                              onKeyDown={(e) => e.key === "Enter" && handleDriveLink()}
-                              placeholder="https://drive.google.com/file/d/…"
-                              className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                            />
-                            <button
-                              onClick={handleDriveLink}
-                              disabled={!driveLink.trim()}
-                              className="px-4 py-2.5 rounded-xl bg-foreground/10 text-foreground font-bold text-sm disabled:opacity-30 transition-all shrink-0"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          {driveErr && <p className="text-xs text-red-500 font-semibold">{driveErr}</p>}
-                        </div>
                       </div>
                     )}
                   </>
