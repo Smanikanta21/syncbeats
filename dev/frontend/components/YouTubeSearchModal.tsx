@@ -31,7 +31,6 @@ interface YouTubeSearchModalProps {
 export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect, query }: YouTubeSearchModalProps) {
   const upload = useUpload();
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
 
   // Editing track title before playing/downloading
   const [customTitles, setCustomTitles] = useState<Record<string, string>>({});
@@ -44,25 +43,6 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
     setSelectedUrl(url);
     await onSelect(url, customTitles[url]);
     setSelectedUrl(null);
-  };
-
-  const handleDownloadAndPlay = async (result: SearchResult, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const videoId = result.url.split('v=')[1]?.split('&')[0] || result.url.split('youtu.be/')[1]?.split('?')[0];
-    if (!videoId) {
-      alert("Invalid YouTube URL");
-      return;
-    }
-
-    // Close the search modal immediately so the user can return to the room screen and see the Dynamic Island!
-    onClose();
-
-    try {
-      await upload.downloadYoutube(roomId, videoId, customTitles[result.url] || result.title);
-    } catch (error) {
-      console.error("YouTube download failed:", error);
-      alert(`Failed to download track: "${customTitles[result.url] || result.title}"`);
-    }
   };
 
   const startEditing = (result: SearchResult, e: React.MouseEvent) => {
@@ -138,7 +118,7 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                 key={result.url}
                 className="w-full flex flex-col sm:flex-row gap-4 p-3 rounded-2xl hover:bg-foreground/5 border border-transparent hover:border-foreground/10 transition-all text-left group"
               >
-                <div className="flex gap-4 flex-1 cursor-pointer" role="button" tabIndex={0} onClick={() => { if (selectedUrl || downloadingUrl) return; void handleSelect(result.url); }} onKeyDown={(e) => { if (selectedUrl || downloadingUrl) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleSelect(result.url); } }}>
+                <div className="flex gap-4 flex-1 cursor-pointer" role="button" tabIndex={0} onClick={() => { if (selectedUrl) return; void handleSelect(result.url); }} onKeyDown={(e) => { if (selectedUrl) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleSelect(result.url); } }}>
                   {/* Thumbnail */}
                   <div className="relative w-32 md:w-40 aspect-video rounded-xl overflow-hidden shrink-0 bg-foreground/5">
                     <img src={result.thumbnail} alt={result.title} className="w-full h-full object-cover" />
@@ -194,19 +174,11 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                 <div className="flex flex-row sm:flex-col gap-2 shrink-0 justify-center">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleSelect(result.url); }}
-                    disabled={!!selectedUrl || !!downloadingUrl || upload.isDownloadingYt}
-                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={!!selectedUrl}
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {selectedUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                    Play <span className="bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded text-[10px] ml-1">Beta</span>
-                  </button>
-                  <button
-                    onClick={(e) => handleDownloadAndPlay(result, e)}
-                    disabled={!!selectedUrl || !!downloadingUrl || upload.isDownloadingYt}
-                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-red-500/20"
-                  >
-                    {downloadingUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5 hidden" />}
-                    {downloadingUrl === result.url ? "Downloading..." : "Download & Play"}
+                    Play 
                   </button>
                 </div>
               </div>

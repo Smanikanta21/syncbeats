@@ -5,9 +5,10 @@
 
 import {
   createContext, useContext, useState, useCallback,
-  type ReactNode,
+  type ReactNode
 } from "react";
-import { getAuthToken, getServerUrl } from "../lib/api";
+import { roomsApi } from "../lib/api";
+import { getWebTorrentClient } from "../lib/webtorrent";
 
 interface UploadResult {
   trackUrl: string;
@@ -26,96 +27,62 @@ interface UploadCtx {
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
-  isDownloadingYt:  boolean;
-  ytDownloadTitle:  string;
-  downloadYoutube:  (roomId: string, videoId: string, title: string) => Promise<any>;
   activeTransfers:  Record<string, TransferState>;
 }
 
 const Ctx = createContext<UploadCtx | null>(null);
 
-function getToken(): string | null {
-  return getAuthToken();
-}
 
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
   const [isUploading,    setIsUploading]    = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isDownloadingYt, setIsDownloadingYt] = useState(false);
-  const [ytDownloadTitle, setYtDownloadTitle] = useState("");
   const [activeTransfers] = useState<Record<string, TransferState>>({});
-  
 
-
-  // 1. Upload Local File to CDN (S3)
+  // 1. Seed Local File via WebTorrent (P2P)
   const uploadFile = useCallback(async (file: File, roomId: string): Promise<UploadResult> => {
     setIsUploading(true);
     setUploadProgress(10);
 
-    try {
-      const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
-      const formData = new FormData();
-      formData.append('title', title);
-      formData.append('file', file);
+    return new Promise(async (resolve, reject) => {
+      try {
+        const client = await getWebTorrentClient();
+        if (!client) {
+          throw new Error("WebTorrent client failed to load.");
+        }
 
-      setUploadProgress(50);
-      const token = getToken();
-      const res = await fetch(`${getServerUrl()}/rooms/${roomId}/upload-file`, {
-        method: "POST",
-        headers: {
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: formData
-      });
+        const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+        setUploadProgress(30);
 
-      if (!res.ok) {
-        throw new Error(`Server failed to upload file (${res.status})`);
+        client.seed(file, async (torrent: any) => {
+          console.log('[WebTorrent] Seeding track:', torrent.infoHash);
+          console.log('[WebTorrent] Magnet URI:', torrent.magnetURI);
+          
+          setUploadProgress(80);
+
+          try {
+            // Tell the backend to enqueue the new magnet URI
+            await roomsApi.enqueueMagnet(roomId, torrent.magnetURI, title);
+            setUploadProgress(100);
+            setIsUploading(false);
+            setUploadProgress(0);
+            
+            resolve({ trackUrl: torrent.magnetURI, title });
+          } catch (apiErr) {
+            console.error("[UploadContext] Failed to enqueue magnet URI:", apiErr);
+            setIsUploading(false);
+            setUploadProgress(0);
+            reject(apiErr);
+          }
+        });
+
+      } catch (err) {
+        setIsUploading(false);
+        setUploadProgress(0);
+        console.error("[UploadContext] uploadFile failed:", err);
+        reject(err);
       }
-
-      setUploadProgress(100);
-      const result = await res.json() as UploadResult;
-      setIsUploading(false);
-      setUploadProgress(0);
-      return result;
-    } catch (err) {
-      setIsUploading(false);
-      setUploadProgress(0);
-      console.error("[UploadContext] uploadFile failed:", err);
-      throw err;
-    }
-  }, []);
-
-  // 2. Download YouTube Track (Server downloads & uploads to S3, returns S3 URL)
-  const downloadYoutube = useCallback(async (roomId: string, videoId: string, title: string): Promise<any> => {
-    setIsDownloadingYt(true);
-    setYtDownloadTitle(title);
-
-    try {
-      const token = getToken();
-      
-      const res = await fetch(`${getServerUrl()}/rooms/${roomId}/yt-download`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ videoId, title })
-      });
-
-      if (!res.ok) {
-        throw new Error(`Transient YouTube download failed (${res.status})`);
-      }
-
-      const result = await res.json();
-      return result;
-    } catch (err) {
-      console.error("[UploadContext] downloadYoutube failed:", err);
-      throw err;
-    } finally {
-      setIsDownloadingYt(false);
-      setYtDownloadTitle("");
-    }
+    });
   }, []);
 
 
@@ -127,9 +94,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       uploadProgress,
       setIsDragging,
       uploadFile,
-      isDownloadingYt,
-      ytDownloadTitle,
-      downloadYoutube,
       activeTransfers
     }}>
       {children}

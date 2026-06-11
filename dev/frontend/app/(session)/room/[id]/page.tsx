@@ -347,7 +347,7 @@ export default function RoomPage() {
             <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
             <h1
               onClick={handleCopy}
-              className="text-[5rem] select-none font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
+              className="text-[5rem] select-none font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl"
             >
               {roomId}
               <div className="w-10 h-10 rounded-full bg-foreground/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -583,8 +583,8 @@ export default function RoomPage() {
                 
                 {/* Spinner */}
                 <div className="relative w-5 h-5 shrink-0">
-                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-4xl -z-10" />
-                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent mix-blend-overlay pointer-events-none" />
+                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
+                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
                 
                 {/* Text */}
@@ -611,8 +611,8 @@ export default function RoomPage() {
       {/* ── Unlock Audio Overlay ── */}
       {snapshot?.isPlaying && !audio.audioUnlocked && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 1 }}
+          animate={{ opacity: isConnected ? 0 : 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-x-0 bottom-0 z-99999 p-4 pointer-events-none flex items-center justify-center bg-background/60 backdrop-blur-sm px-4 cursor-pointer"
           onClick={() => audio.unlockAudio()}
@@ -759,7 +759,7 @@ export default function RoomPage() {
             </div>
           )}
 
-          <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2 flex flex-col gap-8">
+          <div className="w-full min-h-dvh pt-30 pb-20 px-6 overflow-x-hidden relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
               <div key={userName} className="w-full flex flex-col gap-4">
                 <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2 select-all">{userName}</h4>
@@ -798,7 +798,7 @@ export default function RoomPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-2 w-full glass-panel p-3 rounded-xl border border-foreground/5">
+                      <motion.div className="flex flex-col h-dvh w-full md:hidden">
                         <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                           <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
                             {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
@@ -824,7 +824,7 @@ export default function RoomPage() {
                             className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
                           />
                         </div>
-                      </div>
+                      </motion.div>
                     </div>
                   ))}
                 </div>
@@ -891,7 +891,7 @@ export default function RoomPage() {
           transition={{ duration: 0.4 }}
           ref={carouselRef}
           onScroll={handleScroll}
-          className="flex-1 w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
+          className="w-full h-full rounded-4xl overflow-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
         >
           <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
             {renderInfoPanel()}

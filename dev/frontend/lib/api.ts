@@ -248,6 +248,11 @@ export const roomsApi = {
       body: JSON.stringify({ youtubeUrl, title }),
     }, true),
 
+  enqueueMagnet: (roomId: string, magnetUri: string, title?: string) =>
+    request<any>(`/rooms/${roomId}/enqueue-magnet`, {
+      method: 'POST',
+      body: JSON.stringify({ magnetUri, title }),
+    }, true),
 
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),

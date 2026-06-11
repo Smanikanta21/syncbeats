@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
+import { getWebTorrentClient } from '../lib/webtorrent';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -342,18 +343,38 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
   }, [unlockAudio]);
 
-  const fetchAndDecode = async (url: string) => {
-    if (!audioCtxRef.current) return null;
+  const fetchAndDecode = (url: string) => {
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
 
     const promise = (async () => {
       setIsReady(false);
       try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+        let arrayBuffer: ArrayBuffer;
+
+        if (url.startsWith('magnet:')) {
+          console.log('[WebTorrent] Downloading magnet URI...');
+          const client = await getWebTorrentClient();
+          if (!client) throw new Error("WebTorrent failed to load");
+
+          arrayBuffer = await new Promise((resolve, reject) => {
+            client.add(url, (torrent: any) => {
+              const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
+              if (!file) return reject(new Error("No audio file found in torrent"));
+
+              file.getBlob((err: any, blob: Blob) => {
+                if (err) return reject(err);
+                blob.arrayBuffer().then(resolve).catch(reject);
+              });
+            });
+          });
+        } else {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+          }
+          arrayBuffer = await response.arrayBuffer();
         }
-        const arrayBuffer = await response.arrayBuffer();
+
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);

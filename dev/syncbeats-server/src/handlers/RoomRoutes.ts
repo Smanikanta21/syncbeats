@@ -271,5 +271,36 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // POST /rooms/:roomId/enqueue-magnet
+  router.post('/:roomId/enqueue-magnet', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      const { magnetUri, title } = req.body as { magnetUri?: string; title?: string };
+      const userId = req.user!.sub;
+
+      if (!magnetUri) {
+        res.status(400).json({ error: 'Missing magnetUri' });
+        return;
+      }
+
+      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+        trackUrl: magnetUri,
+        title: title || 'P2P Track',
+        fileName: 'webtorrent.mp3',
+        mimeType: 'audio/mpeg',
+        sizeBytes: 0,
+      });
+
+      const room = roomManager.getOrCreate(roomId);
+      room.addToQueue(item);
+
+      res.status(201).json({ item, queued: !activated });
+    } catch (err) {
+      console.error('[Rooms] enqueue-magnet error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   return router;
 }
