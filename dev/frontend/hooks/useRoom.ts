@@ -44,7 +44,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
-  const [allReady,     setAllReady]     = useState(true); // Default true since barrier sync is removed
+  const [allReady] = useState(true); // Default true since barrier sync is removed
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);

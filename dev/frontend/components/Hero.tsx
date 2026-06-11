@@ -52,7 +52,7 @@ export function Hero() {
             transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
             className="text-lg md:text-xl text-foreground/50 max-w-xl mb-10 leading-relaxed font-medium"
           >
-            Universal AirPlay for the web. Sync your music perfectly across all devices in the room without downloading an app or struggling with bluetooth pairing.
+            Unlike other apps that require expensive weekly subscriptions, SyncBeats lets you connect instantly over local Wi-Fi. Universal spatial audio for the web. Sync your music perfectly across all devices in the room without downloading an app or struggling with bluetooth pairing.
           </motion.p>
 
           <motion.div

@@ -60,7 +60,7 @@ export function Features() {
           <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-4/5 h-48 bg-foreground/5 blur-[80px] pointer-events-none rounded-full" />
 
           {FEATURES.map((feature, i) => (
-            <motion.div
+            <motion.article
               key={i}
               variants={itemVariants}
               whileHover={{ y: -8, scale: 1.02 }}
@@ -84,7 +84,7 @@ export function Features() {
                 <h4 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3 text-foreground tracking-tight">{feature.title}</h4>
                 <p className="text-sm sm:text-base text-foreground/60 leading-relaxed group-hover:text-foreground/80 transition-colors">{feature.desc}</p>
               </div>
-            </motion.div>
+            </motion.article>
           ))}
         </motion.div>
       </div>

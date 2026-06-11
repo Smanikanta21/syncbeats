@@ -163,8 +163,8 @@ export function useNetworkStats(enabled: boolean = true): NetworkStats {
       socket.emit("sync:ping", { t0, seq });
     };
 
-    pingTimer = setInterval(doPing, PING_INTERVAL_MS);
-    persistTimer = setInterval(persist, 5000); // persist every 5s
+    const pingTimer = setInterval(doPing, PING_INTERVAL_MS);
+    const persistTimer = setInterval(persist, 5000); // persist every 5s
     doPing(); // fire immediately
 
     return () => {

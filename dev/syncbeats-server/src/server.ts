@@ -1,6 +1,5 @@
 // ─── SyncBeatsServer — Facade ─────────────────────────────────────────────
 import 'dotenv/config';
-
 import express    from 'express';
 import http       from 'http';
 import cors       from 'cors';
@@ -61,7 +60,7 @@ export class SyncBeatsServer {
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
     this.app.get('/files/:filename', (req, res) => {
-      const filename = path.basename(req.params.filename); // sanitise path traversal
+      const filename = path.basename(req.params.filename);
       const filePath = path.join(uploadsDir, filename);
 
       if (!fs.existsSync(filePath)) { res.status(404).end(); return; }
