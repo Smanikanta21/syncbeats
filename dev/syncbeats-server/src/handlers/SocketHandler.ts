@@ -209,14 +209,14 @@ export class SocketHandler {
       }
     });
 
-    // ── Client ready — sent when audio is buffered (canplaythrough) ───────
+    // ── Client ready / buffering state ───────────────────────────────────
 
-    socket.on('room:clientReady', ({ roomId }: { roomId: string }) => {
+    socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string, isReady?: boolean }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
 
-      room.setParticipantReady(socket.id, true);
-      console.log(`[Room ${roomId}] ${socket.id} is ready`);
+      room.setParticipantReady(socket.id, isReady);
+      console.log(`[Room ${roomId}] ${socket.id} is ready: ${isReady}`);
     });
 
     socket.on('playback:blocked', ({ roomId, blocked }: { roomId: string; blocked: boolean }) => {

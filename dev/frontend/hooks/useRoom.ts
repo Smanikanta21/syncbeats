@@ -61,7 +61,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const reportedBlockedRef = useRef<boolean | null>(null);
 
   const setReady = useCallback((isReady: boolean) => {
-    if (isReady) socket.emit('room:clientReady', { roomId });
+    socket.emit('room:clientReady', { roomId, isReady });
   }, [socket, roomId]);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
