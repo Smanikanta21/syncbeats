@@ -23,6 +23,11 @@ export class SocketHandler {
     // Forward room state changes → socket.io rooms
     eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
+      
+      // Persist state to DB to recover after reloads or server restarts
+      this.roomRepo.updateState(snap.roomId, snap.state, snap.position, snap.trackUrl).catch(err => {
+        console.error(`[DB Sync] Failed to save state for room ${snap.roomId}:`, err);
+      });
     });
 
     eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
