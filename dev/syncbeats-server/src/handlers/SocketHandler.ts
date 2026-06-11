@@ -2,7 +2,6 @@
 
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
-import { SyncEngine }     from '../sync/SyncEngine';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import {
@@ -13,7 +12,6 @@ export class SocketHandler {
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
-    private syncEngine:  SyncEngine,
     private roomRepo:    RoomRepository,
   ) {
     // Listen for play errors and forward to the requesting socket.
@@ -250,8 +248,8 @@ export class SocketHandler {
     // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {
-      const { t1, t2 } = this.syncEngine.recordPing(socket.id, t0);
-      socket.emit('sync:pong', { t0, t1, t2, seq });
+      const now = Date.now();
+      socket.emit('sync:pong', { t0, t1: now, t2: now, seq });
     });
 
     // ── Spatial Audio Sync ───────────────────────────────────────────────
@@ -270,7 +268,6 @@ export class SocketHandler {
     socket.on('disconnect', (reason) => {
       console.log(`[WS] disconnected: ${socket.id} (${reason})`);
       this.roomManager.handleDisconnect(socket.id);
-      this.syncEngine.clearSocket(socket.id);
     });
   }
 }
