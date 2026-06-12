@@ -7,6 +7,7 @@ import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
+import ytdl from '@distube/ytdl-core';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -297,6 +298,39 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.status(201).json({ item, queued: !activated });
     } catch (err) {
       console.error('[Rooms] enqueue-magnet error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // GET /rooms/:roomId/yt-proxy?videoId=123
+  router.get('/:roomId/yt-proxy', async (req: Request, res: Response) => {
+    try {
+      const { videoId } = req.query;
+      if (!videoId || typeof videoId !== 'string') {
+        res.status(400).json({ error: 'Missing videoId' });
+        return;
+      }
+
+      console.log(`[Proxy] Streaming audio for YouTube video: ${videoId}`);
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      
+      const info = await ytdl.getInfo(url);
+      const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+      
+      if (!audioFormat) {
+        res.status(404).json({ error: 'No audio format found' });
+        return;
+      }
+
+      res.setHeader('Content-Type', audioFormat.mimeType || 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
+      
+      // Pipe the stream directly to the response (NO DISK STORAGE)
+      ytdl(url, { format: audioFormat }).pipe(res);
+
+    } catch (err) {
+      console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }

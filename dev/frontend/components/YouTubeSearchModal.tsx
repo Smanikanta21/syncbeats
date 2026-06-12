@@ -31,6 +31,7 @@ interface YouTubeSearchModalProps {
 export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect, query }: YouTubeSearchModalProps) {
   const upload = useUpload();
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
 
   // Editing track title before playing/downloading
   const [customTitles, setCustomTitles] = useState<Record<string, string>>({});
@@ -43,6 +44,26 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
     setSelectedUrl(url);
     await onSelect(url, customTitles[url]);
     setSelectedUrl(null);
+  };
+
+  const handleDownloadAndPlay = async (result: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const videoId = result.url.split('v=')[1]?.split('&')[0] || result.url.split('youtu.be/')[1]?.split('?')[0];
+    if (!videoId) {
+      alert("Invalid YouTube URL");
+      return;
+    }
+
+    setDownloadingUrl(result.url);
+    try {
+      await upload.downloadYoutubeToP2P(roomId, videoId, customTitles[result.url] || result.title);
+      onClose(); // Only close on success
+    } catch (error) {
+      console.error("YouTube P2P proxy failed:", error);
+      alert(`Failed to stream track: "${customTitles[result.url] || result.title}"`);
+    } finally {
+      setDownloadingUrl(null);
+    }
   };
 
   const startEditing = (result: SearchResult, e: React.MouseEvent) => {
@@ -174,11 +195,19 @@ export function YouTubeSearchModal({ isOpen, onClose, results, roomId, onSelect,
                 <div className="flex flex-row sm:flex-col gap-2 shrink-0 justify-center">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleSelect(result.url); }}
-                    disabled={!!selectedUrl}
-                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={!!selectedUrl || !!downloadingUrl}
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {selectedUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                    Play 
+                    Play <span className="bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded text-[10px] ml-1">Beta</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleDownloadAndPlay(result, e)}
+                    disabled={!!selectedUrl || !!downloadingUrl}
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#FF0000]/90 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-red-500/20"
+                  >
+                    {downloadingUrl === result.url ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5 hidden" />}
+                    {downloadingUrl === result.url ? "Proxying..." : "Download & Play"}
                   </button>
                 </div>
               </div>

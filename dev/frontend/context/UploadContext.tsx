@@ -27,6 +27,7 @@ interface UploadCtx {
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
+  downloadYoutubeToP2P: (roomId: string, videoId: string, title: string) => Promise<void>;
   activeTransfers:  Record<string, TransferState>;
 }
 
@@ -85,6 +86,36 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via P2P!
+  const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string) => {
+    setIsUploading(true);
+    setUploadProgress(5);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+      const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+      
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`Proxy failed with status ${response.status}`);
+      }
+      
+      setUploadProgress(20);
+      const blob = await response.blob();
+      
+      setUploadProgress(50);
+      const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
+      
+      // Re-use the existing WebTorrent seeding logic
+      await uploadFile(file, roomId);
+
+    } catch (err) {
+      console.error("[UploadContext] downloadYoutubeToP2P failed:", err);
+      setIsUploading(false);
+      setUploadProgress(0);
+      throw err;
+    }
+  }, [uploadFile]);
+
 
 
   return (
@@ -94,6 +125,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       uploadProgress,
       setIsDragging,
       uploadFile,
+      downloadYoutubeToP2P,
       activeTransfers
     }}>
       {children}
