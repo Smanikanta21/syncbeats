@@ -7,7 +7,7 @@ import {
   createContext, useContext, useState, useCallback,
   type ReactNode
 } from "react";
-import { roomsApi } from "../lib/api";
+import { roomsApi, getServerUrl } from "../lib/api";
 import { getWebTorrentClient } from "../lib/webtorrent";
 
 interface UploadResult {
@@ -91,7 +91,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setIsUploading(true);
     setUploadProgress(5);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+      const baseUrl = getServerUrl();
       const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
       
       const response = await fetch(proxyUrl);
