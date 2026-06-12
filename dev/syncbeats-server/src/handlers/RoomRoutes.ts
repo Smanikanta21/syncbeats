@@ -7,7 +7,7 @@ import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
-import ytdl from '@distube/ytdl-core';
+import axios from 'axios';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -312,22 +312,50 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Streaming audio for YouTube video: ${videoId}`);
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      
-      const info = await ytdl.getInfo(url);
-      const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-      
-      if (!audioFormat) {
-        res.status(404).json({ error: 'No audio format found' });
-        return;
+      console.log(`[Proxy] Requesting download URL from RapidAPI for: ${videoId}`);
+      const RAPID_API_KEY = process.env.RAPID_API_KEY || '';
+      if (!RAPID_API_KEY) {
+        throw new Error('RAPID_API_KEY is not configured in the environment');
       }
 
-      res.setHeader('Content-Type', audioFormat.mimeType || 'audio/mpeg');
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const apiResponse = await axios.request({
+        method: 'GET',
+        url: 'https://youtube-mp310.p.rapidapi.com/download/mp3',
+        params: { url: youtubeUrl },
+        headers: {
+          'x-rapidapi-key': RAPID_API_KEY,
+          'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
+        },
+        timeout: 30000,
+      });
+
+      const temporaryMp3Url = apiResponse.data.downloadUrl;
+      if (!temporaryMp3Url) {
+        throw new Error('RapidAPI failed to return a valid download link.');
+      }
+
+      console.log(`[Proxy] RapidAPI success! Proxying stream to client...`);
+
+      // Fetch the actual MP3 stream from RapidAPI's temporary URL
+      const streamRes = await fetch(temporaryMp3Url);
+      if (!streamRes.ok || !streamRes.body) {
+        throw new Error(`Failed to fetch audio stream from RapidAPI temp URL: ${streamRes.statusText}`);
+      }
+
+      res.setHeader('Content-Type', streamRes.headers.get('Content-Type') || 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
       
       // Pipe the stream directly to the response (NO DISK STORAGE)
-      ytdl(url, { format: audioFormat }).pipe(res);
+      const reader = streamRes.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          res.end();
+          break;
+        }
+        res.write(value);
+      }
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
