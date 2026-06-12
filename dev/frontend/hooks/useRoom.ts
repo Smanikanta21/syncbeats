@@ -227,8 +227,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
-        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode) {
-          // YouTube or fallback: just hard seek
+        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode || !audioRef.current.isPlaying) {
+          // YouTube or fallback or mid-join (not playing yet): just hard seek
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {

@@ -555,19 +555,43 @@ export default function RoomPage() {
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+      {/* ── Background Blur when Syncing ── */}
+      <AnimatePresence>
+        {(() => {
+          const currentTrackUrl = snapshot?.trackUrl;
+          const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
+          const isUploading = !!activeTransfer;
+          const isSyncing = audio.isSyncing;
+
+          if (!(isUploading || isSyncing)) return null;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[90] bg-background/50 backdrop-blur-lg pointer-events-none"
+            />
+          );
+        })()}
+      </AnimatePresence>
+
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
           const currentTrackUrl = snapshot?.trackUrl;
           const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
-          const isSyncing = !!activeTransfer;
+          const isUploading = !!activeTransfer;
+          const isSyncing = audio.isSyncing;
           const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
           
-          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isUploading || isSyncing)) return null;
 
           let overlayText = "Buffering…";
-          if (isSyncing) {
-            overlayText = `Syncing track: ${activeTransfer.progress}%…`;
+          if (isUploading) {
+            overlayText = `Uploading track: ${activeTransfer.progress}%…`;
+          } else if (isSyncing) {
+            overlayText = `Syncing P2P Audio: ${audio.syncProgress}%…`;
           } else if (isAnyDeviceBuffering) {
             overlayText = "Devices Buffering…";
           }
@@ -578,7 +602,7 @@ export default function RoomPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-[100] pointer-events-none"
             >
               <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
                 {/* Animated gradient ring */}

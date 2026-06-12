@@ -17,6 +17,8 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
+  isSyncing:     boolean;
+  syncProgress:  number;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -52,6 +54,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [isSyncing,   setIsSyncing]   = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -353,6 +357,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
         if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
+          setIsSyncing(true);
+          setSyncProgress(0);
           const client = await getWebTorrentClient();
           if (!client) throw new Error("WebTorrent failed to load");
 
@@ -366,7 +372,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           } else {
             arrayBuffer = await new Promise((resolve, reject) => {
               const onTorrent = (torrent: any) => {
-                const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
+                torrent.on('download', () => {
+                  setSyncProgress(Math.round(torrent.progress * 100));
+                });
+                const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav') || f.name.endsWith('.flac'));
                 if (!file) return reject(new Error("No audio file found in torrent"));
 
                 file.getBlob(async (err: any, blob: Blob) => {
@@ -406,6 +415,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         console.error("Error decoding audio data", err);
         return null;
       } finally {
+        setIsSyncing(false);
         fetchPromiseRef.current = null;
       }
     })();
@@ -746,7 +756,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist,
+    trackUrl, trackTitle, trackArtist, isSyncing, syncProgress,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
