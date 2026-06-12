@@ -2,6 +2,7 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 RUN npm ci
 COPY tsconfig.json ./
 COPY prisma.config.ts ./
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y ffmpeg curl python3 openssl ca-certific
 
 WORKDIR /app
 COPY package*.json ./
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 RUN npm ci --omit=dev
 COPY prisma.config.ts ./
 COPY prisma ./prisma
