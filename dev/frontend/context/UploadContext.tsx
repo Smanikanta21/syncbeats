@@ -59,7 +59,15 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         setUploadProgress(30);
         getSocket().emit('room:upload_progress', { roomId, title, progress: 30 });
 
-        client.seed(file, async (torrent: any) => {
+        const seedOpts = {
+          announce: [
+            'wss://tracker.webtorrent.dev',
+            'wss://tracker.openwebtorrent.com',
+            'wss://tracker.files.fm:7073/announce'
+          ]
+        };
+
+        client.seed(file, seedOpts, async (torrent: any) => {
           console.log('[WebTorrent] Seeding track:', torrent.infoHash);
           console.log('[WebTorrent] Magnet URI:', torrent.magnetURI);
           

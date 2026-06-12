@@ -367,7 +367,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
           if (cachedBlob) {
             console.log('[WebTorrent] Found cached track in IndexedDB! Seeding to swarm...');
-            client.seed(cachedBlob);
+            if (!client.get(url)) {
+              const seedOpts = {
+                announce: [
+                  'wss://tracker.webtorrent.dev',
+                  'wss://tracker.openwebtorrent.com',
+                  'wss://tracker.files.fm:7073/announce'
+                ]
+              };
+              client.seed(cachedBlob, seedOpts);
+            }
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             arrayBuffer = await new Promise((resolve, reject) => {
@@ -394,7 +403,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 if (existing.ready) onTorrent(existing);
                 else existing.on('ready', () => onTorrent(existing));
               } else {
-                client.add(url, onTorrent);
+                const addOpts = {
+                  announce: [
+                    'wss://tracker.webtorrent.dev',
+                    'wss://tracker.openwebtorrent.com',
+                    'wss://tracker.files.fm:7073/announce'
+                  ]
+                };
+                client.add(url, addOpts, onTorrent);
               }
             });
           }
