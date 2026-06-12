@@ -53,17 +53,22 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave } = useRoom({
+  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
     roomId,
     displayName,
   });
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
     pushClockOffset(clockOffset);
   }, [clockOffset, pushClockOffset]);
+
+  // Push incomingTrack to shared context
+  useEffect(() => {
+    pushIncomingTrack(incomingTrack);
+  }, [incomingTrack, pushIncomingTrack]);
 
   // Push server-side playing state so DynamicIsland shows correct button
   useEffect(() => {
@@ -895,7 +900,7 @@ export default function RoomPage() {
           transition={{ duration: 0.4 }}
           ref={carouselRef}
           onScroll={handleScroll}
-          className="w-full h-full rounded-4xl overflow-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
+          className="w-full h-full rounded-4xl overflow-x-auto overflow-y-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
         >
           <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
             {renderInfoPanel()}

@@ -7,7 +7,8 @@ import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
-import { exec } from 'youtube-dl-exec';
+import { spawn } from 'child_process';
+import fs from 'fs';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -318,16 +319,26 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.setHeader('Content-Type', 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
       
-      const cp = exec(youtubeUrl, {
-        format: 'bestaudio',
-        output: '-', // output to stdout
-        noPlaylist: true,
-        noWarnings: true
-      });
+      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
+      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
+      
+      const cp = spawn(ytBin, [
+        '-f', 'bestaudio',
+        '-o', '-', // Output to stdout
+        '--no-playlist',
+        '--no-warnings',
+        youtubeUrl
+      ]);
 
       if (!cp.stdout) {
         throw new Error('Failed to capture yt-dlp stdout');
       }
+
+      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
+      cp.stderr?.on('data', (data) => {
+        // We can comment this out or log it to see download progress
+        // console.log(`[yt-dlp stderr] ${data}`);
+      });
 
       // Pipe the audio directly from yt-dlp's stdout into the response!
       cp.stdout.pipe(res);

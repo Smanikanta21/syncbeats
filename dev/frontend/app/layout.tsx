@@ -151,7 +151,7 @@ export default function RootLayout({
         strategy="lazyOnload" 
       />
 
-      <body className="min-h-full flex flex-col transition-colors duration-300">
+      <body className="min-h-full flex flex-col transition-colors duration-300" suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
             <AudioProvider>

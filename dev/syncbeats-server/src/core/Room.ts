@@ -69,7 +69,7 @@ export class Room extends EventEmitter {
 
   private _startPlayback(): void {
     this.pendingPlay = false;
-    const scheduleDelay = 400;
+    const scheduleDelay = 800;
     const atEpoch = Date.now() + scheduleDelay;
     
     this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;
@@ -202,10 +202,10 @@ export class Room extends EventEmitter {
         this._startPlayback();
       }
     } else {
-      if (this.timeline.isPlaying) {
-        this.pause("system");
-        this.pendingPlay = true;
-      }
+      // Intentionally do nothing if we are already playing.
+      // This allows mid-playback seamless drop-in for new users,
+      // and prevents one user's bad internet from pausing the room for everyone.
+      // The lagging user will automatically catch up via client-side drift correction!
     }
   }
 

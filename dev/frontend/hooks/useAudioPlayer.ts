@@ -356,17 +356,39 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           const client = await getWebTorrentClient();
           if (!client) throw new Error("WebTorrent failed to load");
 
-          arrayBuffer = await new Promise((resolve, reject) => {
-            client.add(url, (torrent: any) => {
-              const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
-              if (!file) return reject(new Error("No audio file found in torrent"));
+          const { getTrack, saveTrack } = await import('../lib/idb');
+          const cachedBlob = await getTrack(url);
 
-              file.getBlob((err: any, blob: Blob) => {
-                if (err) return reject(err);
-                blob.arrayBuffer().then(resolve).catch(reject);
-              });
+          if (cachedBlob) {
+            console.log('[WebTorrent] Found cached track in IndexedDB! Seeding to swarm...');
+            client.seed(cachedBlob);
+            arrayBuffer = await cachedBlob.arrayBuffer();
+          } else {
+            arrayBuffer = await new Promise((resolve, reject) => {
+              const onTorrent = (torrent: any) => {
+                const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
+                if (!file) return reject(new Error("No audio file found in torrent"));
+
+                file.getBlob(async (err: any, blob: Blob) => {
+                  if (err) return reject(err);
+                  try {
+                    await saveTrack(url, blob);
+                  } catch (e) {
+                    console.error("Failed to save to IDB", e);
+                  }
+                  blob.arrayBuffer().then(resolve).catch(reject);
+                });
+              };
+
+              const existing = client.get(url);
+              if (existing) {
+                if (existing.ready) onTorrent(existing);
+                else existing.on('ready', () => onTorrent(existing));
+              } else {
+                client.add(url, onTorrent);
+              }
             });
-          });
+          }
         } else {
           const response = await fetch(url);
           if (!response.ok) {
@@ -543,7 +565,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       
       // For remote tracks, resolve the URL and fetch+decode
       if (!buffer) {
-        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
+        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
           ? `${getServerUrl()}/${payload.trackUrl}` 
           : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
         buffer = await fetchAndDecode(absoluteUrl);
@@ -697,7 +719,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       console.warn("Ignoring deprecated local: track url", url);
       return;
     }
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('magnet:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);

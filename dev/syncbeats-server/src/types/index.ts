@@ -50,7 +50,7 @@ export interface DeviceSpatialState {
   position: SpatialPosition;
 }
 
-export interface JoinPayload  { roomId: string; displayName: string; }
+export interface JoinPayload  { roomId: string; displayName: string; isReady?: boolean; }
 export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
 export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }

@@ -26,6 +26,7 @@ interface UseRoomReturn {
   setReady:     (isReady: boolean) => void;
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
+  incomingTrack: { title: string, progress: number } | null;
 }
 
 const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
@@ -46,6 +47,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
+  const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -183,6 +185,12 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     syncInFlightRef.current = false;
   }, [pingOnce]);
 
+  useEffect(() => {
+    // Run NTP resync continuously
+    const interval = setInterval(runNtpBurst, NTP_RESYNC_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [runNtpBurst]);
+
   // Handle drift correction with performance.now() for sub-ms precision
   useEffect(() => {
     // Capture a baseline to convert between performance.now() and Date.now()
@@ -307,7 +315,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleConnect = () => {
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
-      socket.emit('room:join', { roomId, displayName });
+      socket.emit('room:join', { 
+        roomId, 
+        displayName, 
+        isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
+      });
       runNtpBurst();
     };
 
@@ -322,12 +334,18 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleSnapshot = (snap: RoomSnapshot) => {
       setSnapshot(snap);
       setParticipants(snap.participants);
+      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      }
     };
     socket.on('room:snapshot', handleSnapshot);
 
     const handleStateChanged = (snap: RoomSnapshot) => {
       setSnapshot(snap);
       setParticipants(snap.participants);
+      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      }
     };
     socket.on('room:stateChanged', handleStateChanged);
 
@@ -340,6 +358,15 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       setParticipants(prev => prev.filter(x => x.socketId !== socketId));
     };
     socket.on('room:participantLeft', handleParticipantLeft);
+
+    const handleUploadProgress = ({ title, progress }: { title: string, progress: number }) => {
+      if (progress >= 100) {
+        setIncomingTrack(null);
+      } else {
+        setIncomingTrack({ title, progress });
+      }
+    };
+    socket.on('room:upload_progress', handleUploadProgress);
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);
@@ -355,11 +382,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         audioRef.current.clearTrack();
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
-        if (playingUrl && playingUrl !== newCurrentItem.trackUrl) {
+        if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
           loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
         }
       }
-      // If queue has songs but none is isCurrent, let room:trackSet / room:stateChanged handle it
     };
     socket.on('room:queueChanged', handleQueueChanged);
 
@@ -458,5 +484,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave };
+  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
+    setParticipantVolume, leave, incomingTrack
+  };
 }

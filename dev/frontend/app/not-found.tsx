@@ -1,41 +1,49 @@
-import Link from 'next/link';
-import { Disc } from 'lucide-react';
+"use client";
+
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { ArrowLeft, Disc } from "lucide-react";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export default function NotFound() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground relative overflow-hidden px-6">
-      {/* Dynamic Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[20%] left-[30%] w-[500px] h-[500px] bg-red-500/10 blur-[120px] rounded-full mix-blend-screen" />
-        <div className="absolute bottom-[20%] right-[30%] w-[400px] h-[400px] bg-blue-500/10 blur-[100px] rounded-full mix-blend-screen" />
+    <div className="min-h-screen bg-background text-foreground flex flex-col overflow-hidden relative">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-foreground/5 blur-[120px] rounded-full" />
+        <div className="absolute top-[40%] -right-[20%] w-[60vw] h-[60vw] bg-foreground/5 blur-[100px] rounded-full" />
       </div>
 
-      <div className="relative z-10 flex flex-col items-center text-center max-w-lg mx-auto glass-panel bg-background/50 backdrop-blur-3xl border border-foreground/10 rounded-[3rem] p-12 shadow-[0_20px_80px_rgba(0,0,0,0.2)]">
-        <div className="w-24 h-24 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-8 shadow-inner relative overflow-hidden group">
-          <Disc className="w-12 h-12 text-foreground/50 group-hover:text-foreground transition-colors duration-500 animate-[spin_8s_linear_infinite]" />
-        </div>
-        
-        <h1 className="text-7xl sm:text-9xl font-black mb-2 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/30">
-          404
-        </h1>
-        <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-foreground/90 tracking-tight">
-          Track Not Found
-        </h2>
-        
-        <p className="text-base text-foreground/50 mb-10 leading-relaxed font-medium max-w-xs">
-          The page you're looking for has been skipped, the room expired, or it never existed.
-        </p>
-        
-        <Link 
-          href="/"
-          className="group relative h-14 px-8 rounded-2xl bg-foreground text-background font-bold flex items-center justify-center overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.1)] w-full sm:w-auto"
-        >
-          <span className="relative z-10 flex items-center gap-2">
-            Return to Hub <span className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
+      <nav className="relative z-10 flex items-center justify-between px-6 py-8 md:px-12 md:py-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
+            <Disc className="w-5 h-5 text-foreground animate-[spin_4s_linear_infinite]" />
+          </div>
+          <span className="text-xl font-black tracking-widest text-foreground">
+            SYNC<span className="text-foreground/50">BEATS</span>
           </span>
-          <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-        </Link>
-      </div>
-    </main>
+        </div>
+        <div className="flex items-center gap-6">
+          <ThemeToggle />
+        </div>
+      </nav>
+
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-2xl mx-auto flex flex-col items-center"
+        >
+          <h1 className="text-8xl md:text-9xl font-black tracking-tighter mb-6">
+            404
+          </h1>
+          <p className="text-xl md:text-2xl text-foreground/60 font-medium mb-12">
+            The track you're looking for couldn't be found.
+          </p>
+          <Link href="/" className="h-14 px-8 flex items-center justify-center gap-2 rounded-2xl bg-foreground text-background text-sm font-black tracking-widest uppercase hover:scale-105 active:scale-95 transition-all">
+            <ArrowLeft className="w-4 h-4" /> Go Back Home
+          </Link>
+        </motion.div>
+      </main>
+    </div>
   );
 }

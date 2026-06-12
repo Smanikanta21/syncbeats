@@ -12,6 +12,8 @@ interface SyncCtx {
   setParticipants: (v: Participant[]) => void;
   pendingPlay: boolean;
   setPendingPlay: (v: boolean) => void;
+  incomingTrack: { title: string, progress: number } | null;
+  setIncomingTrack: (v: { title: string, progress: number } | null) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -19,6 +21,7 @@ const Ctx = createContext<SyncCtx>({
   isRoomPlaying: false, setIsRoomPlaying: () => {},
   participants: [], setParticipants: () => {},
   pendingPlay: false, setPendingPlay: () => {},
+  incomingTrack: null, setIncomingTrack: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -26,8 +29,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [isRoomPlaying, setIsRoomPlaying] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [pendingPlay, setPendingPlay] = useState(false);
+  const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  
   return (
-    <Ctx.Provider value={{ clockOffset, setClockOffset, isRoomPlaying, setIsRoomPlaying, participants, setParticipants, pendingPlay, setPendingPlay }}>
+    <Ctx.Provider value={{ clockOffset, setClockOffset, isRoomPlaying, setIsRoomPlaying, participants, setParticipants, pendingPlay, setPendingPlay, incomingTrack, setIncomingTrack }}>
       {children}
     </Ctx.Provider>
   );
