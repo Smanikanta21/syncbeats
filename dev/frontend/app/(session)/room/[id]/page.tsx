@@ -639,7 +639,7 @@ export default function RoomPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
       {/* ── DESKTOP VIEW (Original unchanged layout) ── */}
-      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-30 md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-y-auto custom-scrollbar">
+      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto pt-24 pb-8 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-hidden">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -657,7 +657,7 @@ export default function RoomPage() {
             </span>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-10">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-6 shrink-0">
             {/* Room code */}
             <div className="text-center">
               <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
@@ -746,24 +746,25 @@ export default function RoomPage() {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="w-full max-w-3xl mx-auto flex flex-col gap-6 items-center"
+          className="w-full max-w-4xl mx-auto flex gap-6 items-start justify-center flex-1 min-h-0 pb-12"
         >
-          <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center mb-2">
-            Connected Devices ({participants.length})
-          </h2>
+          {/* Left Column: Devices */}
+          <div className="flex flex-col w-1/2 h-full gap-2">
+            <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center shrink-0">
+              Connected Devices ({participants.length})
+            </h2>
 
-          {participants.length === 0 && (
-            <div className="text-center py-10 text-foreground/40 text-sm font-medium">
-              Waiting for others to join…
-            </div>
-          )}
+            {participants.length === 0 && (
+              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/40">
+                Waiting for others to join…
+              </div>
+            )}
 
-          <div className="w-full min-h-dvh pt-30 pb-20 px-6 overflow-x-hidden relative">
+            <div className="w-full flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
               <div key={userName} className="w-full flex flex-col gap-4">
-                <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2 select-all">{userName}</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all">{userName}</h4>
+                <div className="grid grid-cols-1 gap-3 w-full">
                   {userDevices.map((p, i) => (
                     <div
                       key={p.socketId}
@@ -831,15 +832,17 @@ export default function RoomPage() {
               </div>
             ))}
           </div>
+          </div>
 
-          {/* ── Queue ── */}
+          {/* Right Column: Queue */}
+          <div className="flex flex-col w-1/2 h-full gap-2">
           {localQueue.length ? (
-            <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
-              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
+              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2 shrink-0">
                 <ListMusic className="w-4 h-4" />
                 Room Queue ({localQueue.length})
               </h3>
-              <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -867,11 +870,12 @@ export default function RoomPage() {
                 </DndContext>
               </div>
             </div>
-          ) : (<div className="mt-2 rounded-2xl border border-foreground/5 bg-background/40 max-h-[35vh] p-4">
+          ) : (<div className="w-full rounded-2xl border border-foreground/5 bg-background/40 p-4 h-full flex items-center justify-center">
             <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
               No songs in the queue
             </h3>
           </div>)}
+          </div>
         </motion.div>
       </div>
 
