@@ -7,7 +7,7 @@ import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
-import axios from 'axios';
+import { exec } from 'youtube-dl-exec';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -312,50 +312,37 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Requesting download URL from RapidAPI for: ${videoId}`);
-      const RAPID_API_KEY = process.env.RAPID_API_KEY || '';
-      if (!RAPID_API_KEY) {
-        throw new Error('RAPID_API_KEY is not configured in the environment');
-      }
-
+      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const apiResponse = await axios.request({
-        method: 'GET',
-        url: 'https://youtube-mp310.p.rapidapi.com/download/mp3',
-        params: { url: youtubeUrl },
-        headers: {
-          'x-rapidapi-key': RAPID_API_KEY,
-          'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
-        },
-        timeout: 30000,
-      });
-
-      const temporaryMp3Url = apiResponse.data.downloadUrl;
-      if (!temporaryMp3Url) {
-        throw new Error('RapidAPI failed to return a valid download link.');
-      }
-
-      console.log(`[Proxy] RapidAPI success! Proxying stream to client...`);
-
-      // Fetch the actual MP3 stream from RapidAPI's temporary URL
-      const streamRes = await fetch(temporaryMp3Url);
-      if (!streamRes.ok || !streamRes.body) {
-        throw new Error(`Failed to fetch audio stream from RapidAPI temp URL: ${streamRes.statusText}`);
-      }
-
-      res.setHeader('Content-Type', streamRes.headers.get('Content-Type') || 'audio/mpeg');
+      
+      res.setHeader('Content-Type', 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
       
-      // Pipe the stream directly to the response (NO DISK STORAGE)
-      const reader = streamRes.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          res.end();
-          break;
-        }
-        res.write(value);
+      const cp = exec(youtubeUrl, {
+        format: 'bestaudio',
+        output: '-', // output to stdout
+        noPlaylist: true,
+        noWarnings: true
+      });
+
+      if (!cp.stdout) {
+        throw new Error('Failed to capture yt-dlp stdout');
       }
+
+      // Pipe the audio directly from yt-dlp's stdout into the response!
+      cp.stdout.pipe(res);
+
+      cp.on('close', (code) => {
+        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
+        res.end();
+      });
+
+      cp.on('error', (err) => {
+        console.error('[Proxy] yt-dlp spawn error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'yt-dlp failed to spawn' });
+        }
+      });
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
