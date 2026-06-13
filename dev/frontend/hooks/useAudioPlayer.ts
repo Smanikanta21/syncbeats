@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
-import { getSocket } from '../lib/socket';
+import { getWebTorrentClient } from '../lib/webtorrent';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -17,8 +17,6 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
-  isSyncing:     boolean;
-  syncProgress:  number;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -54,8 +52,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [isSyncing,   setIsSyncing]   = useState(false);
-  const [syncProgress, setSyncProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -215,7 +211,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopCurrentSource = useCallback(() => {
-    pendingScheduleRef.current = null;
     if (sourceNodeRef.current) {
       sourceNodeRef.current.onended = null;
       try {
@@ -318,10 +313,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const pending = pendingScheduleRef.current;
       if (pending) {
         pendingScheduleRef.current = null;
-        const delayMs = 100;
         const serverNow = Date.now() + pending.clockOffset;
-        const scheduledEpoch = serverNow + delayMs;
-        const elapsedAtScheduledEpoch = Math.max(0, (scheduledEpoch - pending.payload.startEpoch) / 1000);
+        const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
         
         // For YouTube, store the schedule timeline for re-sync after buffering
         if (pending.payload.trackUrl?.startsWith('youtube:')) {
@@ -330,8 +323,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         
         const adjustedPayload = {
           ...pending.payload,
-          atEpoch: scheduledEpoch,
-          fromPosition: elapsedAtScheduledEpoch,
+          atEpoch: Date.now() + pending.clockOffset + 100,
+          fromPosition: elapsed,
         };
         scheduleStartRef.current?.(adjustedPayload, pending.clockOffset);
       }
@@ -358,57 +351,110 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       try {
         let arrayBuffer: ArrayBuffer;
 
-        if (url.startsWith('ws-p2p:')) {
-          console.log('[WebSocket P2P] Downloading from swarm...');
-          setIsSyncing(true);
-          setSyncProgress(0);
+        if (url.startsWith('magnet:')) {
+          console.log('[WebTorrent] Downloading magnet URI...');
+          const client = await getWebTorrentClient();
+          if (!client) throw new Error("WebTorrent failed to load");
 
           const { getTrack, saveTrack } = await import('../lib/idb');
           const cachedBlob = await getTrack(url);
 
           if (cachedBlob) {
-            console.log('[WebSocket P2P] Found cached track in IndexedDB! Ready to play.');
+            console.log('[WebTorrent] Found cached track in IndexedDB! Seeding to swarm...');
+            client.seed(cachedBlob);
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             arrayBuffer = await new Promise((resolve, reject) => {
+              const onTorrent = (torrent: any) => {
+                const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
+                if (!file) return reject(new Error("No audio file found in torrent"));
+
+                file.getBlob(async (err: any, blob: Blob) => {
+                  if (err) return reject(err);
+                  try {
+                    await saveTrack(url, blob);
+                  } catch (e) {
+                    console.error("Failed to save to IDB", e);
+                  }
+                  blob.arrayBuffer().then(resolve).catch(reject);
+                });
+              };
+
+              const existing = client.get(url);
+              if (existing) {
+                if (existing.ready) onTorrent(existing);
+                else existing.on('ready', () => onTorrent(existing));
+              } else {
+                client.add(url, onTorrent);
+              }
+            });
+          }
+        } else if (url.startsWith('ws-p2p:')) {
+          console.log('[WebSocket P2P] Requesting track from swarm...', url);
+          const { getTrack, saveTrack } = await import('../lib/idb');
+          const cachedBlob = await getTrack(url);
+          
+          if (cachedBlob) {
+            console.log('[WebSocket P2P] Found track locally in IDB!');
+            arrayBuffer = await cachedBlob.arrayBuffer();
+          } else {
+            arrayBuffer = await new Promise((resolve, reject) => {
+              const { getSocket } = require('../lib/socket');
               const socket = getSocket();
+              const roomId = window.location.pathname.split('/').pop();
+              
               const chunks: ArrayBuffer[] = [];
               let expectedChunks = 0;
               let receivedChunks = 0;
-
-              const onReceiveChunk = ({ trackUrl, chunkIndex, totalChunks, data }: any) => {
-                if (trackUrl !== url) return;
-
-                expectedChunks = totalChunks;
-                chunks[chunkIndex] = data;
+              let timeoutId: NodeJS.Timeout;
+              
+              const onChunk = async (payload: { trackUrl: string; chunkIndex: number; totalChunks: number; data: ArrayBuffer }) => {
+                if (payload.trackUrl !== url) return;
+                expectedChunks = payload.totalChunks;
+                chunks[payload.chunkIndex] = payload.data;
                 receivedChunks++;
-
-                const progress = Math.round((receivedChunks / expectedChunks) * 100);
-                setSyncProgress(progress);
-
+                
+                // Show buffering indicator for long downloads
+                if (receivedChunks === 1 && typeof document !== 'undefined') {
+                  const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
+                  document.dispatchEvent(event);
+                }
+                
                 if (receivedChunks === expectedChunks) {
-                  // Reassemble
-                  socket.off('track:receive_chunk', onReceiveChunk);
+                  socket.off('track:receive_chunk', onChunk);
                   clearTimeout(timeoutId);
                   
-                  const blob = new Blob(chunks);
-                  saveTrack(url, blob).catch(e => console.error("Failed to save to IDB", e));
+                  // Reassemble chunks
+                  const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+                  const result = new Uint8Array(totalLength);
+                  let offset = 0;
+                  for (let i = 0; i < expectedChunks; i++) {
+                    result.set(new Uint8Array(chunks[i]), offset);
+                    offset += chunks[i].byteLength;
+                  }
                   
-                  blob.arrayBuffer().then(resolve).catch(reject);
+                  const buffer = result.buffer;
+                  try {
+                    const blob = new Blob([buffer], { type: 'audio/mpeg' });
+                    await saveTrack(url, blob);
+                    console.log('[WebSocket P2P] Track downloaded and saved to IDB!');
+                  } catch(e) {
+                    console.error('[WebSocket P2P] Failed to save track to IDB:', e);
+                  }
+                  
+                  resolve(buffer);
                 }
               };
-
-              socket.on('track:receive_chunk', onReceiveChunk);
-
-              const roomId = window.location.pathname.split('/').pop() || '';
+              
+              socket.on('track:receive_chunk', onChunk);
               socket.emit('track:request_file', { roomId, trackUrl: url });
-
-              // 15 second timeout if no one sends chunks
-              const timeoutId = setTimeout(() => {
-                socket.off('track:receive_chunk', onReceiveChunk);
-                window.dispatchEvent(new CustomEvent('syncbeats:dead-swarm'));
-                reject(new Error("P2P Swarm is dead. No seeders found."));
-              }, 15000);
+              
+              timeoutId = setTimeout(() => {
+                if (receivedChunks < expectedChunks) {
+                  socket.off('track:receive_chunk', onChunk);
+                  reject(new Error("WebSocket P2P request timed out waiting for chunks"));
+                }
+              }, 30000);
             });
           }
         } else {
@@ -428,7 +474,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         console.error("Error decoding audio data", err);
         return null;
       } finally {
-        setIsSyncing(false);
         fetchPromiseRef.current = null;
       }
     })();
@@ -619,7 +664,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
       source.start(audioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxStartTime + hardwareLatency;
+      startTimeRef.current = audioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
       const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
@@ -627,7 +672,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
       source.start(0, Math.max(0, clampedPosition));
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxRef.current.currentTime + hardwareLatency;
+      startTimeRef.current = audioCtxRef.current.currentTime;
       pauseOffsetRef.current = Math.max(0, clampedPosition);
     }
     
@@ -667,19 +712,17 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    // Hardware latency adjustment is required even for drift correction
-    // so that the physical speaker cone outputs the exact expectedPosition right now.
-    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
-    const correctPosition = expectedPosition + hardwareLatency;
-    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, correctPosition);
+    // No hardware latency adjustment here — playNow is for drift correction,
+    // not initial scheduling. Adding latency here would overshoot the target.
+    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
 
     source.start(0, Math.max(0, clampedPosition));
     sourceNodeRef.current = source;
     
-    startTimeRef.current = audioCtxRef.current.currentTime + hardwareLatency;
-    pauseOffsetRef.current = Math.max(0, clampedPosition);
+    startTimeRef.current = audioCtxRef.current.currentTime;
+    pauseOffsetRef.current = clampedPosition;
     setIsPlaying(true);
-    setCurrentTime(Math.max(0, clampedPosition));
+    setCurrentTime(clampedPosition);
   }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
   const pauseAt = useCallback((position: number) => {
@@ -771,7 +814,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist, isSyncing, syncProgress,
+    trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,

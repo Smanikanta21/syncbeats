@@ -94,7 +94,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         console.warn(`[UploadContext] Proxy failed with status ${response.status}. Falling back to a dummy MP3 track to test P2P!`);
         // Fallback to a reliable public test MP3 so you can test the P2P swarm!
-        const fallbackRes = await fetch("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+        const fallbackRes = await fetch("https://raw.githubusercontent.com/mdn/webaudio-examples/main/audio-analyser/viper.mp3");
         if (!fallbackRes.ok) throw new Error("Even the dummy fallback failed to download.");
         blob = await fallbackRes.blob();
       } else {

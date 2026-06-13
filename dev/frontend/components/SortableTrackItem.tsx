@@ -45,7 +45,7 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
       className={`rounded-xl px-3 py-2 text-sm border flex items-center gap-3 relative transition-colors ${
         item.isCurrent
           ? "border-green-500/40 bg-green-500/10 text-green-300"
-          : "border-foreground/5 bg-transparent text-foreground/70"
+          : "border-foreground/5 bg-foreground/5 text-foreground/70"
       }`}
     >
       <div

@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express" />
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql" />
   <img src="https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma" />
-  <img src="https://img.shields.io/badge/WebRTC-333333?style=for-the-badge&logo=webrtc" />
+  <img src="https://img.shields.io/badge/AWS-S3%20%2B%20CloudFront-FF9900?style=for-the-badge&logo=amazonaws" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker" />
 </p>
 
@@ -32,7 +32,7 @@ SyncBeats lets a group of friends join a shared room, upload audio, and hear it 
 | **Network Stats** | Real-time latency, jitter, and drift visualization per device |
 | **Full Auth** | Email/password, Google SSO, email verification, password reset (link + OTP) |
 | **Dark/Light Mode** | Theme toggle with system preference detection |
-| **P2P Audio Streaming** | Audio files are seeded directly from your device using WebRTC/WebTorrent, bypassing slow central servers |
+| **S3 + CloudFront** | Audio files stored on AWS S3, served via CloudFront CDN for low-latency global delivery |
 | **Mobile-First** | Fully responsive with touch-optimized drag-and-drop (250ms long-press activation) |
 | **SEO Ready** | Dynamic sitemap, robots.txt, Open Graph metadata, and legal compliance pages |
 | **CI/CD Pipeline** | Automated GitHub Actions pipeline with Docker builds, EC2 deployment, health checks, and rollback |
@@ -52,10 +52,9 @@ sync-beats/
 │   │   ├── reset-password/          # Password reset page
 │   │   ├── verify-email/            # Email verification
 │   │   ├── verify-email-sent/       # Verification sent confirmation
-│   │   ├── privacy/                 # Legal — Privacy Policy
-│   │   ├── terms/                   # Legal — Terms of Service
-│   │   ├── cookies/                 # Cookies Policy
-│   │   ├── contact/                 # Contact Us page
+│   │   ├── privacy-policy/          # Legal — Privacy Policy
+│   │   ├── terms-of-service/        # Legal — Terms of Service
+│   │   ├── cookie-settings/         # Cookie consent manager
 │   │   ├── not-found.tsx            # Custom 404 page
 │   │   ├── sitemap.ts               # Dynamic sitemap generation
 │   │   ├── robots.ts                # Robots.txt configuration
@@ -105,7 +104,7 @@ sync-beats/
 │   │   │   ├── SocketHandler.ts     # WebSocket event dispatcher
 │   │   │   ├── RoomRoutes.ts        # REST: rooms, queue, reorder
 │   │   │   ├── AuthRoutes.ts        # REST: auth endpoints
-│   │   │   ├── SignalingRoutes.ts   # REST: WebRTC signaling
+│   │   │   ├── UploadRoutes.ts      # REST: S3 file upload
 │   │   │   └── DeviceRoutes.ts      # REST: device trust
 │   │   ├── db/
 │   │   │   ├── RoomRepository.ts    # Prisma data-access
@@ -117,6 +116,8 @@ sync-beats/
 │   │   ├── store/
 │   │   │   ├── IStateStore.ts       # State store interface
 │   │   │   └── StorageService.ts    # Storage abstraction
+│   │   ├── utils/
+│   │   │   └── s3.ts                # AWS S3 client (lazy init + sanitization)
 │   │   ├── types/
 │   │   │   └── index.ts             # Server-side type definitions
 │   │   └── events/
@@ -140,6 +141,7 @@ sync-beats/
 - **Node.js** >= 20
 - **PostgreSQL** 16+ (or Docker)
 - **npm** >= 10
+- **AWS Account** (S3 bucket + CloudFront distribution for audio storage)
 
 ### 1. Clone and Install
 
@@ -173,6 +175,11 @@ Create a `.env` file in the project root:
 | `AUTH_FROM_EMAIL` | Sender address for auth emails |
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `NEXT_PUBLIC_SERVER_URL` | Backend API URL (used by the frontend at build time) |
+| `AWS_REGION` | AWS region (default: `ap-south-1`) |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
+| `S3_BUCKET_NAME` | S3 bucket for audio files (default: `syncbeats-audio`) |
+| `CDN_DOMAIN` | CloudFront distribution domain |
 
 ### 3. Database Setup
 
@@ -257,7 +264,7 @@ Supports **branch-based environments** (`main` → production, `nodejs-dev` → 
 | `GET`  | `/rooms/:id` | Get room details |
 | `DELETE` | `/rooms/:id` | End a room (protected) |
 | `PATCH` | `/rooms/:id/host` | Transfer host (protected) |
-| `POST` | `/rooms/:id/seed` | Broadcast WebRTC magnet URI |
+| `POST` | `/rooms/:id/upload` | Upload audio file to S3 |
 | `DELETE` | `/rooms/:id/queue/:itemId` | Remove queue item |
 | `PUT` | `/rooms/:id/queue/reorder` | Reorder queue (protected) |
 
@@ -325,14 +332,14 @@ This achieves **sub-25ms synchronization** across WiFi without any specialized h
 └───────┼─────────────────────────────────────────────────────┘
         │
         ▼
-   ┌──────────┐         ┌─────────────────────┐
-   │ CloudFlare│  ──────▶│ WebRTC Signaling    │
-   │ DNS       │         │ (Socket.IO + Express)│
-   └──────────┘         └───────┬─────────────┘
+   ┌──────────┐         ┌────────────────┐
+   │ CloudFlare│  ──────▶│ AWS CloudFront │
+   │ DNS       │         │ CDN            │
+   └──────────┘         └───────┬────────┘
                                 │
                         ┌───────▼────────┐
-                        │ Peer-to-Peer   │
-                        │ Audio (WebTorrent)│
+                        │ AWS S3         │
+                        │ Audio Storage  │
                         └────────────────┘
 ```
 
@@ -350,7 +357,8 @@ This achieves **sub-25ms synchronization** across WiFi without any specialized h
 | Database | PostgreSQL 16, Prisma ORM 7 |
 | Auth | JWT, bcryptjs, Google Auth Library |
 | Email | Nodemailer + Resend |
-| Transport | WebRTC + WebTorrent (P2P Audio) |
+| Storage | AWS S3 + CloudFront CDN |
+| File Upload | Multer → S3 |
 | Containerization | Docker, Docker Compose |
 | CI/CD | GitHub Actions → GHCR → EC2 |
 | Reverse Proxy | Nginx |
@@ -358,14 +366,13 @@ This achieves **sub-25ms synchronization** across WiFi without any specialized h
 
 ---
 
-## Legal & Contact Pages
+## Legal Pages
 
-SyncBeats includes production-ready compliance and contact pages:
+SyncBeats includes production-ready compliance pages:
 
-- [**Privacy Policy**](https://syncbeats.app/privacy) — Data collection, retention, and user rights
-- [**Terms of Service**](https://syncbeats.app/terms) — Usage terms, licensing, DMCA
-- [**Cookies Policy**](https://syncbeats.app/cookies) — Operational cookies policy
-- [**Contact Us**](https://syncbeats.app/contact) — Support, bugs, and inquiries
+- [**Privacy Policy**](https://syncbeats.app/privacy-policy) — Data collection, retention, and user rights
+- [**Terms of Service**](https://syncbeats.app/terms-of-service) — Usage terms, licensing, DMCA
+- [**Cookie Settings**](https://syncbeats.app/cookie-settings) — Interactive cookie consent manager with localStorage persistence
 
 ---
 

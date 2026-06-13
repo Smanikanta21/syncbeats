@@ -139,11 +139,9 @@ function VerifyEmailContent() {
   );
 }
 
-import { LoadingScreen } from "../../components/LoadingScreen";
-
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<LoadingScreen message="Loading Verify Email..." />}>
+    <Suspense fallback={<main className="min-h-screen flex items-center justify-center text-foreground/60">Loading...</main>}>
       <VerifyEmailContent />
     </Suspense>
   );

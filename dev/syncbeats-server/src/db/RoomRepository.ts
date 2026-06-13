@@ -67,7 +67,7 @@ export class RoomRepository {
   ): Promise<void> {
     const data: { playbackState: string; positionMs: bigint; trackUrl?: string | null } = {
       playbackState: state,
-      positionMs: BigInt(Math.round(positionMs)),
+      positionMs: BigInt(positionMs),
     };
     if (trackUrl !== undefined) data.trackUrl = trackUrl;
 
