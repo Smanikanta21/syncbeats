@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: syncbeats-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-backend
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -138,10 +138,10 @@ jobs:
             ' docker-compose.yml
           fi
 
-          # Ensure target dir exists and is writable
+          # Ensure target dir exists, is writable, and is completely clean of old folders/files
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "mkdir -p ~/$APP_DIR && sudo chown -R \$USER:\$USER ~/$APP_DIR && rm -f ~/$APP_DIR/.env"
+            "mkdir -p ~/$APP_DIR && sudo chown -R \$USER:\$USER ~/$APP_DIR && rm -rf ~/$APP_DIR/* ~/$APP_DIR/.[!.]* ~/$APP_DIR/..?*" || true
 
           # Upload .env
           scp -o StrictHostKeyChecking=yes \
