@@ -3,6 +3,7 @@ import 'dotenv/config';
 import express    from 'express';
 import http       from 'http';
 import cors       from 'cors';
+import helmet     from 'helmet';
 import path       from 'path';
 import fs         from 'fs';
 import { Server } from 'socket.io';
@@ -16,13 +17,21 @@ import { createDeviceRoutes }  from './handlers/DeviceRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient }  from 'redis';
+
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
   private io         = new Server(this.httpServer, {
-    cors: { origin: true, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
+    cors: { 
+      origin: [FRONTEND_URL, 'http://localhost:3000'], 
+      credentials: true, 
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] 
+    },
   });
 
   private roomManager = RoomManager.getInstance();
@@ -35,14 +44,35 @@ export class SyncBeatsServer {
     );
     this.setupMiddleware();
     this.setupRoutes();
+    this.setupRedisAdapter();
     this.setupSocketIO();
     this.setupRoomCleanup();
     this.setupGracefulShutdown();
   }
 
+  private async setupRedisAdapter() {
+    if (process.env.REDIS_URL) {
+      const pubClient = createClient({ url: process.env.REDIS_URL });
+      const subClient = pubClient.duplicate();
+      try {
+        await Promise.all([pubClient.connect(), subClient.connect()]);
+        this.io.adapter(createAdapter(pubClient, subClient));
+        console.log('[Server] 🟢 Redis adapter enabled for Socket.IO scaling');
+      } catch (err) {
+        console.error('[Server] 🔴 Failed to connect to Redis', err);
+      }
+    }
+  }
+
   private setupMiddleware(): void {
+    // Basic security headers
+    this.app.use(helmet({
+      crossOriginResourcePolicy: false, // Allow fetching media across origins (like AudioContext)
+    }));
+
     this.app.use(cors({
-      origin: true, credentials: true,
+      origin: [FRONTEND_URL, 'http://localhost:3000'], 
+      credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
     this.app.use(express.json());

@@ -313,47 +313,36 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
+      console.log(`[Proxy] Requesting Cobalt API for video: ${videoId}`);
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
       
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-      
-      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
-      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
-      
-      const cp = spawn(ytBin, [
-        '-f', 'bestaudio',
-        '-o', '-', // Output to stdout
-        '--no-playlist',
-        '--no-warnings',
-        youtubeUrl
-      ]);
+      const cobaltRes = await fetch('https://api.cobalt.tools/api/json', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'SyncBeats/1.0'
+        },
+        body: JSON.stringify({
+          url: youtubeUrl,
+          vQuality: "audio",
+          isAudioOnly: true,
+          aFormat: "mp3"
+        })
+      });
 
-      if (!cp.stdout) {
-        throw new Error('Failed to capture yt-dlp stdout');
+      if (!cobaltRes.ok) {
+        throw new Error(`Cobalt API failed with status ${cobaltRes.status}`);
       }
 
-      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
-      cp.stderr?.on('data', (data) => {
-        // We can comment this out or log it to see download progress
-        // console.log(`[yt-dlp stderr] ${data}`);
-      });
-
-      // Pipe the audio directly from yt-dlp's stdout into the response!
-      cp.stdout.pipe(res);
-
-      cp.on('close', (code) => {
-        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
-        res.end();
-      });
-
-      cp.on('error', (err) => {
-        console.error('[Proxy] yt-dlp spawn error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'yt-dlp failed to spawn' });
-        }
-      });
+      const cobaltData = await cobaltRes.json() as any;
+      
+      if (cobaltData.status === 'stream' || cobaltData.status === 'redirect') {
+        console.log(`[Proxy] Redirecting to Cobalt stream URL`);
+        res.redirect(cobaltData.url);
+      } else {
+        throw new Error('Cobalt API returned unexpected status: ' + cobaltData.status);
+      }
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
