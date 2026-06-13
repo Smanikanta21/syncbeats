@@ -10,6 +10,15 @@ import {
 import { roomsApi, getServerUrl } from "../lib/api";
 import { getSocket } from "../lib/socket";
 
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
 interface UploadResult {
   trackUrl: string;
   title:    string;
@@ -144,6 +153,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const end = Math.min(start + CHUNK_SIZE, file.size);
           const chunk = file.slice(start, end);
           const buffer = await chunk.arrayBuffer();
+          const base64Data = arrayBufferToBase64(buffer);
 
           await new Promise<void>((resolve) => {
             let handled = false;
@@ -154,7 +164,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               trackUrl,
               chunkIndex: i,
               totalChunks,
-              data: buffer
+              data: base64Data
             }, done);
 
             // Safety timeout: if server doesn't ACK within 5 seconds, move on to prevent deadlocks

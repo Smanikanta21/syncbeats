@@ -4,6 +4,16 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
 
+const base64ToArrayBuffer = (base64: string) => {
+  const binary_string = window.atob(base64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
+};
+
 export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
@@ -427,7 +437,17 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
                 
                 receivedIndices.add(payload.chunkIndex);
-                chunks[payload.chunkIndex] = payload.data;
+                
+                let bufferData: ArrayBuffer;
+                if (typeof payload.data === 'string') {
+                  bufferData = base64ToArrayBuffer(payload.data);
+                } else if (payload.data instanceof ArrayBuffer) {
+                  bufferData = payload.data;
+                } else {
+                  bufferData = new Uint8Array(payload.data).buffer;
+                }
+                
+                chunks[payload.chunkIndex] = bufferData;
                 console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
                 // Show buffering indicator for long downloads
