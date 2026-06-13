@@ -36,13 +36,13 @@ export default function ContactPage() {
                 </div>
               </a>
 
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 group">
+              <a href="https://x.com/Smanikanta21" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 group">
                 <div className="w-12 h-12 rounded-2xl bg-foreground/5 flex items-center justify-center group-hover:bg-foreground/10 transition-colors border border-foreground/5">
                   <MessageSquare className="w-5 h-5 text-foreground/70 group-hover:text-foreground transition-colors" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-foreground/40 mb-1">DM on Twitter</p>
-                  <p className="text-sm font-semibold text-foreground group-hover:underline underline-offset-4">@syncbeatsapp</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-foreground/40 mb-1">DM on X</p>
+                  <p className="text-sm font-semibold text-foreground group-hover:underline underline-offset-4">@Smanikanta21</p>
                 </div>
               </a>
             </div>

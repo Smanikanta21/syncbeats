@@ -44,10 +44,10 @@ export function Footer() {
 
         {/* Socials */}
         <div className="flex items-center gap-4">
-          <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 flex items-center justify-center transition-colors text-foreground/60 hover:text-foreground" aria-label="Twitter Profile">
+          <a href="https://x.com/Smanikanta21" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 flex items-center justify-center transition-colors text-foreground/60 hover:text-foreground" aria-label="Twitter Profile">
             <TwitterIcon />
           </a>
-          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 flex items-center justify-center transition-colors text-foreground/60 hover:text-foreground" aria-label="GitHub Repository">
+          <a href="https://github.com/Smanikanta21/syncbeats" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 flex items-center justify-center transition-colors text-foreground/60 hover:text-foreground" aria-label="GitHub Repository">
             <GithubIcon />
           </a>
         </div>
