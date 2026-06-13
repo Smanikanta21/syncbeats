@@ -21,8 +21,17 @@ const PORT = parseInt(process.env.PORT ?? '4000', 10);
 export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
+  private getCorsOrigins() {
+    // If FRONTEND_URL is set (e.g. https://syncbeats.app), use it.
+    // Otherwise fallback to true to allow all in development.
+    if (process.env.FRONTEND_URL) {
+      return process.env.FRONTEND_URL.split(',').map(u => u.trim());
+    }
+    return true;
+  }
+
   private io         = new Server(this.httpServer, {
-    cors: { origin: true, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
+    cors: { origin: this.getCorsOrigins(), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
   });
 
   private roomManager = RoomManager.getInstance();
@@ -42,7 +51,7 @@ export class SyncBeatsServer {
 
   private setupMiddleware(): void {
     this.app.use(cors({
-      origin: true, credentials: true,
+      origin: this.getCorsOrigins(), credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
     this.app.use(express.json());

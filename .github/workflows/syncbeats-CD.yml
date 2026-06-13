@@ -53,45 +53,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-frontend:
-    name: Build Frontend Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: ${{ github.ref_name }}
 
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v3
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}
-          tags: |
-            type=sha,format=short
-            type=raw,value=${{ github.ref_name }}
-
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./dev/frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          build-args: |
-            NEXT_PUBLIC_SERVER_URL=${{ vars.NEXT_PUBLIC_SERVER_URL }}
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   provision-env:
     name: Provision .env on EC2
@@ -318,70 +280,13 @@ jobs:
           echo "Backend healthy!"
           ENDSSH
 
-  deploy-frontend:
-    name: Deploy Frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [build-frontend, deploy-backend]
-    environment: ${{ github.ref_name }}
 
-    steps:
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Start frontend and verify
-        run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          set -euo pipefail
-          APP="$HOME/sync-beats"
-          if [ "${{ github.ref_name }}" != "main" ]; then
-            APP="$HOME/sync-beats-dev"
-          fi
-          cd "$APP"
-
-          # Source .env for FRONTEND_PORT
-          set -a; source .env; set +a
-          FPORT="${FRONTEND_PORT:-3000}"
-
-          echo "${{ secrets.GITHUB_TOKEN }}" | \
-            docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-          # Aggressively clean up disk space before pulling
-          docker system prune -a -f --volumes || true
-
-          docker pull ghcr.io/${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
-
-          docker compose --project-directory "$APP" up -d --force-recreate frontend
-
-          # Health check
-          echo "Waiting for frontend on port $FPORT..."
-          FRONT_OK=false
-          for i in $(seq 1 10); do
-            if curl -fsS "http://localhost:${FPORT}" >/dev/null 2>&1; then
-              FRONT_OK=true
-              break
-            fi
-            sleep 3
-          done
-
-          if [ "$FRONT_OK" = "false" ]; then
-            echo "Frontend health check failed"
-            docker compose --project-directory "$APP" logs frontend
-            exit 1
-          fi
-
-          echo "Frontend healthy!"
-          ENDSSH
 
   finalize:
     name: Finalize
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [deploy-frontend]
+    needs: [deploy-backend]
     environment: ${{ github.ref_name }}
 
     steps:
@@ -416,7 +321,7 @@ jobs:
     name: Rollback on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [deploy-backend, deploy-frontend]
+    needs: [deploy-backend]
     if: failure() && github.ref_name == 'main'
     environment: ${{ github.ref_name }}
 
