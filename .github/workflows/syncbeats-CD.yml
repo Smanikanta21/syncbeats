@@ -218,14 +218,21 @@ jobs:
           # Source .env for POSTGRES_USER
           set -a; source .env; set +a
 
-          docker compose --project-directory "$APP" down --remove-orphans || true
+          # Ensure the shared Docker network exists.
+          # The staging compose file references sync-beats_default as external.
+          # If it was deleted by a previous prune, all docker compose commands fail.
+          docker network inspect sync-beats_default > /dev/null 2>&1 || \
+            docker network create sync-beats_default || true
+
+          # Bring down any running containers (ignore errors from stale/missing networks)
+          docker compose --project-directory "$APP" down 2>/dev/null || true
 
           if [ "${{ github.ref_name }}" = "main" ]; then
             docker compose --project-directory "$APP" up -d postgres
 
             echo "Waiting for Postgres..."
             for i in $(seq 1 60); do
-              if docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
+              if docker compose --project-directory "$APP" exec -T postgres pg_isready -U "$POSTGRES_USER" > /dev/null 2>&1; then
                 echo "Postgres ready"
                 break
               fi
@@ -242,6 +249,7 @@ jobs:
             echo "Staging deployment: skipping local postgres container startup and health checks."
           fi
           ENDSSH
+
 
       - name: Run database migrations
         run: |
