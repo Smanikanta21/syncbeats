@@ -22,8 +22,11 @@ export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
   private getCorsOrigins() {
-    // If FRONTEND_URL is set (e.g. https://syncbeats.app), use it.
-    // Otherwise fallback to true to allow all in development.
+    // Always allow all origins in local development to make phone testing seamless!
+    if (process.env.NODE_ENV === 'Development' || process.env.NODE_ENV === 'development') {
+      return true;
+    }
+    // In Production, strictly restrict to FRONTEND_URL to prevent hijacking.
     if (process.env.FRONTEND_URL) {
       return process.env.FRONTEND_URL.split(',').map(u => u.trim());
     }

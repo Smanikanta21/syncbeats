@@ -34,8 +34,8 @@ const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip
 const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
 const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
-const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
-const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
+const DRIFT_HARD_SEEK_MS       = 1000;  // Relaxed to 1000ms: Prevents mobile network jitter from causing constant audio restarts (stuttering)
+const DRIFT_SOFT_SEEK_MS       = 50;    // Soft correction via playback rate if off by >50ms
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();

@@ -313,57 +313,38 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
+      console.log(`[Proxy] Fetching YouTube MP3 via RapidAPI for video: ${videoId}`);
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      
-      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
-      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
-      
-      const cp = spawn(ytBin, [
-        '-f', 'bestaudio',
-        '-o', '-', // Output to stdout
-        '--no-playlist',
-        '--no-warnings',
-        youtubeUrl
-      ]);
+      const rapidApiKey = process.env.RAPID_API_KEY;
 
-      if (!cp.stdout) {
-        throw new Error('Failed to capture yt-dlp stdout');
+      if (!rapidApiKey) {
+        throw new Error('RAPID_API_KEY is not configured on the server');
       }
 
-      let headersSent = false;
-
-      cp.stdout.on('data', (chunk) => {
-        if (!headersSent) {
-          res.setHeader('Content-Type', 'audio/mpeg');
-          res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-          headersSent = true;
-        }
-        res.write(chunk);
-      });
-
-      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
-      cp.stderr?.on('data', (data) => {
-        // console.log(`[yt-dlp stderr] ${data}`);
-      });
-
-      cp.on('close', (code) => {
-        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
-        if (!headersSent) {
-          res.status(500).json({ error: 'yt-dlp failed to stream audio (likely bot protection blocked the request)' });
-        } else {
-          res.end();
+      const apiUrl = `https://yt-search-and-download-mp3.p.rapidapi.com/mp3?url=${encodeURIComponent(youtubeUrl)}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidApiKey,
+          'x-rapidapi-host': 'yt-search-and-download-mp3.p.rapidapi.com',
+          'Content-Type': 'application/json'
         }
       });
 
-      cp.on('error', (err) => {
-        console.error('[Proxy] yt-dlp spawn error:', err);
-        if (!headersSent) {
-          res.status(500).json({ error: 'yt-dlp failed to spawn' });
-        } else {
-          res.end();
-        }
-      });
+      if (!response.ok) {
+        throw new Error(`RapidAPI returned status ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      if (!data.success || !data.download) {
+        throw new Error(`RapidAPI failed: ${data.error || 'No download URL returned'}`);
+      }
+
+      console.log(`[Proxy] RapidAPI success! Redirecting client directly to MP3 download...`);
+      // Transparently redirect the frontend's fetch() call to the direct MP3 URL
+      // Because the target URL has CORS headers (*), the browser will download it directly!
+      res.redirect(302, data.download);
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
