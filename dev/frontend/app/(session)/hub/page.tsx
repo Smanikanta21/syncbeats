@@ -8,6 +8,7 @@ import jsQR from "jsqr";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
+import { LoadingScreen } from "../../../components/LoadingScreen";
 
 interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; }
 
@@ -44,12 +45,14 @@ export default function HubPage() {
   const [showScanner, setShowScanner] = useState(false);
   const [scanStatus, setScanStatus] = useState<"idle" | "starting" | "scanning" | "success" | "error">("idle");
   const [scanError, setScanError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const scanSuccessRef = useRef(false);
   const [theme, setTheme] = useState<string | null>(null);
+  
   useEffect(() => {
     if (typeof window !== "undefined") {
       setTheme(localStorage.getItem('theme'));
@@ -72,13 +75,14 @@ export default function HubPage() {
     : "";
 
   useEffect(() => {
-    roomsApi.mine()
-      .then(({ rooms }) => setRecentRooms(rooms as RecentRoom[]))
-      .catch(() => { }); // not critical if it fails
-
-    devicesApi.mine()
-      .then(({ devices }) => setDevices(devices))
-      .catch(() => { });
+    Promise.all([
+      roomsApi.mine().catch(() => ({ rooms: [] })),
+      devicesApi.mine().catch(() => ({ devices: [] }))
+    ]).then(([roomsRes, devicesRes]) => {
+      setRecentRooms(roomsRes.rooms as RecentRoom[]);
+      setDevices(devicesRes.devices as Device[]);
+      setIsLoading(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -345,15 +349,18 @@ export default function HubPage() {
     }
   };
 
+  if (isLoading) {
+    return <LoadingScreen message="Loading Hub..." />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 bg-background text-foreground transition-colors duration-300">
       {/* Background ambient lighting */}
       <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
 
       {/* Main Hub Content */}
-      <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20 pt-10">
-
-        <div className="text-center mb-16">
+      <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col pt-24 md:pt-32 pb-24">
+        <div className="text-center mb-12 md:mb-16">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -372,7 +379,7 @@ export default function HubPage() {
         </div>
 
         {/* The Action Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mx-auto relative z-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl mx-auto relative z-10">
 
           {/* HOST CARD */}
           <motion.div
@@ -438,10 +445,10 @@ export default function HubPage() {
             <button
               type="button"
               onClick={openScannerModal}
-              className="mt-3 w-full md:hidden h-12 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold hover:bg-foreground/10 transition-all flex items-center justify-center gap-2"
+              className="mt-3 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold hover:bg-foreground/10 transition-all flex items-center justify-center gap-2"
             >
               <ScanLine className="w-4 h-4" />
-              Scan QR from Phone
+              Scan QR from Camera
             </button>
           </motion.div>
 
@@ -449,11 +456,10 @@ export default function HubPage() {
 
         {/* Recent Sessions */}
         <motion.div
-          // ... rest of component ...
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="mt-20 w-full max-w-4xl mx-auto"
+          className="mt-20 w-full max-w-5xl mx-auto"
         >
           <div className="flex items-center gap-2 mb-6 ml-2">
             <Clock className="w-4 h-4 text-foreground/50" />
@@ -465,7 +471,7 @@ export default function HubPage() {
               No sessions yet — host your first one above!
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[320px] overflow-y-auto custom-scrollbar pr-2 pb-2">
               {recentRooms.map((room) => (
                 <div
                   key={room.id}
@@ -527,7 +533,7 @@ export default function HubPage() {
           {devices.length === 0 ? (
             <p className="text-foreground/40 text-sm font-medium text-center py-8">No devices saved yet.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[320px] overflow-y-auto custom-scrollbar pr-2 pb-2">
               {devices.map((savedDevice) => {
                 const isCurrent = currentDevice?.id === savedDevice.id;
 

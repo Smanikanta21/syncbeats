@@ -29,6 +29,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
+import { LoadingScreen } from "../../../../components/LoadingScreen";
 
 function DeviceIcon({ index }: { index: number }) {
   const icons = [Smartphone, Laptop, Speaker];
@@ -570,6 +571,9 @@ export default function RoomPage() {
   );
 
   if (!isMounted) return null;
+  if (!snapshot || !isConnected) {
+    return <LoadingScreen message="Connecting to Room..." />;
+  }
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
@@ -806,33 +810,33 @@ export default function RoomPage() {
           )}
         </motion.div>
 
-        {/* ── Connected Devices ── */}
+        {/* ── Connected Devices & Queue (Desktop) ── */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-4xl mx-auto flex gap-6 items-start justify-center flex-1 min-h-0 pb-12"
+          className="w-full max-w-5xl mx-auto hidden md:flex gap-6 items-stretch justify-center flex-1 min-h-0 pb-12 px-6"
         >
           {/* Left Column: Devices */}
-          <div className="flex flex-col w-1/2 h-full gap-2">
+          <div className="flex flex-col w-1/2 h-full gap-4 glass-panel p-6 rounded-[2rem] border border-foreground/5 bg-background/40 shadow-[0_10px_40px_rgba(0,0,0,0.15)] relative">
             <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center shrink-0">
               Connected Devices ({participants.length})
             </h2>
 
             {participants.length === 0 && (
-              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/40">
+              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/20 mt-2">
                 Waiting for others to join…
               </div>
             )}
 
             <div className="w-full flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
-              <div key={userName} className="w-full flex flex-col gap-4">
+              <div key={userName} className="w-full flex flex-col gap-4 mb-4">
                 <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all">{userName}</h4>
                 <div className="grid grid-cols-1 gap-3 w-full">
                   {userDevices.map((p, i) => (
                     <div
                       key={p.socketId}
-                      className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
+                      className="glass-panel p-5 rounded-[1.5rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -863,7 +867,7 @@ export default function RoomPage() {
                         </div>
                       </div>
 
-                      <motion.div className="flex flex-col h-dvh w-full md:hidden">
+                      <motion.div className="flex flex-col w-full">
                         <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                           <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
                             {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
@@ -874,7 +878,7 @@ export default function RoomPage() {
                         <div className="relative h-10 flex items-center">
                           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-linear-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                               style={{ width: `${p.volume}%` }}
                             />
                           </div>
@@ -895,18 +899,18 @@ export default function RoomPage() {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
           </div>
 
           {/* Right Column: Queue */}
-          <div className="flex flex-col w-1/2 h-full gap-2">
-          {localQueue.length ? (
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
-              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2 shrink-0">
-                <ListMusic className="w-4 h-4" />
-                Room Queue ({localQueue.length})
-              </h3>
-              <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+          <div className="flex flex-col w-1/2 h-full gap-4 glass-panel p-6 rounded-[2rem] border border-foreground/5 bg-background/40 shadow-[0_10px_40px_rgba(0,0,0,0.15)] relative">
+            <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center justify-center gap-2 shrink-0">
+              <ListMusic className="w-4 h-4" />
+              Room Queue ({localQueue.length})
+            </h2>
+
+            {localQueue.length ? (
+              <div className="w-full flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2 relative">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -933,12 +937,11 @@ export default function RoomPage() {
                   </SortableContext>
                 </DndContext>
               </div>
-            </div>
-          ) : (<div className="w-full rounded-2xl border border-foreground/5 bg-background/40 p-4 h-full flex items-center justify-center">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              No songs in the queue
-            </h3>
-          </div>)}
+            ) : (
+              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/20 mt-2">
+                No songs in the queue
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
