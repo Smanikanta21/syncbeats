@@ -134,7 +134,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     const socket = getSocket();
     const CHUNK_SIZE = 64 * 1024; // 64KB chunks (safe for strict Nginx proxy buffers)
 
-    const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, trackUrl: string }) => {
+    const handleRequestFile = async ({ requesterSocketId, roomId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
       if (!trackUrl.startsWith('ws-p2p:')) return;
       
       try {
@@ -160,7 +160,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             const done = () => { if (!handled) { handled = true; resolve(); } };
             
             socket.emit('track:send_chunk', {
-              targetSocketId: requesterSocketId,
+              roomId,
               trackUrl,
               chunkIndex: i,
               totalChunks,
