@@ -64,6 +64,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
   const reportedBlockedRef = useRef<boolean | null>(null);
+  // Timestamp of the last manual hard-seek (wake-up resync, etc.).
+  // The drift corrector skips for POST_SEEK_COOLDOWN_MS after this to avoid
+  // re-triggering on stale React state (isPlaying is set async).
+  const lastHardSeekRef = useRef<number>(0);
+  const POST_SEEK_COOLDOWN_MS = 2000;
 
   const setReady = useCallback((isReady: boolean) => {
     socket.emit('room:clientReady', { roomId, isReady });
@@ -212,6 +217,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const snap = snapshotRef.current;
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
+      // Skip drift correction for 2s after a manual hard seek / wake-up resync.
+      // React's setIsPlaying(true) is async, so getTruePosition() returns a stale
+      // value right after playNow(), which would make the corrector see phantom drift.
+      if (Date.now() - lastHardSeekRef.current < POST_SEEK_COOLDOWN_MS) return;
 
       const nowServer = getServerNow();
       
@@ -233,6 +242,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
+        lastHardSeekRef.current = Date.now(); // start cooldown
         if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode || !audioRef.current.isPlaying) {
           // YouTube or fallback or mid-join (not playing yet): just hard seek
           audioRef.current.playNow(expected);
@@ -323,19 +333,16 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   useEffect(() => {
     let cancelled = false;
 
+    // Immediately apply the current room state to local audio.
+    // Called after reconnect+NTP so the device jumps to the server's position.
     const applySnapshotToAudio = (snap: RoomSnapshot) => {
       if (!snap || !snap.trackUrl) return;
+      lastHardSeekRef.current = Date.now(); // suppress drift corrector during resync
       if (snap.isPlaying && snap.startEpoch != null) {
-        // Room is playing — schedule audio to the correct server position immediately
         const offset = clockOffsetRef.current;
-        audioRef.current.scheduleStart({
-          atEpoch: snap.startEpoch,
-          fromPosition: Math.max(0, (Date.now() + offset - snap.startEpoch) / 1000),
-          trackUrl: snap.trackUrl,
-          startEpoch: snap.startEpoch,
-        }, offset);
-      } else if (!snap.isPlaying) {
-        // Room is paused — ensure local audio is paused at the right spot
+        const expectedPosition = Math.max(0, (Date.now() + offset - snap.startEpoch) / 1000);
+        audioRef.current.playNow(expectedPosition);
+      } else {
         audioRef.current.pauseAt(snap.pauseOffset ?? 0);
       }
     };
@@ -348,8 +355,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         displayName, 
         isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
       });
+      // After NTP calibration, jump audio to the correct server position
       runNtpBurst().then(() => {
-        // After NTP sync, apply current snapshot so audio starts at the right position
         const snap = snapshotRef.current;
         if (snap && audioRef.current.isReady) applySnapshotToAudio(snap);
       });
@@ -357,20 +364,15 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
     const handleDisconnect = () => setIsConnected(false);
 
-    // ── Screen wake-up / tab visibility handler ──────────────────────────
-    // When the phone screen turns off, the browser freezes the tab and the
-    // Socket.IO heartbeat stops, triggering a server-side disconnect.
-    // When the screen turns back on, we need to:
-    //   1. Reconnect the socket
-    //   2. Re-sync the NTP clock
-    //   3. Jump the audio to wherever the other devices are right now
+    // ── Screen wake-up / tab visibility ───────────────────────────────────
+    // When screen turns off → browser freezes tab → socket disconnects.
+    // When screen turns back on → reconnect, re-sync NTP, jump audio.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         if (!socket.connected) {
-          socket.connect();
-          // handleConnect fires automatically via the 'connect' event
+          socket.connect(); // handleConnect fires automatically on 'connect'
         } else {
-          // Already connected (tab was just backgrounded briefly) — just re-sync
+          // Tab was briefly backgrounded but still connected — just resync
           runNtpBurst().then(() => {
             const snap = snapshotRef.current;
             if (snap && audioRef.current.isReady) applySnapshotToAudio(snap);
@@ -523,30 +525,28 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   }, [roomId, socket]);
 
   // ── Re-apply room state when audio becomes ready ─────────────────────────
-  // This is the KEY fix for the screen-lock / wake-up issue.
-  // When a device wakes up after the screen was off:
-  //   1. The socket reconnects and the room snapshot is fetched
-  //   2. The audio buffer is still loaded (IndexedDB cache) but isReady was false
-  //   3. The moment isReady flips back to true, we need to jump to the correct
-  //      server position, not just start from where we left off.
+  // When a device wakes up: audio.isReady flips false → true once the buffer
+  // is available. At that moment we jump to the server's current position.
+  // We stamp lastHardSeekRef so the drift corrector waits 2s before kicking in,
+  // preventing stutter caused by stale React isPlaying state.
   const prevIsReadyRef = useRef(false);
   useEffect(() => {
     const isReady = audio.isReady;
     const wasReady = prevIsReadyRef.current;
     prevIsReadyRef.current = isReady;
 
-    // Only act on the false → true transition
+    // Only act on false → true transition
     if (!isReady || wasReady) return;
 
     const snap = snapshotRef.current;
     if (!snap || !snap.trackUrl) return;
 
+    lastHardSeekRef.current = Date.now(); // suppress drift corrector
     if (snap.isPlaying && snap.startEpoch != null) {
       const offset = clockOffsetRef.current;
       const expectedPosition = Math.max(0, (Date.now() + offset - snap.startEpoch) / 1000);
-      // Use playNow for immediate catch-up without the 800ms schedule delay
       audioRef.current.playNow(expectedPosition);
-    } else if (!snap.isPlaying) {
+    } else {
       audioRef.current.pauseAt(snap.pauseOffset ?? 0);
     }
   }, [audio.isReady]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -556,6 +556,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const me = snapshot.participants.find(p => p.socketId === currentSocketId);
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
+
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
