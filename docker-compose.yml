@@ -48,18 +48,7 @@ services:
     volumes:
       - uploads:/app/uploads
 
-  frontend:
-    image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
-    platform: linux/amd64
-    restart: unless-stopped
-    depends_on:
-      - server
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+
 
   studio:
     image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}

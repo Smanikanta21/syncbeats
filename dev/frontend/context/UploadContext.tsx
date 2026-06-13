@@ -4,11 +4,10 @@
 // Shares IndexedDB cache status, upload metadata triggers, and real-time Socket.io P2P chunk transfers.
 
 import {
-  createContext, useContext, useState, useCallback,
+  createContext, useContext, useState, useCallback, useEffect,
   type ReactNode
 } from "react";
 import { roomsApi, getServerUrl } from "../lib/api";
-import { getWebTorrentClient } from "../lib/webtorrent";
 import { getSocket } from "../lib/socket";
 
 interface UploadResult {
@@ -41,75 +40,46 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [activeTransfers] = useState<Record<string, TransferState>>({});
 
-  // 1. Seed Local File via WebTorrent (P2P)
+  // 1. Seed Local File via WebSockets
   const uploadFile = useCallback(async (file: File, roomId: string): Promise<UploadResult> => {
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
     getSocket().emit('room:upload_progress', { roomId, title, progress: 10 });
 
-    return new Promise(async (resolve, reject) => {
-      try {
-        const client = await getWebTorrentClient();
-        if (!client) {
-          throw new Error("WebTorrent client failed to load.");
-        }
+    try {
+      // Generate custom websocket P2P URL
+      const trackUrl = `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      
+      setUploadProgress(40);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 40 });
 
-        const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
-        setUploadProgress(30);
-        getSocket().emit('room:upload_progress', { roomId, title, progress: 30 });
+      // Save directly to IndexedDB so we become the active "seeder"
+      const { saveTrack } = await import('../lib/idb');
+      await saveTrack(trackUrl, file);
 
-        const seedOpts = {
-          announce: [
-            'wss://tracker.webtorrent.dev',
-            'wss://tracker.openwebtorrent.com',
-            'wss://tracker.files.fm:7073/announce'
-          ]
-        };
+      setUploadProgress(80);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 80 });
 
-        client.seed(file, seedOpts, async (torrent: any) => {
-          console.log('[WebTorrent] Seeding track:', torrent.infoHash);
-          console.log('[WebTorrent] Magnet URI:', torrent.magnetURI);
-          
-          setUploadProgress(80);
-          getSocket().emit('room:upload_progress', { roomId, title, progress: 80 });
-
-          try {
-            const { saveTrack } = await import('../lib/idb');
-            await saveTrack(torrent.magnetURI, file);
-          } catch (e) {
-            console.error("Failed to save seeded file to IDB", e);
-          }
-
-          try {
-            // Tell the backend to enqueue the new magnet URI
-            await roomsApi.enqueueMagnet(roomId, torrent.magnetURI, title);
-            setUploadProgress(100);
-            getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-            setIsUploading(false);
-            setUploadProgress(0);
-            
-            resolve({ trackUrl: torrent.magnetURI, title });
-          } catch (apiErr) {
-            console.error("[UploadContext] Failed to enqueue magnet URI:", apiErr);
-            setIsUploading(false);
-            setUploadProgress(0);
-            getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-            reject(apiErr);
-          }
-        });
-
-      } catch (err) {
-        setIsUploading(false);
-        setUploadProgress(0);
-        getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-        console.error("[UploadContext] uploadFile failed:", err);
-        reject(err);
-      }
-    });
+      // Tell the backend to enqueue the custom URL
+      await roomsApi.enqueueMagnet(roomId, trackUrl, title);
+      
+      setUploadProgress(100);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      setIsUploading(false);
+      setUploadProgress(0);
+      
+      return { trackUrl, title };
+    } catch (err) {
+      console.error("[UploadContext] uploadFile failed:", err);
+      setIsUploading(false);
+      setUploadProgress(0);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      throw err;
+    }
   }, []);
 
-  // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via P2P!
+  // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via WebSockets
   const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string) => {
     setIsUploading(true);
     setUploadProgress(5);
@@ -131,7 +101,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
       const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
       
-      // Re-use the existing WebTorrent seeding logic
+      // Re-use the existing upload logic
       await uploadFile(file, roomId);
 
     } catch (err) {
@@ -143,7 +113,53 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }
   }, [uploadFile]);
 
+  // 3. Listen for WebSocket P2P requests and serve chunks
+  useEffect(() => {
+    const socket = getSocket();
+    const CHUNK_SIZE = 256 * 1024; // 256KB chunks
 
+    const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, trackUrl: string }) => {
+      if (!trackUrl.startsWith('ws-p2p:')) return;
+      
+      try {
+        const { getTrack } = await import('../lib/idb');
+        const file = await getTrack(trackUrl);
+        if (!file) {
+          console.log(`[WebSocket P2P] Requested file ${trackUrl} not found in my IDB.`);
+          return; // I don't have it, let someone else seed it
+        }
+
+        console.log(`[WebSocket P2P] Found ${trackUrl} in IDB! Seeding ${file.size} bytes to ${requesterSocketId}...`);
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+          const buffer = await chunk.arrayBuffer();
+
+          socket.emit('track:send_chunk', {
+            targetSocketId: requesterSocketId,
+            trackUrl,
+            chunkIndex: i,
+            totalChunks,
+            data: buffer
+          });
+          
+          // Tiny delay to avoid blocking the event loop and overwhelming the socket buffer
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
+      } catch (err) {
+        console.error("[WebSocket P2P] Failed to send chunks:", err);
+      }
+    };
+
+    socket.on('track:request_file', handleRequestFile);
+    return () => {
+      socket.off('track:request_file', handleRequestFile);
+    };
+  }, []);
 
   return (
     <Ctx.Provider value={{
