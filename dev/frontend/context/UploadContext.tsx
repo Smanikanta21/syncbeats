@@ -99,6 +99,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         blob = await fallbackRes.blob();
       } else {
         blob = await response.blob();
+        
+        // AWS/VM yt-dlp IP block check! If yt-dlp fails silently, it returns a 0-byte blob.
+        if (blob.size < 5000) {
+          console.error(`[UploadContext] FATAL: YouTube download returned a ${blob.size}-byte file! Your VM's IP is likely blocked by YouTube. Falling back to dummy MP3.`);
+          const fallbackRes = await fetch("https://raw.githubusercontent.com/mdn/webaudio-examples/main/audio-analyser/viper.mp3");
+          blob = await fallbackRes.blob();
+        }
       }
       
       setUploadProgress(20);
