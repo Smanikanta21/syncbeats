@@ -7,6 +7,8 @@ import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
+import { spawn } from 'child_process';
+import fs from 'fs';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -266,6 +268,86 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
     } catch (err) {
       console.error('[Rooms] enqueue youtube error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // POST /rooms/:roomId/enqueue-magnet
+  router.post('/:roomId/enqueue-magnet', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      const { magnetUri, title } = req.body as { magnetUri?: string; title?: string };
+      const userId = req.user!.sub;
+
+      if (!magnetUri) {
+        res.status(400).json({ error: 'Missing magnetUri' });
+        return;
+      }
+
+      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+        trackUrl: magnetUri,
+        title: title || 'P2P Track',
+        fileName: 'webtorrent.mp3',
+        mimeType: 'audio/mpeg',
+        sizeBytes: 0,
+      });
+
+      const room = roomManager.getOrCreate(roomId);
+      room.addToQueue(item);
+
+      res.status(201).json({ item, queued: !activated });
+    } catch (err) {
+      console.error('[Rooms] enqueue-magnet error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // GET /rooms/:roomId/yt-proxy?videoId=123
+  router.get('/:roomId/yt-proxy', async (req: Request, res: Response) => {
+    try {
+      const { videoId } = req.query;
+      if (!videoId || typeof videoId !== 'string') {
+        res.status(400).json({ error: 'Missing videoId' });
+        return;
+      }
+
+      console.log(`[Proxy] Fetching YouTube MP3 via RapidAPI for video: ${videoId}`);
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const rapidApiKey = process.env.RAPID_API_KEY;
+
+      if (!rapidApiKey) {
+        throw new Error('RAPID_API_KEY is not configured on the server');
+      }
+
+      const apiUrl = `https://yt-search-and-download-mp3.p.rapidapi.com/mp3?url=${encodeURIComponent(youtubeUrl)}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidApiKey,
+          'x-rapidapi-host': 'yt-search-and-download-mp3.p.rapidapi.com',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`RapidAPI returned status ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      if (!data.success || !data.download) {
+        throw new Error(`RapidAPI failed: ${data.error || 'No download URL returned'}`);
+      }
+
+      console.log(`[Proxy] RapidAPI success! Redirecting client directly to MP3 download...`);
+      // Transparently redirect the frontend's fetch() call to the direct MP3 URL
+      // Because the target URL has CORS headers (*), the browser will download it directly!
+      res.redirect(302, data.download);
+
+    } catch (err) {
+      console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }

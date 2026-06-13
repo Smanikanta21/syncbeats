@@ -6,6 +6,7 @@ import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { AudioProvider } from "../context/AudioContext";
 import { ThemeProvider } from "../context/ThemeProvider";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -151,7 +152,7 @@ export default function RootLayout({
         strategy="lazyOnload" 
       />
 
-      <body className="min-h-full flex flex-col transition-colors duration-300">
+      <body className="min-h-full flex flex-col transition-colors duration-300" suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
             <AudioProvider>
@@ -159,6 +160,7 @@ export default function RootLayout({
             </AudioProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );

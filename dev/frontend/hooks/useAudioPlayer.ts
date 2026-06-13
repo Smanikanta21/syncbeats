@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
+import { getSocket } from '../lib/socket';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -16,6 +17,8 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
+  isSyncing:     boolean;
+  syncProgress:  number;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -51,6 +54,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [isSyncing,   setIsSyncing]   = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -210,6 +215,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopCurrentSource = useCallback(() => {
+    pendingScheduleRef.current = null;
     if (sourceNodeRef.current) {
       sourceNodeRef.current.onended = null;
       try {
@@ -312,8 +318,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const pending = pendingScheduleRef.current;
       if (pending) {
         pendingScheduleRef.current = null;
+        const delayMs = 100;
         const serverNow = Date.now() + pending.clockOffset;
-        const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
+        const scheduledEpoch = serverNow + delayMs;
+        const elapsedAtScheduledEpoch = Math.max(0, (scheduledEpoch - pending.payload.startEpoch) / 1000);
         
         // For YouTube, store the schedule timeline for re-sync after buffering
         if (pending.payload.trackUrl?.startsWith('youtube:')) {
@@ -322,8 +330,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         
         const adjustedPayload = {
           ...pending.payload,
-          atEpoch: Date.now() + pending.clockOffset + 100,
-          fromPosition: elapsed,
+          atEpoch: scheduledEpoch,
+          fromPosition: elapsedAtScheduledEpoch,
         };
         scheduleStartRef.current?.(adjustedPayload, pending.clockOffset);
       }
@@ -342,18 +350,75 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
   }, [unlockAudio]);
 
-  const fetchAndDecode = async (url: string) => {
-    if (!audioCtxRef.current) return null;
+  const fetchAndDecode = (url: string) => {
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
 
     const promise = (async () => {
       setIsReady(false);
       try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+        let arrayBuffer: ArrayBuffer;
+
+        if (url.startsWith('ws-p2p:')) {
+          console.log('[WebSocket P2P] Downloading from swarm...');
+          setIsSyncing(true);
+          setSyncProgress(0);
+
+          const { getTrack, saveTrack } = await import('../lib/idb');
+          const cachedBlob = await getTrack(url);
+
+          if (cachedBlob) {
+            console.log('[WebSocket P2P] Found cached track in IndexedDB! Ready to play.');
+            arrayBuffer = await cachedBlob.arrayBuffer();
+          } else {
+            arrayBuffer = await new Promise((resolve, reject) => {
+              const socket = getSocket();
+              const chunks: ArrayBuffer[] = [];
+              let expectedChunks = 0;
+              let receivedChunks = 0;
+
+              const onReceiveChunk = ({ trackUrl, chunkIndex, totalChunks, data }: any) => {
+                if (trackUrl !== url) return;
+
+                expectedChunks = totalChunks;
+                chunks[chunkIndex] = data;
+                receivedChunks++;
+
+                const progress = Math.round((receivedChunks / expectedChunks) * 100);
+                setSyncProgress(progress);
+
+                if (receivedChunks === expectedChunks) {
+                  // Reassemble
+                  socket.off('track:receive_chunk', onReceiveChunk);
+                  clearTimeout(timeoutId);
+                  
+                  const blob = new Blob(chunks);
+                  saveTrack(url, blob).catch(e => console.error("Failed to save to IDB", e));
+                  
+                  blob.arrayBuffer().then(resolve).catch(reject);
+                }
+              };
+
+              socket.on('track:receive_chunk', onReceiveChunk);
+
+              const roomId = window.location.pathname.split('/').pop() || '';
+              socket.emit('track:request_file', { roomId, trackUrl: url });
+
+              // 15 second timeout if no one sends chunks
+              const timeoutId = setTimeout(() => {
+                socket.off('track:receive_chunk', onReceiveChunk);
+                window.dispatchEvent(new CustomEvent('syncbeats:dead-swarm'));
+                reject(new Error("P2P Swarm is dead. No seeders found."));
+              }, 15000);
+            });
+          }
+        } else {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+          }
+          arrayBuffer = await response.arrayBuffer();
         }
-        const arrayBuffer = await response.arrayBuffer();
+
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
@@ -363,6 +428,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         console.error("Error decoding audio data", err);
         return null;
       } finally {
+        setIsSyncing(false);
         fetchPromiseRef.current = null;
       }
     })();
@@ -522,7 +588,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       
       // For remote tracks, resolve the URL and fetch+decode
       if (!buffer) {
-        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
+        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
           ? `${getServerUrl()}/${payload.trackUrl}` 
           : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
         buffer = await fetchAndDecode(absoluteUrl);
@@ -553,7 +619,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
       source.start(audioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxStartTime;
+      startTimeRef.current = audioCtxStartTime + hardwareLatency;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
       const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
@@ -561,7 +627,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
       source.start(0, Math.max(0, clampedPosition));
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxRef.current.currentTime;
+      startTimeRef.current = audioCtxRef.current.currentTime + hardwareLatency;
       pauseOffsetRef.current = Math.max(0, clampedPosition);
     }
     
@@ -601,17 +667,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    // No hardware latency adjustment here — playNow is for drift correction,
-    // not initial scheduling. Adding latency here would overshoot the target.
-    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
+    // Hardware latency adjustment is required even for drift correction
+    // so that the physical speaker cone outputs the exact expectedPosition right now.
+    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+    const correctPosition = expectedPosition + hardwareLatency;
+    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, correctPosition);
 
     source.start(0, Math.max(0, clampedPosition));
     sourceNodeRef.current = source;
     
-    startTimeRef.current = audioCtxRef.current.currentTime;
-    pauseOffsetRef.current = clampedPosition;
+    startTimeRef.current = audioCtxRef.current.currentTime + hardwareLatency;
+    pauseOffsetRef.current = Math.max(0, clampedPosition);
     setIsPlaying(true);
-    setCurrentTime(clampedPosition);
+    setCurrentTime(Math.max(0, clampedPosition));
   }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
   const pauseAt = useCallback((position: number) => {
@@ -676,7 +744,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       console.warn("Ignoring deprecated local: track url", url);
       return;
     }
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('magnet:') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
@@ -703,7 +771,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist,
+    trackUrl, trackTitle, trackArtist, isSyncing, syncProgress,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,

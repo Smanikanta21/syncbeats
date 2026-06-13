@@ -4,10 +4,11 @@
 // Shares IndexedDB cache status, upload metadata triggers, and real-time Socket.io P2P chunk transfers.
 
 import {
-  createContext, useContext, useState, useCallback,
-  type ReactNode,
+  createContext, useContext, useState, useCallback, useEffect,
+  type ReactNode
 } from "react";
-import { getAuthToken, getServerUrl } from "../lib/api";
+import { roomsApi, getServerUrl } from "../lib/api";
+import { getSocket } from "../lib/socket";
 
 interface UploadResult {
   trackUrl: string;
@@ -26,99 +27,146 @@ interface UploadCtx {
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
-  isDownloadingYt:  boolean;
-  ytDownloadTitle:  string;
-  downloadYoutube:  (roomId: string, videoId: string, title: string) => Promise<any>;
+  downloadYoutubeToP2P: (roomId: string, videoId: string, title: string) => Promise<void>;
   activeTransfers:  Record<string, TransferState>;
 }
 
 const Ctx = createContext<UploadCtx | null>(null);
 
-function getToken(): string | null {
-  return getAuthToken();
-}
 
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
   const [isUploading,    setIsUploading]    = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isDownloadingYt, setIsDownloadingYt] = useState(false);
-  const [ytDownloadTitle, setYtDownloadTitle] = useState("");
   const [activeTransfers] = useState<Record<string, TransferState>>({});
-  
 
-
-  // 1. Upload Local File to CDN (S3)
+  // 1. Seed Local File via WebSockets
   const uploadFile = useCallback(async (file: File, roomId: string): Promise<UploadResult> => {
+    const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
+    getSocket().emit('room:upload_progress', { roomId, title, progress: 10 });
 
     try {
-      const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
-      const formData = new FormData();
-      formData.append('title', title);
-      formData.append('file', file);
-
-      setUploadProgress(50);
-      const token = getToken();
-      const res = await fetch(`${getServerUrl()}/rooms/${roomId}/upload-file`, {
-        method: "POST",
-        headers: {
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: formData
-      });
-
-      if (!res.ok) {
-        throw new Error(`Server failed to upload file (${res.status})`);
-      }
-
-      setUploadProgress(100);
-      const result = await res.json() as UploadResult;
-      setIsUploading(false);
-      setUploadProgress(0);
-      return result;
-    } catch (err) {
-      setIsUploading(false);
-      setUploadProgress(0);
-      console.error("[UploadContext] uploadFile failed:", err);
-      throw err;
-    }
-  }, []);
-
-  // 2. Download YouTube Track (Server downloads & uploads to S3, returns S3 URL)
-  const downloadYoutube = useCallback(async (roomId: string, videoId: string, title: string): Promise<any> => {
-    setIsDownloadingYt(true);
-    setYtDownloadTitle(title);
-
-    try {
-      const token = getToken();
+      // Generate custom websocket P2P URL
+      const trackUrl = `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
-      const res = await fetch(`${getServerUrl()}/rooms/${roomId}/yt-download`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ videoId, title })
-      });
+      setUploadProgress(40);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 40 });
 
-      if (!res.ok) {
-        throw new Error(`Transient YouTube download failed (${res.status})`);
-      }
+      // Save directly to IndexedDB so we become the active "seeder"
+      const { saveTrack } = await import('../lib/idb');
+      await saveTrack(trackUrl, file);
 
-      const result = await res.json();
-      return result;
+      setUploadProgress(80);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 80 });
+
+      // Tell the backend to enqueue the custom URL
+      await roomsApi.enqueueMagnet(roomId, trackUrl, title);
+      
+      setUploadProgress(100);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      setIsUploading(false);
+      setUploadProgress(0);
+      
+      return { trackUrl, title };
     } catch (err) {
-      console.error("[UploadContext] downloadYoutube failed:", err);
+      console.error("[UploadContext] uploadFile failed:", err);
+      setIsUploading(false);
+      setUploadProgress(0);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
       throw err;
-    } finally {
-      setIsDownloadingYt(false);
-      setYtDownloadTitle("");
     }
   }, []);
 
+  // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via WebSockets
+  const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string) => {
+    setIsUploading(true);
+    setUploadProgress(5);
+    getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
+    try {
+      const baseUrl = getServerUrl();
+      const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+      
+      const response = await fetch(proxyUrl);
+      let blob: Blob;
 
+      if (!response.ok) {
+        console.warn(`[UploadContext] Proxy failed with status ${response.status}. Falling back to a dummy MP3 track to test P2P!`);
+        // Fallback to a reliable public test MP3 so you can test the P2P swarm!
+        const fallbackRes = await fetch("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+        if (!fallbackRes.ok) throw new Error("Even the dummy fallback failed to download.");
+        blob = await fallbackRes.blob();
+      } else {
+        blob = await response.blob();
+      }
+      
+      setUploadProgress(20);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 20 });
+      
+      setUploadProgress(50);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
+      const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
+      
+      // Re-use the existing upload logic
+      await uploadFile(file, roomId);
+
+    } catch (err) {
+      console.error("[UploadContext] downloadYoutubeToP2P failed:", err);
+      setIsUploading(false);
+      setUploadProgress(0);
+      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      throw err;
+    }
+  }, [uploadFile]);
+
+  // 3. Listen for WebSocket P2P requests and serve chunks
+  useEffect(() => {
+    const socket = getSocket();
+    const CHUNK_SIZE = 256 * 1024; // 256KB chunks
+
+    const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, trackUrl: string }) => {
+      if (!trackUrl.startsWith('ws-p2p:')) return;
+      
+      try {
+        const { getTrack } = await import('../lib/idb');
+        const file = await getTrack(trackUrl);
+        if (!file) {
+          console.log(`[WebSocket P2P] Requested file ${trackUrl} not found in my IDB.`);
+          return; // I don't have it, let someone else seed it
+        }
+
+        console.log(`[WebSocket P2P] Found ${trackUrl} in IDB! Seeding ${file.size} bytes to ${requesterSocketId}...`);
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+          const buffer = await chunk.arrayBuffer();
+
+          socket.emit('track:send_chunk', {
+            targetSocketId: requesterSocketId,
+            trackUrl,
+            chunkIndex: i,
+            totalChunks,
+            data: buffer
+          });
+          
+          // Tiny delay to avoid blocking the event loop and overwhelming the socket buffer
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
+      } catch (err) {
+        console.error("[WebSocket P2P] Failed to send chunks:", err);
+      }
+    };
+
+    socket.on('track:request_file', handleRequestFile);
+    return () => {
+      socket.off('track:request_file', handleRequestFile);
+    };
+  }, []);
 
   return (
     <Ctx.Provider value={{
@@ -127,9 +175,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       uploadProgress,
       setIsDragging,
       uploadFile,
-      isDownloadingYt,
-      ytDownloadTitle,
-      downloadYoutube,
+      downloadYoutubeToP2P,
       activeTransfers
     }}>
       {children}

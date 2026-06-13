@@ -66,9 +66,12 @@ export class SocketHandler {
 
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, isReady = false }: JoinPayload) => {
       try {
         const room = this.roomManager.getOrCreate(roomId);
+
+        // Disconnect from previous room if any to prevent ghosts
+        this.roomManager.handleDisconnect(socket.id);
 
         // Load from DB if fresh
         if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
@@ -96,7 +99,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady: false, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
@@ -248,6 +251,12 @@ export class SocketHandler {
     }) => {
       // Relay the chunk directly to the target socket!
       this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+    });
+
+    // ── Upload Progress ──────────────────────────────────────────────────
+
+    socket.on('room:upload_progress', ({ roomId, title, progress }: { roomId: string, title: string, progress: number }) => {
+      socket.to(roomId).emit('room:upload_progress', { title, progress });
     });
 
     // ── NTP sync ─────────────────────────────────────────────────────────

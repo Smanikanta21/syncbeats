@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, ShieldAlert, X } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -29,6 +29,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
+import { LoadingScreen } from "../../../../components/LoadingScreen";
 
 function DeviceIcon({ index }: { index: number }) {
   const icons = [Smartphone, Laptop, Speaker];
@@ -46,24 +47,34 @@ export default function RoomPage() {
   const displayName = `${participantName}::${deviceName}`;
 
   const [isMounted, setIsMounted] = useState(false);
+  const [adblockerDetected, setAdblockerDetected] = useState(false);
+
   useEffect(() => {
     setIsMounted(true);
+    // Detect adblockers by trying to load a commonly blocked URL
+    fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', { mode: 'no-cors' })
+      .catch(() => setAdblockerDetected(true));
   }, []);
 
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave } = useRoom({
+  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack, nextTrack } = useRoom({
     roomId,
     displayName,
   });
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
 
   // Push clock offset to shared context so DynamicIsland can access it
   useEffect(() => {
     pushClockOffset(clockOffset);
   }, [clockOffset, pushClockOffset]);
+
+  // Push incomingTrack to shared context
+  useEffect(() => {
+    pushIncomingTrack(incomingTrack);
+  }, [incomingTrack, pushIncomingTrack]);
 
   // Push server-side playing state so DynamicIsland shows correct button
   useEffect(() => {
@@ -107,6 +118,19 @@ export default function RoomPage() {
       }
     }
   }, [audio.isReady, audio.isBuffering, audio.hasTrack, setReady]);
+
+  // ── Auto-skip dead swarms ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleDeadSwarm = () => {
+      // Clear local track state immediately so the UI resets
+      audio.clearTrack();
+      // Tell backend to move to the next item in the queue
+      nextTrack();
+    };
+
+    window.addEventListener('syncbeats:dead-swarm', handleDeadSwarm);
+    return () => window.removeEventListener('syncbeats:dead-swarm', handleDeadSwarm);
+  }, [audio, nextTrack]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
   const dragCounter = useRef(0); // track enter/leave nesting
@@ -347,7 +371,7 @@ export default function RoomPage() {
             <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
             <h1
               onClick={handleCopy}
-              className="text-[5rem] select-none font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
+              className="text-[5rem] select-none font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl"
             >
               {roomId}
               <div className="w-10 h-10 rounded-full bg-foreground/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -547,22 +571,66 @@ export default function RoomPage() {
   );
 
   if (!isMounted) return null;
+  if (!snapshot || !isConnected) {
+    return <LoadingScreen message="Connecting to Room..." />;
+  }
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+      {/* ── AdBlocker Warning Banner ── */}
+      <AnimatePresence>
+        {adblockerDetected && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-0 inset-x-0 z-[200] bg-red-500/90 text-white text-xs md:text-sm font-medium py-2 px-4 flex items-center justify-center gap-2 backdrop-blur-md shadow-lg"
+          >
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span className="text-center">AdBlocker detected! Please disable it for SyncBeats. P2P Audio Sync will fail if trackers are blocked.</span>
+            <button onClick={() => setAdblockerDetected(false)} className="ml-2 bg-white/20 hover:bg-white/30 rounded-full p-1 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ── Background Blur when Syncing ── */}
+      <AnimatePresence>
+        {(() => {
+          const currentTrackUrl = snapshot?.trackUrl;
+          const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
+          const isUploading = !!activeTransfer;
+          const isSyncing = audio.isSyncing;
+
+          if (!(isUploading || isSyncing)) return null;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[90] bg-background/50 backdrop-blur-lg pointer-events-none"
+            />
+          );
+        })()}
+      </AnimatePresence>
+
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
           const currentTrackUrl = snapshot?.trackUrl;
           const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
-          const isSyncing = !!activeTransfer;
+          const isUploading = !!activeTransfer;
+          const isSyncing = audio.isSyncing;
           const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
           
-          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isUploading || isSyncing)) return null;
 
           let overlayText = "Buffering…";
-          if (isSyncing) {
-            overlayText = `Syncing track: ${activeTransfer.progress}%…`;
+          if (isUploading) {
+            overlayText = `Uploading track: ${activeTransfer.progress}%…`;
+          } else if (isSyncing) {
+            overlayText = `Syncing P2P Audio: ${audio.syncProgress}%…`;
           } else if (isAnyDeviceBuffering) {
             overlayText = "Devices Buffering…";
           }
@@ -573,7 +641,7 @@ export default function RoomPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+              className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-[100] pointer-events-none"
             >
               <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
                 {/* Animated gradient ring */}
@@ -583,8 +651,8 @@ export default function RoomPage() {
                 
                 {/* Spinner */}
                 <div className="relative w-5 h-5 shrink-0">
-                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-4xl -z-10" />
-                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent mix-blend-overlay pointer-events-none" />
+                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
+                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
                 
                 {/* Text */}
@@ -611,8 +679,8 @@ export default function RoomPage() {
       {/* ── Unlock Audio Overlay ── */}
       {snapshot?.isPlaying && !audio.audioUnlocked && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 1 }}
+          animate={{ opacity: isConnected ? 0 : 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-x-0 bottom-0 z-99999 p-4 pointer-events-none flex items-center justify-center bg-background/60 backdrop-blur-sm px-4 cursor-pointer"
           onClick={() => audio.unlockAudio()}
@@ -639,7 +707,7 @@ export default function RoomPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
       {/* ── DESKTOP VIEW (Original unchanged layout) ── */}
-      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto md:pt-30 md:pb-12 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-y-auto custom-scrollbar">
+      <div className="hidden md:flex flex-col items-center w-full max-w-4xl mx-auto pt-24 pb-8 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-hidden">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -657,7 +725,7 @@ export default function RoomPage() {
             </span>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-10">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-6 shrink-0">
             {/* Room code */}
             <div className="text-center">
               <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
@@ -742,32 +810,33 @@ export default function RoomPage() {
           )}
         </motion.div>
 
-        {/* ── Connected Devices ── */}
+        {/* ── Connected Devices & Queue (Desktop) ── */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="w-full max-w-3xl mx-auto flex flex-col gap-6 items-center"
+          className="w-full max-w-5xl mx-auto hidden md:flex gap-6 items-stretch justify-center flex-1 min-h-0 pb-12 px-6"
         >
-          <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center mb-2">
-            Connected Devices ({participants.length})
-          </h2>
+          {/* Left Column: Devices */}
+          <div className="flex flex-col w-1/2 h-full gap-4 glass-panel p-6 rounded-[2rem] border border-foreground/5 bg-background/40 shadow-[0_10px_40px_rgba(0,0,0,0.15)] relative">
+            <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center shrink-0">
+              Connected Devices ({participants.length})
+            </h2>
 
-          {participants.length === 0 && (
-            <div className="text-center py-10 text-foreground/40 text-sm font-medium">
-              Waiting for others to join…
-            </div>
-          )}
+            {participants.length === 0 && (
+              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/20 mt-2">
+                Waiting for others to join…
+              </div>
+            )}
 
-          <div className="w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 pb-2 flex flex-col gap-8">
+            <div className="w-full flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
-              <div key={userName} className="w-full flex flex-col gap-4">
-                <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-2 select-all">{userName}</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              <div key={userName} className="w-full flex flex-col gap-4 mb-4">
+                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all">{userName}</h4>
+                <div className="grid grid-cols-1 gap-3 w-full">
                   {userDevices.map((p, i) => (
                     <div
                       key={p.socketId}
-                      className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
+                      className="glass-panel p-5 rounded-[1.5rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -798,7 +867,7 @@ export default function RoomPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-2 w-full glass-panel p-3 rounded-xl border border-foreground/5">
+                      <motion.div className="flex flex-col w-full">
                         <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                           <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
                             {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
@@ -809,7 +878,7 @@ export default function RoomPage() {
                         <div className="relative h-10 flex items-center">
                           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-linear-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              className="h-full rounded-full bg-gradient-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                               style={{ width: `${p.volume}%` }}
                             />
                           </div>
@@ -824,22 +893,24 @@ export default function RoomPage() {
                             className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
                           />
                         </div>
-                      </div>
+                      </motion.div>
                     </div>
                   ))}
                 </div>
               </div>
             ))}
+            </div>
           </div>
 
-          {/* ── Queue ── */}
-          {localQueue.length ? (
-            <div className="mt-4 w-full rounded-2xl border border-foreground/5 bg-background/60 p-5 flex flex-col gap-4">
-              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-                <ListMusic className="w-4 h-4" />
-                Room Queue ({localQueue.length})
-              </h3>
-              <div className="max-h-[35vh] overflow-y-auto space-y-2 custom-scrollbar pr-2">
+          {/* Right Column: Queue */}
+          <div className="flex flex-col w-1/2 h-full gap-4 glass-panel p-6 rounded-[2rem] border border-foreground/5 bg-background/40 shadow-[0_10px_40px_rgba(0,0,0,0.15)] relative">
+            <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center justify-center gap-2 shrink-0">
+              <ListMusic className="w-4 h-4" />
+              Room Queue ({localQueue.length})
+            </h2>
+
+            {localQueue.length ? (
+              <div className="w-full flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2 relative">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -866,12 +937,12 @@ export default function RoomPage() {
                   </SortableContext>
                 </DndContext>
               </div>
-            </div>
-          ) : (<div className="mt-2 rounded-2xl border border-foreground/5 bg-background/40 max-h-[35vh] p-4">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              No songs in the queue
-            </h3>
-          </div>)}
+            ) : (
+              <div className="text-center py-10 text-foreground/40 text-sm font-medium border border-foreground/5 rounded-2xl bg-background/20 mt-2">
+                No songs in the queue
+              </div>
+            )}
+          </div>
         </motion.div>
       </div>
 
@@ -891,7 +962,7 @@ export default function RoomPage() {
           transition={{ duration: 0.4 }}
           ref={carouselRef}
           onScroll={handleScroll}
-          className="flex-1 w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
+          className="w-full h-full rounded-4xl overflow-x-auto overflow-y-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
         >
           <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
             {renderInfoPanel()}

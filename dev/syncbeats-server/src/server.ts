@@ -13,19 +13,28 @@ import { SocketHandler }       from './handlers/SocketHandler';
 import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes }  from './handlers/DeviceRoutes';
-import { createUploadRoutes }  from './handlers/UploadRoutes';
-import { createYoutubeDownloadRoutes } from './handlers/YoutubeDownloadRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
-import { deleteRoomFromS3 }    from './utils/s3';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 
 export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
+  private getCorsOrigins() {
+    // Always allow all origins in local development to make phone testing seamless!
+    if (process.env.NODE_ENV === 'Development' || process.env.NODE_ENV === 'development') {
+      return true;
+    }
+    // In Production, strictly restrict to FRONTEND_URL to prevent hijacking.
+    if (process.env.FRONTEND_URL) {
+      return process.env.FRONTEND_URL.split(',').map(u => u.trim());
+    }
+    return true;
+  }
+
   private io         = new Server(this.httpServer, {
-    cors: { origin: true, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
+    cors: { origin: this.getCorsOrigins(), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
   });
 
   private roomManager = RoomManager.getInstance();
@@ -45,7 +54,7 @@ export class SyncBeatsServer {
 
   private setupMiddleware(): void {
     this.app.use(cors({
-      origin: true, credentials: true,
+      origin: this.getCorsOrigins(), credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
     this.app.use(express.json());
@@ -103,8 +112,6 @@ export class SyncBeatsServer {
     });
     this.app.use('/auth',    createAuthRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
-    this.app.use('/rooms',   createUploadRoutes(this.roomManager, baseUrl));
-    this.app.use('/rooms',   createYoutubeDownloadRoutes(this.roomManager));
     this.app.use('/devices', createDeviceRoutes());
   }
 
@@ -131,10 +138,6 @@ export class SyncBeatsServer {
             await this.roomRepo.removeRoom(room.id);
             this.roomManager.remove(room.id);
 
-            // Remove hosted files from CDN/S3
-            await deleteRoomFromS3(room.id);
-
-            // Also cleanup legacy fallback local files if any exist
             for (const fileName of fileNames) {
               const absolutePath = path.resolve(process.cwd(), 'uploads', fileName);
               if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);

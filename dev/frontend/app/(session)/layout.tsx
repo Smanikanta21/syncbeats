@@ -9,6 +9,7 @@ import { SyncProvider } from "../../context/SyncContext";
 const DynamicIsland = dynamic(() => import("../../components/DynamicIsland").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
 import { X, Camera } from "lucide-react";
+import { LoadingScreen } from "../../components/LoadingScreen";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
@@ -101,11 +102,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
 
   // Show nothing while rehydrating token
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-foreground/10 border-t-white/60 animate-spin" />
-      </div>
-    );
+    return <LoadingScreen message="Loading SyncBeats..." />;
   }
 
   if (!user) return null; // redirect in-flight

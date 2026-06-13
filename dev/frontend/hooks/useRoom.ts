@@ -26,19 +26,22 @@ interface UseRoomReturn {
   setReady:     (isReady: boolean) => void;
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
+  incomingTrack: { title: string, progress: number } | null;
 }
 
-const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
+const NTP_SAMPLE_COUNT         = 50;    // Increased to 50 samples for higher statistical accuracy
 const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip)
-const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
+const NTP_PING_GAP_MS          = 10;    // Faster ping burst (10ms)
 const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
 const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
-const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
+const DRIFT_SOFT_SEEK_MS       = 5;     // Tightened to 5ms for razor-sharp phase alignment
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
   const audio  = useAudio();
+
+  const rateTimeoutRef = useRef<number | null>(null);
 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -46,6 +49,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
+  const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -173,15 +177,25 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const q1 = sorted[Math.floor(sorted.length * 0.25)];
       const q3 = sorted[Math.floor(sorted.length * 0.75)];
       const filtered = sorted.filter(o => o >= q1 && o <= q3);
-      const median = filtered[Math.floor(filtered.length / 2)] ?? sorted[Math.floor(sorted.length / 2)];
       
-      clockOffsetRef.current = median;
-      setClockOffset(median);
+      // Calculate the mean (average) of the middle 50% of samples for extreme sub-millisecond precision
+      // rather than just picking a single median sample.
+      const sum = filtered.reduce((acc, val) => acc + val, 0);
+      const mean = filtered.length > 0 ? sum / filtered.length : sorted[Math.floor(sorted.length / 2)];
+      
+      clockOffsetRef.current = mean;
+      setClockOffset(mean);
       hasClockSync.current = true;
     }
 
     syncInFlightRef.current = false;
   }, [pingOnce]);
+
+  useEffect(() => {
+    // Run NTP resync continuously
+    const interval = setInterval(runNtpBurst, NTP_RESYNC_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [runNtpBurst]);
 
   // Handle drift correction with performance.now() for sub-ms precision
   useEffect(() => {
@@ -219,8 +233,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
-        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode) {
-          // YouTube or fallback: just hard seek
+        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode || !audioRef.current.isPlaying) {
+          // YouTube or fallback or mid-join (not playing yet): just hard seek
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {
@@ -258,8 +272,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             
             audioRef.current.setPlaybackRate(rate);
             
-            // Revert back to normal speed after we've caught up
-            setTimeout(() => {
+            if (rateTimeoutRef.current) window.clearTimeout(rateTimeoutRef.current);
+            rateTimeoutRef.current = window.setTimeout(() => {
               if (audioRef.current?.setPlaybackRate) {
                 audioRef.current.setPlaybackRate(1);
               }
@@ -273,7 +287,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             
             audioRef.current.setPlaybackRate(rate);
             
-            setTimeout(() => {
+            if (rateTimeoutRef.current) window.clearTimeout(rateTimeoutRef.current);
+            rateTimeoutRef.current = window.setTimeout(() => {
               if (audioRef.current?.setPlaybackRate) {
                 audioRef.current.setPlaybackRate(1);
               }
@@ -284,6 +299,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         // Perfectly in sync (< 50ms): Normal playback rate
         if (audioRef.current.setPlaybackRate) {
           audioRef.current.setPlaybackRate(1);
+        }
+        if (rateTimeoutRef.current) {
+          window.clearTimeout(rateTimeoutRef.current);
+          rateTimeoutRef.current = null;
         }
       }
     };
@@ -307,7 +326,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleConnect = () => {
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
-      socket.emit('room:join', { roomId, displayName });
+      socket.emit('room:join', { 
+        roomId, 
+        displayName, 
+        isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
+      });
       runNtpBurst();
     };
 
@@ -322,12 +345,18 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleSnapshot = (snap: RoomSnapshot) => {
       setSnapshot(snap);
       setParticipants(snap.participants);
+      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      }
     };
     socket.on('room:snapshot', handleSnapshot);
 
     const handleStateChanged = (snap: RoomSnapshot) => {
       setSnapshot(snap);
       setParticipants(snap.participants);
+      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      }
     };
     socket.on('room:stateChanged', handleStateChanged);
 
@@ -340,6 +369,15 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       setParticipants(prev => prev.filter(x => x.socketId !== socketId));
     };
     socket.on('room:participantLeft', handleParticipantLeft);
+
+    const handleUploadProgress = ({ title, progress }: { title: string, progress: number }) => {
+      if (progress >= 100) {
+        setIncomingTrack(null);
+      } else {
+        setIncomingTrack({ title, progress });
+      }
+    };
+    socket.on('room:upload_progress', handleUploadProgress);
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);
@@ -355,11 +393,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         audioRef.current.clearTrack();
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
-        if (playingUrl && playingUrl !== newCurrentItem.trackUrl) {
+        if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
           loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
         }
       }
-      // If queue has songs but none is isCurrent, let room:trackSet / room:stateChanged handle it
     };
     socket.on('room:queueChanged', handleQueueChanged);
 
@@ -458,5 +495,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave };
+  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
+    setParticipantVolume, leave, incomingTrack
+  };
 }
