@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, ShieldAlert, X } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -46,8 +46,13 @@ export default function RoomPage() {
   const displayName = `${participantName}::${deviceName}`;
 
   const [isMounted, setIsMounted] = useState(false);
+  const [adblockerDetected, setAdblockerDetected] = useState(false);
+
   useEffect(() => {
     setIsMounted(true);
+    // Detect adblockers by trying to load a commonly blocked URL
+    fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', { mode: 'no-cors' })
+      .catch(() => setAdblockerDetected(true));
   }, []);
 
   const audio  = useAudio();
@@ -568,6 +573,23 @@ export default function RoomPage() {
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+      {/* ── AdBlocker Warning Banner ── */}
+      <AnimatePresence>
+        {adblockerDetected && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-0 inset-x-0 z-[200] bg-red-500/90 text-white text-xs md:text-sm font-medium py-2 px-4 flex items-center justify-center gap-2 backdrop-blur-md shadow-lg"
+          >
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span className="text-center">AdBlocker detected! Please disable it for SyncBeats. P2P Audio Sync will fail if trackers are blocked.</span>
+            <button onClick={() => setAdblockerDetected(false)} className="ml-2 bg-white/20 hover:bg-white/30 rounded-full p-1 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* ── Background Blur when Syncing ── */}
       <AnimatePresence>
         {(() => {
