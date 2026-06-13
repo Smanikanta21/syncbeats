@@ -343,6 +343,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('disconnect', handleDisconnect);
 
     const handleSnapshot = (snap: RoomSnapshot) => {
+      // Update ref synchronously so drift correction sees correct state immediately
+      snapshotRef.current = snap;
       setSnapshot(snap);
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
@@ -352,6 +354,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('room:snapshot', handleSnapshot);
 
     const handleStateChanged = (snap: RoomSnapshot) => {
+      // Update ref synchronously so drift correction sees correct state immediately
+      snapshotRef.current = snap;
       setSnapshot(snap);
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
@@ -401,12 +405,36 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('room:queueChanged', handleQueueChanged);
 
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
+      // Synchronously update the ref before async React state — prevents drift correction
+      // from seeing stale isPlaying=false and suppressing the new schedule.
+      if (snapshotRef.current) {
+        snapshotRef.current = {
+          ...snapshotRef.current,
+          startEpoch: payload.startEpoch,
+          pauseOffset: payload.fromPosition,
+          isPlaying: true,
+          state: PlaybackState.PLAYING,
+        };
+      }
       setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING } : prev);
       audioRef.current.scheduleStart(payload, clockOffsetRef.current);
     };
     socket.on('playback:schedule', handleSchedule);
 
     const handlePause = (payload: PlaybackPausePayload) => {
+      // Synchronously update the ref BEFORE calling pauseAt — this is the critical fix.
+      // Without this, the drift correction loop (running every 200ms) can see stale
+      // isPlaying=true and call playNow() immediately after pauseAt(), causing other
+      // devices to appear to not pause.
+      if (snapshotRef.current) {
+        snapshotRef.current = {
+          ...snapshotRef.current,
+          startEpoch: null,
+          pauseOffset: payload.pauseOffset,
+          isPlaying: false,
+          state: PlaybackState.PAUSED,
+        };
+      }
       setSnapshot(prev => prev ? { ...prev, startEpoch: null, pauseOffset: payload.pauseOffset, isPlaying: false, state: PlaybackState.PAUSED } : prev);
       audioRef.current.pauseAt(payload.pauseOffset);
     };
