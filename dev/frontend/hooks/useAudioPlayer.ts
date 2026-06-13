@@ -428,6 +428,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 
                 receivedIndices.add(payload.chunkIndex);
                 chunks[payload.chunkIndex] = payload.data;
+                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
                 // Show buffering indicator for long downloads
                 if (receivedIndices.size === 1 && typeof document !== 'undefined') {

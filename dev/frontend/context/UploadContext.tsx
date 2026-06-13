@@ -123,7 +123,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   // 3. Listen for WebSocket P2P requests and serve chunks
   useEffect(() => {
     const socket = getSocket();
-    const CHUNK_SIZE = 256 * 1024; // 256KB chunks
+    const CHUNK_SIZE = 64 * 1024; // 64KB chunks (safe for strict Nginx proxy buffers)
 
     const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, trackUrl: string }) => {
       if (!trackUrl.startsWith('ws-p2p:')) return;
