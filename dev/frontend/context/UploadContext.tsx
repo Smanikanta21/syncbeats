@@ -145,15 +145,23 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const chunk = file.slice(start, end);
           const buffer = await chunk.arrayBuffer();
 
-          socket.emit('track:send_chunk', {
-            targetSocketId: requesterSocketId,
-            trackUrl,
-            chunkIndex: i,
-            totalChunks,
-            data: buffer
+          await new Promise<void>((resolve) => {
+            let handled = false;
+            const done = () => { if (!handled) { handled = true; resolve(); } };
+            
+            socket.emit('track:send_chunk', {
+              targetSocketId: requesterSocketId,
+              trackUrl,
+              chunkIndex: i,
+              totalChunks,
+              data: buffer
+            }, done);
+
+            // Safety timeout: if server doesn't ACK within 5 seconds, move on to prevent deadlocks
+            setTimeout(done, 5000);
           });
           
-          // Tiny delay to avoid blocking the event loop and overwhelming the socket buffer
+          // Tiny extra delay to give the event loop a breather
           await new Promise(resolve => setTimeout(resolve, 5));
         }
         console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);

@@ -38,6 +38,7 @@ export function DynamicIsland() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
   const netStats = useNetworkStats(isRoom);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,6 +149,9 @@ export function DynamicIsland() {
     const posSecs = pct * audio.duration;
     handleSeek(posSecs);
   };
+
+  const displayTime = scrubTime !== null ? scrubTime : (audio.currentTime || 0);
+  const displayProgress = audio.duration > 0 ? displayTime / audio.duration : 0;
 
   const handlePickFile = () => fileInputRef.current?.click();
 
@@ -495,7 +499,7 @@ export function DynamicIsland() {
                           <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-foreground transition-[width] duration-100"
-                              style={{ width: `${audio.progress * 100}%` }}
+                              style={{ width: `${displayProgress * 100}%` }}
                             />
                           </div>
                         </div>
@@ -503,17 +507,23 @@ export function DynamicIsland() {
                           type="range"
                           min={0}
                           max={audio.duration || 100}
-                          value={audio.currentTime || 0}
-                          onChange={(e) => handleSeek(Number(e.target.value))}
+                          value={displayTime}
+                          onChange={(e) => setScrubTime(Number(e.target.value))}
+                          onPointerUp={() => {
+                            if (scrubTime !== null) {
+                              handleSeek(scrubTime);
+                              setTimeout(() => setScrubTime(null), 800);
+                            }
+                          }}
                           className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
                         />
                         <div 
                           className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
-                          style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
+                          style={{ left: `calc(${displayProgress * 100}% - 6px)` }}
                         />
                       </div>
                       <div className="flex justify-between mt-2 text-xs text-foreground/50 font-mono font-medium">
-                        <span>{formatTime(audio.currentTime)}</span>
+                        <span>{formatTime(displayTime)}</span>
                         <span>{formatTime(audio.duration)}</span>
                       </div>
                     </div>
@@ -613,9 +623,9 @@ export function DynamicIsland() {
                     <div className="flex flex-col pl-1 justify-center max-w-30 sm:max-w-50 md:max-w-75">
                       <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
                       <div className="flex items-center gap-1.5 mt-0.5 opacity-80">
-                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)}</p>
+                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(displayTime)}</p>
                         <div className="h-1 w-16 sm:w-24 bg-foreground/10 rounded-full overflow-hidden shrink-0">
-                          <div className="h-full bg-foreground/50 transition-[width] duration-200 ease-linear rounded-full" style={{ width: `${audio.progress * 100}%` }} />
+                          <div className="h-full bg-foreground/50 transition-[width] duration-200 ease-linear rounded-full" style={{ width: `${displayProgress * 100}%` }} />
                         </div>
                         <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.duration)}</p>
                       </div>

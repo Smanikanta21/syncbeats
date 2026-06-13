@@ -407,16 +407,26 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const chunks: ArrayBuffer[] = [];
               const receivedIndices = new Set<number>();
               let expectedChunks = 0;
-              let timeoutId: NodeJS.Timeout;
+              let timeoutId: any;
               
-              const onChunk = async (payload: { trackUrl: string; chunkIndex: number; totalChunks: number; data: ArrayBuffer }) => {
+              const resetTimeout = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                  if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
+                    socket.off('track:receive_chunk', onChunk);
+                    reject(new Error("WebSocket P2P request timed out waiting for chunks"));
+                  }
+                }, 30000); // Timeout if no chunks arrive for 30s
+              };
+              
+              const onChunk = async (payload: any) => {
                 if (payload.trackUrl !== url) return;
                 
-                // Deduplicate chunks (multiple seeders might respond!)
-                if (receivedIndices.has(payload.chunkIndex)) return;
-                receivedIndices.add(payload.chunkIndex);
+                if (expectedChunks === 0 && payload.totalChunks) {
+                  expectedChunks = payload.totalChunks;
+                }
                 
-                expectedChunks = payload.totalChunks;
+                receivedIndices.add(payload.chunkIndex);
                 chunks[payload.chunkIndex] = payload.data;
                 
                 // Show buffering indicator for long downloads
@@ -450,18 +460,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   }
                   
                   resolve(buffer);
+                } else {
+                  resetTimeout();
                 }
               };
               
               socket.on('track:receive_chunk', onChunk);
               socket.emit('track:request_file', { roomId, trackUrl: url });
               
-              timeoutId = setTimeout(() => {
-                if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
-                  socket.off('track:receive_chunk', onChunk);
-                  reject(new Error("WebSocket P2P request timed out waiting for chunks"));
-                }
-              }, 30000);
+              resetTimeout();
             });
           }
         } else {

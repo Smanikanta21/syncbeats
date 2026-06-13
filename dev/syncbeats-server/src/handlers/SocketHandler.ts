@@ -248,9 +248,10 @@ export class SocketHandler {
       chunkIndex: number; 
       totalChunks: number; 
       data: any; 
-    }) => {
+    }, callback?: () => void) => {
       // Relay the chunk directly to the target socket!
       this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      if (typeof callback === 'function') callback();
     });
 
     // ── Upload Progress ──────────────────────────────────────────────────
