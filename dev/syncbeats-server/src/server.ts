@@ -22,15 +22,27 @@ export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
   private getCorsOrigins() {
-    // Always allow all origins in local development to make phone testing seamless!
-    if (process.env.NODE_ENV === 'Development' || process.env.NODE_ENV === 'development') {
-      return true;
-    }
-    // In Production, strictly restrict to FRONTEND_URL to prevent hijacking.
-    if (process.env.FRONTEND_URL) {
-      return process.env.FRONTEND_URL.split(',').map(u => u.trim());
-    }
-    return true;
+    return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (like mobile apps or curl) or local development
+      if (!origin || process.env.NODE_ENV === 'Development' || process.env.NODE_ENV === 'development') {
+        return callback(null, true);
+      }
+      
+      const allowedOrigins = process.env.FRONTEND_URL 
+        ? process.env.FRONTEND_URL.split(',').map(u => u.trim()) 
+        : [];
+
+      if (
+        allowedOrigins.includes(origin) || 
+        origin.endsWith('.syncbeats.app') || 
+        origin === 'https://syncbeats.app' ||
+        allowedOrigins.length === 0
+      ) {
+        return callback(null, true);
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    };
   }
 
   private io         = new Server(this.httpServer, {
