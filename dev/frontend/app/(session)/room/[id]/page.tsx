@@ -53,7 +53,7 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
+  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack, nextTrack } = useRoom({
     roomId,
     displayName,
   });
@@ -112,6 +112,19 @@ export default function RoomPage() {
       }
     }
   }, [audio.isReady, audio.isBuffering, audio.hasTrack, setReady]);
+
+  // ── Auto-skip dead swarms ──────────────────────────────────────────────
+  useEffect(() => {
+    const handleDeadSwarm = () => {
+      // Clear local track state immediately so the UI resets
+      audio.clearTrack();
+      // Tell backend to move to the next item in the queue
+      nextTrack();
+    };
+
+    window.addEventListener('syncbeats:dead-swarm', handleDeadSwarm);
+    return () => window.removeEventListener('syncbeats:dead-swarm', handleDeadSwarm);
+  }, [audio, nextTrack]);
 
   // ── Global drag handlers → UploadContext ──────────────────────────────
   const dragCounter = useRef(0); // track enter/leave nesting

@@ -412,6 +412,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 };
                 client.add(url, addOpts, onTorrent);
               }
+
+              // Add a 15 second timeout to detect dead swarms
+              setTimeout(() => {
+                const torrentInfo = client.get(url);
+                if (!torrentInfo || torrentInfo.progress === 0) {
+                  window.dispatchEvent(new CustomEvent('syncbeats:dead-swarm'));
+                  reject(new Error("P2P Swarm is dead. No seeders found."));
+                }
+              }, 15000);
             });
           }
         } else {
