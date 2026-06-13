@@ -242,10 +242,13 @@ export class SocketHandler {
       socket.to(roomId).emit('track:request_file', { requesterSocketId: socket.id, roomId, trackUrl });
     });
 
-    socket.on('track:send_chunk', ({ roomId, trackUrl, chunkIndex, totalChunks, data }: any, callback?: () => void) => {
-      // Broadcast the chunk to the entire room. This makes the transfer robust against 
-      // strict proxy timeouts that might cause a receiver's socket.id to change mid-transfer.
-      socket.to(roomId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+    socket.on('track:send_chunk', ({ roomId, targetSocketId, trackUrl, chunkIndex, totalChunks, data }: any, callback?: () => void) => {
+      // Fallback for older seeder tabs that haven't refreshed and still send targetSocketId instead of roomId
+      if (roomId) {
+        socket.to(roomId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      } else if (targetSocketId) {
+        this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      }
       if (typeof callback === 'function') callback();
     });
 
