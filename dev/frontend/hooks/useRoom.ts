@@ -29,13 +29,13 @@ interface UseRoomReturn {
   incomingTrack: { title: string, progress: number } | null;
 }
 
-const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
+const NTP_SAMPLE_COUNT         = 50;    // Increased to 50 samples for higher statistical accuracy
 const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip)
-const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
+const NTP_PING_GAP_MS          = 10;    // Faster ping burst (10ms)
 const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
 const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
-const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
+const DRIFT_SOFT_SEEK_MS       = 5;     // Tightened to 5ms for razor-sharp phase alignment
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
@@ -177,10 +177,14 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const q1 = sorted[Math.floor(sorted.length * 0.25)];
       const q3 = sorted[Math.floor(sorted.length * 0.75)];
       const filtered = sorted.filter(o => o >= q1 && o <= q3);
-      const median = filtered[Math.floor(filtered.length / 2)] ?? sorted[Math.floor(sorted.length / 2)];
       
-      clockOffsetRef.current = median;
-      setClockOffset(median);
+      // Calculate the mean (average) of the middle 50% of samples for extreme sub-millisecond precision
+      // rather than just picking a single median sample.
+      const sum = filtered.reduce((acc, val) => acc + val, 0);
+      const mean = filtered.length > 0 ? sum / filtered.length : sorted[Math.floor(sorted.length / 2)];
+      
+      clockOffsetRef.current = mean;
+      setClockOffset(mean);
       hasClockSync.current = true;
     }
 
