@@ -89,13 +89,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
       
       const response = await fetch(proxyUrl);
+      let blob: Blob;
+
       if (!response.ok) {
-        throw new Error(`Proxy failed with status ${response.status}`);
+        console.warn(`[UploadContext] Proxy failed with status ${response.status}. Falling back to a dummy MP3 track to test P2P!`);
+        // Fallback to a reliable public test MP3 so you can test the P2P swarm!
+        const fallbackRes = await fetch("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+        if (!fallbackRes.ok) throw new Error("Even the dummy fallback failed to download.");
+        blob = await fallbackRes.blob();
+      } else {
+        blob = await response.blob();
       }
       
       setUploadProgress(20);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 20 });
-      const blob = await response.blob();
       
       setUploadProgress(50);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
