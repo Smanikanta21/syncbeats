@@ -35,11 +35,13 @@ interface DeviceJoinPayload {
 
 interface UseSpatialAudioOptions {
   socket: Socket | null;
-  audioRef: React.RefObject<HTMLAudioElement | null>;
+  audioCtx: AudioContext | null | undefined;
+  gainNode: AudioNode | null | undefined;
   myDeviceId: string;
   roomId: string;
   enabled?: boolean;
   initialDevices?: DeviceSpatialState[];
+  participants?: any[];
 }
 
 interface UseSpatialAudioReturn {
@@ -54,11 +56,13 @@ interface UseSpatialAudioReturn {
 
 export function useSpatialAudio({
   socket,
-  audioRef,
+  audioCtx,
+  gainNode,
   myDeviceId,
   roomId,
   enabled = true,
   initialDevices = [],
+  participants = [],
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
   const initialisedRef = useRef(false);
@@ -74,17 +78,50 @@ export function useSpatialAudio({
     }
   }, [initialDevices, spatialDevices.length, engine]);
 
+  // Keep spatialDevices in sync with participants joining/leaving
+  useEffect(() => {
+    if (!participants || participants.length === 0) return;
+    
+    setSpatialDevices(prev => {
+      let changed = false;
+      const newDevices = [...prev];
+      
+      // Add missing participants
+      participants.forEach(p => {
+        if (p.socketId === myDeviceId) return;
+        if (!newDevices.some(d => d.deviceId === p.socketId)) {
+          // Default position: straight ahead
+          const defaultPos = { angle: 0, radius: 1, elevation: 0 };
+          newDevices.push({ deviceId: p.socketId, position: defaultPos });
+          engine.addDevice(p.socketId, defaultPos);
+          changed = true;
+        }
+      });
+      
+      // Remove stale participants
+      const activeSocketIds = new Set(participants.map(p => p.socketId));
+      for (let i = newDevices.length - 1; i >= 0; i--) {
+        if (!activeSocketIds.has(newDevices[i].deviceId)) {
+          engine.removeDevice(newDevices[i].deviceId);
+          newDevices.splice(i, 1);
+          changed = true;
+        }
+      }
+      
+      return changed ? newDevices : prev;
+    });
+  }, [participants, myDeviceId, engine]);
+
   // ── One-time init on first user gesture ───────────────────────────────────
 
   useEffect(() => {
     if (initialisedRef.current || !enabled) return;
 
-    const handleFirstGesture = () => {
-      const audioEl = audioRef.current;
-      if (!audioEl) return;
+    const initEngine = () => {
+      if (!audioCtx || !gainNode) return;
 
       try {
-        engine.init(audioEl, myDeviceId);
+        engine.init(audioCtx, gainNode, myDeviceId);
         engine.resume().then(() => {
           setEngineState(engine.getContextState());
         });
@@ -92,9 +129,18 @@ export function useSpatialAudio({
       } catch (err) {
         console.warn('[SpatialAudio] init failed (likely already initialised):', err);
       }
+    };
 
-      window.removeEventListener('click', handleFirstGesture);
-      window.removeEventListener('touchstart', handleFirstGesture);
+    // If already running (from useAudioPlayer unlocking), just init immediately
+    if (audioCtx && audioCtx.state === 'running' && gainNode) {
+      initEngine();
+      return;
+    }
+
+    const handleFirstGesture = () => {
+      initEngine();
+      window.removeEventListener('click', handleFirstGesture, { capture: true });
+      window.removeEventListener('touchstart', handleFirstGesture, { capture: true });
     };
 
     window.addEventListener('click', handleFirstGesture, { once: true, capture: true });
@@ -104,7 +150,7 @@ export function useSpatialAudio({
       window.removeEventListener('click', handleFirstGesture, { capture: true });
       window.removeEventListener('touchstart', handleFirstGesture, { capture: true });
     };
-  }, [enabled, myDeviceId, audioRef, engine]);
+  }, [enabled, myDeviceId, audioCtx, gainNode, engine]);
 
   // ── Socket.IO event listeners ──────────────────────────────────────────────
 

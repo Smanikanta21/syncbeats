@@ -21,32 +21,8 @@ const PORT = parseInt(process.env.PORT ?? '4000', 10);
 export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
-  private getCorsOrigins() {
-    return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Allow requests with no origin (like mobile apps or curl) or local development
-      if (!origin || process.env.NODE_ENV === 'Development' || process.env.NODE_ENV === 'development') {
-        return callback(null, true);
-      }
-      
-      const allowedOrigins = process.env.FRONTEND_URL 
-        ? process.env.FRONTEND_URL.split(',').map(u => u.trim()) 
-        : [];
-
-      if (
-        allowedOrigins.includes(origin) || 
-        origin.endsWith('.syncbeats.app') || 
-        origin === 'https://syncbeats.app' ||
-        allowedOrigins.length === 0
-      ) {
-        return callback(null, true);
-      }
-
-      callback(new Error('Not allowed by CORS'));
-    };
-  }
-
   private io         = new Server(this.httpServer, {
-    cors: { origin: this.getCorsOrigins(), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
+    cors: { origin: true, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] },
   });
 
   private roomManager = RoomManager.getInstance();
@@ -66,7 +42,7 @@ export class SyncBeatsServer {
 
   private setupMiddleware(): void {
     this.app.use(cors({
-      origin: this.getCorsOrigins(), credentials: true,
+      origin: true, credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
     this.app.use(express.json());

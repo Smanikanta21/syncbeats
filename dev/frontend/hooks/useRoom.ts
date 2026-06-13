@@ -29,19 +29,17 @@ interface UseRoomReturn {
   incomingTrack: { title: string, progress: number } | null;
 }
 
-const NTP_SAMPLE_COUNT         = 50;    // Increased to 50 samples for higher statistical accuracy
+const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
 const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip)
-const NTP_PING_GAP_MS          = 10;    // Faster ping burst (10ms)
+const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
 const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
 const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
 const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
-const DRIFT_SOFT_SEEK_MS       = 5;     // Tightened to 5ms for razor-sharp phase alignment
+const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
 
 export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
   const audio  = useAudio();
-
-  const rateTimeoutRef = useRef<number | null>(null);
 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -64,11 +62,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const syncInFlightRef = useRef(false);
   const hasClockSync = useRef(false);
   const reportedBlockedRef = useRef<boolean | null>(null);
-  // Timestamp of the last manual hard-seek (wake-up resync, etc.).
-  // The drift corrector skips for POST_SEEK_COOLDOWN_MS after this to avoid
-  // re-triggering on stale React state (isPlaying is set async).
-  const lastHardSeekRef = useRef<number>(0);
-  const POST_SEEK_COOLDOWN_MS = 2000;
 
   const setReady = useCallback((isReady: boolean) => {
     socket.emit('room:clientReady', { roomId, isReady });
@@ -182,14 +175,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const q1 = sorted[Math.floor(sorted.length * 0.25)];
       const q3 = sorted[Math.floor(sorted.length * 0.75)];
       const filtered = sorted.filter(o => o >= q1 && o <= q3);
+      const median = filtered[Math.floor(filtered.length / 2)] ?? sorted[Math.floor(sorted.length / 2)];
       
-      // Calculate the mean (average) of the middle 50% of samples for extreme sub-millisecond precision
-      // rather than just picking a single median sample.
-      const sum = filtered.reduce((acc, val) => acc + val, 0);
-      const mean = filtered.length > 0 ? sum / filtered.length : sorted[Math.floor(sorted.length / 2)];
-      
-      clockOffsetRef.current = mean;
-      setClockOffset(mean);
+      clockOffsetRef.current = median;
+      setClockOffset(median);
       hasClockSync.current = true;
     }
 
@@ -217,10 +206,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       const snap = snapshotRef.current;
       if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
-      // Skip drift correction for 2s after a manual hard seek / wake-up resync.
-      // React's setIsPlaying(true) is async, so getTruePosition() returns a stale
-      // value right after playNow(), which would make the corrector see phantom drift.
-      if (Date.now() - lastHardSeekRef.current < POST_SEEK_COOLDOWN_MS) return;
 
       const nowServer = getServerNow();
       
@@ -242,9 +227,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
-        lastHardSeekRef.current = Date.now(); // start cooldown
-        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode || !audioRef.current.isPlaying) {
-          // YouTube or fallback or mid-join (not playing yet): just hard seek
+        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode) {
+          // YouTube or fallback: just hard seek
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {
@@ -282,8 +266,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             
             audioRef.current.setPlaybackRate(rate);
             
-            if (rateTimeoutRef.current) window.clearTimeout(rateTimeoutRef.current);
-            rateTimeoutRef.current = window.setTimeout(() => {
+            // Revert back to normal speed after we've caught up
+            setTimeout(() => {
               if (audioRef.current?.setPlaybackRate) {
                 audioRef.current.setPlaybackRate(1);
               }
@@ -297,8 +281,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
             
             audioRef.current.setPlaybackRate(rate);
             
-            if (rateTimeoutRef.current) window.clearTimeout(rateTimeoutRef.current);
-            rateTimeoutRef.current = window.setTimeout(() => {
+            setTimeout(() => {
               if (audioRef.current?.setPlaybackRate) {
                 audioRef.current.setPlaybackRate(1);
               }
@@ -309,10 +292,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         // Perfectly in sync (< 50ms): Normal playback rate
         if (audioRef.current.setPlaybackRate) {
           audioRef.current.setPlaybackRate(1);
-        }
-        if (rateTimeoutRef.current) {
-          window.clearTimeout(rateTimeoutRef.current);
-          rateTimeoutRef.current = null;
         }
       }
     };
@@ -333,20 +312,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   useEffect(() => {
     let cancelled = false;
 
-    // Immediately apply the current room state to local audio.
-    // Called after reconnect+NTP so the device jumps to the server's position.
-    const applySnapshotToAudio = (snap: RoomSnapshot) => {
-      if (!snap || !snap.trackUrl) return;
-      lastHardSeekRef.current = Date.now(); // suppress drift corrector during resync
-      if (snap.isPlaying && snap.startEpoch != null) {
-        const offset = clockOffsetRef.current;
-        const expectedPosition = Math.max(0, (Date.now() + offset - snap.startEpoch) / 1000);
-        audioRef.current.playNow(expectedPosition);
-      } else {
-        audioRef.current.pauseAt(snap.pauseOffset ?? 0);
-      }
-    };
-
     const handleConnect = () => {
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
@@ -355,33 +320,10 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         displayName, 
         isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
       });
-      // After NTP calibration, jump audio to the correct server position
-      runNtpBurst().then(() => {
-        const snap = snapshotRef.current;
-        if (snap && audioRef.current.isReady) applySnapshotToAudio(snap);
-      });
+      runNtpBurst();
     };
 
     const handleDisconnect = () => setIsConnected(false);
-
-    // ── Screen wake-up / tab visibility ───────────────────────────────────
-    // When screen turns off → browser freezes tab → socket disconnects.
-    // When screen turns back on → reconnect, re-sync NTP, jump audio.
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        if (!socket.connected) {
-          socket.connect(); // handleConnect fires automatically on 'connect'
-        } else {
-          // Tab was briefly backgrounded but still connected — just resync
-          runNtpBurst().then(() => {
-            const snap = snapshotRef.current;
-            if (snap && audioRef.current.isReady) applySnapshotToAudio(snap);
-          });
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     if (socket.connected) handleConnect();
     else socket.connect();
@@ -471,7 +413,6 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     return () => {
       cancelled = true;
       clearInterval(ntpInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       socket.emit('room:leave', { roomId });
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -524,39 +465,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     return () => clearInterval(checkInterval);
   }, [roomId, socket]);
 
-  // ── Re-apply room state when audio becomes ready ─────────────────────────
-  // When a device wakes up: audio.isReady flips false → true once the buffer
-  // is available. At that moment we jump to the server's current position.
-  // We stamp lastHardSeekRef so the drift corrector waits 2s before kicking in,
-  // preventing stutter caused by stale React isPlaying state.
-  const prevIsReadyRef = useRef(false);
-  useEffect(() => {
-    const isReady = audio.isReady;
-    const wasReady = prevIsReadyRef.current;
-    prevIsReadyRef.current = isReady;
-
-    // Only act on false → true transition
-    if (!isReady || wasReady) return;
-
-    const snap = snapshotRef.current;
-    if (!snap || !snap.trackUrl) return;
-
-    lastHardSeekRef.current = Date.now(); // suppress drift corrector
-    if (snap.isPlaying && snap.startEpoch != null) {
-      const offset = clockOffsetRef.current;
-      const expectedPosition = Math.max(0, (Date.now() + offset - snap.startEpoch) / 1000);
-      audioRef.current.playNow(expectedPosition);
-    } else {
-      audioRef.current.pauseAt(snap.pauseOffset ?? 0);
-    }
-  }, [audio.isReady]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     if (!currentSocketId || !snapshot) return;
     const me = snapshot.participants.find(p => p.socketId === currentSocketId);
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
-
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);

@@ -43,7 +43,7 @@ export class SpatialAudioEngine {
   private static instance: SpatialAudioEngine | null = null;
 
   private ctx: AudioContext | null = null;
-  private source: MediaElementAudioSourceNode | null = null;
+  private source: AudioNode | null = null;
 
   /** One PannerNode + GainNode per remote device */
   private panners = new Map<string, PannerEntry>();
@@ -70,17 +70,17 @@ export class SpatialAudioEngine {
 
   // --- Initialisation (must be called from a user gesture handler) ---
 
-  init(audioEl: HTMLAudioElement, myDeviceId: string): void {
+  init(ctx: AudioContext, inputNode: AudioNode, myDeviceId: string): void {
     if (this.isInitialised) return;
 
     this.myDeviceId = myDeviceId;
-    this.ctx = new AudioContext();
+    this.ctx = ctx;
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = 1;
     this.masterGain.connect(this.ctx.destination);
 
-    this.source = this.ctx.createMediaElementSource(audioEl);
+    this.source = inputNode;
 
     this.localGain = this.ctx.createGain();
     this.localGain.gain.value = 1;
