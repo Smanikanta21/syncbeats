@@ -85,6 +85,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const pauseOffsetRef = useRef<number>(0);
   const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
   const unlockTimeoutRef = useRef<number | null>(null);
+  const scheduleIdRef = useRef<number>(0);
 
   // Initialize AudioContext
   useEffect(() => {
@@ -404,33 +405,39 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const roomId = window.location.pathname.split('/').pop();
               
               const chunks: ArrayBuffer[] = [];
+              const receivedIndices = new Set<number>();
               let expectedChunks = 0;
-              let receivedChunks = 0;
               let timeoutId: NodeJS.Timeout;
               
               const onChunk = async (payload: { trackUrl: string; chunkIndex: number; totalChunks: number; data: ArrayBuffer }) => {
                 if (payload.trackUrl !== url) return;
+                
+                // Deduplicate chunks (multiple seeders might respond!)
+                if (receivedIndices.has(payload.chunkIndex)) return;
+                receivedIndices.add(payload.chunkIndex);
+                
                 expectedChunks = payload.totalChunks;
                 chunks[payload.chunkIndex] = payload.data;
-                receivedChunks++;
                 
                 // Show buffering indicator for long downloads
-                if (receivedChunks === 1 && typeof document !== 'undefined') {
+                if (receivedIndices.size === 1 && typeof document !== 'undefined') {
                   const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
                   document.dispatchEvent(event);
                 }
                 
-                if (receivedChunks === expectedChunks) {
+                if (receivedIndices.size === expectedChunks && expectedChunks > 0) {
                   socket.off('track:receive_chunk', onChunk);
                   clearTimeout(timeoutId);
                   
                   // Reassemble chunks
-                  const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+                  const totalLength = chunks.reduce((acc, c) => acc + (c?.byteLength || 0), 0);
                   const result = new Uint8Array(totalLength);
                   let offset = 0;
                   for (let i = 0; i < expectedChunks; i++) {
-                    result.set(new Uint8Array(chunks[i]), offset);
-                    offset += chunks[i].byteLength;
+                    if (chunks[i]) {
+                      result.set(new Uint8Array(chunks[i]), offset);
+                      offset += chunks[i].byteLength;
+                    }
                   }
                   
                   const buffer = result.buffer;
@@ -450,7 +457,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               socket.emit('track:request_file', { roomId, trackUrl: url });
               
               timeoutId = setTimeout(() => {
-                if (receivedChunks < expectedChunks) {
+                if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
                   socket.off('track:receive_chunk', onChunk);
                   reject(new Error("WebSocket P2P request timed out waiting for chunks"));
                 }
@@ -571,6 +578,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
+    scheduleIdRef.current += 1;
+    const currentScheduleId = scheduleIdRef.current;
+
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
 
@@ -639,6 +649,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         buffer = await fetchAndDecode(absoluteUrl);
       }
     }
+
+    // Abort if the user paused or started a new track while we were awaiting the download
+    if (scheduleIdRef.current !== currentScheduleId) return;
+
     if (!buffer) return;
 
     if (audioCtxRef.current.state === 'suspended') {
@@ -683,6 +697,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   scheduleStartRef.current = scheduleStart;
 
   const playNow = useCallback((expectedPosition: number) => {
+    scheduleIdRef.current += 1;
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
 
@@ -726,6 +741,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
 
   const pauseAt = useCallback((position: number) => {
+    scheduleIdRef.current += 1;
     stopCurrentSource();
     setIsPlaying(false);
     pauseOffsetRef.current = position;

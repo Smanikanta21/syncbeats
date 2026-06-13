@@ -14,6 +14,7 @@ import { getAuthToken, getServerUrl } from "../../../../lib/api";
 import { getSocket } from "../../../../lib/socket";
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
+import { useWakeLock } from "../../../../hooks/useWakeLock";
 import { OrbitUI } from "../../../../components/OrbitUI";
 
 import {
@@ -62,6 +63,9 @@ export default function RoomPage() {
   const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
 
+  // Keep the screen awake while connected to a room or while audio is playing
+  useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
+
   // Spatial Audio Integration
   const {
     updatePosition,
@@ -73,7 +77,8 @@ export default function RoomPage() {
     myDeviceId: currentSocketId || "",
     roomId,
     participants,
-    initialDevices: snapshot?.spatial || []
+    initialDevices: snapshot?.spatial || [],
+    isPlaying: audio.isPlaying || (snapshot?.isPlaying ?? false)
   });
 
   // Push clock offset to shared context so DynamicIsland can access it
@@ -459,7 +464,7 @@ export default function RoomPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
+                        <div className="w-12 h-12 shrink-0 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
                           <span className="font-black text-foreground/70 text-sm tracking-widest">
                             {p.devName.slice(0, 2).toUpperCase()}
                           </span>
@@ -570,7 +575,7 @@ export default function RoomPage() {
   if (!isMounted) return null;
 
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-[100dvh] overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-background z-0 flex flex-col items-center select-none">
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
@@ -789,11 +794,11 @@ export default function RoomPage() {
                   {userDevices.map((p, i) => (
                     <div
                       key={p.socketId}
-                      className="glass-panel p-5 rounded-[2rem] border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
+                      className="glass-panel p-5 rounded-4xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
+                          <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
                             <span className="font-black text-foreground/70 text-sm tracking-widest">
                               {p.devName.slice(0, 2).toUpperCase()}
                             </span>
@@ -863,6 +868,7 @@ export default function RoomPage() {
                 spatialDevices={spatialDevices}
                 participants={participants}
                 onUpdatePosition={updatePosition}
+                isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
               />
             </div>
           </div>
@@ -913,7 +919,7 @@ export default function RoomPage() {
       </div>
 
       {/* ── MOBILE VIEW (Swipeable Carousel) ── */}
-      <div className="flex md:hidden flex-col w-full h-full relative pt-[120px] pb-[80px]">
+      <div className="flex md:hidden flex-col w-full h-full relative pt-30 pb-20">
         {/* Pagination Dots */}
         <div className="flex justify-center items-center gap-3 mb-4 shrink-0 px-4">
           <button aria-label="View room info" onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 0 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
@@ -938,12 +944,13 @@ export default function RoomPage() {
             {renderDevicesPanel()}
           </div>
           <div className="w-full shrink-0 snap-center h-full px-5 min-h-0 flex items-center justify-center">
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 h-full flex flex-col items-center justify-center max-h-[400px]">
+            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 h-full flex flex-col items-center justify-center max-h-100">
               <OrbitUI
                 myDeviceId={currentSocketId || ""}
                 spatialDevices={spatialDevices}
                 participants={participants}
                 onUpdatePosition={updatePosition}
+                isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
               />
             </div>
           </div>
@@ -956,7 +963,7 @@ export default function RoomPage() {
         <div className="absolute bottom-6 left-0 w-full flex justify-center z-10 px-6 pointer-events-none">
           <button 
             onClick={handleLeave} 
-            className="pointer-events-auto flex items-center justify-center w-full max-w-[200px] gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-sm tracking-widest uppercase px-6 py-3.5 rounded-full font-bold shadow-lg backdrop-blur-xl border border-red-500/20 transition-all active:scale-95"
+            className="pointer-events-auto flex items-center justify-center w-full max-w-50 gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-sm tracking-widest uppercase px-6 py-3.5 rounded-full font-bold shadow-lg backdrop-blur-xl border border-red-500/20 transition-all active:scale-95"
           >
             Leave Room
           </button>
@@ -965,12 +972,12 @@ export default function RoomPage() {
 
       {/* ── Tap to Sync Mobile/iOS Audio Context Unlock Overlay ── */}
       {isLocalPlayBlocked && (
-        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-[99999] px-6 text-center">
+        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-99999 px-6 text-center">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="max-w-md w-full bg-foreground/[0.03] border border-foreground/10 p-8 rounded-3xl shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-6"
+            className="max-w-md w-full bg-foreground/3 border border-foreground/10 p-8 rounded-3xl shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-6"
           >
             <div className="w-16 h-16 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center text-2xl animate-pulse">
               🎵

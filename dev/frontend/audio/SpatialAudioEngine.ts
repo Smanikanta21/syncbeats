@@ -48,9 +48,6 @@ export class SpatialAudioEngine {
   /** One PannerNode + GainNode per remote device */
   private panners = new Map<string, PannerEntry>();
 
-  /** GainNode for the local device — bypasses spatial processing */
-  private localGain: GainNode | null = null;
-
   /** Master gain — lets you fade everything at once */
   private masterGain: GainNode | null = null;
 
@@ -81,11 +78,11 @@ export class SpatialAudioEngine {
     this.masterGain.connect(this.ctx.destination);
 
     this.source = inputNode;
-
-    this.localGain = this.ctx.createGain();
-    this.localGain.gain.value = 1;
-    this.source.connect(this.localGain);
-    this.localGain.connect(this.masterGain);
+    
+    // Disconnect from raw destination so we don't hear unpanned audio on top of spatial audio
+    try {
+      this.source.disconnect(this.ctx.destination);
+    } catch (e) {}
 
     this.isInitialised = true;
   }
@@ -106,12 +103,18 @@ export class SpatialAudioEngine {
 
   // --- Device management ---
 
+  setMyDeviceId(deviceId: string): void {
+    this.myDeviceId = deviceId;
+  }
+
   addDevice(deviceId: string, initialPosition?: SpatialPosition): void {
     if (!this.ctx || !this.source || !this.masterGain) {
       console.warn('[SpatialAudio] addDevice called before init()');
       return;
     }
-    if (deviceId === this.myDeviceId) return;
+    // Only spatialise our OWN device (act as a physical surround speaker)
+    // We mute/ignore other devices since they are playing from their own physical speakers
+    if (deviceId !== this.myDeviceId) return;
     if (this.panners.has(deviceId)) return;
 
     const panner = this.createPanner();
@@ -156,7 +159,8 @@ export class SpatialAudioEngine {
 
   applySnapshot(devices: DeviceSpatialState[]): void {
     devices.forEach(({ deviceId, position }) => {
-      if (deviceId === this.myDeviceId) return;
+      // We only care about applying spatial transforms to OUR device
+      if (deviceId !== this.myDeviceId) return;
       if (!this.panners.has(deviceId)) {
         this.addDevice(deviceId, position);
       } else {
@@ -188,19 +192,66 @@ export class SpatialAudioEngine {
 
   // --- Listener orientation ---
 
+  // --- Auto Rotate (8D Audio) ---
+
+  private autoRotateEnabled: boolean = false;
+  private currentYaw: number = 0;
+  private animationFrameId: number | null = null;
+
+  setAutoRotate(enabled: boolean): void {
+    if (this.autoRotateEnabled === enabled) return;
+    this.autoRotateEnabled = enabled;
+    
+    if (enabled) {
+      this.startAutoRotate();
+    } else {
+      this.stopAutoRotate();
+    }
+  }
+
+  private startAutoRotate() {
+    let lastTime = performance.now();
+    const animate = (time: number) => {
+      const dt = time - lastTime;
+      lastTime = time;
+      
+      // Rotate ~20 degrees per second
+      this.currentYaw += (20 * dt) / 1000;
+      if (this.currentYaw >= 360) this.currentYaw -= 360;
+      
+      this.setListenerOrientation(this.currentYaw);
+      
+      this.animationFrameId = requestAnimationFrame(animate);
+    };
+    this.animationFrameId = requestAnimationFrame(animate);
+  }
+
+  private stopAutoRotate() {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    // Snap back to 0
+    this.currentYaw = 0;
+    this.setListenerOrientation(0);
+  }
+
   setListenerOrientation(yawDeg: number): void {
     if (!this.ctx) return;
     const rad = (yawDeg * Math.PI) / 180;
     const listener = this.ctx.listener;
-    listener.forwardX.value = -Math.sin(rad);
-    listener.forwardY.value = 0;
-    listener.forwardZ.value = -Math.cos(rad);
-    listener.upX.value = 0;
-    listener.upY.value = 1;
-    listener.upZ.value = 0;
+    
+    // Smooth transition using linearRampToValueAtTime to avoid audio glitches
+    const t = this.ctx.currentTime + 0.05;
+    listener.forwardX.linearRampToValueAtTime(-Math.sin(rad), t);
+    listener.forwardY.linearRampToValueAtTime(0, t);
+    listener.forwardZ.linearRampToValueAtTime(-Math.cos(rad), t);
+    listener.upX.linearRampToValueAtTime(0, t);
+    listener.upY.linearRampToValueAtTime(1, t);
+    listener.upZ.linearRampToValueAtTime(0, t);
   }
 
-  // --- Diagnostics ---
+  // --- Geometry ---
 
   getContextState(): AudioContextState | 'uninitialised' {
     return this.ctx?.state ?? 'uninitialised';
@@ -217,9 +268,11 @@ export class SpatialAudioEngine {
 
     panner.panningModel = 'HRTF';
     panner.distanceModel = 'inverse';
-    panner.refDistance = 1;
-    panner.maxDistance = 10;
-    panner.rolloffFactor = 1.5;
+    // Increase refDistance so volume doesn't drop too drastically when moving far away
+    panner.refDistance = 5;
+    panner.maxDistance = 100;
+    // Lower rolloff so the 3D space feels larger but keeps audible volume
+    panner.rolloffFactor = 0.8;
 
     panner.coneInnerAngle = 360;
     panner.coneOuterAngle = 360;
@@ -236,11 +289,15 @@ export class SpatialAudioEngine {
     const { angle, radius, elevation } = pos;
     const elevRad = (elevation * Math.PI) / 180;
 
-    const horizRadius = radius * Math.cos(elevRad);
+    // Exaggerate distance for a much stronger spatial/panning effect
+    const SPATIAL_MULTIPLIER = 15;
+    const scaledRadius = radius * SPATIAL_MULTIPLIER;
+
+    const horizRadius = scaledRadius * Math.cos(elevRad);
 
     return {
       x: horizRadius * Math.sin(angle),
-      y: radius * Math.sin(elevRad),
+      y: scaledRadius * Math.sin(elevRad),
       z: -horizRadius * Math.cos(angle),
     };
   }
