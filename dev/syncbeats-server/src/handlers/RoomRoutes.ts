@@ -316,9 +316,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
       
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-      
       // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
       const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
       
@@ -334,24 +331,37 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         throw new Error('Failed to capture yt-dlp stdout');
       }
 
+      let headersSent = false;
+
+      cp.stdout.on('data', (chunk) => {
+        if (!headersSent) {
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
+          headersSent = true;
+        }
+        res.write(chunk);
+      });
+
       // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
       cp.stderr?.on('data', (data) => {
-        // We can comment this out or log it to see download progress
         // console.log(`[yt-dlp stderr] ${data}`);
       });
 
-      // Pipe the audio directly from yt-dlp's stdout into the response!
-      cp.stdout.pipe(res);
-
       cp.on('close', (code) => {
         console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
-        res.end();
+        if (!headersSent) {
+          res.status(500).json({ error: 'yt-dlp failed to stream audio (likely bot protection blocked the request)' });
+        } else {
+          res.end();
+        }
       });
 
       cp.on('error', (err) => {
         console.error('[Proxy] yt-dlp spawn error:', err);
-        if (!res.headersSent) {
+        if (!headersSent) {
           res.status(500).json({ error: 'yt-dlp failed to spawn' });
+        } else {
+          res.end();
         }
       });
 
