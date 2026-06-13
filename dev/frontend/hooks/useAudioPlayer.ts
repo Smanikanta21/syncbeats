@@ -427,7 +427,26 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
                 
                 receivedIndices.add(payload.chunkIndex);
-                chunks[payload.chunkIndex] = payload.data;
+                
+                let bufferData: ArrayBuffer;
+                if (payload.data instanceof ArrayBuffer) {
+                  bufferData = payload.data;
+                } else if (payload.data && payload.data.type === 'Buffer' && Array.isArray(payload.data.data)) {
+                  // Handle Node.js Buffer JSON representation when Socket.io uses HTTP Long-Polling
+                  bufferData = new Uint8Array(payload.data.data).buffer;
+                } else if (payload.data instanceof Uint8Array) {
+                  bufferData = payload.data.buffer;
+                } else {
+                  // Absolute last resort fallback (might create empty buffer if payload.data is un-iterable object)
+                  try {
+                    bufferData = new Uint8Array(payload.data).buffer;
+                  } catch (e) {
+                    console.error("[WebSocket P2P] Fatal: Cannot parse payload data", payload.data);
+                    bufferData = new ArrayBuffer(0);
+                  }
+                }
+                
+                chunks[payload.chunkIndex] = bufferData;
                 console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
                 // Show buffering indicator for long downloads
