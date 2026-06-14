@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { Disc, Play, Headphones, Radio, ArrowRight } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { Footer } from "../components/Footer";
 
 export default function LandingPage() {
   return (
@@ -105,6 +106,7 @@ export default function LandingPage() {
           </div>
         </motion.div>
       </main>
+      <Footer />
     </div>
   );
 }

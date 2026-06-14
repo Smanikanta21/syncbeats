@@ -21,3 +21,4 @@ syncbeats_hld_architecture.svg
 context.md
 NATIVE_CLIENTS_ARCHITECTURE.md
 .git_backup
+dev/syncbeats-server/scripts/sendUpdateEmail.ts
