@@ -42,6 +42,7 @@ interface UseSpatialAudioOptions {
   enabled?: boolean;
   initialDevices?: DeviceSpatialState[];
   participants?: any[];
+  isPlaying?: boolean;
 }
 
 interface UseSpatialAudioReturn {
@@ -63,20 +64,47 @@ export function useSpatialAudio({
   enabled = true,
   initialDevices = [],
   participants = [],
+  isPlaying = false,
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
   const initialisedRef = useRef(false);
 
+  // Sync auto-rotate state
+  useEffect(() => {
+    engine.setAutoRotate(isPlaying);
+  }, [isPlaying, engine]);
+
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
   const [spatialDevices, setSpatialDevices] = useState<DeviceSpatialState[]>(initialDevices);
 
-  // Sync initial configuration once available
+  // Track which snapshot we last applied to avoid re-running on unrelated re-renders
+  const lastSnapshotRef = useRef<string>("");
+
+  // Apply snapshot positions whenever the server gives us a fresh set.
+  // We merge: snapshot entries overwrite known positions, but locally-tracked
+  // devices not in the snapshot are preserved.
   useEffect(() => {
-    if (initialDevices.length > 0 && spatialDevices.length === 0) {
-      setSpatialDevices(initialDevices);
-      engine.applySnapshot(initialDevices);
-    }
-  }, [initialDevices, spatialDevices.length, engine]);
+    if (!initialDevices || initialDevices.length === 0) return;
+
+    // Stringify to detect actual changes (avoids infinite loops from new array refs)
+    const key = JSON.stringify(initialDevices);
+    if (key === lastSnapshotRef.current) return;
+    lastSnapshotRef.current = key;
+
+    setSpatialDevices(prev => {
+      const merged = [...prev];
+      initialDevices.forEach(incoming => {
+        const idx = merged.findIndex(d => d.deviceId === incoming.deviceId);
+        if (idx >= 0) {
+          merged[idx] = incoming; // overwrite with server position
+        } else {
+          merged.push(incoming); // add new device
+        }
+      });
+      return merged;
+    });
+    engine.applySnapshot(initialDevices);
+  }, [initialDevices, engine]);
 
   // Keep spatialDevices in sync with participants joining/leaving
   useEffect(() => {
@@ -86,12 +114,22 @@ export function useSpatialAudio({
       let changed = false;
       const newDevices = [...prev];
       
-      // Add missing participants
+      // Add missing participants — place them on actual orbit rings
+      // Orbit radii: 1 (inner), 2 (middle), 3 (outer) — matching MAX_RADIUS / 3 increments
+      const ORBIT_RINGS = [1, 2, 3] as const;
       participants.forEach(p => {
-        if (p.socketId === myDeviceId) return;
         if (!newDevices.some(d => d.deviceId === p.socketId)) {
-          // Default position: straight ahead
-          const defaultPos = { angle: 0, radius: 1, elevation: 0 };
+          const idx = newDevices.length;
+          // Assign to a ring based on device index (round-robin through rings)
+          const ring = ORBIT_RINGS[idx % ORBIT_RINGS.length];
+          // Count how many devices are already on this ring to space them evenly
+          const devicesOnRing = newDevices.filter(d => d.position.radius === ring).length;
+          // Spread devices on the same ring evenly by expected count on that ring
+          const totalOnRing = Math.ceil(participants.length / ORBIT_RINGS.length);
+          const angle = devicesOnRing > 0
+            ? (devicesOnRing / Math.max(totalOnRing, 1)) * 2 * Math.PI
+            : (idx / Math.max(participants.length, 1)) * 2 * Math.PI;
+          const defaultPos = { angle, radius: ring, elevation: 0 };
           newDevices.push({ deviceId: p.socketId, position: defaultPos });
           engine.addDevice(p.socketId, defaultPos);
           changed = true;
@@ -111,6 +149,17 @@ export function useSpatialAudio({
       return changed ? newDevices : prev;
     });
   }, [participants, myDeviceId, engine]);
+
+  // Keep engine's myDeviceId in sync and apply snapshot safely
+  useEffect(() => {
+    if (myDeviceId) {
+      engine.setMyDeviceId(myDeviceId);
+    }
+    // Only apply snapshot if the engine is running AND we know who we are
+    if (engineState === 'running' && myDeviceId) {
+      engine.applySnapshot(spatialDevices);
+    }
+  }, [myDeviceId, spatialDevices, engineState, engine]);
 
   // ── One-time init on first user gesture ───────────────────────────────────
 

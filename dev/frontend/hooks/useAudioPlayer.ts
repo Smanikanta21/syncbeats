@@ -67,24 +67,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   const playbackRateRef = useRef<number>(1);
   
-  // YouTube state
-  const isYoutubeMode = !!trackUrl?.startsWith("youtube:");
-  const ytPlayerRef = useRef<any>(null);
-  const ytReadyRef = useRef(false);
-  // Track which video ID was loaded during a user gesture (for iOS unlock)
-  const ytGestureVideoIdRef = useRef<string | null>(null);
-  const ytLoadedVideoIdRef = useRef<string | null>(null);
-  // Track buffering state to prevent drift correction seek spam
-  const ytBufferingRef = useRef(false);
-  // Cooldown: timestamp of last drift-correction seek (prevents re-seek while YT buffers)
-  const ytLastSeekRef = useRef<number>(0);
-  // Active schedule: stores the server timeline so we can re-sync after buffering
-  const ytScheduleRef = useRef<{ startEpoch: number; clockOffset: number } | null>(null);
-
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
   const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
   const unlockTimeoutRef = useRef<number | null>(null);
+  const scheduleIdRef = useRef<number>(0);
 
   // Initialize AudioContext
   useEffect(() => {
@@ -98,118 +85,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
-  // Initialize YouTube IFrame
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (!document.getElementById("global-youtube-player")) {
-      const div = document.createElement("div");
-      div.id = "global-youtube-player";
-      div.style.position = "fixed";
-      div.style.left = "-9999px";
-      div.style.top = "-9999px";
-      div.style.width = "1px";
-      div.style.height = "1px";
-      div.style.opacity = "0.01";
-      div.style.zIndex = "-9999";
-      div.style.pointerEvents = "none";
-      document.body.appendChild(div);
-    }
-
-    if (!(window as any).YT) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      const firstScriptTag = document.getElementsByTagName("script")[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-    }
-
-    const initYT = () => {
-      if (ytPlayerRef.current) return;
-      ytPlayerRef.current = new (window as any).YT.Player("global-youtube-player", {
-        height: "150",
-        width: "200",
-        playerVars: {
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          autoplay: 1,
-          origin: window.location.origin,
-        },
-        events: {
-          onReady: (event: any) => {
-            ytReadyRef.current = true;
-            event.target.setVolume(volume);
-            try {
-              const iframe = event.target.getIframe();
-              if (iframe) {
-                iframe.setAttribute("allow", "autoplay; encrypted-media; gyroscope; accelerometer");
-              }
-            } catch (e) {
-              console.warn("Failed to set allow attribute on YouTube iframe", e);
-            }
-          },
-          onStateChange: (event: any) => {
-            const YT_STATES = { BUFFERING: 3, PLAYING: 1, ENDED: 0, PAUSED: 2 };
-            
-            if (event.data === YT_STATES.BUFFERING) {
-              ytBufferingRef.current = true;
-              setIsBuffering(true);
-            }
-            
-            if (event.data === YT_STATES.PLAYING) {
-              const wasBuffering = ytBufferingRef.current;
-              ytBufferingRef.current = false;
-              setIsBuffering(false);
-              
-              // After buffering → playing, snap to the correct server-synchronized position.
-              // This is the KEY fix: YouTube takes variable time to buffer after seekTo(),
-              // so we re-calculate where we should be RIGHT NOW and seek there.
-              if (wasBuffering && ytScheduleRef.current && ytPlayerRef.current) {
-                const { startEpoch, clockOffset } = ytScheduleRef.current;
-                const nowServer = Date.now() + clockOffset;
-                const expected = Math.max(0, (nowServer - startEpoch) / 1000);
-                const actual = ytPlayerRef.current.getCurrentTime();
-                const driftMs = Math.abs(actual - expected) * 1000;
-                
-                // If we're more than 300ms off after buffering, correct immediately
-                if (driftMs > 300) {
-                  ytPlayerRef.current.seekTo(expected, true);
-                  pauseOffsetRef.current = expected;
-                  startTimeRef.current = Date.now();
-                }
-              }
-              
-              document.dispatchEvent(new CustomEvent('ytBufferEnd'));
-            }
-            
-            if (event.data === YT_STATES.ENDED) {
-              ytBufferingRef.current = false;
-              ytScheduleRef.current = null;
-              setIsBuffering(false);
-              setIsPlaying(false);
-              setCurrentTime(0);
-              document.dispatchEvent(new CustomEvent('audioEnded'));
-            }
-            
-            if (event.data === YT_STATES.PAUSED) {
-              ytBufferingRef.current = false;
-              setIsBuffering(false);
-            }
-          }
-        }
-      });
-    };
-
-    if ((window as any).YT && (window as any).YT.Player) {
-      initYT();
-    } else {
-      (window as any).onYouTubeIframeAPIReady = initYT;
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const stopCurrentSource = useCallback(() => {
     if (sourceNodeRef.current) {
       sourceNodeRef.current.onended = null;
@@ -219,93 +94,33 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       sourceNodeRef.current.disconnect();
       sourceNodeRef.current = null;
     }
-    if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
-      ytPlayerRef.current.pauseVideo();
-    }
   }, []);
 
   const getTruePosition = useCallback(() => {
     if (!isPlaying) return pauseOffsetRef.current;
     
-    if (isYoutubeMode) {
-      // Return -1 while buffering so callers know to skip drift correction
-      if (ytBufferingRef.current) return -1;
-      if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
-        const ytTime = ytPlayerRef.current.getCurrentTime();
-        if (ytTime > 0) return ytTime;
-      }
-    }
-    
     // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
-    // This avoids drift caused by comparing server NTP time against Date.now()
-    if (audioCtxRef.current && !isYoutubeMode) {
+    if (audioCtxRef.current) {
       const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
       return pauseOffsetRef.current + elapsed;
     }
-    // Fallback for YouTube when getCurrentTime returns 0
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
-  }, [isPlaying, isYoutubeMode]);
+  }, [isPlaying]);
 
   const unlockAudio = useCallback(async () => {
     if (!audioCtxRef.current) return;
 
     // Quick path if already fully unlocked
-    const isCtxRunning = audioCtxRef.current.state === 'running';
-    let isYtUnlocked = false;
-    if (isYoutubeMode) {
-      const videoId = trackUrl?.split(":")[1];
-      if (videoId && ytLoadedVideoIdRef.current === videoId) {
-        isYtUnlocked = true;
-      }
-    } else {
-      isYtUnlocked = true;
-    }
-
-    if (isCtxRunning && isYtUnlocked) {
-      return;
-    }
-
-    if (audioCtxRef.current.state === 'suspended') {
+    if (audioCtxRef.current.state === 'running') {
+      setAudioUnlocked(true);
+    } else if (audioCtxRef.current.state === 'suspended') {
       try {
         await audioCtxRef.current.resume();
         setAudioUnlocked(true);
       } catch {
         console.warn("Failed to resume AudioContext");
         return;
-      }
-    } else {
-      setAudioUnlocked(true);
-    }
-
-    // Pre-load the YouTube video DURING the user gesture so iOS allows playback.
-    // iOS blocks loadVideoById in non-gesture contexts (like socket callbacks),
-    // but allows seekTo/playVideo on an already-loaded video.
-    if (isYoutubeMode && ytPlayerRef.current && ytReadyRef.current) {
-      const videoId = trackUrl!.split(":")[1];
-      if (ytLoadedVideoIdRef.current !== videoId) {
-        try {
-          if (typeof ytPlayerRef.current.unMute === "function") ytPlayerRef.current.unMute();
-          if (typeof ytPlayerRef.current.setVolume === "function") ytPlayerRef.current.setVolume(100);
-          
-          const expectedPos = getTruePosition();
-          ytPlayerRef.current.loadVideoById({ videoId, startSeconds: expectedPos });
-          
-          ytGestureVideoIdRef.current = videoId;
-          ytLoadedVideoIdRef.current = videoId;
-          
-          // If the room state is actually paused, pause after unlocking
-          if (!isPlaying) {
-            if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
-            unlockTimeoutRef.current = window.setTimeout(() => {
-              if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === "function") {
-                ytPlayerRef.current.pauseVideo();
-              }
-            }, 400);
-          }
-        } catch (e) {
-          console.warn("Failed to unlock YouTube iframe", e);
-        }
       }
     }
 
@@ -316,11 +131,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         const serverNow = Date.now() + pending.clockOffset;
         const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
         
-        // For YouTube, store the schedule timeline for re-sync after buffering
-        if (pending.payload.trackUrl?.startsWith('youtube:')) {
-          ytScheduleRef.current = { startEpoch: pending.payload.startEpoch, clockOffset: pending.clockOffset };
-        }
-        
         const adjustedPayload = {
           ...pending.payload,
           atEpoch: Date.now() + pending.clockOffset + 100,
@@ -329,7 +139,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         scheduleStartRef.current?.(adjustedPayload, pending.clockOffset);
       }
     }, 50);
-  }, [trackUrl, isYoutubeMode, isPlaying, getTruePosition]);
+  }, []);
 
   useEffect(() => {
     const unlock = () => { unlockAudio(); };
@@ -404,33 +214,67 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const roomId = window.location.pathname.split('/').pop();
               
               const chunks: ArrayBuffer[] = [];
+              const receivedIndices = new Set<number>();
               let expectedChunks = 0;
-              let receivedChunks = 0;
-              let timeoutId: NodeJS.Timeout;
+              let timeoutId: any;
               
-              const onChunk = async (payload: { trackUrl: string; chunkIndex: number; totalChunks: number; data: ArrayBuffer }) => {
+              const resetTimeout = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                  if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
+                    socket.off('track:receive_chunk', onChunk);
+                    reject(new Error("WebSocket P2P request timed out waiting for chunks"));
+                  }
+                }, 30000); // Timeout if no chunks arrive for 30s
+              };
+              
+              const onChunk = async (payload: any) => {
                 if (payload.trackUrl !== url) return;
-                expectedChunks = payload.totalChunks;
-                chunks[payload.chunkIndex] = payload.data;
-                receivedChunks++;
+                
+                if (expectedChunks === 0 && payload.totalChunks) {
+                  expectedChunks = payload.totalChunks;
+                }
+                
+                receivedIndices.add(payload.chunkIndex);
+                
+                let bufferData: ArrayBuffer;
+                if (payload.data instanceof ArrayBuffer) {
+                  bufferData = payload.data;
+                } else if (payload.data && payload.data.type === 'Buffer' && Array.isArray(payload.data.data)) {
+                  bufferData = new Uint8Array(payload.data.data).buffer;
+                } else if (payload.data instanceof Uint8Array) {
+                  bufferData = payload.data.buffer;
+                } else {
+                  try {
+                    bufferData = new Uint8Array(payload.data).buffer;
+                  } catch (e) {
+                    console.error("[WebSocket P2P] Fatal: Cannot parse payload data", payload.data);
+                    bufferData = new ArrayBuffer(0);
+                  }
+                }
+                
+                chunks[payload.chunkIndex] = bufferData;
+                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
                 // Show buffering indicator for long downloads
-                if (receivedChunks === 1 && typeof document !== 'undefined') {
+                if (receivedIndices.size === 1 && typeof document !== 'undefined') {
                   const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
                   document.dispatchEvent(event);
                 }
                 
-                if (receivedChunks === expectedChunks) {
+                if (receivedIndices.size === expectedChunks && expectedChunks > 0) {
                   socket.off('track:receive_chunk', onChunk);
                   clearTimeout(timeoutId);
                   
                   // Reassemble chunks
-                  const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+                  const totalLength = chunks.reduce((acc, c) => acc + (c?.byteLength || 0), 0);
                   const result = new Uint8Array(totalLength);
                   let offset = 0;
                   for (let i = 0; i < expectedChunks; i++) {
-                    result.set(new Uint8Array(chunks[i]), offset);
-                    offset += chunks[i].byteLength;
+                    if (chunks[i]) {
+                      result.set(new Uint8Array(chunks[i]), offset);
+                      offset += chunks[i].byteLength;
+                    }
                   }
                   
                   const buffer = result.buffer;
@@ -443,22 +287,32 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   }
                   
                   resolve(buffer);
+                } else {
+                  resetTimeout();
                 }
               };
               
               socket.on('track:receive_chunk', onChunk);
               socket.emit('track:request_file', { roomId, trackUrl: url });
               
-              timeoutId = setTimeout(() => {
-                if (receivedChunks < expectedChunks) {
-                  socket.off('track:receive_chunk', onChunk);
-                  reject(new Error("WebSocket P2P request timed out waiting for chunks"));
-                }
-              }, 30000);
+              resetTimeout();
             });
           }
+        } else if (url.startsWith('youtube:')) {
+          const videoId = url.split(':')[1];
+          const roomId = window.location.pathname.split('/').pop();
+          const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+          console.log('[DEBUG] Fetching YouTube audio from proxy:', fetchUrl);
+          const response = await fetch(fetchUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
+          }
+          arrayBuffer = await response.arrayBuffer();
         } else {
-          const response = await fetch(url);
+          // Ensure we hit the backend if the URL is relative
+          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          console.error('[DEBUG] Fetching audio from:', fetchUrl, 'Original url:', url);
+          const response = await fetch(fetchUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
           }
@@ -492,70 +346,22 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       return;
     }
 
-    if (trackUrl.startsWith("youtube:")) {
-      const videoId = trackUrl.split(":")[1];
-      const loadYT = () => {
-        if (ytPlayerRef.current && ytReadyRef.current) {
-          setIsReady(false);
-          
-          if (audioUnlocked) {
-            // If already unlocked, aggressively load to enable instant buffering for Next Song
-            ytPlayerRef.current.loadVideoById({ videoId });
-            ytLoadedVideoIdRef.current = videoId;
-            // Prevent it from blasting audio if the room is currently paused
-            if (!isPlaying) {
-              setTimeout(() => {
-                if (ytPlayerRef.current && !isPlaying) {
-                  ytPlayerRef.current.pauseVideo();
-                }
-              }, 150);
-            }
-          } else {
-            ytPlayerRef.current.cueVideoById(videoId);
-          }
-          
-          const checkReady = setInterval(() => {
-            const dur = ytPlayerRef.current.getDuration();
-            if (dur > 0) {
-              clearInterval(checkReady);
-              setDuration(dur);
-              setIsReady(true);
-            }
-          }, 100);
-          setTimeout(() => clearInterval(checkReady), 5000);
-        } else {
-          setTimeout(loadYT, 100);
-        }
-      };
-      loadYT();
-      pauseAt(0);
-    } else {
-      fetchAndDecode(trackUrl);
-      pauseAt(0);
-    }
+    fetchAndDecode(trackUrl);
+    pauseAt(0);
   }, [trackUrl]); 
 
   useEffect(() => {
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
     }
-    if (ytPlayerRef.current && ytReadyRef.current && typeof ytPlayerRef.current.setVolume === "function") {
-      ytPlayerRef.current.setVolume(Math.max(0, Math.min(100, Math.round(volume))));
-    }
   }, [volume]);
 
   useEffect(() => {
     const tick = () => {
       if (isPlaying) {
-        if (isYoutubeMode) {
-          if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === "function") {
-            setCurrentTime(ytPlayerRef.current.getCurrentTime());
-          }
-        } else {
-          if (audioCtxRef.current) {
-            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
-            setCurrentTime(pauseOffsetRef.current + elapsed);
-          }
+        if (audioCtxRef.current) {
+          const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+          setCurrentTime(pauseOffsetRef.current + elapsed);
         }
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -566,60 +372,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       cancelAnimationFrame(rafRef.current);
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying, isYoutubeMode]);
+  }, [isPlaying]);
 
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
+    scheduleIdRef.current += 1;
+    const currentScheduleId = scheduleIdRef.current;
+
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
-
-    if (isYoutubeMode) {
-      // If YouTube player isn't ready OR the video isn't loaded yet, save as pending
-      // This mirrors the WebAudio behavior when AudioContext is suspended
-      if (!ytPlayerRef.current || !ytReadyRef.current) {
-        pendingScheduleRef.current = { payload, clockOffset };
-        return;
-      }
-      
-      const videoId = payload.trackUrl.split(":")[1];
-      
-      // If the video isn't loaded in the iframe yet, we need to save as pending
-      // The user gesture (touch/click) will load the video via unlockAudio
-      if (ytLoadedVideoIdRef.current !== videoId) {
-        pendingScheduleRef.current = { payload, clockOffset };
-        return;
-      }
-      
-      // Store the schedule timeline so onStateChange can re-sync after buffering
-      ytScheduleRef.current = { startEpoch: payload.startEpoch, clockOffset };
-      
-      const localAtEpoch = payload.atEpoch - clockOffset;
-      const msUntilStart = localAtEpoch - Date.now();
-
-      const startPlayback = () => {
-        if (!ytPlayerRef.current) return;
-        ytPlayerRef.current.seekTo(payload.fromPosition, true);
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-        startTimeRef.current = Date.now();
-        pauseOffsetRef.current = payload.fromPosition;
-      };
-
-      if (msUntilStart > 50) {
-        // Wait until the synchronized epoch, then start
-        setTimeout(startPlayback, msUntilStart);
-      } else {
-        // Already past the epoch — seek to the corrected position
-        const correctPosition = Math.max(0, payload.fromPosition + Math.abs(msUntilStart) / 1000);
-        ytPlayerRef.current.seekTo(correctPosition, true);
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-        startTimeRef.current = Date.now();
-        pauseOffsetRef.current = correctPosition;
-      }
-      return;
-    }
 
     if (!audioCtxRef.current) return;
     
@@ -633,12 +395,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       
       // For remote tracks, resolve the URL and fetch+decode
       if (!buffer) {
-        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('youtube:') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
+        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
           ? `${getServerUrl()}/${payload.trackUrl}` 
           : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
         buffer = await fetchAndDecode(absoluteUrl);
       }
     }
+
+    // Abort if the user paused or started a new track while we were awaiting the download
+    if (scheduleIdRef.current !== currentScheduleId) return;
+
     if (!buffer) return;
 
     if (audioCtxRef.current.state === 'suspended') {
@@ -678,26 +444,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     setIsPlaying(true);
     setCurrentTime(pauseOffsetRef.current);
-  }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
+  }, [audioUnlocked, stopCurrentSource]);
 
   scheduleStartRef.current = scheduleStart;
 
   const playNow = useCallback((expectedPosition: number) => {
+    scheduleIdRef.current += 1;
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
-
-    if (isYoutubeMode) {
-      if (!ytPlayerRef.current || !ytReadyRef.current) return;
-      // Cooldown: don't re-seek if we just sought < 3s ago (YT may still be buffering)
-      if (Date.now() - ytLastSeekRef.current < 3000) return;
-      ytLastSeekRef.current = Date.now();
-      ytPlayerRef.current.seekTo(expectedPosition, true);
-      ytPlayerRef.current.playVideo();
-      setIsPlaying(true);
-      startTimeRef.current = Date.now();
-      pauseOffsetRef.current = expectedPosition;
-      return;
-    }
 
     if (!audioCtxRef.current || !audioBufferRef.current) return;
     if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) return;
@@ -712,8 +466,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    // No hardware latency adjustment here — playNow is for drift correction,
-    // not initial scheduling. Adding latency here would overshoot the target.
     const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
 
     source.start(0, Math.max(0, clampedPosition));
@@ -723,18 +475,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     pauseOffsetRef.current = clampedPosition;
     setIsPlaying(true);
     setCurrentTime(clampedPosition);
-  }, [audioUnlocked, stopCurrentSource, isYoutubeMode]);
+  }, [audioUnlocked, stopCurrentSource]);
 
   const pauseAt = useCallback((position: number) => {
+    scheduleIdRef.current += 1;
     stopCurrentSource();
     setIsPlaying(false);
     pauseOffsetRef.current = position;
     setCurrentTime(position);
-    
-    if (isYoutubeMode && ytPlayerRef.current && ytReadyRef.current) {
-      ytPlayerRef.current.pauseVideo();
-    }
-  }, [stopCurrentSource, isYoutubeMode]);
+  }, [stopCurrentSource]);
 
   const play = useCallback(() => {
     if (!isPlaying) playNow(pauseOffsetRef.current);
@@ -762,10 +511,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const setPlaybackRate = useCallback((rate: number) => {
     const currentTruePosition = getTruePosition();
     
-    if (isYoutubeMode && ytPlayerRef.current && typeof ytPlayerRef.current.setPlaybackRate === "function") {
-      ytPlayerRef.current.setPlaybackRate(rate);
-      playbackRateRef.current = rate;
-    } else if (sourceNodeRef.current && sourceNodeRef.current.playbackRate) {
+    if (sourceNodeRef.current && sourceNodeRef.current.playbackRate) {
       sourceNodeRef.current.playbackRate.value = rate;
       pauseOffsetRef.current = currentTruePosition;
       if (audioCtxRef.current) {
@@ -775,7 +521,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
       playbackRateRef.current = rate;
     }
-  }, [isYoutubeMode, getTruePosition]);
+  }, [getTruePosition]);
 
   const setVolume = useCallback((nextVolume: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
@@ -787,7 +533,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       console.warn("Ignoring deprecated local: track url", url);
       return;
     }
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('youtube:') && !url.startsWith('magnet:') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
+    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('magnet:') && !url.startsWith('ws-p2p:') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
@@ -805,8 +551,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     pauseOffsetRef.current = 0;
     audioBufferRef.current = null;
     fetchPromiseRef.current = null;
-    ytGestureVideoIdRef.current = null;
-    ytLoadedVideoIdRef.current = null;
   }, [stopCurrentSource]);
 
   const progress = duration > 0 ? currentTime / duration : 0;

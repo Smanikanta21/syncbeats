@@ -239,18 +239,17 @@ export class SocketHandler {
 
     socket.on('track:request_file', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
       // Broadcast to everyone else in the room (excludes the sender) to find who has this file
-      socket.to(roomId).emit('track:request_file', { requesterSocketId: socket.id, trackUrl });
+      socket.to(roomId).emit('track:request_file', { requesterSocketId: socket.id, roomId, trackUrl });
     });
 
-    socket.on('track:send_chunk', ({ targetSocketId, trackUrl, chunkIndex, totalChunks, data }: { 
-      targetSocketId: string; 
-      trackUrl: string; 
-      chunkIndex: number; 
-      totalChunks: number; 
-      data: any; 
-    }) => {
-      // Relay the chunk directly to the target socket!
-      this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+    socket.on('track:send_chunk', ({ roomId, targetSocketId, trackUrl, chunkIndex, totalChunks, data }: any, callback?: () => void) => {
+      // Fallback for older seeder tabs that haven't refreshed and still send targetSocketId instead of roomId
+      if (roomId) {
+        socket.to(roomId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      } else if (targetSocketId) {
+        this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      }
+      if (typeof callback === 'function') callback();
     });
 
     // ── Upload Progress ──────────────────────────────────────────────────

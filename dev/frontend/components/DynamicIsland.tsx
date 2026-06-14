@@ -31,19 +31,44 @@ export function DynamicIsland() {
   const isRoom = pathname.includes("/room/");
 
   const [expanded, setExpanded] = useState(false);
-  const [pillView, setPillView] = useState<"player" | "network" | "youtube">("player");
+  const [pillView, setPillView] = useState<"player" | "add" | "network">("player");
   const [youtubeErr, setYoutubeErr] = useState("");
   const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
   const [youtubeQuery, setYoutubeQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const [localProgress, setLocalProgress] = useState(0);
   const netStats = useNetworkStats(isRoom);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bounceCtrl = useAnimation();
+
+  // Refs for smooth RAF-based progress (bypasses React state batching)
+  const _isPlayingRef = useRef(false);
+  const _getTruePosRef = useRef(audio.getTruePosition);
+  const _durationRef = useRef(0);
+  _isPlayingRef.current = audio.isPlaying;
+  _getTruePosRef.current = audio.getTruePosition;
+  _durationRef.current = audio.duration;
+
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      if (_isPlayingRef.current) {
+        const pos = _getTruePosRef.current();
+        const dur = _durationRef.current;
+        if (dur > 0) setLocalProgress(Math.min(1, pos / dur));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const displayName = user?.name ?? "Guest";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
@@ -63,6 +88,17 @@ export function DynamicIsland() {
       bounceCtrl.set({ scale: 1 });
     }
   }, [upload.isDragging, bounceCtrl]);
+
+  // Listen for the "+" button beside the room queue to expand to Add Music tab
+  useEffect(() => {
+    const handler = () => {
+      if (!isRoom) return;
+      setExpanded(true);
+      setPillView("add");
+    };
+    document.addEventListener('island:expand-add', handler);
+    return () => document.removeEventListener('island:expand-add', handler);
+  }, [isRoom]);
 
   const clearPress = () => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -101,10 +137,8 @@ export function DynamicIsland() {
   const activeTransfer = currentTrackUrl ? upload.activeTransfers[currentTrackUrl] : null;
   const isSyncing = !!activeTransfer;
   const isCurrentTrackIframeYt = !!audio.trackUrl?.startsWith("youtube:");
-  const showPlayerUi = hasTrack && (
-    (pillView === "player" && !isCurrentTrackIframeYt) ||
-    (pillView === "youtube" && isCurrentTrackIframeYt)
-  );
+  // Always show the player when a track exists and we're on the player tab
+  const showPlayerUi = hasTrack && pillView === "player";
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -148,6 +182,10 @@ export function DynamicIsland() {
     const posSecs = pct * audio.duration;
     handleSeek(posSecs);
   };
+
+  const displayTime = scrubTime !== null ? scrubTime : (audio.currentTime || 0);
+  // Use local RAF progress for smoothness; only override when scrubbing
+  const displayProgress = scrubTime !== null ? (scrubTime / Math.max(audio.duration, 1)) : localProgress;
 
   const handlePickFile = () => fileInputRef.current?.click();
 
@@ -365,50 +403,45 @@ export function DynamicIsland() {
                   <button onClick={() => setExpanded(false)} className="text-xs text-foreground/40 hover:text-foreground/60 font-bold transition-colors">ESC</button>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-2 self-start">
-                  <button onClick={() => setPillView("player")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "player" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
-                    Files
-                  </button>
-                  <button onClick={() => setPillView("youtube")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "youtube" ? "bg-[#FF0000] text-white shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
-                    YouTube
-                  </button>
+                {/* YouTube search */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-foreground/40 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-[#FF0000]" /> YouTube Search or Link</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={youtubeQuery}
+                      onChange={(e) => setYoutubeQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
+                      placeholder="Search for a song or paste YouTube link…"
+                      className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                    />
+                    <button
+                      onClick={handleYoutubeAction}
+                      disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
+                      className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
+                    >
+                      {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                      Go
+                    </button>
+                  </div>
+                  {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
                 </div>
 
-                {pillView === "youtube" ? (
-                  <div className="flex flex-col gap-3">
-                    {/* Search */}
-                    <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">YouTube Search or Link</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={youtubeQuery}
-                        onChange={(e) => setYoutubeQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
-                        placeholder="Search for a song or paste link..."
-                        className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                      />
-                      <button
-                        onClick={handleYoutubeAction}
-                        disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
-                        className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
-                      >
-                        {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                        Go
-                      </button>
-                    </div>
-                    {youtubeErr && <p className="text-xs text-red-500 font-semibold mt-2">{youtubeErr}</p>}
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      onClick={handlePickFile}
-                      className="w-full h-12 flex items-center justify-center rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)] mb-2"
-                    >
-                      Upload from device
-                    </button>
-                    <p className="text-center text-xs text-foreground/40 font-medium mt-2">Or drag any audio file anywhere on the page ↗</p>
-                  </>
-                )}
+                {/* Divider */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-foreground/10" />
+                  <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">or</span>
+                  <div className="flex-1 h-px bg-foreground/10" />
+                </div>
+
+                {/* File upload */}
+                <button
+                  onClick={handlePickFile}
+                  className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                >
+                  <Upload className="w-4 h-4" /> Upload from device
+                </button>
+                <p className="text-center text-xs text-foreground/40 font-medium">Or drag any audio file anywhere on the page ↗</p>
               </motion.div>
             )}
 
@@ -434,7 +467,7 @@ export function DynamicIsland() {
               </motion.div>
             )}
 
-            {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && hasTrack && expanded && (pillView === "player" || pillView === "youtube") && (
+            {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && hasTrack && expanded && (pillView === "player" || pillView === "add") && (
               <motion.div
                 key="player-full"
                 initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -446,29 +479,25 @@ export function DynamicIsland() {
                   <span className="text-xs font-bold tracking-widest text-foreground/50 uppercase flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Live Session
                   </span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={handlePickFile} className="text-xs font-bold text-foreground/40 hover:text-foreground/70 flex items-center gap-1.5 transition-colors">
-                      <Upload className="w-3.5 h-3.5" /> Add to queue
-                    </button>
-                    <button onClick={() => router.push("/hub")} className="text-xs font-semibold bg-foreground/5 hover:bg-red-500/10 hover:text-red-500 px-4 py-1.5 rounded-full text-foreground/40 transition-all">
-                      Leave
-                    </button>
-                  </div>
+                  <button onClick={() => router.push("/hub")} className="text-xs font-semibold bg-foreground/5 hover:bg-red-500/10 hover:text-red-500 px-4 py-1.5 rounded-full text-foreground/40 transition-all">
+                    Leave
+                  </button>
                 </div>
 
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-5 self-start">
+                {/* Tab bar: Player | Add Music | Network */}
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-6 self-start">
                   <button onClick={() => setPillView("player")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "player" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
-                    Files
+                    Player
+                  </button>
+                  <button onClick={() => setPillView("add")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "add" ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
+                    + Add Music
                   </button>
                   <button onClick={() => setPillView("network")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === ("network" as string) ? "bg-foreground text-background shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
                     Network
                   </button>
-                  <button onClick={() => setPillView("youtube")} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${pillView === "youtube" ? "bg-[#FF0000] text-white shadow-sm" : "text-foreground/40 hover:text-foreground/60"}`}>
-                    YouTube
-                  </button>
                 </div>
 
-                {showPlayerUi ? (
+                {pillView === "player" ? (
                   <>
                     <div className="flex items-center gap-5 mb-7">
                       <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-linear-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-linear-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
@@ -494,8 +523,8 @@ export function DynamicIsland() {
                         <div className="absolute inset-0 flex items-center pointer-events-none">
                           <div className="h-1.5 w-full bg-foreground/10 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-foreground transition-[width] duration-100"
-                              style={{ width: `${audio.progress * 100}%` }}
+                              className="h-full bg-foreground"
+                              style={{ width: `${displayProgress * 100}%` }}
                             />
                           </div>
                         </div>
@@ -503,17 +532,23 @@ export function DynamicIsland() {
                           type="range"
                           min={0}
                           max={audio.duration || 100}
-                          value={audio.currentTime || 0}
-                          onChange={(e) => handleSeek(Number(e.target.value))}
+                          value={displayTime}
+                          onChange={(e) => setScrubTime(Number(e.target.value))}
+                          onPointerUp={() => {
+                            if (scrubTime !== null) {
+                              handleSeek(scrubTime);
+                              setTimeout(() => setScrubTime(null), 800);
+                            }
+                          }}
                           className="w-full h-1.5 absolute inset-0 opacity-0 cursor-pointer z-10"
                         />
-                        <div 
+                        <div
                           className="absolute top-1/2 -mt-1.5 h-3 w-3 bg-background border-2 border-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm"
-                          style={{ left: `calc(${audio.progress * 100}% - 6px)` }}
+                          style={{ left: `calc(${displayProgress * 100}% - 6px)` }}
                         />
                       </div>
                       <div className="flex justify-between mt-2 text-xs text-foreground/50 font-mono font-medium">
-                        <span>{formatTime(audio.currentTime)}</span>
+                        <span>{formatTime(displayTime)}</span>
                         <span>{formatTime(audio.duration)}</span>
                       </div>
                     </div>
@@ -535,41 +570,50 @@ export function DynamicIsland() {
                     </div>
                   </>
                 ) : (
-                  <>
-                    {pillView === "youtube" ? (
-                      <div className="flex flex-col gap-3">
-                        <label className="text-xs font-bold text-foreground/50 uppercase tracking-widest">YouTube Search or Link</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={youtubeQuery}
-                            onChange={(e) => setYoutubeQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
-                            placeholder="Search for a song or paste link..."
-                            className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
-                          />
-                          <button
-                            onClick={handleYoutubeAction}
-                            disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
-                            className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
-                          >
-                            {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
-                            Go
-                          </button>
-                        </div>
-                        {youtubeErr && <p className="text-xs text-red-500 font-semibold mt-2">{youtubeErr}</p>}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-5">
+                  /* Add Music Tab — unified YouTube + file upload */
+                  <div className="flex flex-col gap-4">
+                    <p className="text-xs font-bold text-foreground/50 uppercase tracking-widest">Add to Room Queue</p>
+
+                    {/* YouTube */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold text-foreground/40 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-[#FF0000]" /> YouTube Search or Link</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={youtubeQuery}
+                          onChange={(e) => setYoutubeQuery(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleYoutubeAction()}
+                          placeholder="Search for a song or paste YouTube link…"
+                          className="flex-1 bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:border-foreground/30 transition-colors"
+                        />
                         <button
-                          onClick={handlePickFile}
-                          className="w-full h-12 flex items-center justify-center rounded-2xl bg-foreground text-background font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(0,0,0,0.1)] dark:shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                          onClick={handleYoutubeAction}
+                          disabled={!youtubeQuery.trim() || isSearching || isYoutubeLoading}
+                          className="px-4 py-2.5 rounded-xl bg-[#FF0000] text-white font-bold text-sm disabled:opacity-30 transition-all shrink-0 flex items-center gap-2"
                         >
-                          Upload from device
+                          {(isSearching || isYoutubeLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Youtube className="w-4 h-4" />}
+                          Go
                         </button>
                       </div>
-                    )}
-                  </>
+                      {youtubeErr && <p className="text-xs text-red-500 font-semibold">{youtubeErr}</p>}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 my-1">
+                      <div className="flex-1 h-px bg-foreground/10" />
+                      <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-foreground/10" />
+                    </div>
+
+                    {/* File upload */}
+                    <button
+                      onClick={handlePickFile}
+                      className="w-full h-11 flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-foreground/20 text-foreground/50 font-bold text-sm hover:border-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 active:scale-95 transition-all"
+                    >
+                      <Upload className="w-4 h-4" /> Upload file from device
+                    </button>
+                    <p className="text-center text-[10px] text-foreground/30 font-medium">MP3 · FLAC · WAV · M4A</p>
+                  </div>
                 )}
               </motion.div>
             )}
@@ -586,7 +630,7 @@ export function DynamicIsland() {
                   <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/4 border border-foreground/6 mb-1 self-start">
                     <button onClick={() => setPillView("player")} className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60">Player</button>
                     <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-foreground text-background shadow-sm">Network</button>
-                    <button onClick={() => setPillView("youtube")} className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60">YouTube</button>
+                    <button onClick={() => setPillView("add")} className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all text-foreground/40 hover:text-foreground/60">+ Add</button>
                   </div>
                 </div>
                 <NetworkExpanded stats={netStats} onClose={() => setExpanded(false)} />
@@ -613,9 +657,9 @@ export function DynamicIsland() {
                     <div className="flex flex-col pl-1 justify-center max-w-30 sm:max-w-50 md:max-w-75">
                       <p className="text-sm font-bold text-foreground leading-tight truncate transition-opacity hover:opacity-80">{audio.trackTitle}</p>
                       <div className="flex items-center gap-1.5 mt-0.5 opacity-80">
-                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.currentTime)}</p>
+                        <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(displayTime)}</p>
                         <div className="h-1 w-16 sm:w-24 bg-foreground/10 rounded-full overflow-hidden shrink-0">
-                          <div className="h-full bg-foreground/50 transition-[width] duration-200 ease-linear rounded-full" style={{ width: `${audio.progress * 100}%` }} />
+                          <div className="h-full bg-foreground/50 transition-[width] duration-200 ease-linear rounded-full" style={{ width: `${displayProgress * 100}%` }} />
                         </div>
                         <p className="text-[9px] text-foreground/50 font-mono hidden sm:block">{formatTime(audio.duration)}</p>
                       </div>

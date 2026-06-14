@@ -92,13 +92,15 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       let blob: Blob;
 
       if (!response.ok) {
-        console.warn(`[UploadContext] Proxy failed with status ${response.status}. Falling back to a dummy MP3 track to test P2P!`);
-        // Fallback to a reliable public test MP3 so you can test the P2P swarm!
-        const fallbackRes = await fetch("https://raw.githubusercontent.com/mdn/webaudio-examples/main/audio-analyser/viper.mp3");
-        if (!fallbackRes.ok) throw new Error("Even the dummy fallback failed to download.");
-        blob = await fallbackRes.blob();
-      } else {
-        blob = await response.blob();
+        const errorText = await response.text();
+        throw new Error(`YouTube Proxy failed with status ${response.status}: ${errorText}`);
+      }
+      
+      blob = await response.blob();
+      
+      // AWS/VM yt-dlp IP block check! If yt-dlp fails silently, it returns a 0-byte blob.
+      if (blob.size < 5000) {
+        throw new Error(`FATAL: YouTube download returned a ${blob.size}-byte file! Your server's IP is likely blocked by YouTube, or you need to update cookies.txt.`);
       }
       
       setUploadProgress(20);
@@ -123,9 +125,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   // 3. Listen for WebSocket P2P requests and serve chunks
   useEffect(() => {
     const socket = getSocket();
-    const CHUNK_SIZE = 256 * 1024; // 256KB chunks
+    const CHUNK_SIZE = 64 * 1024; // 64KB chunks (safe for strict Nginx proxy buffers)
 
-    const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, trackUrl: string }) => {
+    const handleRequestFile = async ({ requesterSocketId, roomId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
       if (!trackUrl.startsWith('ws-p2p:')) return;
       
       try {
@@ -145,15 +147,23 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const chunk = file.slice(start, end);
           const buffer = await chunk.arrayBuffer();
 
-          socket.emit('track:send_chunk', {
-            targetSocketId: requesterSocketId,
-            trackUrl,
-            chunkIndex: i,
-            totalChunks,
-            data: buffer
+          await new Promise<void>((resolve) => {
+            let handled = false;
+            const done = () => { if (!handled) { handled = true; resolve(); } };
+            
+            socket.emit('track:send_chunk', {
+              roomId,
+              trackUrl,
+              chunkIndex: i,
+              totalChunks,
+              data: buffer
+            }, done);
+
+            // Safety timeout: if server doesn't ACK within 5 seconds, move on to prevent deadlocks
+            setTimeout(done, 5000);
           });
           
-          // Tiny delay to avoid blocking the event loop and overwhelming the socket buffer
+          // Tiny extra delay to give the event loop a breather
           await new Promise(resolve => setTimeout(resolve, 5));
         }
         console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);

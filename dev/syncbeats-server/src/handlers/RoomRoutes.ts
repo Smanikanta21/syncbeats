@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
 import fs from 'fs';
+import path from 'path';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -43,6 +44,23 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       console.error('[Rooms] search youtube error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
+    }
+  });
+
+  // GET /rooms/youtube-suggest
+  router.get('/youtube/suggest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      if (!q || typeof q !== 'string') {
+        res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      const response = await fetch(`http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`);
+      const data = await response.json() as any;
+      res.json(data[1] || []);
+    } catch (err) {
+      console.error('[Rooms] suggest youtube error:', err);
+      res.status(500).json({ error: 'Failed to fetch suggestions' });
     }
   });
 
@@ -142,9 +160,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   });
 
   // DELETE /rooms/:roomId/queue/:itemId
-  router.delete('/:roomId/queue/:itemId', async (req, res) => {
+  router.delete('/:roomId/queue/:itemId', requireAuth, async (req, res) => {
     try {
-      const { roomId, itemId } = req.params;
+      const roomId = req.params['roomId'] as string;
+      const itemId = req.params['itemId'] as string;
       console.log(`[Rooms] Request to remove queue item. Room: ${roomId}, Item: ${itemId}`);
       const success = await repo.removeQueueItem(roomId, itemId);
       
@@ -313,52 +332,54 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
-      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`[Proxy] Fetching YouTube audio via RapidAPI for video: ${videoId}`);
       
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-      
-      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
-      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
-      
-      const cp = spawn(ytBin, [
-        '-f', 'bestaudio',
-        '-o', '-', // Output to stdout
-        '--no-playlist',
-        '--no-warnings',
-        youtubeUrl
-      ]);
-
-      if (!cp.stdout) {
-        throw new Error('Failed to capture yt-dlp stdout');
+      const rapidApiKey = process.env.RAPID_API_KEY;
+      if (!rapidApiKey) {
+        throw new Error('RAPID_API_KEY is missing from environment variables');
       }
 
-      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
-      cp.stderr?.on('data', (data) => {
-        // We can comment this out or log it to see download progress
-        // console.log(`[yt-dlp stderr] ${data}`);
-      });
-
-      // Pipe the audio directly from yt-dlp's stdout into the response!
-      cp.stdout.pipe(res);
-
-      cp.on('close', (code) => {
-        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
-        res.end();
-      });
-
-      cp.on('error', (err) => {
-        console.error('[Proxy] yt-dlp spawn error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'yt-dlp failed to spawn' });
+      const options = {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidApiKey,
+          'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
         }
-      });
+      };
+
+      // 1. Ask RapidAPI for the direct MP3 link
+      const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, options);
+      if (!apiRes.ok) {
+        const errText = await apiRes.text();
+        throw new Error(`RapidAPI returned ${apiRes.status}: ${errText}`);
+      }
+      
+      const data = (await apiRes.json()) as { link?: string };
+      if (!data.link) {
+        throw new Error('RapidAPI did not return a valid download link. Response: ' + JSON.stringify(data));
+      }
+
+      console.log(`[Proxy] RapidAPI returned direct link. Piping audio...`);
+
+      // 2. Fetch the actual MP3 stream
+      const audioRes = await fetch(data.link);
+      if (!audioRes.ok || !audioRes.body) {
+        throw new Error(`Failed to fetch MP3 stream from RapidAPI link. Status: ${audioRes.status}`);
+      }
+
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
+
+      // 3. Pipe the Web Stream to the Express Response
+      const { Readable } = require('stream');
+      Readable.fromWeb(audioRes.body as any).pipe(res);
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      if (!res.headersSent) {
+        res.status(500).json({ error: msg });
+      }
     }
   });
 

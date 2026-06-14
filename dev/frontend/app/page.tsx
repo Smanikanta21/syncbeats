@@ -58,7 +58,7 @@ export default function LandingPage() {
           
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter leading-[1.1] mb-8">
             One Track.<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-foreground via-foreground/80 to-foreground/40">
+            <span className="text-transparent bg-clip-text bg-linear-to-r from-foreground via-foreground/80 to-foreground/40">
               Every Phone.
             </span><br />
             Zero Lag.

@@ -256,6 +256,9 @@ export const roomsApi = {
 
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
+
+  suggestYoutube: (query: string) =>
+    request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),
 };
 
 export const devicesApi = {
