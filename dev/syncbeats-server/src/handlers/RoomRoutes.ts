@@ -47,6 +47,23 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // GET /rooms/youtube-suggest
+  router.get('/youtube/suggest', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      if (!q || typeof q !== 'string') {
+        res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      const response = await fetch(`http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`);
+      const data = await response.json() as any;
+      res.json(data[1] || []);
+    } catch (err) {
+      console.error('[Rooms] suggest youtube error:', err);
+      res.status(500).json({ error: 'Failed to fetch suggestions' });
+    }
+  });
+
   // GET /rooms/mine
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {
     try {

@@ -342,7 +342,11 @@ export default function RoomPage() {
   };
 
   const handleGenerateQr = () => {
-    if (qrState === "ready" || qrState === "generating") return;
+    if (qrState === "ready" || qrState === "generating") {
+      setQrState("mock");
+      if (qrTimerRef.current) clearTimeout(qrTimerRef.current);
+      return;
+    }
     setQrState("generating");
     qrTimerRef.current = window.setTimeout(() => {
       setQrState("ready");
@@ -672,118 +676,84 @@ export default function RoomPage() {
       {/* Ambient glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
 
-      {/* ── DESKTOP VIEW (Original unchanged layout) ── */}
-      <div className="hidden md:flex flex-col items-center w-full max-w-6xl mx-auto pt-24 pb-8 px-4 sm:px-6 lg:px-8 relative z-0 h-full overflow-hidden">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-center w-full max-w-6xl flex flex-col items-center"
-        >
-          {/* Badges */}
-          <div className="flex items-center gap-3 mb-6">
-            <span className="px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
-              <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
-            </span>
-            <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
-              {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              {isConnected ? "Connected" : "Connecting…"}
-            </span>
-          </div>
+      {/* ── DESKTOP VIEW ── */}
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-10 mb-6 shrink-0">
-            {/* Room code */}
-            <div className="text-center">
-              <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mb-2">Room Code</p>
-              <h1
-                onClick={handleCopy}
-                className="text-[5rem] sm:text-[7rem] font-black text-foreground tracking-tighter leading-none flex items-center justify-center gap-4 group cursor-pointer drop-shadow-2xl select-all"
-              >
-                {roomId}
-                <div className="w-12 h-12 rounded-full bg-foreground/10 hidden sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  {copied ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5 text-foreground" />}
-                </div>
-              </h1>
-              <p className="text-foreground/40 text-xs font-medium mt-2">{copied ? "Copied!" : "Click to copy"}</p>
-            </div>
 
-            <div className="hidden md:block w-px h-32 bg-foreground/10" />
-
-            {/* QR */}
-            <div className="flex flex-col items-center">
-              <button
-                type="button"
-                onClick={handleGenerateQr}
-                aria-label="Generate QR code to share room"
-                className="p-4 bg-foreground/5 border border-foreground/10 rounded-3xl hover:scale-105 transition-transform cursor-pointer group"
-              >
-                {qrState === "mock" && (
-                  <div className="w-28 h-28 flex items-center justify-center">
-                    <QrCode className="w-28 h-28 text-foreground group-hover:text-foreground transition-colors" strokeWidth={1} />
-                  </div>
-                )}
-
-                {qrState === "generating" && (
-                  <div className="w-30 h-30 flex flex-col items-center justify-center gap-3">
-                    <div className="w-10 h-10 rounded-full border-2 border-foreground/20 border-t-white/80 animate-spin" />
-                    <p className="text-[10px] tracking-[0.2em] uppercase text-foreground/60">Generating</p>
-                  </div>
-                )}
-
-                {qrState === "ready" && (
-                  <Image
-                    src={qrSrc}
-                    alt={`QR code for room ${roomId}`}
-                    width={120}
-                    height={120}
-                    className="w-30 h-30 bg-background p-1"
-                    unoptimized
-                  />
-                )}
-              </button>
-              <p className="text-foreground/50 font-bold uppercase tracking-widest text-xs mt-4">
-                {qrState === "ready" ? "Scan to Join" : "Tap to Generate QR"}
-              </p>
-            </div>
-          </div>
-
-          {/* Playback / readiness status */}
-          {snapshot && (
-            <div className="mb-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest flex-wrap justify-center">
-              <span className={`flex items-center gap-1.5 ${snapshot.state === PlaybackState.PLAYING ? "text-green-400" : "text-foreground/50"}`}>
-                <span className={`w-2 h-2 rounded-full ${snapshot.state === PlaybackState.PLAYING ? "bg-green-400 animate-pulse" : "bg-foreground/20"}`} />
-                {snapshot.state === PlaybackState.PLAYING ? "Playing" : snapshot.state}
-              </span>
-              {audio.hasTrack && (
-                allReady
-                  ? <span className="text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> All devices ready</span>
-                  : <span className="text-amber-400 flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Waiting for devices to buffer…</span>
-              )}
-            </div>
-          )}
-
-          {/* Drag hint */}
-          {!audio.hasTrack && !upload.isUploading && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="mb-6 px-6 py-4 rounded-2xl border border-dashed border-foreground/10 text-foreground/40 text-sm font-medium flex items-center gap-3"
-            >
-              <Volume2 className="w-4 h-4 shrink-0" />
-              Drag an audio file here or hover the island above to add music
-            </motion.div>
-          )}
-        </motion.div>
+        {/* Drag hint */}
+        {!audio.hasTrack && !upload.isUploading && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mb-6 max-w-7xl w-full px-6 py-4 rounded-2xl border border-dashed border-foreground/10 text-foreground/40 text-sm font-medium flex items-center justify-center gap-3 shrink-0"
+          >
+            <Volume2 className="w-4 h-4 shrink-0" />
+            Drag an audio file here or use the island above to add music
+          </motion.div>
+        )}
 
         {/* ── Connected Devices ── */}
+      <div className="hidden md:flex flex-col w-full h-full pt-20 pb-6 px-6 overflow-hidden">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-6xl mx-auto flex gap-6 items-start justify-center flex-1 min-h-0 pb-12"
+          className="w-full flex gap-6 items-stretch justify-between flex-1 min-h-0 pb-6"
         >
-          {/* Left Column: Devices */}
-          <div className="flex flex-col w-1/3 h-full gap-2">
+          {/* Left Column: Room Info & Devices */}
+          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-4 relative z-100">
+            
+            {/* Room Info Card */}
+            <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
+               <div className="flex justify-between items-center">
+                  <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-foreground/60" /> Live
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-md text-[9px] uppercase font-black tracking-widest flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-red-500/10 border-red-500/20 text-red-500"}`}>
+                    {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                    {isConnected ? "Connected" : "Connecting"}
+                  </span>
+               </div>
+               
+               <div className="flex items-center justify-between">
+                 <div className="flex flex-col items-start gap-1">
+                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/40">Room Code</span>
+                   <button onClick={handleCopy} className="text-3xl font-black tracking-widest hover:scale-105 active:scale-95 transition-all group flex items-center gap-3">
+                     {roomId}
+                     {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 opacity-30 group-hover:opacity-100" />}
+                   </button>
+                 </div>
+                 <div className="relative">
+                   <button onClick={handleGenerateQr} className="w-10 h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center hover:bg-foreground/10 hover:scale-105 transition-all shadow-sm group">
+                     <QrCode className="w-5 h-5 text-foreground/70 group-hover:text-foreground" />
+                   </button>
+                   <AnimatePresence>
+                     {qrState !== "mock" && (
+                       <motion.div 
+                         initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                         animate={{ opacity: 1, scale: 1, y: 0 }}
+                         exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                         className="absolute top-12 left-0 md:left-auto md:right-0 z-999 w-48 h-48 bg-background/95 backdrop-blur-3xl border border-foreground/10 rounded-2xl shadow-2xl flex flex-col items-center justify-center overflow-hidden"
+                       >
+                         {qrState === "generating" && (
+                           <div className="flex flex-col items-center justify-center gap-3">
+                             <Loader2 className="w-6 h-6 animate-spin text-foreground/50" />
+                             <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Generating</p>
+                           </div>
+                         )}
+                         {qrState === "ready" && (
+                           <div className="w-full h-full flex items-center justify-center p-3">
+                              <Image src={qrSrc} alt="QR Code" width={150} height={150} className="w-full h-auto bg-white p-2 rounded-xl" unoptimized />
+                           </div>
+                         )}
+                       </motion.div>
+                     )}
+                   </AnimatePresence>
+                 </div>
+               </div>
+            </div>
+
+            {/* Devices Panel */}
+            <div className="w-full rounded-3xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full overflow-hidden">
             <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center shrink-0">
               Connected Devices ({participants.length})
             </h2>
@@ -867,10 +837,11 @@ export default function RoomPage() {
             ))}
           </div>
           </div>
+          </div>
 
           {/* Middle Column: Spatial Audio */}
-          <div className="flex flex-col w-1/3 h-full gap-2">
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 h-full flex flex-col items-center justify-center">
+          <div className="flex flex-col flex-1 h-full min-w-0 relative z-10">
+            <div className="w-full h-full flex flex-col items-center justify-center p-4">
               <OrbitUI
                 myDeviceId={currentSocketId || ""}
                 spatialDevices={spatialDevices}
@@ -882,7 +853,7 @@ export default function RoomPage() {
           </div>
 
           {/* Right Column: Queue */}
-          <div className="flex flex-col w-1/3 h-full gap-2">
+          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-2">
           {localQueue.length ? (
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
               <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2 shrink-0">

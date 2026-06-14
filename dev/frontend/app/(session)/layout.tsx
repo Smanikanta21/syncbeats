@@ -115,7 +115,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     <SyncProvider>
       <DynamicIsland />
       {isLocalUnverified && (
-        <div className="fixed top-24 left-1/2 z-50 w-[min(92vw,720px)] -translate-x-1/2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+        <div className="fixed top-24 left-1/2 z-60 w-[min(92vw,720px)] -translate-x-1/2 rounded-3xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-amber-100">
               Your email is not verified yet. Please verify to secure your account and keep full access.
@@ -134,8 +134,8 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
       {needsDeviceRename && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-          <div className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">
               <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device setup</p>
               <h2 className="mt-2 text-2xl font-black text-foreground">Select your device</h2>

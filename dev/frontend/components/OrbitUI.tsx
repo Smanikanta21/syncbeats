@@ -76,7 +76,20 @@ function DeviceNode({
     if (angle < 0) angle += 2 * Math.PI;
 
     const distPx = Math.sqrt(dx * dx + dy * dy);
-    const radius = Math.min((distPx / maxUiDragRef.current) * MAX_RADIUS, MAX_RADIUS);
+    let radius = Math.min((distPx / maxUiDragRef.current) * MAX_RADIUS, MAX_RADIUS);
+
+    // Snap to the closest orbit ring
+    const orbit1 = MAX_RADIUS / 3;
+    const orbit2 = (MAX_RADIUS * 2) / 3;
+    const orbit3 = MAX_RADIUS;
+    
+    const d1 = Math.abs(radius - orbit1);
+    const d2 = Math.abs(radius - orbit2);
+    const d3 = Math.abs(radius - orbit3);
+    
+    if (d1 <= d2 && d1 <= d3) radius = orbit1;
+    else if (d2 <= d1 && d2 <= d3) radius = orbit2;
+    else radius = orbit3;
 
     const currentDevice = spatialDevicesRef.current.find(d => d.deviceId === deviceId);
 
@@ -96,8 +109,8 @@ function DeviceNode({
 
   return (
     <motion.div
-      className={`absolute top-1/2 left-1/2 w-10 h-10 -ml-5 -mt-5 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-lg z-20 ${
-        isMe ? "ring-2 ring-blue-500" : "border border-foreground/20"
+      className={`absolute top-1/2 left-1/2 w-12 h-12 -ml-6 -mt-6 rounded-full flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-xl z-20 backdrop-blur-xl transition-colors duration-300 ${
+        isMe ? "bg-blue-500/90 ring-4 ring-blue-500/30 text-white" : "bg-background/80 border-2 border-foreground/10 text-foreground"
       }`}
       style={{ x, y }}
       drag
@@ -108,15 +121,15 @@ function DeviceNode({
       onTapStart={() => setIsHovered(prev => !prev)}
       title={isMe ? "Current Device" : devName}
     >
-      <span className="text-[10px] font-black text-foreground/80 tracking-widest">{initials}</span>
+      <span className="text-xs font-black tracking-widest">{initials}</span>
 
       {/* Badge */}
       {isMe ? (
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[7px] font-black px-1 py-0.5 rounded-full tracking-widest uppercase leading-none">
+        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white text-blue-600 text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-widest uppercase shadow-md leading-none">
           YOU
         </div>
       ) : (
-        <div className="absolute -top-1 w-1.5 h-1.5 bg-green-400 rounded-full" />
+        <div className="absolute -top-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
       )}
 
       {/* Floating name tooltip */}
@@ -268,29 +281,35 @@ export function OrbitUI({
   const otherListeners = Array.from(otherListenersMap.values());
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-4">
-      <div className="text-center mb-4 space-y-1 shrink-0">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-foreground/50">My Speaker Setup</h3>
-        <p className="text-xs text-foreground/40 font-medium">
-          {isPlaying ? "Devices are orbiting — drag to reposition." : "Drag your devices to position them in 3D space."}
+    <div className="w-full h-full flex flex-col items-center justify-center px-4 pb-4 pt-28">
+      <div className="text-center mb-6 space-y-1.5 shrink-0 z-10 relative">
+        <h3 className="text-xs font-black uppercase tracking-widest text-foreground/50 flex items-center justify-center gap-2">
+          Spatial Audio Hub
+          <span className="px-1.5 py-0.5 rounded text-[8px] bg-foreground/10 text-foreground/70 font-bold border border-foreground/5">BETA</span>
+        </h3>
+        <p className="text-sm text-foreground/70 font-semibold max-w-62.5 mx-auto">
+          {isPlaying ? "Devices orbiting in sync." : "Drag devices to arrange your 3D stage."}
         </p>
       </div>
 
       {/* Orbit ring — STATIC */}
       <div
         ref={containerRef}
-        className="relative w-full max-w-87.5 aspect-square rounded-full border-2 border-dashed border-foreground/10 bg-foreground/2 shadow-inner overflow-visible touch-none mb-4"
+        className="relative aspect-square w-full max-w-[85vh] max-h-[85vh] rounded-full border border-foreground/5 bg-foreground/[0.02] shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6"
       >
-        {/* Crosshairs */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
-          <div className="w-full h-px bg-foreground" />
-          <div className="absolute h-full w-px bg-foreground" />
-          <div className="absolute w-1/2 h-1/2 rounded-full border border-foreground" />
+        {/* Concentric rings to simulate 3D space */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30">
+          <div className="w-1/3 h-1/3 rounded-full border border-foreground/20" />
+          <div className="absolute w-2/3 h-2/3 rounded-full border border-foreground/20" />
+          <div className="absolute w-full h-full rounded-full border border-foreground/20" />
         </div>
 
-        {/* Listener at center */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.3)] z-10 pointer-events-none">
-          <Headphones className="w-5 h-5" />
+
+
+        {/* Center Core Listener */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none">
+          <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-foreground" style={{ animationDuration: '3s' }} />
+          <Headphones className="w-6 h-6" />
         </div>
 
         {/* Device nodes */}
@@ -314,16 +333,17 @@ export function OrbitUI({
         ))}
       </div>
 
+      {/* Other Listeners Dock */}
       {otherListeners.length > 0 && (
-        <div className="mt-2 flex flex-col items-center w-full max-w-87.5">
-          <h4 className="text-[10px] uppercase font-bold text-foreground/40 tracking-wider mb-2">Other Listeners</h4>
+        <div className="mt-4 flex flex-col items-center w-full max-w-sm bg-foreground/5 rounded-3xl p-4 border border-foreground/5 shadow-inner">
+          <h4 className="text-[10px] uppercase font-black text-foreground/40 tracking-widest mb-3">Audience</h4>
           <div className="flex flex-wrap gap-2 justify-center">
             {otherListeners.map(listener => (
               <div
                 key={listener.baseName}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-xs font-medium text-foreground/70"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background shadow-sm border border-foreground/5 text-xs font-bold text-foreground/80"
               >
-                <div className="w-2 h-2 rounded-full bg-green-500/80" />
+                <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)] animate-pulse" />
                 {listener.baseName}{listener.deviceCount > 1 ? ` (${listener.deviceCount})` : ""}
               </div>
             ))}
