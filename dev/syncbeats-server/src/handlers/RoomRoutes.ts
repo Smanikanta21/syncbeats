@@ -315,65 +315,54 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
-      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`[Proxy] Fetching YouTube audio via RapidAPI for video: ${videoId}`);
       
+      const rapidApiKey = process.env.RAPID_API_KEY;
+      if (!rapidApiKey) {
+        throw new Error('RAPID_API_KEY is missing from environment variables');
+      }
+
+      const options = {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidApiKey,
+          'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
+        }
+      };
+
+      // 1. Ask RapidAPI for the direct MP3 link
+      const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, options);
+      if (!apiRes.ok) {
+        const errText = await apiRes.text();
+        throw new Error(`RapidAPI returned ${apiRes.status}: ${errText}`);
+      }
+      
+      const data = (await apiRes.json()) as { link?: string };
+      if (!data.link) {
+        throw new Error('RapidAPI did not return a valid download link. Response: ' + JSON.stringify(data));
+      }
+
+      console.log(`[Proxy] RapidAPI returned direct link. Piping audio...`);
+
+      // 2. Fetch the actual MP3 stream
+      const audioRes = await fetch(data.link);
+      if (!audioRes.ok || !audioRes.body) {
+        throw new Error(`Failed to fetch MP3 stream from RapidAPI link. Status: ${audioRes.status}`);
+      }
+
       res.setHeader('Content-Type', 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-      
-      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
-      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
-      
-      const ytArgs = [
-        '-f', 'bestaudio',
-        '-o', '-', // Output to stdout
-        '--no-playlist',
-        '--no-warnings'
-      ];
-      
-      // If a cookies.txt file exists in the root directory, use it to bypass YouTube bot blocking!
-      if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
-        console.log('[Proxy] Found cookies.txt! Using it to bypass YouTube blocks.');
-        ytArgs.push('--cookies', path.resolve(process.cwd(), 'cookies.txt'));
-      } else {
-        console.warn('[Proxy] WARNING: No cookies.txt found! YouTube will likely block this download if running on AWS.');
-      }
-      
-      ytArgs.push(youtubeUrl);
 
-      const cp = spawn(ytBin, ytArgs);
-
-      if (!cp.stdout) {
-        throw new Error('Failed to capture yt-dlp stdout');
-      }
-
-      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
-      cp.stderr?.on('data', (data) => {
-        const msg = data.toString();
-        if (msg.toLowerCase().includes('sign in')) {
-           console.error('[yt-dlp] FATAL: YouTube blocked the request! You need a cookies.txt file.');
-        }
-      });
-
-      // Pipe the audio directly from yt-dlp's stdout into the response!
-      cp.stdout.pipe(res);
-
-      cp.on('close', (code) => {
-        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
-        res.end();
-      });
-
-      cp.on('error', (err) => {
-        console.error('[Proxy] yt-dlp spawn error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'yt-dlp failed to spawn' });
-        }
-      });
+      // 3. Pipe the Web Stream to the Express Response
+      const { Readable } = require('stream');
+      Readable.fromWeb(audioRes.body as any).pipe(res);
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      if (!res.headersSent) {
+        res.status(500).json({ error: msg });
+      }
     }
   });
 
