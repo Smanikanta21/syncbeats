@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
 import fs from 'fs';
+import path from 'path';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -313,36 +314,60 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Requesting Cobalt API for video: ${videoId}`);
+      console.log(`[Proxy] Spawning local yt-dlp to stream video: ${videoId}`);
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
       
-      const cobaltRes = await fetch('https://api.cobalt.tools/api/json', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'SyncBeats/1.0'
-        },
-        body: JSON.stringify({
-          url: youtubeUrl,
-          vQuality: "audio",
-          isAudioOnly: true,
-          aFormat: "mp3"
-        })
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
+      
+      // Use the global yt-dlp binary inside the Docker container, or fallback to the downloaded macOS binary
+      const ytBin = fs.existsSync('/app/bin/yt-dlp') ? '/app/bin/yt-dlp' : './bin/yt-dlp';
+      
+      const ytArgs = [
+        '-f', 'bestaudio',
+        '-o', '-', // Output to stdout
+        '--no-playlist',
+        '--no-warnings'
+      ];
+      
+      // If a cookies.txt file exists in the root directory, use it to bypass YouTube bot blocking!
+      if (fs.existsSync(path.resolve(process.cwd(), 'cookies.txt'))) {
+        console.log('[Proxy] Found cookies.txt! Using it to bypass YouTube blocks.');
+        ytArgs.push('--cookies', path.resolve(process.cwd(), 'cookies.txt'));
+      } else {
+        console.warn('[Proxy] WARNING: No cookies.txt found! YouTube will likely block this download if running on AWS.');
+      }
+      
+      ytArgs.push(youtubeUrl);
+
+      const cp = spawn(ytBin, ytArgs);
+
+      if (!cp.stdout) {
+        throw new Error('Failed to capture yt-dlp stdout');
+      }
+
+      // Consume stderr so the process doesn't hang when the 64KB OS buffer fills!
+      cp.stderr?.on('data', (data) => {
+        const msg = data.toString();
+        if (msg.toLowerCase().includes('sign in')) {
+           console.error('[yt-dlp] FATAL: YouTube blocked the request! You need a cookies.txt file.');
+        }
       });
 
-      if (!cobaltRes.ok) {
-        throw new Error(`Cobalt API failed with status ${cobaltRes.status}`);
-      }
+      // Pipe the audio directly from yt-dlp's stdout into the response!
+      cp.stdout.pipe(res);
 
-      const cobaltData = await cobaltRes.json() as any;
-      
-      if (cobaltData.status === 'stream' || cobaltData.status === 'redirect') {
-        console.log(`[Proxy] Redirecting to Cobalt stream URL`);
-        res.redirect(cobaltData.url);
-      } else {
-        throw new Error('Cobalt API returned unexpected status: ' + cobaltData.status);
-      }
+      cp.on('close', (code) => {
+        console.log(`[Proxy] yt-dlp stream closed with code: ${code}`);
+        res.end();
+      });
+
+      cp.on('error', (err) => {
+        console.error('[Proxy] yt-dlp spawn error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'yt-dlp failed to spawn' });
+        }
+      });
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);
