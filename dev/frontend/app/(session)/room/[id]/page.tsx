@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -545,6 +545,13 @@ export default function RoomPage() {
         <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
           <ListMusic className="w-4 h-4" /> Queue ({localQueue.length})
         </h2>
+        <button
+          onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+          className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
+          title="Add music to queue"
+        >
+          <Plus className="w-3.5 h-3.5 text-foreground/50" />
+        </button>
       </div>
 
       {localQueue.length === 0 ? (
@@ -856,10 +863,19 @@ export default function RoomPage() {
           <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-2">
           {localQueue.length ? (
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
-              <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2 shrink-0">
-                <ListMusic className="w-4 h-4" />
-                Room Queue ({localQueue.length})
-              </h3>
+              <div className="flex items-center justify-between shrink-0">
+                <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
+                  <ListMusic className="w-4 h-4" />
+                  Room Queue ({localQueue.length})
+                </h3>
+                <button
+                  onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+                  className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
+                  title="Add music to queue"
+                >
+                  <Plus className="w-3.5 h-3.5 text-foreground/50" />
+                </button>
+              </div>
               <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 <DndContext
                   sensors={sensors}
