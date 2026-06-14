@@ -114,13 +114,22 @@ export function useSpatialAudio({
       let changed = false;
       const newDevices = [...prev];
       
-      // Add missing participants — evenly distribute them around the orbit
+      // Add missing participants — place them on actual orbit rings
+      // Orbit radii: 1 (inner), 2 (middle), 3 (outer) — matching MAX_RADIUS / 3 increments
+      const ORBIT_RINGS = [1, 2, 3] as const;
       participants.forEach(p => {
         if (!newDevices.some(d => d.deviceId === p.socketId)) {
-          // Spread new devices evenly: index 0 → 0°, index 1 → 120°, index 2 → 240°, etc.
           const idx = newDevices.length;
-          const angle = (idx * (2 * Math.PI)) / Math.max(participants.length, 1);
-          const defaultPos = { angle, radius: 1.5, elevation: 0 };
+          // Assign to a ring based on device index (round-robin through rings)
+          const ring = ORBIT_RINGS[idx % ORBIT_RINGS.length];
+          // Count how many devices are already on this ring to space them evenly
+          const devicesOnRing = newDevices.filter(d => d.position.radius === ring).length;
+          // Spread devices on the same ring evenly by expected count on that ring
+          const totalOnRing = Math.ceil(participants.length / ORBIT_RINGS.length);
+          const angle = devicesOnRing > 0
+            ? (devicesOnRing / Math.max(totalOnRing, 1)) * 2 * Math.PI
+            : (idx / Math.max(participants.length, 1)) * 2 * Math.PI;
+          const defaultPos = { angle, radius: ring, elevation: 0 };
           newDevices.push({ deviceId: p.socketId, position: defaultPos });
           engine.addDevice(p.socketId, defaultPos);
           changed = true;

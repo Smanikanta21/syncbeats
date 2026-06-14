@@ -109,7 +109,7 @@ function DeviceNode({
 
   return (
     <motion.div
-      className={`absolute top-1/2 left-1/2 w-12 h-12 -ml-6 -mt-6 rounded-full flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-xl z-20 backdrop-blur-xl transition-colors duration-300 ${
+      className={`absolute top-1/2 left-1/2 w-8 h-8 -ml-4 -mt-4 md:w-12 md:h-12 md:-ml-6 md:-mt-6 rounded-full flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shadow-xl z-20 backdrop-blur-xl transition-colors duration-300 ${
         isMe ? "bg-blue-500/90 ring-4 ring-blue-500/30 text-white" : "bg-background/80 border-2 border-foreground/10 text-foreground"
       }`}
       style={{ x, y }}
@@ -185,7 +185,10 @@ export function OrbitUI({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const minDim = Math.min(entry.contentRect.width, entry.contentRect.height);
-        const val = minDim > 0 ? minDim / 2 - 28 : 125;
+        // On mobile node is w-8(32px) so half=16, on desktop w-12(48px) so half=24
+        // Use 16 as a safe default that works for both
+        const nodeHalf = minDim < 200 ? 16 : 24;
+        const val = minDim > 0 ? minDim / 2 - nodeHalf : 125;
         setMaxUiDrag(val);
         maxUiDragRef.current = val;
       }
@@ -281,7 +284,7 @@ export function OrbitUI({
   const otherListeners = Array.from(otherListenersMap.values());
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center px-4 pb-4 pt-28">
+    <div className="w-full h-full flex flex-col items-center justify-center px-4 pb-4 pt-6 md:pt-28">
       <div className="text-center mb-6 space-y-1.5 shrink-0 z-10 relative">
         <h3 className="text-xs font-black uppercase tracking-widest text-foreground/50 flex items-center justify-center gap-2">
           Spatial Audio Hub
@@ -297,19 +300,32 @@ export function OrbitUI({
         ref={containerRef}
         className="relative aspect-square w-full max-w-[85vh] max-h-[85vh] rounded-full border border-foreground/5 bg-foreground/[0.02] shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6"
       >
-        {/* Concentric rings to simulate 3D space */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30">
-          <div className="w-1/3 h-1/3 rounded-full border border-foreground/20" />
-          <div className="absolute w-2/3 h-2/3 rounded-full border border-foreground/20" />
-          <div className="absolute w-full h-full rounded-full border border-foreground/20" />
-        </div>
+        {/* Concentric rings — dynamically sized to match exact device orbit positions */}
+        {(() => {
+          // maxUiDrag = containerRadius - 24 (half of w-12 node size)
+          // rings must be at the same radii as computeXY output
+          const r3 = (maxUiDrag / (maxUiDrag + 24)) * 100; // orbit3 = maxUiDrag
+          const r2 = ((maxUiDrag * 2 / 3) / (maxUiDrag + 24)) * 100;
+          const r1 = ((maxUiDrag / 3) / (maxUiDrag + 24)) * 100;
+          return (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              {[r1, r2, r3].map((r, i) => (
+                <div
+                  key={i}
+                  className="absolute rounded-full border border-foreground/20 opacity-30"
+                  style={{ width: `${r}%`, height: `${r}%` }}
+                />
+              ))}
+            </div>
+          );
+        })()}
 
 
 
         {/* Center Core Listener */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 md:w-14 md:h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none">
           <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-foreground" style={{ animationDuration: '3s' }} />
-          <Headphones className="w-6 h-6" />
+          <Headphones className="w-4 h-4 md:w-6 md:h-6" />
         </div>
 
         {/* Device nodes */}
