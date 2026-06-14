@@ -28,7 +28,7 @@ export class SyncBeatsServer {
   private httpServer = http.createServer(this.app);
   private io         = new Server(this.httpServer, {
     cors: { 
-      origin: [FRONTEND_URL, 'http://localhost:3000'], 
+      origin: [FRONTEND_URL, 'http://localhost:3000', 'https://syncbeats.app', 'https://www.syncbeats.app'], 
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] 
     },
@@ -57,9 +57,9 @@ export class SyncBeatsServer {
       try {
         await Promise.all([pubClient.connect(), subClient.connect()]);
         this.io.adapter(createAdapter(pubClient, subClient));
-        console.log('[Server] 🟢 Redis adapter enabled for Socket.IO scaling');
+        console.log('[Server] Redis adapter enabled for Socket.IO scaling');
       } catch (err) {
-        console.error('[Server] 🔴 Failed to connect to Redis', err);
+        console.error('[Server] Failed to connect to Redis', err);
       }
     }
   }
@@ -71,7 +71,7 @@ export class SyncBeatsServer {
     }));
 
     this.app.use(cors({
-      origin: [FRONTEND_URL, 'http://localhost:3000'], 
+      origin: [FRONTEND_URL, 'http://localhost:3000', 'https://syncbeats.app', 'https://www.syncbeats.app'], 
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));
