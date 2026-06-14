@@ -91,7 +91,7 @@ export default function ContactPage() {
             <p className="mt-4 font-mono text-sm">@Smanikanta21/syncbeats</p>
           </a>
 
-          <a href="https://linkedin.com/in/abhinay-siraparapu" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 hover:border-foreground/20 transition-all text-center flex flex-col items-center backdrop-blur-xl md:col-span-2 max-w-xl mx-auto w-full">
+          <a href="https://www.linkedin.com/in/siraparapu-shiva-sankar-mani-kanta-622a85323/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 hover:border-foreground/20 transition-all text-center flex flex-col items-center backdrop-blur-xl md:col-span-2 max-w-xl mx-auto w-full">
             <div className="w-16 h-16 rounded-2xl bg-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
               <LinkedinIcon className="w-8 h-8 text-foreground" />
             </div>

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { SpatialAudioEngine } from "../audio/SpatialAudioEngine";
 import { useAuth } from "../context/AuthContext";
 import { useAudio } from "../context/AudioContext";
 import { useUpload } from "../context/UploadContext";
@@ -19,6 +20,98 @@ import { useSyncInfo } from "../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
 import { NetworkPill, NetworkExpanded } from "./NetworkStats";
 import { YouTubeSearchModal } from "./YouTubeSearchModal";
+
+const AudioBars = ({ isPlaying, isSmall }: { isPlaying: boolean; isSmall?: boolean }) => {
+  const barsRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (!isPlaying) {
+      if (barsRef.current) {
+         const children = barsRef.current.children;
+         for (let i = 0; i < children.length; i++) {
+           (children[i] as HTMLElement).style.height = "20%";
+         }
+      }
+      return;
+    }
+    
+    let rafId: number;
+    let currentHeights = [20, 20, 20, 20];
+    let targetHeights = [20, 20, 20, 20];
+
+    const tick = () => {
+      const data = SpatialAudioEngine.getInstance().getFrequencyData();
+      
+      let isSilence = true;
+      let bins = [0, 0, 0, 0];
+
+      if (data) {
+        // With fftSize=2048, frequencyBinCount=1024, each bin is ~21.5Hz.
+        const getAverage = (start: number, end: number) => {
+          let sum = 0;
+          let count = 0;
+          for (let i = start; i < end; i++) {
+            if (i < data.length) {
+              sum += data[i];
+              count++;
+            }
+          }
+          return count > 0 ? sum / count : 0;
+        };
+
+        // Bar 0: Sub/Kick (43Hz - 107Hz) -> Bins 2 to 5
+        // Bar 1: Bass/Low-mid (107Hz - 322Hz) -> Bins 5 to 15
+        // Bar 2: Mids/Vocals (430Hz - 1000Hz) -> Bins 20 to 46
+        // Bar 3: Highs/Hats (3000Hz - 6000Hz) -> Bins 140 to 280
+        bins = [
+          getAverage(2, 5),
+          getAverage(5, 15),
+          getAverage(20, 46),
+          getAverage(140, 280)
+        ];
+        
+        for (let i = 0; i < 4; i++) if (bins[i] > 0) isSilence = false;
+      }
+
+      for (let i = 0; i < 4; i++) {
+         if (isSilence) {
+           targetHeights[i] = 20;
+         } else {
+           // Multiply by a factor (e.g. 1.5) to exaggerate the tiny bar movement, clamp to 100%
+           const val = 20 + (bins[i] / 255) * 80 * 1.5;
+           targetHeights[i] = Math.min(val, 100);
+         }
+
+         // Lerp towards target
+         currentHeights[i] += (targetHeights[i] - currentHeights[i]) * 0.2;
+         
+         if (barsRef.current) {
+           const children = barsRef.current.children;
+           if (children[i]) {
+             (children[i] as HTMLElement).style.height = `${currentHeights[i]}%`;
+           }
+         }
+      }
+      
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying]);
+
+  const hClass = isSmall ? "h-3.5" : "h-5";
+  const wClass = isSmall ? "w-[3px]" : "w-1.5";
+  const gapClass = isSmall ? "gap-[2px]" : "gap-1";
+
+  return (
+    <div ref={barsRef} className={`flex items-end ${gapClass} ${hClass}`}>
+      <div className={`${wClass} bg-foreground/60 rounded-full`} style={{ height: "20%" }} />
+      <div className={`${wClass} bg-foreground/60 rounded-full`} style={{ height: "20%" }} />
+      <div className={`${wClass} bg-foreground/60 rounded-full`} style={{ height: "20%" }} />
+      <div className={`${wClass} bg-foreground/60 rounded-full`} style={{ height: "20%" }} />
+    </div>
+  );
+};
 
 export function DynamicIsland() {
   const pathname = usePathname();
@@ -45,7 +138,14 @@ export function DynamicIsland() {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const islandRef = useRef<HTMLDivElement>(null);
   const bounceCtrl = useAnimation();
+
+  // Keep track of the current shadow state for the RAF loop
+  const _shadowStateRef = useRef({ isDragTarget: false, expanded: false });
+  useEffect(() => {
+    _shadowStateRef.current = { isDragTarget: upload.isDragging, expanded };
+  }, [upload.isDragging, expanded]);
 
   // Refs for smooth RAF-based progress (bypasses React state batching)
   const _isPlayingRef = useRef(false);
@@ -62,6 +162,8 @@ export function DynamicIsland() {
         const pos = _getTruePosRef.current();
         const dur = _durationRef.current;
         if (dur > 0) setLocalProgress(Math.min(1, pos / dur));
+        
+        // Removed beat glow mutation from island
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -140,8 +242,8 @@ export function DynamicIsland() {
   // Always show the player when a track exists and we're on the player tab
   const showPlayerUi = hasTrack && pillView === "player";
 
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggle = (e?: React.MouseEvent | KeyboardEvent) => {
+    e?.stopPropagation();
     audio.unlockAudio();
     if (isRoom && roomId) {
       if (effectivePlaying || pendingPlay) {
@@ -173,6 +275,59 @@ export function DynamicIsland() {
       audio.seek(posSecs);
     }
   };
+
+  // Keyboard Shortcuts (Space to play/pause, Arrows to seek)
+  const _keyboardStateRef = useRef({ isRoom, roomId, effectivePlaying, pendingPlay });
+  useEffect(() => {
+    _keyboardStateRef.current = { isRoom, roomId, effectivePlaying, pendingPlay };
+  }, [isRoom, roomId, effectivePlaying, pendingPlay]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA" ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      const state = _keyboardStateRef.current;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        audio.unlockAudio();
+        if (state.isRoom && state.roomId) {
+          if (state.effectivePlaying || state.pendingPlay) {
+            getSocket().emit('playback:pause', { roomId: state.roomId });
+          } else {
+            getSocket().emit('playback:play', { roomId: state.roomId });
+          }
+        } else {
+          audio.toggle();
+        }
+      } else if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        const newTime = Math.max(0, audio.getTruePosition() - 5);
+        if (state.isRoom && state.roomId) {
+          getSocket().emit('playback:seek', { roomId: state.roomId, position: newTime * 1000 });
+        } else {
+          audio.seek(newTime);
+        }
+      } else if (e.code === "ArrowRight") {
+        e.preventDefault();
+        const newTime = Math.min(audio.duration, audio.getTruePosition() + 5);
+        if (state.isRoom && state.roomId) {
+          getSocket().emit('playback:seek', { roomId: state.roomId, position: newTime * 1000 });
+        } else {
+          audio.seek(newTime);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [audio]);
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const bar = progressRef.current;
@@ -291,20 +446,21 @@ export function DynamicIsland() {
 
         <motion.div
           layout
+          ref={islandRef}
           animate={bounceCtrl}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
-          transition={{ layout: { type: "spring", bounce: 0.3, duration: 0.65 } }}
-          style={{ borderRadius: expanded ? 40 : 48 }}
-          className={`pointer-events-auto bg-background/85 backdrop-blur-3xl border overflow-hidden select-none
+          transition={{ layout: { type: "spring", stiffness: 350, damping: 25, mass: 1 } }}
+          style={{ borderRadius: expanded ? 40 : 48, boxShadow: "" }}
+          className={`pointer-events-auto overflow-hidden bg-background/85 backdrop-blur-3xl border transition-shadow duration-500 select-none
           ${isDragTarget
-              ? "border-foreground/40 shadow-[0_0_80px_rgba(0,0,0,0.12)] dark:shadow-[0_0_80px_rgba(255,255,255,0.12)] w-11/12 max-w-sm"
+              ? "border-foreground/40 w-11/12 max-w-sm shadow-2xl"
               : expanded
-                ? "border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.9)] w-[95%] md:w-[90%] max-w-4xl"
-                : "border-foreground/10 shadow-[0_0_20px_rgba(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(255,255,255,0.04)] w-fit min-w-70 max-w-[95%] md:max-w-3xl"
+                ? "border-foreground/10 w-[95%] md:w-[90%] max-w-4xl shadow-2xl"
+                : "border-foreground/10 w-fit min-w-70 max-w-[95%] md:max-w-3xl shadow-xl"
             }`}
         >
           <AnimatePresence mode="popLayout" initial={false}>
@@ -332,8 +488,8 @@ export function DynamicIsland() {
               <motion.div
                 key="uploading"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="px-8 py-5 flex items-center gap-5"
               >
                 <Loader2 className="w-5 h-5 text-foreground animate-spin shrink-0" />
@@ -393,14 +549,19 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && !hasTrack && expanded && (
               <motion.div
                 key="upload-ui"
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, delay: 0.15 } }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="p-6 md:p-8 flex flex-col gap-5"
               >
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold tracking-widest text-foreground/50 uppercase">Add Music to Room</p>
-                  <button onClick={() => setExpanded(false)} className="text-xs text-foreground/40 hover:text-foreground/60 font-bold transition-colors">ESC</button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => router.push("/hub")} className="text-xs font-semibold bg-foreground/5 hover:bg-red-500/10 hover:text-red-500 px-4 py-1.5 rounded-full text-foreground/40 transition-all">
+                      Leave
+                    </button>
+                    <button onClick={() => setExpanded(false)} className="text-xs text-foreground/40 hover:text-foreground/60 font-bold transition-colors">ESC</button>
+                  </div>
                 </div>
 
                 {/* YouTube search */}
@@ -448,9 +609,9 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && !hasTrack && !expanded && (
               <motion.div
                 key="empty-pill"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
-                exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="px-5 py-3.5 flex items-center justify-between"
               >
                 <div className="flex items-center gap-3">
@@ -470,9 +631,9 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && hasTrack && expanded && (pillView === "player" || pillView === "add") && (
               <motion.div
                 key="player-full"
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, delay: 0.15 } }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="p-6 md:p-8 flex flex-col"
               >
                 <div className="flex items-center justify-between mb-5">
@@ -501,10 +662,12 @@ export function DynamicIsland() {
                   <>
                     <div className="flex items-center gap-5 mb-7">
                       <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] ${audio.trackUrl?.startsWith("youtube:") ? "bg-linear-to-br from-[#FF0000]/20 to-[#FF0000]/5 border border-[#FF0000]/20" : "bg-linear-to-br from-foreground/10 to-foreground/5 border border-foreground/10"}`}>
-                        {audio.trackUrl?.startsWith("youtube:") ? (
-                          <Youtube className={`w-8 h-8 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
+                        {effectivePlaying ? (
+                          <AudioBars isPlaying={effectivePlaying} />
+                        ) : audio.trackUrl?.startsWith("youtube:") ? (
+                          <Youtube className="w-8 h-8 text-[#FF0000]" />
                         ) : (
-                          <Disc className={`w-8 h-8 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                          <Disc className={`w-8 h-8 text-foreground/40`} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -621,9 +784,9 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && hasTrack && expanded && pillView === "network" && (
               <motion.div
                 key="net-full-wrap"
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, delay: 0.15 } }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="flex flex-col"
               >
                 <div className="px-6 pt-6 md:px-8 md:pt-8">
@@ -640,18 +803,20 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !incomingTrack && !isSyncing && hasTrack && !expanded && pillView !== "network" && (
               <motion.div
                 key="player-pill"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
-                exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="flex flex-col"
               >
                 <div className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 md:gap-10 justify-between">
                   <div className="flex items-center gap-3 cursor-pointer group flex-1" onClick={(e) => { e.stopPropagation(); setExpanded(true); }}>
                     <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 group-hover:bg-foreground/10 transition-colors ${audio.trackUrl?.startsWith("youtube:") ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-foreground/10 to-foreground/5 border-foreground/10"}`}>
-                      {audio.trackUrl?.startsWith("youtube:") ? (
-                        <Youtube className={`w-4 h-4 text-[#FF0000] ${effectivePlaying ? "animate-pulse" : ""}`} />
+                      {effectivePlaying ? (
+                        <AudioBars isPlaying={effectivePlaying} isSmall />
+                      ) : audio.trackUrl?.startsWith("youtube:") ? (
+                        <Youtube className={`w-4 h-4 text-[#FF0000]`} />
                       ) : (
-                        <Disc className={`w-4 h-4 text-foreground/40 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />
+                        <Disc className={`w-4 h-4 text-foreground/40`} />
                       )}
                     </div>
                     <div className="flex flex-col pl-1 justify-center max-w-30 sm:max-w-50 md:max-w-75">
@@ -687,9 +852,9 @@ export function DynamicIsland() {
             {!isDragTarget && !isUploading && !isSyncing && hasTrack && !expanded && pillView === "network" && netStats.hasData && (
               <motion.div
                 key="net-collapsed"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1, transition: { duration: 0.3, delay: 0.15 } }}
-                exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { delay: 0.2, duration: 0.3 } }}
+                exit={{ opacity: 0, transition: { duration: 0 } }}
                 className="px-4 py-2.5 flex items-center gap-4 sm:gap-6 justify-between cursor-pointer"
                 onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
               >
@@ -712,10 +877,8 @@ export function DynamicIsland() {
                 </div>
               </motion.div>
             )}
-
           </AnimatePresence>
         </motion.div>
-
         <AnimatePresence mode="wait">
           {isRoom && hasTrack && !expanded && netStats.hasData && (
             <motion.button

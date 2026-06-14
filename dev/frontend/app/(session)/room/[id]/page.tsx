@@ -686,19 +686,6 @@ export default function RoomPage() {
       {/* ── DESKTOP VIEW ── */}
 
 
-        {/* Drag hint */}
-        {!audio.hasTrack && !upload.isUploading && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="mb-6 max-w-7xl w-full px-6 py-4 rounded-2xl border border-dashed border-foreground/10 text-foreground/40 text-sm font-medium flex items-center justify-center gap-3 shrink-0"
-          >
-            <Volume2 className="w-4 h-4 shrink-0" />
-            Drag an audio file here or use the island above to add music
-          </motion.div>
-        )}
-
         {/* ── Connected Devices ── */}
       <div className="hidden md:flex flex-col w-full h-full pt-20 pb-6 px-6 overflow-hidden">
         <motion.div

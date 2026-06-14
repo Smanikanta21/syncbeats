@@ -51,6 +51,9 @@ export class SpatialAudioEngine {
   /** Master gain — lets you fade everything at once */
   private masterGain: GainNode | null = null;
 
+  private analyser: AnalyserNode | null = null;
+  private dataArray: Uint8Array | null = null;
+
   private myDeviceId: string | null = null;
   private isInitialised = false;
 
@@ -76,6 +79,13 @@ export class SpatialAudioEngine {
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = 1;
     this.masterGain.connect(this.ctx.destination);
+    
+    // Setup Analyser for beat detection
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 2048;
+    this.analyser.smoothingTimeConstant = 0.8; // Smooth out the raw data slightly for less jitter
+    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+    this.masterGain.connect(this.analyser);
 
     this.source = inputNode;
     
@@ -88,6 +98,30 @@ export class SpatialAudioEngine {
   }
 
   // --- AudioContext lifecycle ---
+
+  getVolume(): number {
+    if (!this.analyser || !this.dataArray) return 0;
+    this.analyser.getByteFrequencyData(this.dataArray as any);
+    
+    let sum = 0;
+    // Focus on the kick drum frequencies (roughly 40Hz - 120Hz)
+    // With 2048 fftSize and 44.1kHz sample rate, each bin is ~21.5Hz.
+    // Bins 2 to 6 cover ~43Hz to ~129Hz.
+    const startBin = 2;
+    const endBin = 6;
+    const bins = endBin - startBin;
+    for (let i = startBin; i < endBin; i++) {
+      sum += this.dataArray[i];
+    }
+    const average = sum / bins;
+    return average / 255;
+  }
+
+  getFrequencyData(): Uint8Array | null {
+    if (!this.analyser || !this.dataArray) return null;
+    this.analyser.getByteFrequencyData(this.dataArray as any);
+    return this.dataArray;
+  }
 
   async resume(): Promise<void> {
     if (this.ctx?.state === 'suspended') {
