@@ -57,9 +57,9 @@ export class SyncBeatsServer {
       try {
         await Promise.all([pubClient.connect(), subClient.connect()]);
         this.io.adapter(createAdapter(pubClient, subClient));
-        console.log('[Server] 🟢 Redis adapter enabled for Socket.IO scaling');
+        console.log('[Server] Redis adapter enabled for Socket.IO scaling');
       } catch (err) {
-        console.error('[Server] 🔴 Failed to connect to Redis', err);
+        console.error('[Server] Failed to connect to Redis', err);
       }
     }
   }
