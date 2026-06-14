@@ -92,20 +92,15 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       let blob: Blob;
 
       if (!response.ok) {
-        console.warn(`[UploadContext] Proxy failed with status ${response.status}. Falling back to a dummy MP3 track to test P2P!`);
-        // Fallback to a reliable public test MP3 so you can test the P2P swarm!
-        const fallbackRes = await fetch("https://raw.githubusercontent.com/mdn/webaudio-examples/main/audio-analyser/viper.mp3");
-        if (!fallbackRes.ok) throw new Error("Even the dummy fallback failed to download.");
-        blob = await fallbackRes.blob();
-      } else {
-        blob = await response.blob();
-        
-        // AWS/VM yt-dlp IP block check! If yt-dlp fails silently, it returns a 0-byte blob.
-        if (blob.size < 5000) {
-          console.error(`[UploadContext] FATAL: YouTube download returned a ${blob.size}-byte file! Your VM's IP is likely blocked by YouTube. Falling back to dummy MP3.`);
-          const fallbackRes = await fetch("https://raw.githubusercontent.com/mdn/webaudio-examples/main/audio-analyser/viper.mp3");
-          blob = await fallbackRes.blob();
-        }
+        const errorText = await response.text();
+        throw new Error(`YouTube Proxy failed with status ${response.status}: ${errorText}`);
+      }
+      
+      blob = await response.blob();
+      
+      // AWS/VM yt-dlp IP block check! If yt-dlp fails silently, it returns a 0-byte blob.
+      if (blob.size < 5000) {
+        throw new Error(`FATAL: YouTube download returned a ${blob.size}-byte file! Your server's IP is likely blocked by YouTube, or you need to update cookies.txt.`);
       }
       
       setUploadProgress(20);
