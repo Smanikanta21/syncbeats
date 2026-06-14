@@ -95,8 +95,17 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
 
       <button
         type="button"
-        onClick={(e) => onRemove(e, item.id)}
-        className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer"
+        onClick={async (e) => {
+          e.stopPropagation();
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            await onRemove(e, item.id);
+          } finally {
+            btn.disabled = false;
+          }
+        }}
+        className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Trash2 className="w-4 h-4" />
       </button>

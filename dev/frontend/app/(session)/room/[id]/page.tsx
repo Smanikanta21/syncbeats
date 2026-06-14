@@ -205,6 +205,10 @@ export default function RoomPage() {
 
   const handleRemoveTrack = async (e: React.MouseEvent, trackId: string) => {
     e.stopPropagation();
+
+    // Optimistically remove the item from the local queue UI instantly
+    setLocalQueue((prev) => prev.filter((item) => item.id !== trackId));
+
     try {
       const baseUrl = getServerUrl();
       const res = await fetch(`${baseUrl}/rooms/${roomId}/queue/${trackId}`, {
@@ -212,10 +216,14 @@ export default function RoomPage() {
         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       if (!res.ok) {
+        // Revert optimistic update on failure
+        if (snapshot?.queue) setLocalQueue(snapshot.queue);
         const body = await res.json().catch(() => ({}));
         console.error("[Room] Failed to remove track:", body.error || res.statusText);
       }
     } catch (err) {
+      // Revert optimistic update on failure
+      if (snapshot?.queue) setLocalQueue(snapshot.queue);
       console.error("[Room] Error removing track:", err);
     }
   };

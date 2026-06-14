@@ -143,9 +143,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   });
 
   // DELETE /rooms/:roomId/queue/:itemId
-  router.delete('/:roomId/queue/:itemId', async (req, res) => {
+  router.delete('/:roomId/queue/:itemId', requireAuth, async (req, res) => {
     try {
-      const { roomId, itemId } = req.params;
+      const roomId = req.params['roomId'] as string;
+      const itemId = req.params['itemId'] as string;
       console.log(`[Rooms] Request to remove queue item. Room: ${roomId}, Item: ${itemId}`);
       const success = await repo.removeQueueItem(roomId, itemId);
       

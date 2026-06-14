@@ -340,7 +340,8 @@ export class RoomRepository {
 
   async removeQueueItem(roomId: string, itemId: string): Promise<boolean> {
     const item = await prisma.roomQueueItem.findUnique({ where: { id: itemId } });
-    if (!item || item.roomId !== roomId) return false;
+    if (!item) return true; // Already deleted
+    if (item.roomId !== roomId) return false;
 
     if (item.isCurrent) {
       // Advance to the next track before deleting this one so we don't break playback sequence
