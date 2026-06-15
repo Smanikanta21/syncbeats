@@ -20,6 +20,7 @@ import {
   Plus,
   FastForward,
   Rewind,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -578,13 +579,25 @@ const PlayerTab = ({
             )}
           </AnimatePresence>
         </div>
-        <div className="flex items-center shrink-0 pr-1 pt-1">
+        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
           {error ? (
              <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
           ) : (!isReady || !isRoomReady) ? (
              <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
           ) : (
              <AudioBars isPlaying={effectivePlaying} isSmall={false} />
+          )}
+
+          {isRoom && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = "/hub";
+              }}
+              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-[#FF0000]/20 group"
+            >
+              <LogOut className="w-4 h-4 text-[#FF0000]/80 group-hover:text-[#FF0000] transition-colors" />
+            </button>
           )}
         </div>
       </div>
@@ -648,15 +661,18 @@ const PlayerTab = ({
           </button>
         </div>
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTabChange("youtube");
-          }}
-          className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-        >
-          <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
-        </button>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTabChange("youtube");
+            }}
+            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
+          >
+            <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+          </button>
+
+        </div>
       </div>
     </div>
   );
