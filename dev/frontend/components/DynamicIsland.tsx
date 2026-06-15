@@ -14,8 +14,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Play as Youtube,
-  Star,
-  Cast,
   Activity,
   ChevronLeft,
   Search,
@@ -517,7 +515,7 @@ const PlayerTab = ({
           )}
         </div>
         <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
-          <div className="font-semibold text-white text-[17px] truncate leading-tight">
+          <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
           
@@ -572,7 +570,7 @@ const PlayerTab = ({
                     {loadingParticipants.map((p: any) => (
                        <div key={p.socketId} className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1">
                           <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                          <span className="text-white/80 text-[10px] font-bold uppercase truncate max-w-20">{p.displayName}</span>
+                          <span className="text-white/80 text-[10px] font-bold uppercase">{p.displayName}</span>
                        </div>
                     ))}
                  </div>
@@ -599,9 +597,9 @@ const PlayerTab = ({
             e.stopPropagation();
             onTabChange("network");
           }}
-          className="p-1 sm:p-2 hover:bg-white/10 rounded-full transition-colors pointer-events-auto active:scale-95"
+          className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
         >
-          <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white" />
+          <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
         </button>
 
         <div className="flex items-center justify-center gap-6 sm:gap-10">
@@ -610,7 +608,7 @@ const PlayerTab = ({
               e.stopPropagation();
               onPrev(e);
             }}
-            className="p-1 sm:p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95"
+            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
           >
             <SkipBack
               className="w-7 h-7 sm:w-8 sm:h-8 text-white"
@@ -622,7 +620,7 @@ const PlayerTab = ({
               e.stopPropagation();
               onToggle(e);
             }}
-            className="p-1 sm:p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95"
+            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
           >
             {effectivePlaying ? (
               <Pause
@@ -641,7 +639,7 @@ const PlayerTab = ({
               e.stopPropagation();
               onNext(e);
             }}
-            className="p-1 sm:p-2 hover:bg-white/10 rounded-full transition-colors active:scale-95"
+            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
           >
             <SkipForward
               className="w-7 h-7 sm:w-8 sm:h-8 text-white"
@@ -655,9 +653,9 @@ const PlayerTab = ({
             e.stopPropagation();
             onTabChange("youtube");
           }}
-          className="p-1 sm:p-2 hover:bg-white/10 rounded-full transition-colors pointer-events-auto active:scale-95"
+          className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
         >
-          <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white" />
+          <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
         </button>
       </div>
     </div>
@@ -1406,7 +1404,7 @@ export function DynamicIsland() {
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
           }}
-          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/8"
+          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/8 select-none"
         >
           <CompactState
             isExpanded={isExpanded}
