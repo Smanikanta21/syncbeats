@@ -1038,23 +1038,32 @@ export function DynamicIsland() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    const handleExpandAdd = () => {
+      setIsExpanded(true);
+      setActiveTab("youtube");
+    };
+    document.addEventListener('island:expand-add', handleExpandAdd);
+    return () => document.removeEventListener('island:expand-add', handleExpandAdd);
+  }, []);
+
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    if (isExpanded && windowWidth < 768) {
+    if (isExpanded && windowWidth < 768 && activeTab !== "youtube") {
       inactivityTimerRef.current = setTimeout(() => {
         setIsExpanded(false);
       }, 3000); // 3 seconds timeout
     }
-  }, [isExpanded, windowWidth]);
+  }, [isExpanded, windowWidth, activeTab]);
 
   useEffect(() => {
     resetInactivityTimer();
     return () => {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
-  }, [isExpanded, windowWidth, resetInactivityTimer]);
+  }, [isExpanded, windowWidth, activeTab, resetInactivityTimer]);
 
 
   const showSeekIndicator = useCallback((amount: number) => {
@@ -1075,16 +1084,7 @@ export function DynamicIsland() {
     [activeTab],
   );
 
-  // If we close the island, eventually reset to player (optional, doing it instantly ruins exit animation)
-  useEffect(() => {
-    if (!isExpanded) {
-      const t = setTimeout(() => {
-        setActiveTab("player");
-        setYtResultsCount(0);
-      }, 500);
-      return () => clearTimeout(t);
-    }
-  }, [isExpanded]);
+  // If we close the island, we keep the current tab and state so it resumes where the user left off.
 
 
 

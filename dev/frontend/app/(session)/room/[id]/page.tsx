@@ -848,47 +848,56 @@ export default function RoomPage() {
 
           {/* Right Column: Queue */}
           <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-2">
-          {localQueue.length ? (
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
               <div className="flex items-center justify-between shrink-0">
                 <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
                   <ListMusic className="w-4 h-4" />
                   Room Queue ({localQueue.length})
                 </h3>
-              </div>
-              <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
+                <button
+                  onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+                  className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
+                  title="Add music to queue"
                 >
-                  <SortableContext
-                    items={localQueue.map((i) => i.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {localQueue.map((item: TrackQueueItem) => {
-                      const addedByName = item.addedBy === user?.id
-                        ? "You"
-                        : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
-                      return (
-                        <SortableTrackItem
-                          key={item.id}
-                          item={item}
-                          onRemove={handleRemoveTrack}
-                          onPlay={handlePlayTrack}
-                          addedByName={addedByName}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                </DndContext>
+                  <Plus className="w-3.5 h-3.5 text-foreground/50" />
+                </button>
               </div>
+              
+              {localQueue.length ? (
+                <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={localQueue.map((i) => i.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {localQueue.map((item: TrackQueueItem) => {
+                        const addedByName = item.addedBy === user?.id
+                          ? "You"
+                          : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
+                        return (
+                          <SortableTrackItem
+                            key={item.id}
+                            item={item}
+                            onRemove={handleRemoveTrack}
+                            onPlay={handlePlayTrack}
+                            addedByName={addedByName}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5">
+                  <Music2 className="w-8 h-8 mb-3 opacity-20" />
+                  No songs in queue
+                </div>
+              )}
             </div>
-          ) : (<div className="w-full rounded-2xl border border-foreground/5 bg-background/40 p-4 h-full flex items-center justify-center">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              No songs in the queue
-            </h3>
-          </div>)}
           </div>
         </motion.div>
       </div>

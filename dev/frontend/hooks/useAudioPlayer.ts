@@ -30,6 +30,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   setVolume:   (volume: number) => void;
   setTrack:    (url: string, title?: string, artist?: string) => void;
   clearTrack:  () => void;
+  prefetchTrack: (url: string) => Promise<void>;
   unlockAudio: () => void;
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
   playNow:     (expectedPosition: number) => void;
@@ -60,6 +61,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
   const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
+  const trackUrlRef = useRef<string | null>(null);
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -157,15 +159,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
   }, [unlockAudio]);
 
-  const fetchAndDecode = (url: string) => {
-    if (fetchPromiseRef.current) return fetchPromiseRef.current;
-
-    const promise = (async () => {
+  const fetchArrayBuffer = async (url: string, silent = false): Promise<ArrayBuffer> => {
+    if (!silent) {
       setIsReady(false);
       setError(null);
       setDownloadProgress(0);
-      try {
-        let arrayBuffer: ArrayBuffer;
+    }
+    
+    let arrayBuffer: ArrayBuffer;
 
         if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
@@ -261,11 +262,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 
                 chunks[payload.chunkIndex] = bufferData;
                 const progressPct = expectedChunks > 0 ? Math.round((receivedIndices.size / expectedChunks) * 100) : 0;
-                setDownloadProgress(progressPct);
+                if (!silent) setDownloadProgress(progressPct);
                 console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks} (${progressPct}%)`);
                 
                 // Show buffering indicator for long downloads
-                if (receivedIndices.size === 1 && typeof document !== 'undefined') {
+                if (!silent && receivedIndices.size === 1 && typeof document !== 'undefined') {
                   const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
                   document.dispatchEvent(event);
                 }
@@ -294,7 +295,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     console.error('[WebSocket P2P] Failed to save track to IDB:', e);
                   }
                   
-                  setDownloadProgress(100);
+                  if (!silent) setDownloadProgress(100);
                   resolve(buffer);
                 } else {
                   resetTimeout();
@@ -328,6 +329,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           arrayBuffer = await response.arrayBuffer();
         }
 
+    return arrayBuffer;
+  };
+
+  const fetchAndDecode = (url: string) => {
+    if (fetchPromiseRef.current) return fetchPromiseRef.current;
+
+    const promise = (async () => {
+      try {
+        const arrayBuffer = await fetchArrayBuffer(url, false);
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
@@ -336,7 +346,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       } catch (err: any) {
         console.error("Error decoding audio data", err);
         setError(err.message || "Failed to load audio track");
-        setIsReady(true); // Set ready so we don't hang in buffering state indefinitely
+        setIsReady(true);
         return null;
       } finally {
         fetchPromiseRef.current = null;
@@ -346,6 +356,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     fetchPromiseRef.current = promise;
     return promise;
   };
+
+  const prefetchTrack = useCallback(async (url: string) => {
+    try {
+      console.log("[Prefetch] Pre-seeding next track:", url);
+      await fetchArrayBuffer(url, true);
+    } catch (e) {
+      console.error("[Prefetch] Failed to pre-seed track:", e);
+    }
+  }, []);
 
   useEffect(() => {
     if (!trackUrl) {
@@ -437,7 +456,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded'));
+      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { url: trackUrlRef.current } }));
     };
 
     if (msUntilStart > 50) {
@@ -478,7 +497,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded'));
+      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { url: trackUrlRef.current } }));
     };
 
     const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
@@ -552,6 +571,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
+    trackUrlRef.current = absoluteUrl;
     setTrackTitle(title);
     setTrackArtist(artist);
   }, []);
@@ -559,6 +579,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const clearTrack = useCallback(() => {
     stopCurrentSource();
     setTrackUrl(null);
+    trackUrlRef.current = null;
     setTrackTitle("");
     setTrackArtist("");
     setIsPlaying(false);
@@ -574,7 +595,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   return {
     isPlaying, isReady, isBuffering, error, downloadProgress, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
-    play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
+    play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, prefetchTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
     audioCtx: audioCtxRef.current,

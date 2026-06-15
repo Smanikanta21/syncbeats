@@ -471,6 +471,19 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
 
+  // Pre-seed the next track in the queue
+  useEffect(() => {
+    if (!snapshot || !snapshot.queue || snapshot.queue.length === 0) return;
+    
+    const currentIndex = snapshot.queue.findIndex(q => q.isCurrent);
+    if (currentIndex === -1 || currentIndex >= snapshot.queue.length - 1) return;
+    
+    const nextTrack = snapshot.queue[currentIndex + 1];
+    if (nextTrack && nextTrack.trackUrl && audioRef.current.prefetchTrack) {
+      audioRef.current.prefetchTrack(nextTrack.trackUrl);
+    }
+  }, [snapshot?.queue]);
+
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
