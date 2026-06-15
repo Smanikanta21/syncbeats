@@ -8,6 +8,8 @@ export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
   isBuffering:   boolean;
+  error:         string | null;
+  downloadProgress: number;
   hasTrack:      boolean;       
   audioUnlocked: boolean;       
   currentTime:   number;       
@@ -52,6 +54,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -158,6 +162,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     const promise = (async () => {
       setIsReady(false);
+      setError(null);
+      setDownloadProgress(0);
       try {
         let arrayBuffer: ArrayBuffer;
 
@@ -254,7 +260,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
                 
                 chunks[payload.chunkIndex] = bufferData;
-                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
+                const progressPct = expectedChunks > 0 ? Math.round((receivedIndices.size / expectedChunks) * 100) : 0;
+                setDownloadProgress(progressPct);
+                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks} (${progressPct}%)`);
                 
                 // Show buffering indicator for long downloads
                 if (receivedIndices.size === 1 && typeof document !== 'undefined') {
@@ -286,6 +294,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     console.error('[WebSocket P2P] Failed to save track to IDB:', e);
                   }
                   
+                  setDownloadProgress(100);
                   resolve(buffer);
                 } else {
                   resetTimeout();
@@ -324,8 +333,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         setDuration(decodedData.duration);
         setIsReady(true);
         return decodedData;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error decoding audio data", err);
+        setError(err.message || "Failed to load audio track");
+        setIsReady(true); // Set ready so we don't hang in buffering state indefinitely
         return null;
       } finally {
         fetchPromiseRef.current = null;
@@ -357,11 +368,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [volume]);
 
   useEffect(() => {
-    const tick = () => {
+    let lastUpdate = 0;
+    const tick = (now: number) => {
       if (isPlaying) {
-        if (audioCtxRef.current) {
-          const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
-          setCurrentTime(pauseOffsetRef.current + elapsed);
+        if (now - lastUpdate > 1000) {
+          if (audioCtxRef.current) {
+            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+            setCurrentTime(pauseOffsetRef.current + elapsed);
+          }
+          lastUpdate = now;
         }
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -428,7 +443,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (msUntilStart > 50) {
       const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
       const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
-      source.start(audioCtxStartTime, payload.fromPosition);
+      source.start(audioCtxStartTime, Math.max(0, payload.fromPosition));
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
@@ -557,7 +572,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
+    isPlaying, isReady, isBuffering, error, downloadProgress, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,

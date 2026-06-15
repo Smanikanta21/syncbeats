@@ -176,6 +176,8 @@ export function OrbitUI({
         let vol = SpatialAudioEngine.getInstance().getVolume();
         targetVol = vol;
 
+        const data = SpatialAudioEngine.getInstance().getFrequencyData();
+
         // Lerp towards target volume for buttery smooth animation
         currentVol += (targetVol - currentVol) * 0.15;
 
@@ -348,7 +350,7 @@ export function OrbitUI({
       {/* Orbit ring — TILTING */}
       <motion.div
         ref={containerRef}
-        className="relative aspect-square w-full max-w-[350px] sm:max-w-[450px] md:max-w-[550px] lg:max-w-[650px] xl:max-w-[750px] rounded-full border border-foreground/5 bg-foreground/5 shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6 shrink-0 transition-transform duration-100 ease-linear"
+        className="relative aspect-square w-full max-w-87.5 sm:max-w-112.5 md:max-w-137.5 lg:max-w-162.5 xl:max-w-187.5 rounded-full border border-foreground/5 bg-foreground/5 shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6 shrink-0 transition-transform duration-100 ease-linear"
       >
         {/* Concentric rings — dynamically sized to match exact device orbit positions */}
         {(() => {
@@ -373,7 +375,7 @@ export function OrbitUI({
         })()}
 
         {/* Center Core Listener */}
-        <div ref={centerHubRef} className="absolute top-1/2 left-1/2 -ml-4 -mt-4 md:-ml-7 md:-mt-7 w-8 h-8 md:w-14 md:h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none transition-transform duration-75 origin-center">
+        <div ref={centerHubRef} className="absolute top-1/2 left-1/2 -ml-4 -mt-4 md:-ml-7 md:-mt-7 w-8 h-8 md:w-14 md:h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none origin-center">
           {isPlaying && <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-foreground" style={{ animationDuration: '3s' }} />}
           <Headphones className="w-4 h-4 md:w-6 md:h-6" />
         </div>

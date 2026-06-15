@@ -2,13 +2,95 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Disc, Play, Headphones, Radio, ArrowRight } from "lucide-react";
+import { Disc, Play, Headphones, Radio, ArrowRight, LoaderCircle, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Footer } from "../components/Footer";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../context/AuthContext";
 
 export default function LandingPage() {
+  const router = useRouter();
+  const { googleLogin } = useAuth();
+  const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    let cancelled = false;
+
+    const initGoogle = () => {
+      const google = (window as any).google;
+      if (!google?.accounts?.id || cancelled) return;
+
+      google.accounts.id.initialize({
+        client_id: clientId,
+        auto_select: false,
+        use_fedcm_for_prompt: false,
+        callback: async (response: { credential?: string }) => {
+          if (!response.credential) return;
+          setError(null);
+          setGoogleRedirectLoading(true);
+          try {
+            await googleLogin(response.credential);
+            router.push("/hub");
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setGoogleRedirectLoading(false);
+          }
+        },
+      });
+
+      // This prompts the Google One Tap dialog at the side
+      google.accounts.id.prompt();
+    };
+
+    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) {
+      initGoogle();
+      return () => {
+        cancelled = true;
+        if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+          (window as any).google.accounts.id.cancel();
+        }
+      };
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initGoogle;
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+        (window as any).google.accounts.id.cancel();
+      }
+    };
+  }, [googleLogin, router]);
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col overflow-hidden relative">
+      {googleRedirectLoading && (
+        <div className="fixed inset-0 z-[100] bg-background/70 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="rounded-3xl border border-foreground/10 bg-background px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+            <LoaderCircle className="w-5 h-5 text-foreground animate-spin" />
+            <p className="text-sm font-semibold text-foreground">Completing Google sign in...</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl p-4 shadow-xl">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
       {/* Dynamic Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-foreground/5 blur-[120px] rounded-full" />

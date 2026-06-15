@@ -207,7 +207,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-      <div className={isRoom ? "h-[100dvh] overflow-hidden md:h-auto md:min-h-[100dvh] md:overflow-visible flex justify-center" : "pt-32"}>{children}</div>
+      <div className={isRoom ? "h-dvh overflow-hidden md:h-auto md:min-h-dvh md:overflow-visible flex justify-center" : "pt-32"}>{children}</div>
     </SyncProvider>
     </UploadProvider>
   );

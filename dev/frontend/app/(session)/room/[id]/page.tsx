@@ -369,8 +369,8 @@ export default function RoomPage() {
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
       <div className="md:hidden w-full flex flex-col pt-30 pb-20 px-4 space-y-6">
         {/* Badges */}
-        <div className="flex items-center gap-3 mb-6">
-          <span className="px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
+        <div className="flex justify-center items-center gap-3 mb-6">
+          <span className="hidden px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest md:inline-flex items-center gap-2">
             <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
           </span>
           <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
@@ -603,7 +603,7 @@ export default function RoomPage() {
           const isSyncing = !!activeTransfer;
           const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
           
-          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing) || audio.error) return null;
 
           let overlayText = "Buffering…";
           if (isSyncing) {
@@ -626,14 +626,14 @@ export default function RoomPage() {
                   <div className="absolute inset-0 rounded-full bg-linear-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
                 </div>
                 
-                {/* Spinner */}
-                <div className="relative w-5 h-5 shrink-0">
+                {/* Spinner / Error Icon */}
+                <div className="relative shrink-0 flex items-center justify-center w-5 h-5">
                   <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
                   <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
                 
                 {/* Text */}
-                <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
+                <span className="relative text-sm font-semibold tracking-wide whitespace-nowrap text-foreground/80">
                   {overlayText}
                 </span>
                 
@@ -855,13 +855,6 @@ export default function RoomPage() {
                   <ListMusic className="w-4 h-4" />
                   Room Queue ({localQueue.length})
                 </h3>
-                <button
-                  onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
-                  className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
-                  title="Add music to queue"
-                >
-                  <Plus className="w-3.5 h-3.5 text-foreground/50" />
-                </button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
                 <DndContext

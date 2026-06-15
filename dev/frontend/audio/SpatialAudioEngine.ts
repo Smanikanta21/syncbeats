@@ -53,6 +53,8 @@ export class SpatialAudioEngine {
 
   private analyser: AnalyserNode | null = null;
   private dataArray: Uint8Array | null = null;
+  private lastPollTime: number = 0;
+  private lastVolume: number = 0;
 
   private myDeviceId: string | null = null;
   private isInitialised = false;
@@ -82,8 +84,7 @@ export class SpatialAudioEngine {
     
     // Setup Analyser for beat detection
     this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 2048;
-    this.analyser.smoothingTimeConstant = 0.8; // Smooth out the raw data slightly for less jitter
+    this.analyser.fftSize = 256;
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
     this.masterGain.connect(this.analyser);
 
@@ -101,25 +102,34 @@ export class SpatialAudioEngine {
 
   getVolume(): number {
     if (!this.analyser || !this.dataArray) return 0;
-    this.analyser.getByteFrequencyData(this.dataArray as any);
     
-    let sum = 0;
-    // Focus on the kick drum frequencies (roughly 40Hz - 120Hz)
-    // With 2048 fftSize and 44.1kHz sample rate, each bin is ~21.5Hz.
-    // Bins 2 to 6 cover ~43Hz to ~129Hz.
-    const startBin = 2;
-    const endBin = 6;
-    const bins = endBin - startBin;
-    for (let i = startBin; i < endBin; i++) {
-      sum += this.dataArray[i];
+    // Cache polling per frame (~16ms) to avoid WebKit double-poll zeroing bug
+    const now = performance.now();
+    if (now - this.lastPollTime > 10) {
+      this.analyser.getByteFrequencyData(this.dataArray as any);
+      this.lastPollTime = now;
+      
+      let sum = 0;
+      // Focus on lower frequencies (bass) for the "beat" effect (first 10 bins)
+      const bins = Math.min(10, this.dataArray.length);
+      for (let i = 0; i < bins; i++) {
+        sum += this.dataArray[i];
+      }
+      this.lastVolume = sum / bins / 255;
     }
-    const average = sum / bins;
-    return average / 255;
+    
+    return this.lastVolume;
   }
 
   getFrequencyData(): Uint8Array | null {
     if (!this.analyser || !this.dataArray) return null;
-    this.analyser.getByteFrequencyData(this.dataArray as any);
+    
+    const now = performance.now();
+    if (now - this.lastPollTime > 10) {
+      this.analyser.getByteFrequencyData(this.dataArray as any);
+      this.lastPollTime = now;
+    }
+    
     return this.dataArray;
   }
 

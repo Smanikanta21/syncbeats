@@ -280,7 +280,7 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
       {googleRedirectLoading && (
-        <div className="fixed inset-0 z-[95] bg-background/70 backdrop-blur-sm flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-95 bg-background/70 backdrop-blur-sm flex items-center justify-center px-4">
           <div className="rounded-3xl border border-foreground/10 bg-background px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
             <LoaderCircle className="w-5 h-5 text-foreground animate-spin" />
             <p className="text-sm font-semibold text-foreground">Completing Google sign in...</p>
@@ -310,7 +310,7 @@ export default function AuthPage() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-5xl min-h-[600px] sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-background/80 overflow-y-auto overflow-x-hidden md:overflow-hidden flex border border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
+        className="relative w-full max-w-5xl min-h-150 sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-background/80 overflow-y-auto overflow-x-hidden md:overflow-hidden flex border border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
       >
         <div className="absolute top-0 right-1/2 w-64 h-64 bg-foreground/5 filter blur-[60px] pointer-events-none" />
 
@@ -350,7 +350,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-foreground/50" /></div>
-                      <input type="email" tabIndex={1} value={email} onChange={e => setEmail(e.target.value)} className={getEmailInputClass(inputClass, true)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
+                      <input type="email" tabIndex={1} value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClass, true)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -366,7 +366,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-foreground/50" /></div>
-                      <input type={showLoginPassword ? "text" : "password"} tabIndex={2} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
+                      <input type={showLoginPassword ? "text" : "password"} tabIndex={2} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
                       <button
                         type="button"
                         tabIndex={-1}
@@ -431,7 +431,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-foreground/50" /></div>
-                      <input type="text" tabIndex={1} value={name} onChange={e => setName(e.target.value)} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
+                      <input type="text" tabIndex={1} value={name} onChange={e => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -444,7 +444,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-foreground/50" /></div>
-                      <input type="email" tabIndex={2} value={email} onChange={e => setEmail(e.target.value)} className={getEmailInputClass(inputClassSm, false)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
+                      <input type="email" tabIndex={2} value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClassSm, false)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
@@ -457,7 +457,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
-                      <input type={showSignupPassword ? "text" : "password"} tabIndex={3} value={password} onChange={e => setPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
+                      <input type={showSignupPassword ? "text" : "password"} tabIndex={3} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         tabIndex={-1}
@@ -478,7 +478,7 @@ export default function AuthPage() {
                       className="relative"
                     >
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
-                      <input type={showSignupConfirmPassword ? "text" : "password"} tabIndex={4} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
+                      <input type={showSignupConfirmPassword ? "text" : "password"} tabIndex={4} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         tabIndex={-1}
@@ -510,7 +510,7 @@ export default function AuthPage() {
 
                 <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
                   Already have an account?{" "}
-                  <button onClick={() => switchMode(true)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign in</button>
+                  <button type="button" onClick={() => switchMode(true)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign in</button>
                 </p>
               </motion.div>
             )}
@@ -522,9 +522,9 @@ export default function AuthPage() {
           className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-30">
-            <div className="absolute w-[800px] h-[800px] border border-foreground/5 rounded-full animate-[spin_40s_linear_infinite]" />
-            <div className="absolute w-[600px] h-[600px] border border-foreground/10 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
-            <div className="absolute w-[400px] h-[400px] bg-foreground/5 blur-[80px] rounded-full pointer-events-none" />
+            <div className="absolute w-200 h-200 border border-foreground/5 rounded-full animate-[spin_40s_linear_infinite]" />
+            <div className="absolute w-150 h-150 border border-foreground/10 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
+            <div className="absolute w-100 h-100 bg-foreground/5 blur-[80px] rounded-full pointer-events-none" />
           </div>
 
           <AnimatePresence mode="wait">
