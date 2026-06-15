@@ -212,7 +212,7 @@ const CompactProgressBar = ({ isPlaying }: { isPlaying: boolean }) => {
   }, [isPlaying, audio]);
 
   return (
-    <div className="w-[80%] mx-auto mt-0.5 h-[3px] bg-white/20 rounded-full overflow-hidden shrink-0">
+    <div className="w-[80%] mx-auto mt-0.5 h-0.75 bg-white/20 rounded-full overflow-hidden shrink-0">
       <div
         ref={barRef}
         className="h-full bg-white/80 rounded-full"
@@ -238,6 +238,8 @@ interface CompactStateProps {
   error: string | null;
   downloadProgress: number;
   showDetails: boolean;
+  isRoom?: boolean;
+  roomParticipants?: any[];
 }
 
 const CompactState = ({
@@ -251,6 +253,8 @@ const CompactState = ({
   error,
   downloadProgress,
   showDetails,
+  isRoom,
+  roomParticipants,
 }: CompactStateProps) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -262,6 +266,10 @@ const CompactState = ({
     .substring(0, 2)
     .toUpperCase();
 
+  const isRoomReady = isRoom && roomParticipants ? roomParticipants.every(p => p.isReady) : true;
+  const isFullyReady = isReady && isRoomReady;
+  const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter(p => !p.isReady) : [];
+
   if (!hasTrack) {
     return (
       <motion.div
@@ -269,7 +277,7 @@ const CompactState = ({
         animate={{ opacity: isExpanded ? 0 : 1 }}
         transition={{ duration: 0.15 }}
       >
-        <div className="w-full h-full p-[2px]">
+        <div className="w-full h-full p-0.5">
           <div className="w-full h-full bg-white/10 rounded-full flex items-center px-4 text-white/50 text-sm gap-2">
             <Search className="w-4 h-4" />
             <span>Search YouTube or upload...</span>
@@ -296,12 +304,12 @@ const CompactState = ({
     >
       <div className="flex items-center px-3 w-full h-full gap-3">
         <div
-          className={`flex items-center justify-center shrink-0 border overflow-hidden w-7 h-7 rounded-[8px] ${
+          className={`flex items-center justify-center shrink-0 border overflow-hidden w-7 h-7 rounded-lg ${
             thumbnailUrl
               ? "border-white/20"
               : isYt
                 ? "bg-[#FF0000]/10 border-[#FF0000]/20"
-                : "bg-gradient-to-br from-white/10 to-white/5 border-white/10"
+                : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
           }`}
         >
           {thumbnailUrl ? (
@@ -331,19 +339,22 @@ const CompactState = ({
           )}
         </AnimatePresence>
 
-        <div className="flex items-center pr-1 shrink-0 ml-auto">
+        <div className="flex items-center pr-1 shrink-0 ml-auto pointer-events-auto">
           {seekIndicator ? (
             <div className="flex items-center gap-1 text-white/80 text-[11px] font-bold bg-white/10 px-2 py-1 rounded-full">
                {seekIndicator.amount > 0 ? <FastForward className="w-3 h-3" /> : <Rewind className="w-3 h-3" />}
                {seekIndicator.text}
             </div>
           ) : error ? (
-            <div className="flex items-center gap-1 text-[#FF0000]/80 text-[10px] font-bold uppercase tracking-wider pr-1">
+            <div className="flex items-center gap-1 text-[#FF0000]/80 text-[10px] font-bold uppercase tracking-wider pr-1 group relative cursor-help">
               <AlertCircle className="w-3 h-3" /> Failed
+              <div className="absolute bottom-full right-0 mb-2 w-48 bg-black/90 text-white text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-center border border-white/10 pointer-events-none normal-case tracking-normal">
+                Tap the island to view error details.
+              </div>
             </div>
-          ) : !isReady ? (
+          ) : !isFullyReady ? (
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
-              <Loader2 className="w-3 h-3 animate-spin" /> {downloadProgress}%
+              <Loader2 className="w-3 h-3 animate-spin" /> {loadingParticipants.length > 0 ? "Syncing..." : `${downloadProgress}%`}
             </div>
           ) : effectivePlaying ? (
             <AudioBars isPlaying={effectivePlaying} isSmall />
@@ -462,11 +473,14 @@ const PlayerTab = ({
   progress,
   displayTime,
   duration,
+  hasTrack,
   onToggle,
   onNext,
   onPrev,
   onSeek,
   onTabChange,
+  isRoom,
+  roomParticipants,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -478,16 +492,20 @@ const PlayerTab = ({
     .substring(0, 2)
     .toUpperCase();
 
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
+  const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
+
   return (
     <div className="absolute inset-0 flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10">
-      <div className="flex items-center gap-3 sm:gap-4 w-full">
+      <div className="flex items-start gap-3 sm:gap-4 w-full">
         <div
-          className={`flex items-center justify-center shrink-0 border overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-[14px] shadow-lg ${
+          className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
             thumbnailUrl
               ? "border-white/20"
               : isYt
                 ? "bg-[#FF0000]/10 border-[#FF0000]/20"
-                : "bg-gradient-to-br from-white/10 to-white/5 border-white/10"
+                : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
           }`}
         >
           {thumbnailUrl ? (
@@ -498,18 +516,74 @@ const PlayerTab = ({
             </span>
           )}
         </div>
-        <div className="flex flex-col justify-center flex-1 min-w-0">
+        <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
           <div className="font-semibold text-white text-[17px] truncate leading-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
-          <div className={`text-[15px] truncate mt-0.5 ${error ? "text-[#FF0000]/80" : "text-white/50"}`}>
-            {error ? "Failed to pull" : isReady ? "Ready to play" : `Buffering... ${downloadProgress}%`}
+          
+          <div
+            className={`text-[13px] sm:text-[15px] truncate mt-0.5 transition-colors ${
+              error ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]" : "text-white/50"
+            }`}
+            onClick={(e) => {
+              if (error) {
+                e.stopPropagation();
+                setShowErrorDetails((prev) => !prev);
+              }
+            }}
+          >
+            {error ? (
+              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed to pull • Tap for info</span>
+            ) : isReady && !isRoomReady ? (
+              "Syncing to peers..."
+            ) : isReady ? (
+              "Ready to play"
+            ) : (
+              `Buffering... ${downloadProgress}%`
+            )}
           </div>
+
+          <AnimatePresence>
+            {error && showErrorDetails && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] sm:text-xs text-[#FF0000]/90 leading-relaxed whitespace-normal cursor-text pointer-events-auto" onClick={e => e.stopPropagation()}>
+                  <p className="font-bold mb-1">Track Transfer Failed</p>
+                  <p className="opacity-80 wrap-break-word">{error}</p>
+                  <p className="mt-1.5 opacity-80">
+                    If this persists, ask the host to re-select the track. 
+                  </p>
+                </div>
+              </motion.div>
+            )}
+            
+            {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="overflow-hidden"
+              >
+                 <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1 pointer-events-auto" onClick={e => e.stopPropagation()}>
+                    {loadingParticipants.map((p: any) => (
+                       <div key={p.socketId} className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1">
+                          <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
+                          <span className="text-white/80 text-[10px] font-bold uppercase truncate max-w-20">{p.displayName}</span>
+                       </div>
+                    ))}
+                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <div className="flex items-center shrink-0 pr-1">
+        <div className="flex items-center shrink-0 pr-1 pt-1">
           {error ? (
              <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
-          ) : !isReady ? (
+          ) : (!isReady || !isRoomReady) ? (
              <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
           ) : (
              <AudioBars isPlaying={effectivePlaying} isSmall={false} />
@@ -631,7 +705,7 @@ const NetworkTab = ({
               <span className="text-lg text-white/50 ml-1">ms</span>
             </span>
           </div>
-          <div className="flex flex-col items-end">
+          <div className="flex flex-col items-end gap-0.5">
             <span className="text-white/50 text-xs font-bold uppercase tracking-widest">
               Jitter
             </span>
@@ -859,7 +933,7 @@ const YouTubeTab = ({
                       src={r.thumbnail}
                       className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0"
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="space-y-1 min-w-0 flex-1">
                       <div className="text-white text-sm font-bold truncate">
                         {r.title}
                       </div>
@@ -942,6 +1016,33 @@ export function DynamicIsland() {
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [windowWidth, setWindowWidth] = useState(0);
+  useEffect(() => {
+    setWindowWidth(window.innerWidth);
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (isExpanded && windowWidth < 768) {
+      inactivityTimerRef.current = setTimeout(() => {
+        setIsExpanded(false);
+      }, 3000); // 3 seconds timeout
+    }
+  }, [isExpanded, windowWidth]);
+
+  useEffect(() => {
+    resetInactivityTimer();
+    return () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [isExpanded, windowWidth, resetInactivityTimer]);
+
+
   const showSeekIndicator = useCallback((amount: number) => {
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
     const text = amount > 0 ? `+${amount}s` : `${Math.abs(amount)}s`;
@@ -971,13 +1072,7 @@ export function DynamicIsland() {
     }
   }, [isExpanded]);
 
-  const [windowWidth, setWindowWidth] = useState(0);
-  useEffect(() => {
-    setWindowWidth(window.innerWidth);
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+
 
   const dynamicExpandedWidth =
     windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
@@ -1225,6 +1320,7 @@ export function DynamicIsland() {
   }
 
   const handlePointerDown = () => {
+    resetInactivityTimer();
     if (isExpanded) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
@@ -1242,6 +1338,7 @@ export function DynamicIsland() {
   };
 
   const handlePointerUp = () => {
+    resetInactivityTimer();
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
@@ -1275,12 +1372,22 @@ export function DynamicIsland() {
         onClick={() => setIsExpanded(false)}
       />
 
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none">
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-100 flex flex-col items-center pointer-events-none">
         <motion.div
           ref={islandRef}
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
+          onPointerDown={(e) => {
+            handlePointerDown();
+            resetInactivityTimer();
+          }}
+          onPointerUp={(e) => {
+            handlePointerUp();
+            resetInactivityTimer();
+          }}
+          onPointerLeave={(e) => {
+            handlePointerUp();
+            resetInactivityTimer();
+          }}
+          onPointerMove={resetInactivityTimer}
           initial={false}
           transition={SPRING}
           animate={{
@@ -1299,7 +1406,7 @@ export function DynamicIsland() {
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
           }}
-          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/[0.08]"
+          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/8"
         >
           <CompactState
             isExpanded={isExpanded}
@@ -1313,6 +1420,8 @@ export function DynamicIsland() {
             error={audio.error}
             downloadProgress={audio.downloadProgress}
             showDetails={effectivePlaying || forceShowDetails}
+            isRoom={isRoom}
+            roomParticipants={roomParticipants}
           />
 
           <motion.div
@@ -1360,6 +1469,8 @@ export function DynamicIsland() {
                     onPrev={handlePrev}
                     onSeek={handleSeek}
                     onTabChange={handleTabChange}
+                    isRoom={isRoom}
+                    roomParticipants={roomParticipants}
                   />
                 </motion.div>
               )}
