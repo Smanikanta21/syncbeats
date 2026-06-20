@@ -202,5 +202,21 @@ export function createAuthRoutes(): Router {
     }
   });
 
+  // PATCH /auth/me
+  router.patch('/me', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== 'string') {
+        res.status(400).json({ error: 'Name is required' });
+        return;
+      }
+      const updatedUser = await authService.updateProfile(req.user!.sub, name.trim());
+      res.json({ user: updatedUser });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: msg });
+    }
+  });
+
   return router;
 }

@@ -114,6 +114,14 @@ export class UserRepository {
     return user ? this.toPublicUser(user) : null;
   }
 
+  async updateProfile(userId: string, name: string): Promise<PublicUser | null> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name },
+    }) as any;
+    return user ? this.toPublicUser(user) : null;
+  }
+
   async emailExists(email: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },

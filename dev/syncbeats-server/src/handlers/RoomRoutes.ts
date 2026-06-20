@@ -332,6 +332,18 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
+      const fs = require('fs');
+      const path = require('path');
+      const uploadsDir = path.resolve(process.cwd(), 'uploads');
+      const cachedFilePath = path.join(uploadsDir, `youtube_${videoId}.mp3`);
+
+      // If already cached on server, redirect to the fast static file handler
+      if (fs.existsSync(cachedFilePath)) {
+        console.log(`[Proxy] Using cached YouTube audio: ${videoId}`);
+        res.redirect(`/files/youtube_${videoId}.mp3`);
+        return;
+      }
+
       console.log(`[Proxy] Fetching YouTube audio via RapidAPI for video: ${videoId}`);
       
       const rapidApiKey = process.env.RAPID_API_KEY;
@@ -370,9 +382,22 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.setHeader('Content-Type', 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
 
-      // 3. Pipe the Web Stream to the Express Response
+      if (audioRes.headers.has('content-length')) {
+        res.setHeader('Content-Length', audioRes.headers.get('content-length')!);
+      }
+
       const { Readable } = require('stream');
-      Readable.fromWeb(audioRes.body as any).pipe(res);
+      const readable = Readable.fromWeb(audioRes.body as any);
+      
+      // Ensure uploads dir exists
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      
+      // Save to disk for future users while streaming to the current user
+      const fileStream = fs.createWriteStream(cachedFilePath);
+      readable.pipe(fileStream);
+      
+      // 3. Pipe the Web Stream to the Express Response
+      readable.pipe(res);
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);

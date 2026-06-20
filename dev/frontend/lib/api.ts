@@ -171,6 +171,12 @@ export const authApi = {
       body: JSON.stringify({ email, otp }),
     }),
 
+  updateProfile: (name: string) =>
+    request<{ user: User }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }, true),
+
   me: () => request<AuthResponse>('/auth/me', {}, true),
 };
 

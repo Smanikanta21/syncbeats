@@ -26,7 +26,7 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, device, logout, emailVerified } = useAuth();
+  const { user, device, logout, emailVerified, updateProfile } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -78,9 +78,17 @@ export default function ProfilePage() {
     setIsEditingProfile(false);
   };
 
-  const saveEditProfile = () => {
-    // TODO: Add API endpoint to update profile (name, email)
-    setIsEditingProfile(false);
+  const saveEditProfile = async () => {
+    try {
+      if (profileName.trim() && profileName.trim() !== user?.name) {
+        await updateProfile(profileName.trim());
+      }
+      setIsEditingProfile(false);
+    } catch (err) {
+      console.error("Failed to update profile", err);
+      // fallback in case of error
+      setProfileName(user?.name ?? "");
+    }
   };
 
   const openDeviceRename = (deviceId: string, currentName: string) => {

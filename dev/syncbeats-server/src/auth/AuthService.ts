@@ -305,6 +305,12 @@ export class AuthService {
     return { user, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
+  async updateProfile(userId: string, name: string): Promise<PublicUser> {
+    const updated = await this.repo.updateProfile(userId, name);
+    if (!updated) throw new Error('User not found');
+    return updated;
+  }
+
   verifyToken(token: string): TokenPayload {
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) throw new Error('JWT_SECRET not configured');
