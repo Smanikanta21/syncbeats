@@ -34,8 +34,11 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [user, loading, router]);
+    if (!loading && !user) {
+      const returnTo = encodeURIComponent(pathname || "/hub");
+      router.replace(`/login?returnTo=${returnTo}`);
+    }
+  }, [user, loading, router, pathname]);
 
   useEffect(() => {
     if (!device) return;

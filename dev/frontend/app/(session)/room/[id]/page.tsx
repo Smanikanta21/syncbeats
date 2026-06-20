@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -56,11 +56,12 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
+  const { snapshot, participants, isConnected, joinStatus, pendingRequests, togglePrivate, approveJoin, denyJoin, notifyHost, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
     roomId,
     displayName,
   });
-  const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
+  const isLocalPlayBlocked = isConnected && !audio.isReady && audio.hasTrack;
+  const isHost = snapshot?.hostId === currentSocketId;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
@@ -369,10 +370,21 @@ export default function RoomPage() {
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
       <div className="md:hidden w-full flex flex-col pt-30 pb-20 px-4 space-y-6">
         {/* Badges */}
-        <div className="flex items-center gap-3 mb-6">
-          <span className="px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest inline-flex items-center gap-2">
-            <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
-          </span>
+        <div className="flex justify-center items-center gap-3 mb-6">
+          <div className="flex items-center gap-2">
+            <span className="hidden px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest md:inline-flex items-center gap-2">
+              <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active {snapshot?.hostId} / {currentSocketId}
+            </span>
+            {isHost && (
+              <button 
+                onClick={() => togglePrivate(!snapshot?.isPrivate)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase flex items-center gap-2 transition-colors border ${snapshot?.isPrivate ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-foreground/5 text-foreground/50 border-transparent hover:bg-foreground/10'}`}
+              >
+                {snapshot?.isPrivate ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                {snapshot?.isPrivate ? 'Private' : 'Public'}
+              </button>
+            )}
+          </div>
           <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
             {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             {isConnected ? "Connected" : "Connecting…"}
@@ -593,8 +605,104 @@ export default function RoomPage() {
 
   if (!isMounted) return null;
 
+  if (joinStatus === 'pending') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground px-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-foreground/5 to-background pointer-events-none" />
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="z-10 flex flex-col items-center max-w-md w-full glass-panel p-10 rounded-[2.5rem] border border-foreground/10 text-center relative overflow-hidden shadow-2xl"
+        >
+          <div className="w-24 h-24 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 border border-amber-500/20 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+            <Lock className="w-10 h-10 text-amber-500" />
+          </div>
+          <h2 className="text-3xl font-black mb-3">Private Room</h2>
+          <p className="text-foreground/60 mb-8 leading-relaxed">
+            The host has locked this room. A request to join has been sent, please wait for their approval.
+          </p>
+          <button 
+            onClick={notifyHost}
+            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+          >
+            <BellRing className="w-5 h-5" /> Nudge Host
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (joinStatus === 'denied') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground px-6 relative overflow-hidden">
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="z-10 flex flex-col items-center max-w-md w-full glass-panel p-10 rounded-[2.5rem] border border-red-500/20 text-center shadow-2xl"
+        >
+          <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+            <ShieldAlert className="w-10 h-10 text-red-500" />
+          </div>
+          <h2 className="text-3xl font-black mb-3">Access Denied</h2>
+          <p className="text-foreground/60 mb-8 leading-relaxed">
+            The host did not approve your request to join this private room.
+          </p>
+          <button 
+            onClick={() => router.push('/')}
+            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+          >
+            Return Home
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!snapshot || joinStatus === 'connecting') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+        <Loader2 className="w-10 h-10 text-foreground animate-spin mb-4" />
+        <p className="text-foreground/50 tracking-widest uppercase font-bold text-sm">Connecting...</p>
+      </div>
+    );
+  }
+
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-transparent z-0 flex flex-col items-center select-none">
+      
+      {/* Pending Requests Overlay for Host */}
+      <AnimatePresence>
+        {isHost && pendingRequests.length > 0 && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[999] flex flex-col gap-3 w-full max-w-sm px-4">
+            {pendingRequests.map((req) => (
+              <motion.div 
+                key={req.socketId}
+                initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className={`p-4 rounded-3xl border bg-background/95 backdrop-blur-3xl shadow-2xl flex items-center justify-between ${req.isNudge ? 'border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-foreground/10'}`}
+              >
+                <div className="flex flex-col ml-2">
+                  <span className="text-sm font-black tracking-wide">{req.displayName.split('::')[0]}</span>
+                  <span className="text-[10px] text-foreground/50 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                    {req.isNudge ? <BellRing className="w-3.5 h-3.5 text-amber-500 animate-bounce" /> : null}
+                    wants to join
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => denyJoin(req.socketId)} className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 active:scale-95 transition-all">
+                    <ShieldAlert className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => approveJoin(req.socketId, req.displayName)} className="w-10 h-10 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center hover:bg-green-500/20 active:scale-95 transition-all">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
@@ -603,7 +711,7 @@ export default function RoomPage() {
           const isSyncing = !!activeTransfer;
           const isAnyDeviceBuffering = snapshot?.isPlaying && audio.hasTrack && participants.some(p => !p.isReady && !p.isBlocked);
           
-          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing)) return null;
+          if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing) || audio.error) return null;
 
           let overlayText = "Buffering…";
           if (isSyncing) {
@@ -626,14 +734,14 @@ export default function RoomPage() {
                   <div className="absolute inset-0 rounded-full bg-linear-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
                 </div>
                 
-                {/* Spinner */}
-                <div className="relative w-5 h-5 shrink-0">
+                {/* Spinner / Error Icon */}
+                <div className="relative shrink-0 flex items-center justify-center w-5 h-5">
                   <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
                   <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
                 
                 {/* Text */}
-                <span className="relative text-sm font-semibold text-foreground/80 tracking-wide whitespace-nowrap">
+                <span className="relative text-sm font-semibold tracking-wide whitespace-nowrap text-foreground/80">
                   {overlayText}
                 </span>
                 
@@ -681,23 +789,10 @@ export default function RoomPage() {
     </AnimatePresence>
 
       {/* Ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
+      {/* Ambient glow removed (now in layout) */}
 
       {/* ── DESKTOP VIEW ── */}
 
-
-        {/* Drag hint */}
-        {!audio.hasTrack && !upload.isUploading && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="mb-6 max-w-7xl w-full px-6 py-4 rounded-2xl border border-dashed border-foreground/10 text-foreground/40 text-sm font-medium flex items-center justify-center gap-3 shrink-0"
-          >
-            <Volume2 className="w-4 h-4 shrink-0" />
-            Drag an audio file here or use the island above to add music
-          </motion.div>
-        )}
 
         {/* ── Connected Devices ── */}
       <div className="hidden md:flex flex-col w-full h-full pt-20 pb-6 px-6 overflow-hidden">
@@ -712,9 +807,20 @@ export default function RoomPage() {
             {/* Room Info Card */}
             <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
                <div className="flex justify-between items-center">
-                  <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-foreground/60" /> Live
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-foreground/60" /> Live {snapshot?.hostId} / {currentSocketId}
+                    </span>
+                    {isHost && (
+                      <button 
+                        onClick={() => togglePrivate(!snapshot?.isPrivate)}
+                        className={`px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest uppercase flex items-center gap-1.5 transition-colors border ${snapshot?.isPrivate ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-foreground/5 text-foreground/50 border-transparent hover:bg-foreground/10'}`}
+                      >
+                        {snapshot?.isPrivate ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                        {snapshot?.isPrivate ? 'Private' : 'Public'}
+                      </button>
+                    )}
+                  </div>
                   <span className={`px-2.5 py-1 rounded-md text-[9px] uppercase font-black tracking-widest flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-red-500/10 border-red-500/20 text-red-500"}`}>
                     {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
                     {isConnected ? "Connected" : "Connecting"}
@@ -861,7 +967,6 @@ export default function RoomPage() {
 
           {/* Right Column: Queue */}
           <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-2">
-          {localQueue.length ? (
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
               <div className="flex items-center justify-between shrink-0">
                 <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
@@ -876,39 +981,42 @@ export default function RoomPage() {
                   <Plus className="w-3.5 h-3.5 text-foreground/50" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={localQueue.map((i) => i.id)}
-                    strategy={verticalListSortingStrategy}
+              
+              {localQueue.length ? (
+                <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
                   >
-                    {localQueue.map((item: TrackQueueItem) => {
-                      const addedByName = item.addedBy === user?.id
-                        ? "You"
-                        : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
-                      return (
-                        <SortableTrackItem
-                          key={item.id}
-                          item={item}
-                          onRemove={handleRemoveTrack}
-                          onPlay={handlePlayTrack}
-                          addedByName={addedByName}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                </DndContext>
-              </div>
+                    <SortableContext
+                      items={localQueue.map((i) => i.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {localQueue.map((item: TrackQueueItem) => {
+                        const addedByName = item.addedBy === user?.id
+                          ? "You"
+                          : (item.addedByName ? item.addedByName.split(" ")[0] : item.addedBy);
+                        return (
+                          <SortableTrackItem
+                            key={item.id}
+                            item={item}
+                            onRemove={handleRemoveTrack}
+                            onPlay={handlePlayTrack}
+                            addedByName={addedByName}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5">
+                  <Music2 className="w-8 h-8 mb-3 opacity-20" />
+                  No songs in queue
+                </div>
+              )}
             </div>
-          ) : (<div className="w-full rounded-2xl border border-foreground/5 bg-background/40 p-4 h-full flex items-center justify-center">
-            <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
-              No songs in the queue
-            </h3>
-          </div>)}
           </div>
         </motion.div>
       </div>

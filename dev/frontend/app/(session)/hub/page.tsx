@@ -346,10 +346,7 @@ export default function HubPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 bg-background text-foreground transition-colors duration-300">
-      {/* Background ambient lighting */}
-      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
-
+    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 bg-transparent text-foreground transition-colors duration-300">
       {/* Main Hub Content */}
       <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20 pt-10">
 
@@ -379,7 +376,6 @@ export default function HubPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
             <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
@@ -405,7 +401,6 @@ export default function HubPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
-            whileHover={{ y: -5 }}
             className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
             <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">

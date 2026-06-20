@@ -15,6 +15,7 @@ export class Room extends EventEmitter {
   private queue:        TrackQueueItem[]       = [];
   private spatial:      Map<string, SpatialPosition> = new Map();
   private snapshotTime: number                 = Date.now();
+  private isPrivate:    boolean                = false;
   private timeline = {
     startEpoch: null as number | null,
     pauseOffset: 0,
@@ -224,7 +225,9 @@ export class Room extends EventEmitter {
   // ── Participants ──────────────────────────────────────────────────────
 
   addParticipant(p: Participant): void {
-    if (!this.hostId) this.hostId = p.socketId;
+    if (!this.hostId || !this.participants.has(this.hostId)) {
+      this.hostId = p.socketId;
+    }
     p.isReady = false;
     p.isBlocked = false;
     p.volume = this.clampVolume(p.volume ?? 100);
@@ -277,7 +280,16 @@ export class Room extends EventEmitter {
       pauseOffset:  this.timeline.pauseOffset,
       isPlaying:    this.timeline.isPlaying,
       pendingPlay:  this.pendingPlay,
+      isPrivate:    this.isPrivate,
     };
+  }
+
+  getIsPrivate(): boolean { return this.isPrivate; }
+  
+  setIsPrivate(isPrivate: boolean): void {
+    if (this.isPrivate === isPrivate) return;
+    this.isPrivate = isPrivate;
+    this.emit('stateChanged', this.snapshot());
   }
 
   private electNewHost(): void {

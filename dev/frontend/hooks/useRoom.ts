@@ -15,6 +15,8 @@ interface UseRoomReturn {
   snapshot:     RoomSnapshot | null;
   participants: Participant[];
   isConnected:  boolean;
+  joinStatus:   'joined' | 'pending' | 'denied' | 'connecting';
+  pendingRequests: { socketId: string, displayName: string, isNudge?: boolean }[];
   currentSocketId: string | null;
   clockOffset:  number;
   allReady:     boolean;      
@@ -27,6 +29,10 @@ interface UseRoomReturn {
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
   incomingTrack: { title: string, progress: number } | null;
+  togglePrivate: (isPrivate: boolean) => void;
+  approveJoin:  (targetSocketId: string, displayName: string) => void;
+  denyJoin:     (targetSocketId: string) => void;
+  notifyHost:   () => void;
 }
 
 const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
@@ -44,6 +50,8 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
+  const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
+  const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
@@ -315,6 +323,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     const handleConnect = () => {
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
+      setJoinStatus('connecting');
       socket.emit('room:join', { 
         roomId, 
         displayName, 
@@ -332,6 +341,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     socket.on('disconnect', handleDisconnect);
 
     const handleSnapshot = (snap: RoomSnapshot) => {
+      setJoinStatus('joined');
       setSnapshot(snap);
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
@@ -401,6 +411,34 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
     };
     socket.on('playback:pause', handlePause);
 
+    const handlePendingApproval = () => setJoinStatus('pending');
+    socket.on('room:joinPendingApproval', handlePendingApproval);
+
+    const handleJoinApproved = () => setJoinStatus('joined');
+    socket.on('room:joinApproved', handleJoinApproved);
+
+    const handleJoinDenied = () => setJoinStatus('denied');
+    socket.on('room:joinDenied', handleJoinDenied);
+
+    const handleHostJoinRequest = ({ socketId, displayName, isNudge }: any) => {
+      setPendingRequests(prev => {
+        const existing = prev.find(r => r.socketId === socketId);
+        if (existing) {
+          if (isNudge) {
+            return [{ ...existing, isNudge: true }, ...prev.filter(r => r.socketId !== socketId)];
+          }
+          return prev;
+        }
+        return [...prev, { socketId, displayName, isNudge }];
+      });
+    };
+    socket.on('room:hostJoinRequest', handleHostJoinRequest);
+
+    const handleHostChanged = (newHostId: string | null) => {
+      setSnapshot(prev => prev ? { ...prev, hostId: newHostId } : prev);
+    };
+    socket.on('room:hostChanged', handleHostChanged);
+
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
@@ -424,6 +462,11 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       socket.off('room:queueChanged', handleQueueChanged);
       socket.off('playback:schedule', handleSchedule);
       socket.off('playback:pause', handlePause);
+      socket.off('room:joinPendingApproval', handlePendingApproval);
+      socket.off('room:joinApproved', handleJoinApproved);
+      socket.off('room:joinDenied', handleJoinDenied);
+      socket.off('room:hostJoinRequest', handleHostJoinRequest);
+      socket.off('room:hostChanged', handleHostChanged);
       socket.off('error', handleError);
     };
   }, [applyRoomDetails, roomId, displayName, socket, runNtpBurst]);
@@ -479,12 +522,23 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
+  const togglePrivate = useCallback((isPrivate: boolean) => socket.emit('room:togglePrivate', { roomId, isPrivate }), [socket, roomId]);
+  const approveJoin = useCallback((targetSocketId: string, displayName: string) => {
+    socket.emit('room:approveJoin', { roomId, targetSocketId, displayName });
+    setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
+  }, [socket, roomId]);
+  const denyJoin = useCallback((targetSocketId: string) => {
+    socket.emit('room:denyJoin', { roomId, targetSocketId });
+    setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
+  }, [socket, roomId]);
+  const notifyHost = useCallback(() => socket.emit('room:notifyHost', { roomId, displayName }), [socket, roomId, displayName]);
+
   const leave = useCallback(() => {
     socket.emit('room:leave', { roomId });
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
-    setParticipantVolume, leave, incomingTrack
+  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
+    setParticipantVolume, leave, incomingTrack, togglePrivate, approveJoin, denyJoin, notifyHost
   };
 }

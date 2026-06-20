@@ -90,6 +90,18 @@ export class SocketHandler {
           }
         }
 
+        // --- Private Mode Gate ---
+        const snapshot = room.snapshot();
+        const isHost = snapshot.hostId === socket.id;
+        const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
+
+        if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
+          socket.emit('room:joinPendingApproval', { roomId });
+          this.io.to(snapshot.hostId!).emit('room:hostJoinRequest', { socketId: socket.id, displayName });
+          return;
+        }
+        // -------------------------
+
         if (room.hasParticipant(socket.id)) {
           socket.join(roomId);
           this.roomManager.trackSocket(socket.id, roomId);
@@ -115,6 +127,48 @@ export class SocketHandler {
         room.removeParticipant(socket.id);
       }
       socket.leave(roomId);
+    });
+
+    socket.on('room:togglePrivate', ({ roomId, isPrivate }: { roomId: string, isPrivate: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      if (room.snapshot().hostId !== socket.id) {
+        socket.emit('error', { message: 'Only host can toggle private mode' });
+        return;
+      }
+      room.setIsPrivate(isPrivate);
+    });
+
+    socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room || room.snapshot().hostId !== socket.id) return;
+      
+      const targetSocket = this.io.sockets.sockets.get(targetSocketId);
+      if (!targetSocket) return;
+
+      targetSocket.join(roomId);
+      this.roomManager.trackSocket(targetSocketId, roomId);
+      room.addParticipant({ socketId: targetSocketId, displayName, joinedAt: Date.now(), isReady: false, volume: 100 });
+      targetSocket.emit('room:joinApproved');
+      targetSocket.emit('room:snapshot', room.snapshot());
+      console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
+    });
+
+    socket.on('room:denyJoin', ({ roomId, targetSocketId }: { roomId: string, targetSocketId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room || room.snapshot().hostId !== socket.id) return;
+
+      this.io.to(targetSocketId).emit('room:joinDenied');
+      console.log(`[Room ${roomId}] Host denied ${targetSocketId}`);
+    });
+
+    socket.on('room:notifyHost', ({ roomId, displayName }: { roomId: string, displayName: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      const hostId = room.snapshot().hostId;
+      if (hostId) {
+        this.io.to(hostId).emit('room:hostJoinRequest', { socketId: socket.id, displayName, isNudge: true });
+      }
     });
 
     // ── Playback — any participant can control ────────────────────────────
