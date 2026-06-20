@@ -61,7 +61,8 @@ export default function RoomPage() {
     displayName,
     userId: user?.id,
   });
-  const isLocalPlayBlocked = isConnected && !audio.isReady && audio.hasTrack;
+  // Show Audio Unlock overlay if the browser hasn't been unlocked via a user gesture yet
+  const isLocalPlayBlocked = isConnected && !audio.audioUnlocked;
   const isHost = snapshot?.hostId === user?.id;
   const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests } = useSyncInfo();
 
@@ -1114,9 +1115,9 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* ── Tap to Sync Mobile/iOS Audio Context Unlock Overlay ── */}
+      {/* ── Tap to Enable Mobile/iOS Audio Context Unlock Overlay ── */}
       {isLocalPlayBlocked && (
-        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-99999 px-6 text-center">
+        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-[99999] px-6 text-center">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -1127,9 +1128,9 @@ export default function RoomPage() {
               🎵
             </div>
             <div className="space-y-2">
-              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Sync Audio</h2>
-              <p className="text-xs text-foreground/40 font-medium max-w-70 mx-auto leading-relaxed">
-                Mobile browsers require a physical tap to enable synchronized player audio. Tap below to join.
+              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Enable Audio</h2>
+              <p className="text-xs text-foreground/40 font-medium max-w-[70%] mx-auto leading-relaxed">
+                Browsers require a physical tap to allow audio playback. Tap below to enable sound.
               </p>
             </div>
             <button
@@ -1138,7 +1139,7 @@ export default function RoomPage() {
               }}
               className="w-full bg-foreground hover:bg-foreground/90 text-background font-bold tracking-widest uppercase text-xs py-4 px-6 rounded-full transition-transform active:scale-95 shadow-xl shadow-foreground/5 border border-foreground/10"
             >
-              Sync Audio Now
+              Enable Audio Now
             </button>
           </motion.div>
         </div>

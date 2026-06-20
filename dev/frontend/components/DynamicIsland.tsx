@@ -354,6 +354,13 @@ const CompactState = ({
                 Tap the island to view error details.
               </div>
             </div>
+          ) : !hasTrack ? (
+            <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
+              Waiting for others
+              {pendingRequestsCount && pendingRequestsCount > 0 ? (
+                <div className="ml-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              ) : null}
+            </div>
           ) : !isFullyReady ? (
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
               <Loader2 className="w-3 h-3 animate-spin" /> {loadingParticipants.length > 0 ? "Syncing..." : `${downloadProgress}%`}
