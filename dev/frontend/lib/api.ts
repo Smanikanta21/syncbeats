@@ -203,6 +203,7 @@ export interface RoomRecord {
   position_ms:    number;
   created_at:     string;
   ended_at:       string | null;
+  is_private?:    boolean;
 }
 
 export interface DeviceListResponse {

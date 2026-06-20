@@ -47,6 +47,7 @@ export interface RoomSnapshot {
   pauseOffset?: number;
   isPlaying?:   boolean;
   pendingPlay?: boolean;
+  isPrivate?:   boolean;
 }
 
 export interface PlaybackSchedulePayload {

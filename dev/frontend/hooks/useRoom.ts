@@ -110,6 +110,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         participants: details.live.participants as Participant[],
         queue:        details.live.queue as TrackQueueItem[],
         spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
+        isPrivate:    details.live.isPrivate,
       };
       parts = details.live.participants as Participant[];
     } else if (details.db) {
@@ -127,6 +128,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
         participants: details.participants.map(p => ({ ...p, isReady: false })),
         queue:        details.queue as TrackQueueItem[],
         spatial:      [],
+        isPrivate:    details.db.is_private,
       };
       parts = details.participants.map(p => ({ ...p, isReady: false }));
     }
