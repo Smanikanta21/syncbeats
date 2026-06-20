@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 
-interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; }
+interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; host_id: string; }
 
 function getPlatformLabel(userAgent: string | null): string {
   if (!userAgent) return "Unknown";
@@ -25,7 +25,7 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function HubPage() {
   const router = useRouter();
-  const { device: currentDevice } = useAuth();
+  const { user, device: currentDevice } = useAuth();
   const [joinCode, setJoinCode] = useState("");
   const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
@@ -575,16 +575,18 @@ export default function HubPage() {
                 <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Room: {roomMenu.room.id}</p>
                 
                 <div className="flex flex-col gap-2.5">
-                  <button
-                    onClick={() => {
-                      setRoomToEnd(roomMenu.room);
-                      setRoomMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <Trash2 className="w-5 h-5 text-red-400" />
-                    End session
-                  </button>
+                  {roomMenu.room.host_id === user?.id && (
+                    <button
+                      onClick={() => {
+                        setRoomToEnd(roomMenu.room);
+                        setRoomMenu(null);
+                      }}
+                      className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                    >
+                      <Trash2 className="w-5 h-5 text-red-400" />
+                      End session
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setRoomInfo(roomMenu.room);
@@ -595,16 +597,18 @@ export default function HubPage() {
                     <QrCode className="w-5 h-5 text-foreground/70" />
                     Room info + QR
                   </button>
-                  <button
-                    onClick={() => {
-                      setRoomToTransfer(roomMenu.room);
-                      setRoomMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <UserRoundCog className="w-5 h-5 text-foreground/70" />
-                    Change host
-                  </button>
+                  {roomMenu.room.host_id === user?.id && (
+                    <button
+                      onClick={() => {
+                        setRoomToTransfer(roomMenu.room);
+                        setRoomMenu(null);
+                      }}
+                      className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                    >
+                      <UserRoundCog className="w-5 h-5 text-foreground/70" />
+                      Change host
+                    </button>
+                  )}
                 </div>
                 
                 <button
@@ -625,16 +629,18 @@ export default function HubPage() {
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              <button
-                onClick={() => {
-                  setRoomToEnd(roomMenu.room);
-                  setRoomMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <Trash2 className="w-4 h-4 text-red-400" />
-                End session
-              </button>
+              {roomMenu.room.host_id === user?.id && (
+                <button
+                  onClick={() => {
+                    setRoomToEnd(roomMenu.room);
+                    setRoomMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                  End session
+                </button>
+              )}
               <button
                 onClick={() => {
                   setRoomInfo(roomMenu.room);
@@ -645,16 +651,18 @@ export default function HubPage() {
                 <QrCode className="w-4 h-4 text-foreground/70" />
                 Room info + QR
               </button>
-              <button
-                onClick={() => {
-                  setRoomToTransfer(roomMenu.room);
-                  setRoomMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <UserRoundCog className="w-4 h-4 text-foreground/70" />
-                Change host
-              </button>
+              {roomMenu.room.host_id === user?.id && (
+                <button
+                  onClick={() => {
+                    setRoomToTransfer(roomMenu.room);
+                    setRoomMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+                >
+                  <UserRoundCog className="w-4 h-4 text-foreground/70" />
+                  Change host
+                </button>
+              )}
             </div>
           </>
         )}

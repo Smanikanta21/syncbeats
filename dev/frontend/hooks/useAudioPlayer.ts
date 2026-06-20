@@ -38,6 +38,8 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   audioEl:     HTMLAudioElement | null;
   audioCtx?:   AudioContext | null;
   gainNode?:   GainNode | null;
+  getAudioData: () => number;
+  getRawAudioData: () => Uint8Array | null;
 }
 
 export function formatTime(seconds: number): string {
@@ -64,6 +66,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
@@ -82,7 +85,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass && !audioCtxRef.current) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
-        gainNodeRef.current.connect(audioCtxRef.current.destination);
+        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
+        analyserNodeRef.current.fftSize = 256;
+        
+        gainNodeRef.current.connect(analyserNodeRef.current);
+        analyserNodeRef.current.connect(audioCtxRef.current.destination);
       }
     }
   }, []);
@@ -109,6 +116,28 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
   }, [isPlaying]);
+
+  const getAudioData = useCallback(() => {
+    if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return 0;
+    const dataArray = new Uint8Array(analyserNodeRef.current.frequencyBinCount);
+    analyserNodeRef.current.getByteFrequencyData(dataArray);
+    
+    // Average the lower frequencies (bass) for the "beat" pulse
+    let sum = 0;
+    const sampleCount = 10;
+    for (let i = 0; i < sampleCount; i++) {
+      sum += dataArray[i];
+    }
+    const avg = sum / sampleCount;
+    return avg / 255; // Normalized 0 to 1
+  }, []);
+
+  const getRawAudioData = useCallback(() => {
+    if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return null;
+    const dataArray = new Uint8Array(analyserNodeRef.current.frequencyBinCount);
+    analyserNodeRef.current.getByteFrequencyData(dataArray);
+    return dataArray;
+  }, []);
 
   const unlockAudio = useCallback(async () => {
     if (!audioCtxRef.current) return;
@@ -565,9 +594,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
     trackUrl, trackTitle, trackArtist, error,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
-    scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
+    scheduleStart, playNow, pauseAt,    getTruePosition,
+    setPlaybackRate,
     audioEl: null,
     audioCtx: audioCtxRef.current,
-    gainNode: gainNodeRef.current
+    gainNode: gainNodeRef.current,
+    getAudioData,
+    getRawAudioData
   };
 }

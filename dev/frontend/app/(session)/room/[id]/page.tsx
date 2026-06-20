@@ -64,7 +64,7 @@ export default function RoomPage() {
   // Show Audio Unlock overlay if the browser hasn't been unlocked via a user gesture yet
   const isLocalPlayBlocked = isConnected && !audio.audioUnlocked;
   const isHost = snapshot?.hostId === user?.id;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId, setJoinStatus: pushJoinStatus } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
   useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
@@ -103,6 +103,11 @@ export default function RoomPage() {
   useEffect(() => {
     pushHostId(snapshot?.hostId || null);
   }, [snapshot?.hostId, pushHostId]);
+
+  // Push joinStatus to shared context
+  useEffect(() => {
+    pushJoinStatus(joinStatus);
+  }, [joinStatus, pushJoinStatus]);
 
   // Listen for actions from DynamicIsland
   useEffect(() => {
@@ -656,6 +661,22 @@ export default function RoomPage() {
             <Lock className="w-10 h-10 text-amber-500" />
           </div>
           <h2 className="text-3xl font-black mb-3">Private Room</h2>
+          
+          <div className="flex items-center gap-3 bg-foreground/5 pl-4 pr-2 py-2 rounded-xl border border-foreground/10 mb-8">
+            <span className="font-black tracking-[0.2em] text-xl text-foreground/90">{roomId}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(roomId);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="w-8 h-8 rounded-lg bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center transition-colors active:scale-95"
+              title="Copy room code"
+            >
+              {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-foreground/50" />}
+            </button>
+          </div>
+
           <p className="text-foreground/60 mb-8 leading-relaxed">
             The host has locked this room. A request to join has been sent, please wait for their approval.
           </p>
@@ -894,7 +915,10 @@ export default function RoomPage() {
                   )}
                 </h4>
                 <div className="grid grid-cols-1 gap-3 w-full">
-                  {userDevices.map((p, i) => (
+                  {userDevices.map((p, i) => {
+                    const displayDeviceName = p.devName.replace(new RegExp(`^${userName}['’]s\\s+`, 'i'), '');
+                    
+                    return (
                     <div
                       key={p.socketId}
                       className="glass-panel p-5 rounded-4xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
@@ -903,7 +927,7 @@ export default function RoomPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
                             <span className="font-black text-foreground/70 text-sm tracking-widest">
-                              {p.devName.slice(0, 2).toUpperCase()}
+                              {userName.slice(0, 2).toUpperCase()}
                             </span>
                             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
                               <DeviceIcon index={i} />
@@ -911,7 +935,7 @@ export default function RoomPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-foreground">{p.devName}</h4>
+                              <h4 className="font-bold text-foreground">{displayDeviceName}</h4>
                             </div>
                             <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
                               {p.isReady
@@ -947,13 +971,13 @@ export default function RoomPage() {
                             step={1}
                             value={p.volume}
                             onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                            aria-label={`${p.devName} volume`}
+                            aria-label={`${displayDeviceName} volume`}
                             className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
                           />
                         </div>
                       </motion.div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               </div>
             ))}

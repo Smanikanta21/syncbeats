@@ -18,6 +18,8 @@ interface SyncCtx {
   setPendingRequests: (v: JoinRequest[]) => void;
   hostId: string | null;
   setHostId: (v: string | null) => void;
+  joinStatus: 'joined' | 'pending' | 'denied' | 'connecting';
+  setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting') => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -28,6 +30,7 @@ const Ctx = createContext<SyncCtx>({
   incomingTrack: null, setIncomingTrack: () => {},
   pendingRequests: [], setPendingRequests: () => {},
   hostId: null, setHostId: () => {},
+  joinStatus: 'connecting', setJoinStatus: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -38,6 +41,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
+  const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
 
   return (
     <Ctx.Provider value={{
@@ -48,6 +52,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       incomingTrack, setIncomingTrack,
       pendingRequests, setPendingRequests,
       hostId, setHostId,
+      joinStatus, setJoinStatus,
     }}>
       {children}
     </Ctx.Provider>

@@ -82,6 +82,7 @@ const AudioBars = ({
   isPlaying: boolean;
   isSmall?: boolean;
 }) => {
+  const audio = useAudio();
   const barsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,7 +103,7 @@ const AudioBars = ({
 
     const tick = () => {
       const now = performance.now();
-      const data = null as Uint8Array | null; // SpatialAudioEngine.getInstance().getFrequencyData();
+      const data = audio.getRawAudioData();
 
       let currentBeat = 0;
       if (data && data.length > 40) {
@@ -816,6 +817,7 @@ const YouTubeTab = ({
   const [isSearching, setIsSearching] = useState(false);
   const [enqueuing, setEnqueuing] = useState<string | null>(null);
   const [addedSongs, setAddedSongs] = useState<Set<string>>(new Set());
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -853,6 +855,7 @@ const YouTubeTab = ({
     if (!q.trim()) return;
     setIsSearching(true);
     setShowSuggestions(false);
+    setDownloadError(null);
     try {
       const res = await roomsApi.searchYoutube(roomId, q);
       setResults(res);
@@ -870,14 +873,20 @@ const YouTubeTab = ({
 
   const handlePlay = async (result: any) => {
     setEnqueuing(result.url);
+    setDownloadError(null);
     try {
       const videoId =
         result.url.split("v=")[1]?.split("&")[0] ||
         result.url.split("youtu.be/")[1]?.split("?")[0];
       await upload.downloadYoutubeToP2P(roomId, videoId, result.title);
       setAddedSongs((prev) => new Set(prev).add(result.url));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.message?.includes("RapidAPI did not return a valid download link") || err.message?.includes("FATAL: YouTube download returned")) {
+         setDownloadError("This track is age-restricted or blocked by YouTube. Please try another search result.");
+      } else {
+         setDownloadError(err.message || "Failed to load this track.");
+      }
     } finally {
       setEnqueuing(null);
     }
@@ -960,6 +969,16 @@ const YouTubeTab = ({
           <button type="submit" className="hidden" />
         </form>
       </motion.div>
+
+      {downloadError && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="bg-red-500/20 border border-red-500/30 text-red-200 text-xs px-3 py-2 rounded-xl mb-3 shrink-0"
+        >
+          {downloadError}
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {!isCentered && (
@@ -1119,6 +1138,7 @@ export function DynamicIsland() {
     incomingTrack,
     pendingRequests,
     hostId,
+    joinStatus,
   } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
@@ -1441,6 +1461,11 @@ export function DynamicIsland() {
       document.removeEventListener('island:expand-add', handleExpandAdd);
     };
   }, []);
+
+  // Do not render dynamic island in waiting room
+  if (isRoom && (joinStatus === 'pending' || joinStatus === 'denied')) {
+    return null;
+  }
 
   if (!isRoom) {
     return (

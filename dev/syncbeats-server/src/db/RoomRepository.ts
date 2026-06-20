@@ -53,7 +53,13 @@ export class RoomRepository {
 
   async listByUser(userId: string): Promise<RoomRow[]> {
     const rooms = await prisma.room.findMany({
-      where: { hostId: userId, endedAt: null },
+      where: { 
+        OR: [
+          { hostId: userId },
+          { roomParticipants: { some: { userId } } }
+        ],
+        endedAt: null 
+      },
       orderBy: { createdAt: 'desc' }
     });
     return rooms.map(r => this.mapRoom(r));
