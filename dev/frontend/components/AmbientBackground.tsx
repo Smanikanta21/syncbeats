@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAudio } from "../context/AudioContext";
 
 export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
   
   // Conditionally get audio context. If syncWithAudio is true, we expect to be inside AudioProvider.
   // We can't unconditionally call useAudio() because this component might be used outside AudioProvider (e.g., in landing page).
@@ -17,6 +26,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
   }
 
   useEffect(() => {
+    if (isMobile) return;
     if (!syncWithAudio || !audioContext) return;
     
     let rafId: number;
@@ -40,7 +50,20 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
 
     animate();
     return () => cancelAnimationFrame(rafId);
-  }, [syncWithAudio, audioContext]);
+  }, [syncWithAudio, audioContext, isMobile]);
+
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div 
+          className="absolute inset-0 w-full h-full opacity-60 animate-[pulse_8s_ease-in-out_infinite_alternate]"
+          style={{
+            background: "radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.1) 0%, transparent 40%), radial-gradient(circle at 80% 60%, rgba(59, 130, 246, 0.1) 0%, transparent 40%), radial-gradient(circle at 40% 90%, rgba(168, 85, 247, 0.1) 0%, transparent 50%)"
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">

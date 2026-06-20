@@ -78,15 +78,17 @@ const cleanTrackTitle = (title: string | undefined): string => {
 const AudioBars = ({
   isPlaying,
   isSmall,
+  isVisible = true,
 }: {
   isPlaying: boolean;
   isSmall?: boolean;
+  isVisible?: boolean;
 }) => {
   const audio = useAudio();
   const barsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || !isVisible) {
       if (barsRef.current) {
         const children = barsRef.current.children;
         for (let i = 0; i < children.length; i++) {
@@ -153,7 +155,7 @@ const AudioBars = ({
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [isPlaying]);
+  }, [isPlaying, isVisible]);
 
   const hClass = isSmall ? "h-3.5" : "h-5";
   const wClass = isSmall ? "w-[3px]" : "w-1.5";
@@ -185,7 +187,7 @@ const AudioBars = ({
 // CompactProgressBar
 // ─────────────────────────────────────────────────────────
 
-const CompactProgressBar = ({ isPlaying }: { isPlaying: boolean }) => {
+const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolean; isVisible?: boolean }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const audio = useAudio();
 
@@ -198,20 +200,20 @@ const CompactProgressBar = ({ isPlaying }: { isPlaying: boolean }) => {
 
       if (barRef.current) barRef.current.style.width = `${progress * 100}%`;
 
-      if (isPlaying) {
+      if (isPlaying && isVisible) {
         rafId = requestAnimationFrame(tick);
       }
     };
     
     tick();
 
-    if (isPlaying) {
+    if (isPlaying && isVisible) {
       rafId = requestAnimationFrame(tick);
     }
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, audio]);
+  }, [isPlaying, audio, isVisible]);
 
   return (
     <div className="w-[80%] mx-auto mt-0.5 h-0.75 bg-white/20 rounded-full overflow-hidden shrink-0">
@@ -357,7 +359,7 @@ const CompactState = ({
                 <div className="text-center text-white text-[11px] sm:text-xs font-semibold truncate leading-tight"> 
                   {cleanTrackTitle(trackTitle).split(/\s+/).slice(0, 6).join(" ")}
                 </div>
-                <CompactProgressBar isPlaying={effectivePlaying} />
+                <CompactProgressBar isPlaying={effectivePlaying} isVisible={!isExpanded} />
               </div>
             </motion.div>
           )}
@@ -388,7 +390,7 @@ const CompactState = ({
               <Loader2 className="w-3 h-3 animate-spin" /> {loadingParticipants.length > 0 ? "Syncing..." : `${downloadProgress}%`}
             </div>
           ) : effectivePlaying ? (
-            <AudioBars isPlaying={effectivePlaying} isSmall />
+            <AudioBars isPlaying={effectivePlaying} isSmall isVisible={!isExpanded} />
           ) : (
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
               <Pause className="w-3 h-3" /> Paused
@@ -407,7 +409,7 @@ const CompactState = ({
 // RealtimeProgressBar
 // ─────────────────────────────────────────────────────────
 
-const RealtimeProgressBar = ({ duration, onSeek, isPlaying }: { duration: number; onSeek: (pos: number) => void; isPlaying: boolean }) => {
+const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: { duration: number; onSeek: (pos: number) => void; isPlaying: boolean; isVisible?: boolean }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const leftTimeRef = useRef<HTMLSpanElement>(null);
@@ -426,20 +428,20 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying }: { duration: number
       if (leftTimeRef.current) leftTimeRef.current.textContent = formatTime(pos);
       if (rightTimeRef.current) rightTimeRef.current.textContent = "-" + formatTime(Math.max(0, dur - pos));
 
-      if (isPlaying) {
+      if (isPlaying && isVisible) {
         rafId = requestAnimationFrame(tick);
       }
     };
     
     tick();
 
-    if (isPlaying) {
+    if (isPlaying && isVisible) {
       rafId = requestAnimationFrame(tick);
     }
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, duration, audio]);
+  }, [isPlaying, duration, audio, isVisible]);
 
   return (
     <div className="flex items-center gap-3 w-full mt-2">
@@ -517,6 +519,7 @@ const PlayerTab = ({
   roomParticipants,
   pendingRequestsCount,
   isHost,
+  isVisible = true,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -622,7 +625,7 @@ const PlayerTab = ({
           ) : (!isReady || !isRoomReady) ? (
              <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
           ) : (
-             <AudioBars isPlaying={effectivePlaying} isSmall={false} />
+             <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />
           )}
 
           {isRoom && (
@@ -639,7 +642,7 @@ const PlayerTab = ({
         </div>
       </div>
 
-      <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} />
+      <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
@@ -1678,6 +1681,7 @@ export function DynamicIsland() {
                     roomParticipants={roomParticipants}
                     pendingRequestsCount={pendingRequests?.length || 0}
                     isHost={isHost}
+                    isVisible={isExpanded}
                   />
                 </motion.div>
               )}

@@ -390,21 +390,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [volume]);
 
   useEffect(() => {
-    const tick = () => {
-      if (isPlaying) {
+    let intervalId: any;
+    if (isPlaying) {
+      intervalId = setInterval(() => {
         if (audioCtxRef.current) {
           const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
           setCurrentTime(pauseOffsetRef.current + elapsed);
         }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    if (isPlaying) {
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      cancelAnimationFrame(rafRef.current);
+      }, 250);
     }
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [isPlaying]);
 
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);

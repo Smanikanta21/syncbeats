@@ -27,6 +27,9 @@ export default function LandingPage() {
   });
 
   useEffect(() => {
+    // Optimization: Skip mousemove listener on mobile
+    if (typeof window !== "undefined" && window.innerWidth < 768) return;
+
     const handleMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
     };
