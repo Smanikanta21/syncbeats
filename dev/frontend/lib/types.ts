@@ -24,6 +24,8 @@ export interface Participant {
   volume:      number;
   isBlocked?:  boolean;
   userId?:     string;
+  outputDeviceName?: string;
+  outputDeviceType?: string;
 }
 
 export interface TrackQueueItem {
