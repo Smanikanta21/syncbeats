@@ -787,12 +787,12 @@ export default function HubPage() {
 
                 {/* Laser animation */}
                 {scanStatus === "scanning" && (
-                  <div className="absolute inset-x-0 h-0.5 bg-green-400 shadow-[0_0_8px_#4ade80] animate-scan-laser z-10 pointer-events-none" />
+                  <div className="absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-background via-background/80 to-transparent z-80 pointer-events-none" />
                 )}
 
                 {/* Target crop corner brackets */}
                 {scanStatus === "scanning" && (
-                  <div className="absolute inset-10 border border-white/5 rounded-2xl pointer-events-none">
+                  <div className="absolute -inset-[1px] bg-linear-to-b from-transparent to-background/90 z-80 pointer-events-none rounded-[32px]">
                     <div className="absolute -top-1 -left-1 w-5 h-5 border-t-2 border-l-2 border-green-400 rounded-tl-md" />
                     <div className="absolute -top-1 -right-1 w-5 h-5 border-t-2 border-r-2 border-green-400 rounded-tr-md" />
                     <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-2 border-l-2 border-green-400 rounded-bl-md" />

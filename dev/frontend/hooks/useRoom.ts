@@ -17,7 +17,7 @@ interface UseRoomReturn {
   participants: Participant[];
   isConnected:  boolean;
   joinStatus:   'joined' | 'pending' | 'denied' | 'connecting';
-  pendingRequests: { socketId: string, displayName: string, isNudge?: boolean }[];
+  pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
   allReady:     boolean;      
@@ -52,7 +52,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
-  const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean }[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean, userId?: string }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
@@ -424,16 +424,19 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     const handleJoinDenied = () => setJoinStatus('denied');
     socket.on('room:joinDenied', handleJoinDenied);
 
-    const handleHostJoinRequest = ({ socketId, displayName, isNudge }: any) => {
+    const handleHostJoinRequest = ({ socketId, userId, displayName, isNudge }: any) => {
       setPendingRequests(prev => {
-        const existing = prev.find(r => r.socketId === socketId);
+        const existing = prev.find(r => (userId && r.userId === userId) || r.socketId === socketId);
         if (existing) {
-          if (isNudge) {
-            return [{ ...existing, isNudge: true }, ...prev.filter(r => r.socketId !== socketId)];
+          if (isNudge || existing.socketId !== socketId) {
+            return [
+              { ...existing, socketId, isNudge: isNudge || existing.isNudge },
+              ...prev.filter(r => (userId && r.userId !== userId) && r.socketId !== socketId)
+            ];
           }
           return prev;
         }
-        return [...prev, { socketId, displayName, isNudge }];
+        return [...prev, { socketId, userId, displayName, isNudge }];
       });
     };
     socket.on('room:hostJoinRequest', handleHostJoinRequest);

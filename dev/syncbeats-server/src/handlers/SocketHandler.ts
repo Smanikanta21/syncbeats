@@ -100,7 +100,7 @@ export class SocketHandler {
           socket.emit('room:joinPendingApproval', { roomId });
           const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
           hostSockets.forEach(p => {
-            this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, displayName });
+            this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
           });
           return;
         }
@@ -173,7 +173,7 @@ export class SocketHandler {
       if (hostId) {
         const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === hostId);
         hostSockets.forEach(p => {
-          this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, displayName, isNudge: true });
+          this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName, isNudge: true });
         });
       }
     });

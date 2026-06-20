@@ -982,13 +982,15 @@ export default function RoomPage() {
                   <ListMusic className="w-4 h-4" />
                   Room Queue ({localQueue.length})
                 </h3>
-                <button
-                  onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
-                  className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
-                  title="Add music to queue"
-                >
-                  <Plus className="w-3.5 h-3.5 text-foreground/50" />
-                </button>
+                {audio.hasTrack && (
+                  <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+                    className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
+                    title="Add music to queue"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-foreground/50" />
+                  </button>
+                )}
               </div>
               
               {localQueue.length ? (

@@ -1431,6 +1431,17 @@ export function DynamicIsland() {
     };
   }, [isExpanded]);
 
+  useEffect(() => {
+    const handleExpandAdd = () => {
+      setActiveTab("youtube");
+      setIsExpanded(true);
+    };
+    document.addEventListener('island:expand-add', handleExpandAdd);
+    return () => {
+      document.removeEventListener('island:expand-add', handleExpandAdd);
+    };
+  }, []);
+
   if (!isRoom) {
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">

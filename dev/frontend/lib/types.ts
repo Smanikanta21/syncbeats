@@ -5,6 +5,7 @@ export interface JoinRequest {
   displayName: string;
   timestamp?: number;
   isNudge?: boolean;
+  userId?: string;
 }
 
 
