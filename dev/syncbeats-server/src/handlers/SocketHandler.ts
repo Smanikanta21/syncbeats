@@ -66,8 +66,9 @@ export class SocketHandler {
 
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName, isReady = false }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, userId, isReady = false }: JoinPayload) => {
       try {
+        if (userId) socket.data.userId = userId;
         const room = this.roomManager.getOrCreate(roomId);
 
         // Disconnect from previous room if any to prevent ghosts
@@ -92,7 +93,7 @@ export class SocketHandler {
 
         // --- Private Mode Gate ---
         const snapshot = room.snapshot();
-        const isHost = snapshot.hostId === socket.id;
+        const isHost = snapshot.hostId === socket.data.userId;
         const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
 
         if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
@@ -111,7 +112,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
@@ -132,7 +133,7 @@ export class SocketHandler {
     socket.on('room:togglePrivate', ({ roomId, isPrivate }: { roomId: string, isPrivate: boolean }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
-      if (room.snapshot().hostId !== socket.id) {
+      if (room.snapshot().hostId !== socket.data.userId) {
         socket.emit('error', { message: 'Only host can toggle private mode' });
         return;
       }
@@ -141,14 +142,14 @@ export class SocketHandler {
 
     socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
       const room = this.roomManager.get(roomId);
-      if (!room || room.snapshot().hostId !== socket.id) return;
+      if (!room || room.snapshot().hostId !== socket.data.userId) return;
       
       const targetSocket = this.io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) return;
 
       targetSocket.join(roomId);
       this.roomManager.trackSocket(targetSocketId, roomId);
-      room.addParticipant({ socketId: targetSocketId, displayName, joinedAt: Date.now(), isReady: false, volume: 100 });
+      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, joinedAt: Date.now(), isReady: false, volume: 100 });
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
@@ -156,7 +157,7 @@ export class SocketHandler {
 
     socket.on('room:denyJoin', ({ roomId, targetSocketId }: { roomId: string, targetSocketId: string }) => {
       const room = this.roomManager.get(roomId);
-      if (!room || room.snapshot().hostId !== socket.id) return;
+      if (!room || room.snapshot().hostId !== socket.data.userId) return;
 
       this.io.to(targetSocketId).emit('room:joinDenied');
       console.log(`[Room ${roomId}] Host denied ${targetSocketId}`);

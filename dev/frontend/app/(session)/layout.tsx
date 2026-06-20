@@ -102,22 +102,14 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     }
   };
 
-  // Show nothing while rehydrating token
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-foreground/10 border-t-white/60 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user) return null; // redirect in-flight
+  // Instead of a full-screen blocking loader, we just render the layout shell
+  // and delay the children rendering until the user is available.
 
   return (
     <UploadProvider>
     <SyncProvider>
-      <DynamicIsland />
-      {isLocalUnverified && (
+      {user && !loading && <DynamicIsland />}
+      {user && !loading && isLocalUnverified && (
         <div className="fixed top-24 left-1/2 z-60 w-[min(92vw,720px)] -translate-x-1/2 rounded-3xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-amber-100">
@@ -136,7 +128,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           {verificationError && <p className="mt-2 text-xs text-red-300">{verificationError}</p>}
         </div>
       )}
-      {needsDeviceRename && (
+      {user && !loading && needsDeviceRename && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
           <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">
@@ -210,7 +202,9 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-      <div className={isRoom ? "h-[100dvh] overflow-hidden md:h-auto md:min-h-[100dvh] md:overflow-visible flex justify-center" : "pt-32"}>{children}</div>
+      <div className={isRoom ? "h-[100dvh] overflow-hidden md:h-auto md:min-h-[100dvh] md:overflow-visible flex justify-center" : "pt-32"}>
+        {(!loading && user) ? children : null}
+      </div>
     </SyncProvider>
     </UploadProvider>
   );

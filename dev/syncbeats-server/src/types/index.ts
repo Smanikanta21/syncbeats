@@ -9,6 +9,7 @@ export interface Participant {
   isReady:     boolean;
   volume:      number; // 0-100
   isBlocked?:  boolean;
+  userId?:     string;
 }
 
 export interface TrackQueueItem {
@@ -51,7 +52,7 @@ export interface DeviceSpatialState {
   position: SpatialPosition;
 }
 
-export interface JoinPayload  { roomId: string; displayName: string; isReady?: boolean; }
+export interface JoinPayload  { roomId: string; displayName: string; userId?: string; isReady?: boolean; }
 export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
 export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { Participant } from "../lib/types";
+import { Participant, JoinRequest } from "../lib/types";
 
 interface SyncCtx {
   clockOffset: number;
@@ -14,6 +14,8 @@ interface SyncCtx {
   setPendingPlay: (v: boolean) => void;
   incomingTrack: { title: string, progress: number } | null;
   setIncomingTrack: (v: { title: string, progress: number } | null) => void;
+  pendingRequests: JoinRequest[];
+  setPendingRequests: (v: JoinRequest[]) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -22,6 +24,7 @@ const Ctx = createContext<SyncCtx>({
   participants: [], setParticipants: () => {},
   pendingPlay: false, setPendingPlay: () => {},
   incomingTrack: null, setIncomingTrack: () => {},
+  pendingRequests: [], setPendingRequests: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -30,9 +33,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [pendingPlay, setPendingPlay] = useState(false);
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   
   return (
-    <Ctx.Provider value={{ clockOffset, setClockOffset, isRoomPlaying, setIsRoomPlaying, participants, setParticipants, pendingPlay, setPendingPlay, incomingTrack, setIncomingTrack }}>
+    <Ctx.Provider value={{ clockOffset, setClockOffset, isRoomPlaying, setIsRoomPlaying, participants, setParticipants, pendingPlay, setPendingPlay, incomingTrack, setIncomingTrack, pendingRequests, setPendingRequests }}>
       {children}
     </Ctx.Provider>
   );

@@ -225,9 +225,8 @@ export class Room extends EventEmitter {
   // ── Participants ──────────────────────────────────────────────────────
 
   addParticipant(p: Participant): void {
-    if (!this.hostId || !this.participants.has(this.hostId)) {
-      this.hostId = p.socketId;
-    }
+    // hostId is now tied to the user_id from the database and should not be
+    // overwritten by the first connecting socket.
     p.isReady = false;
     p.isBlocked = false;
     p.volume = this.clampVolume(p.volume ?? 100);
@@ -241,7 +240,7 @@ export class Room extends EventEmitter {
 
   removeParticipant(socketId: string): void {
     this.participants.delete(socketId);
-    if (this.hostId === socketId) this.electNewHost();
+    // Removed host election on socket disconnect so user remains host
     this.emit('participantLeft', socketId);
   }
 
@@ -292,12 +291,7 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
-  private electNewHost(): void {
-    const next = this.participants.keys().next().value as string | undefined;
-    this.hostId = next ?? null;
-    if (this.hostId) this.emit('hostChanged', this.hostId);
-    else             this.emit('empty');
-  }
+
 
   private clampVolume(value: number): number {
     if (!Number.isFinite(value)) return 100;

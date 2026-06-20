@@ -9,6 +9,7 @@ import { useAudio } from '../context/AudioContext';
 interface UseRoomOptions {
   roomId:      string;
   displayName: string;
+  userId?:     string;
 }
 
 interface UseRoomReturn {
@@ -43,7 +44,7 @@ const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
 const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
 const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
 
-export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn {
+export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoomReturn {
   const socket = getSocket();
   const audio  = useAudio();
 
@@ -329,6 +330,7 @@ export function useRoom({ roomId, displayName }: UseRoomOptions): UseRoomReturn 
       socket.emit('room:join', { 
         roomId, 
         displayName, 
+        userId,
         isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
       });
       runNtpBurst();

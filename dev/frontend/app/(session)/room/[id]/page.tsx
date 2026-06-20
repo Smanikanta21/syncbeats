@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -59,10 +59,11 @@ export default function RoomPage() {
   const { snapshot, participants, isConnected, joinStatus, pendingRequests, togglePrivate, approveJoin, denyJoin, notifyHost, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
     roomId,
     displayName,
+    userId: user?.id,
   });
   const isLocalPlayBlocked = isConnected && !audio.isReady && audio.hasTrack;
-  const isHost = snapshot?.hostId === currentSocketId;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
+  const isHost = snapshot?.hostId === user?.id;
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
   useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
@@ -91,6 +92,25 @@ export default function RoomPage() {
   useEffect(() => {
     pushIncomingTrack(incomingTrack);
   }, [incomingTrack, pushIncomingTrack]);
+
+  // Push pendingRequests to shared context
+  useEffect(() => {
+    pushPendingRequests(pendingRequests);
+  }, [pendingRequests, pushPendingRequests]);
+
+  // Listen for actions from DynamicIsland
+  useEffect(() => {
+    const handleApprove = (e: CustomEvent) => approveJoin(e.detail.socketId, e.detail.displayName);
+    const handleDeny = (e: CustomEvent) => denyJoin(e.detail.socketId);
+    
+    document.addEventListener('room:action-approve', handleApprove as EventListener);
+    document.addEventListener('room:action-deny', handleDeny as EventListener);
+    
+    return () => {
+      document.removeEventListener('room:action-approve', handleApprove as EventListener);
+      document.removeEventListener('room:action-deny', handleDeny as EventListener);
+    };
+  }, [approveJoin, denyJoin]);
 
   // Push server-side playing state so DynamicIsland shows correct button
   useEffect(() => {
@@ -373,7 +393,7 @@ export default function RoomPage() {
         <div className="flex justify-center items-center gap-3 mb-6">
           <div className="flex items-center gap-2">
             <span className="hidden px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest md:inline-flex items-center gap-2">
-              <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active {snapshot?.hostId} / {currentSocketId}
+              <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
             </span>
             {isHost && (
               <button 
@@ -479,7 +499,12 @@ export default function RoomPage() {
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 flex flex-col gap-6">
           {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
             <div key={userName} className="flex flex-col gap-3">
-              <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2">{userName}</h4>
+              <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 flex items-center gap-2">
+                {userName}
+                {userDevices.some(d => d.userId === snapshot?.hostId) && (
+                  <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background shrink-0">Host</span>
+                )}
+              </h4>
               <div className="flex flex-col gap-3">
                 {userDevices.map((p, i) => (
                   <div
@@ -567,9 +592,16 @@ export default function RoomPage() {
       </div>
 
       {localQueue.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5">
-          <Music2 className="w-8 h-8 mb-3 opacity-20" />
-          No songs in queue
+        <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5 p-6">
+          <Music2 className="w-10 h-10 mb-4 opacity-20" />
+          <p className="mb-6">No songs in queue</p>
+          <button 
+            onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+            className="w-full max-w-sm flex items-center gap-3 px-4 py-3 bg-foreground/5 border border-foreground/10 hover:border-foreground/20 hover:bg-foreground/10 rounded-2xl transition-all group shadow-sm"
+          >
+            <Search className="w-5 h-5 text-foreground/40 group-hover:text-foreground/60 transition-colors shrink-0" />
+            <span className="text-foreground/40 group-hover:text-foreground/60 transition-colors font-medium truncate">Search YouTube for a song...</span>
+          </button>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 pb-4">
@@ -660,7 +692,7 @@ export default function RoomPage() {
 
   if (!snapshot || joinStatus === 'connecting') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-transparent">
         <Loader2 className="w-10 h-10 text-foreground animate-spin mb-4" />
         <p className="text-foreground/50 tracking-widest uppercase font-bold text-sm">Connecting...</p>
       </div>
@@ -809,7 +841,7 @@ export default function RoomPage() {
                <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-foreground/60" /> Live {snapshot?.hostId} / {currentSocketId}
+                      <Users className="w-3.5 h-3.5 text-foreground/60" /> Live 
                     </span>
                     {isHost && (
                       <button 
@@ -880,7 +912,12 @@ export default function RoomPage() {
             <div className="w-full flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
               <div key={userName} className="w-full flex flex-col gap-4">
-                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all">{userName}</h4>
+                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all flex items-center gap-2">
+                  {userName}
+                  {userDevices.some(d => d.userId === snapshot?.hostId) && (
+                    <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background shrink-0">Host</span>
+                  )}
+                </h4>
                 <div className="grid grid-cols-1 gap-3 w-full">
                   {userDevices.map((p, i) => (
                     <div
@@ -900,9 +937,6 @@ export default function RoomPage() {
                           <div>
                             <div className="flex items-center gap-2">
                               <h4 className="font-bold text-foreground">{p.devName}</h4>
-                              {snapshot?.hostId === p.socketId && (
-                                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
-                              )}
                             </div>
                             <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
                               {p.isReady
@@ -1011,9 +1045,16 @@ export default function RoomPage() {
                   </DndContext>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5">
-                  <Music2 className="w-8 h-8 mb-3 opacity-20" />
-                  No songs in queue
+                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5 p-6">
+                  <Music2 className="w-10 h-10 mb-4 opacity-20" />
+                  <p className="mb-6">No songs in queue</p>
+                  <button 
+                    onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-foreground/5 border border-foreground/10 hover:border-foreground/20 hover:bg-foreground/10 rounded-2xl transition-all group shadow-sm"
+                  >
+                    <Search className="w-4 h-4 text-foreground/40 group-hover:text-foreground/60 transition-colors shrink-0" />
+                    <span className="text-foreground/40 group-hover:text-foreground/60 transition-colors font-medium text-xs truncate">Search YouTube for a song...</span>
+                  </button>
                 </div>
               )}
             </div>

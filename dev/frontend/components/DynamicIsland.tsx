@@ -28,6 +28,7 @@ import { SpatialAudioEngine } from "../audio/SpatialAudioEngine";
 import { useAuth } from "../context/AuthContext";
 import { useAudio } from "../context/AudioContext";
 import { useUpload } from "../context/UploadContext";
+import { JoinRequest } from "../lib/types";
 import { getSocket } from "../lib/socket";
 import { roomsApi } from "../lib/api";
 import { formatTime } from "../hooks/useAudioPlayer";
@@ -49,7 +50,7 @@ const COMPACT_WIDTH = 160;
 const COMPACT_HEIGHT = 50;
 const EXPANDED_HEIGHT = 350;
 
-type IslandTab = "player" | "network" | "youtube";
+type IslandTab = "player" | "network" | "youtube" | "requests";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -100,7 +101,7 @@ const AudioBars = ({
 
     const tick = () => {
       const now = performance.now();
-      const data = SpatialAudioEngine.getInstance().getFrequencyData();
+      const data = null as Uint8Array | null; // SpatialAudioEngine.getInstance().getFrequencyData();
 
       let currentBeat = 0;
       if (data && data.length > 40) {
@@ -239,6 +240,7 @@ interface CompactStateProps {
   showDetails: boolean;
   isRoom?: boolean;
   roomParticipants?: any[];
+  pendingRequestsCount?: number;
 }
 
 const CompactState = ({
@@ -254,6 +256,7 @@ const CompactState = ({
   showDetails,
   isRoom,
   roomParticipants,
+  pendingRequestsCount,
 }: CompactStateProps) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -362,6 +365,9 @@ const CompactState = ({
               <Pause className="w-3 h-3" /> Paused
             </div>
           )}
+          {pendingRequestsCount && pendingRequestsCount > 0 ? (
+            <div className="ml-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          ) : null}
         </div>
       </div>
     </motion.div>
@@ -988,6 +994,65 @@ const YouTubeTab = ({
 };
 
 // ─────────────────────────────────────────────────────────
+// RequestsTab
+// ─────────────────────────────────────────────────────────
+
+const RequestsTab = ({ 
+  requests, 
+  onApprove, 
+  onDeny, 
+  onBack 
+}: { 
+  requests: JoinRequest[]; 
+  onApprove: (id: string, name: string) => void; 
+  onDeny: (id: string) => void; 
+  onBack: () => void; 
+}) => {
+  return (
+    <div className="flex flex-col h-full text-white pt-2 pb-4">
+      <div className="flex items-center justify-between px-6 mb-4">
+        <button
+          onClick={(e) => { e.stopPropagation(); onBack(); }}
+          className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto"
+        >
+          <ChevronLeft className="w-5 h-5 text-white/50" />
+        </button>
+        <span className="text-sm font-bold uppercase tracking-widest text-white/50">
+          Join Requests ({requests.length})
+        </span>
+        <div className="w-9" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto">
+        {requests.length === 0 ? (
+          <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
+        ) : (
+          requests.map(req => (
+            <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
+              <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDeny(req.socketId); }}
+                  className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30 transition-colors"
+                >
+                  Deny
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }}
+                  className="px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
 // DynamicIsland
 // ─────────────────────────────────────────────────────────
 
@@ -1003,6 +1068,7 @@ export function DynamicIsland() {
     participants: roomParticipants,
     pendingPlay,
     incomingTrack,
+    pendingRequests,
   } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
@@ -1019,6 +1085,26 @@ export function DynamicIsland() {
 
   // ── Tab State ──
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
+  const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevReqCountRef = useRef(0);
+
+  useEffect(() => {
+    const currentCount = pendingRequests?.length || 0;
+    const prevCount = prevReqCountRef.current;
+    
+    if (currentCount > prevCount) {
+      // New request arrived
+      setIsExpanded(true);
+      setActiveTab("requests");
+      
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+      shrinkTimerRef.current = setTimeout(() => {
+        setIsExpanded(false);
+      }, 10000);
+    }
+    
+    prevReqCountRef.current = currentCount;
+  }, [pendingRequests?.length]);
   const [slideDir, setSlideDir] = useState(1);
   const [ytResultsCount, setYtResultsCount] = useState(0);
   const [ytQuery, setYtQuery] = useState("");
@@ -1068,7 +1154,9 @@ export function DynamicIsland() {
 
   const handleTabChange = useCallback(
     (newTab: IslandTab) => {
-      const order = { network: -1, player: 0, youtube: 1 };
+      if (activeTab === newTab) return;
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+      const order = { network: -1, player: 0, youtube: 1, requests: 2 };
       setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
       setActiveTab(newTab);
     },
@@ -1432,10 +1520,11 @@ export function DynamicIsland() {
             seekIndicator={seekIndicator}
             isReady={audio.isReady}
             error={audio.error}
-            downloadProgress={audio.downloadProgress}
+            downloadProgress={0}
             showDetails={effectivePlaying || forceShowDetails}
             isRoom={isRoom}
             roomParticipants={roomParticipants}
+            pendingRequestsCount={pendingRequests?.length || 0}
           />
 
           <motion.div
@@ -1473,7 +1562,7 @@ export function DynamicIsland() {
                     trackUrl={audio.trackUrl}
                     isReady={audio.isReady}
                     error={audio.error}
-                    downloadProgress={audio.downloadProgress}
+                    downloadProgress={0}
                     progress={displayProgress}
                     displayTime={displayTime}
                     duration={audio.duration}
@@ -1523,6 +1612,31 @@ export function DynamicIsland() {
                     query={ytQuery}
                     setQuery={setYtQuery}
                     isSearchOnly={isYoutubeSearchOnly}
+                  />
+                </motion.div>
+              )}
+              {activeTab === "requests" && (
+                <motion.div
+                  key="requests"
+                  custom={slideDir}
+                  variants={tabVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={SPRING}
+                  className="absolute inset-0"
+                >
+                  <RequestsTab
+                    requests={pendingRequests || []}
+                    onApprove={(id, name) => {
+                      document.dispatchEvent(new CustomEvent('room:action-approve', { detail: { socketId: id, displayName: name } }));
+                      if (pendingRequests.length <= 1) setActiveTab("player");
+                    }}
+                    onDeny={(id) => {
+                      document.dispatchEvent(new CustomEvent('room:action-deny', { detail: { socketId: id } }));
+                      if (pendingRequests.length <= 1) setActiveTab("player");
+                    }}
+                    onBack={() => setActiveTab("player")}
                   />
                 </motion.div>
               )}

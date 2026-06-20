@@ -1,5 +1,13 @@
 // lib/types.ts — Shared frontend types (mirrors backend src/types/index.ts)
 
+export interface JoinRequest {
+  socketId: string;
+  displayName: string;
+  timestamp?: number;
+  isNudge?: boolean;
+}
+
+
 export enum PlaybackState {
   IDLE    = 'IDLE',
   PLAYING = 'PLAYING',
@@ -14,6 +22,7 @@ export interface Participant {
   isReady:     boolean;
   volume:      number;
   isBlocked?:  boolean;
+  userId?:     string;
 }
 
 export interface TrackQueueItem {
