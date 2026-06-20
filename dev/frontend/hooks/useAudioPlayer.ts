@@ -526,17 +526,24 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    if (msUntilStart > 50) {
-      const hardwareLatency = isLatencyAutoDetectedRef.current ? outputLatencyRef.current : manualLatencyRef.current;
-      const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
-      source.start(audioCtxStartTime, payload.fromPosition);
+    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+    const totalLatency = hardwareLatency + manualLatencyRef.current;
+    
+    // time until the global start epoch
+    const idealAudioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000 - totalLatency;
+
+    if (idealAudioCtxStartTime >= audioCtxRef.current.currentTime) {
+      // We have enough time to schedule it in the future
+      source.start(idealAudioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxStartTime;
+      startTimeRef.current = idealAudioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
-      const hardwareLatency = isLatencyAutoDetectedRef.current ? outputLatencyRef.current : manualLatencyRef.current;
-      const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000 + hardwareLatency;
+      // We are late! We must start immediately and seek into the buffer
+      const lateBySeconds = audioCtxRef.current.currentTime - idealAudioCtxStartTime;
+      const correctPosition = payload.fromPosition + lateBySeconds;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
+      
       source.start(0, Math.max(0, clampedPosition));
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxRef.current.currentTime;

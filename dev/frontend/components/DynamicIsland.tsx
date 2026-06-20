@@ -807,46 +807,27 @@ const NetworkTab = ({
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex justify-between items-center">
             <span className="text-white/50 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-              Audio Sync Offset
-              {audio.isLatencyAutoDetected && (
-                <span className="px-1.5 py-0.5 rounded text-[8px] bg-green-500/20 text-green-400">Auto</span>
-              )}
+              Sync Correction
             </span>
             <span className="text-white font-bold text-sm">
-              {audio.isLatencyAutoDetected 
-                ? `${Math.round(audio.outputLatency * 1000)}ms` 
-                : `${Math.round(audio.manualLatency * 1000)}ms`
-              }
+              {audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms
             </span>
           </div>
           <input
             type="range"
-            min={0}
-            max={1}
+            min={-0.5}
+            max={0.5}
             step={0.01}
-            value={audio.isLatencyAutoDetected ? audio.outputLatency : audio.manualLatency}
-            onChange={(e) => {
-              if (!audio.isLatencyAutoDetected) {
-                audio.setManualLatency(Number(e.target.value));
-              }
-            }}
-            disabled={audio.isLatencyAutoDetected}
-            className={`w-full h-2 rounded-full appearance-none outline-none ${audio.isLatencyAutoDetected ? "bg-white/10 cursor-not-allowed opacity-50" : "bg-white/20 cursor-pointer"}`}
+            value={audio.manualLatency}
+            onChange={(e) => audio.setManualLatency(Number(e.target.value))}
+            className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer"
             style={{
-              background: audio.isLatencyAutoDetected 
-                ? undefined 
-                : `linear-gradient(to right, rgba(255,255,255,0.8) ${(audio.manualLatency / 1) * 100}%, rgba(255,255,255,0.2) ${(audio.manualLatency / 1) * 100}%)`
+              background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)`
             }}
           />
-          {audio.isLatencyAutoDetected ? (
-            <p className="text-[10px] text-white/40 mt-1">
-              Perfect sync detected via {audio.outputDeviceType === 'bluetooth' ? 'Bluetooth' : 'hardware'} latency. Slider is disabled.
-            </p>
-          ) : (
-            <p className="text-[10px] text-white/40 mt-1">
-              Adjust if your audio is lagging behind other devices.
-            </p>
-          )}
+          <p className="text-[10px] text-white/40 mt-1">
+            Browser reported latency: {Math.round(audio.outputLatency * 1000)}ms. Adjust the slider if your Bluetooth device is still out of sync.
+          </p>
         </div>
       </div>
     </div>
