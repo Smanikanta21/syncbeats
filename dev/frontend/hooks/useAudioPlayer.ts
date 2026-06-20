@@ -17,6 +17,7 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
+  error:         string | null;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -59,6 +60,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -158,6 +160,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     const promise = (async () => {
       setIsReady(false);
+      setError(null);
       try {
         let arrayBuffer: ArrayBuffer;
 
@@ -326,6 +329,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         return decodedData;
       } catch (err) {
         console.error("Error decoding audio data", err);
+        setError(err instanceof Error ? err.message : "Failed to load audio");
         return null;
       } finally {
         fetchPromiseRef.current = null;
@@ -546,6 +550,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setTrackUrl(null);
     setTrackTitle("");
     setTrackArtist("");
+    setError(null);
     setIsPlaying(false);
     setCurrentTime(0);
     pauseOffsetRef.current = 0;
@@ -558,7 +563,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   return {
     isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist,
+    trackUrl, trackTitle, trackArtist, error,
     play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
     scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
     audioEl: null,
