@@ -64,7 +64,7 @@ export default function RoomPage() {
   // Show Audio Unlock overlay if the browser hasn't been unlocked via a user gesture yet
   const isLocalPlayBlocked = isConnected && !audio.audioUnlocked;
   const isHost = snapshot?.hostId === user?.id;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
   useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
@@ -98,6 +98,11 @@ export default function RoomPage() {
   useEffect(() => {
     pushPendingRequests(pendingRequests);
   }, [pendingRequests, pushPendingRequests]);
+
+  // Push hostId to shared context
+  useEffect(() => {
+    pushHostId(snapshot?.hostId || null);
+  }, [snapshot?.hostId, pushHostId]);
 
   // Listen for actions from DynamicIsland
   useEffect(() => {
@@ -703,38 +708,7 @@ export default function RoomPage() {
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-transparent z-0 flex flex-col items-center select-none">
       
-      {/* Pending Requests Overlay for Host */}
-      <AnimatePresence>
-        {isHost && pendingRequests.length > 0 && (
-          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[999] flex flex-col gap-3 w-full max-w-sm px-4">
-            {pendingRequests.map((req) => (
-              <motion.div 
-                key={req.socketId}
-                initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={`p-4 rounded-3xl border bg-background/95 backdrop-blur-3xl shadow-2xl flex items-center justify-between ${req.isNudge ? 'border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-foreground/10'}`}
-              >
-                <div className="flex flex-col ml-2">
-                  <span className="text-sm font-black tracking-wide">{req.displayName.split('::')[0]}</span>
-                  <span className="text-[10px] text-foreground/50 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                    {req.isNudge ? <BellRing className="w-3.5 h-3.5 text-amber-500 animate-bounce" /> : null}
-                    wants to join
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => denyJoin(req.socketId)} className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 active:scale-95 transition-all">
-                    <ShieldAlert className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => approveJoin(req.socketId, req.displayName)} className="w-10 h-10 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center hover:bg-green-500/20 active:scale-95 transition-all">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </AnimatePresence>
+
 
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
@@ -1049,13 +1023,6 @@ export default function RoomPage() {
                 <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5 p-6">
                   <Music2 className="w-10 h-10 mb-4 opacity-20" />
                   <p className="mb-6">No songs in queue</p>
-                  <button 
-                    onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-foreground/5 border border-foreground/10 hover:border-foreground/20 hover:bg-foreground/10 rounded-2xl transition-all group shadow-sm"
-                  >
-                    <Search className="w-4 h-4 text-foreground/40 group-hover:text-foreground/60 transition-colors shrink-0" />
-                    <span className="text-foreground/40 group-hover:text-foreground/60 transition-colors font-medium text-xs truncate">Search YouTube for a song...</span>
-                  </button>
                 </div>
               )}
             </div>

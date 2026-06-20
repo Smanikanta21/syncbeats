@@ -16,6 +16,8 @@ interface SyncCtx {
   setIncomingTrack: (v: { title: string, progress: number } | null) => void;
   pendingRequests: JoinRequest[];
   setPendingRequests: (v: JoinRequest[]) => void;
+  hostId: string | null;
+  setHostId: (v: string | null) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -25,6 +27,7 @@ const Ctx = createContext<SyncCtx>({
   pendingPlay: false, setPendingPlay: () => {},
   incomingTrack: null, setIncomingTrack: () => {},
   pendingRequests: [], setPendingRequests: () => {},
+  hostId: null, setHostId: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -34,9 +37,18 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [pendingPlay, setPendingPlay] = useState(false);
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
-  
+  const [hostId, setHostId] = useState<string | null>(null);
+
   return (
-    <Ctx.Provider value={{ clockOffset, setClockOffset, isRoomPlaying, setIsRoomPlaying, participants, setParticipants, pendingPlay, setPendingPlay, incomingTrack, setIncomingTrack, pendingRequests, setPendingRequests }}>
+    <Ctx.Provider value={{
+      clockOffset, setClockOffset,
+      isRoomPlaying, setIsRoomPlaying,
+      participants, setParticipants,
+      pendingPlay, setPendingPlay,
+      incomingTrack, setIncomingTrack,
+      pendingRequests, setPendingRequests,
+      hostId, setHostId,
+    }}>
       {children}
     </Ctx.Provider>
   );

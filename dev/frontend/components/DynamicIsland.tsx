@@ -21,6 +21,7 @@ import {
   FastForward,
   Rewind,
   LogOut,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -241,6 +242,8 @@ interface CompactStateProps {
   isRoom?: boolean;
   roomParticipants?: any[];
   pendingRequestsCount?: number;
+  isHost?: boolean;
+  onRequestsClick?: () => void;
 }
 
 const CompactState = ({
@@ -257,6 +260,8 @@ const CompactState = ({
   isRoom,
   roomParticipants,
   pendingRequestsCount,
+  isHost,
+  onRequestsClick,
 }: CompactStateProps) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -279,10 +284,26 @@ const CompactState = ({
         animate={{ opacity: isExpanded ? 0 : 1 }}
         transition={{ duration: 0.15 }}
       >
-        <div className="w-full h-full p-0.5">
-          <div className="w-full h-full bg-white/10 rounded-full flex items-center px-4 text-white/50 text-sm gap-2">
-            <Search className="w-4 h-4" />
-            <span>Search YouTube or upload...</span>
+        <div className="w-full h-full p-0.5 pointer-events-auto">
+          <div className="w-full h-full bg-white/10 rounded-full flex items-center justify-between px-4 text-white/50 text-sm gap-2">
+            <div className="flex items-center gap-2 pointer-events-none">
+              <Search className="w-4 h-4" />
+              <span>Search YouTube or upload...</span>
+            </div>
+            {isRoom && isHost && pendingRequestsCount && pendingRequestsCount > 0 ? (
+              <button 
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestsClick?.();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors pointer-events-auto active:scale-95"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-black">{pendingRequestsCount}</span>
+              </button>
+            ) : null}
           </div>
         </div>
       </motion.div>
@@ -493,6 +514,8 @@ const PlayerTab = ({
   onTabChange,
   isRoom,
   roomParticipants,
+  pendingRequestsCount,
+  isHost,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -618,15 +641,34 @@ const PlayerTab = ({
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} />
 
       <div className="flex items-center justify-between w-full">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTabChange("network");
-          }}
-          className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-        >
-          <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTabChange("network");
+            }}
+            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative"
+          >
+            <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+          </button>
+          
+          {isRoom && isHost && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTabChange("requests");
+              }}
+              className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative"
+            >
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+              {pendingRequestsCount && pendingRequestsCount > 0 ? (
+                <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background animate-pulse flex items-center justify-center">
+                  <span className="text-[7px] text-white font-black leading-none">{pendingRequestsCount}</span>
+                </div>
+              ) : null}
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center justify-center gap-6 sm:gap-10">
           <button
@@ -742,7 +784,7 @@ const NetworkTab = ({
           </div>
         </div>
 
-        <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-[2px]">
+        <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-0.5">
           {history.slice(-40).map((s: any, i: number) => {
             const hPct = Math.max(5, (s.latency / maxLat) * 100);
             return (
@@ -930,7 +972,7 @@ const YouTubeTab = ({
             onClick={(e) => e.stopPropagation()}
           >
             {isSearching ? (
-              <div className="flex-1 flex items-center justify-center min-h-[150px]">
+              <div className="flex-1 flex items-center justify-center min-h-37.5">
                 <Loader2 className="w-8 h-8 text-white/50 animate-spin" />
               </div>
             ) : showSuggestions && suggestions.length > 0 ? (
@@ -1076,9 +1118,11 @@ export function DynamicIsland() {
     pendingPlay,
     incomingTrack,
     pendingRequests,
+    hostId,
   } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
+  const isHost = hostId === user?.id;
   const [isExpanded, setIsExpanded] = useState(false);
   const localProgressRef = useRef(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
@@ -1197,11 +1241,21 @@ export function DynamicIsland() {
     !hasTrack && ytQuery.trim() === "" && ytResultsCount === 0;
 
   // Dynamic height
-  const currentExpandedHeight = isYoutubeSearchOnly
-    ? COMPACT_HEIGHT
-    : activeTab === "youtube" && ytResultsCount > 0
-      ? 550
-      : EXPANDED_HEIGHT;
+  let currentExpandedHeight = EXPANDED_HEIGHT;
+  if (activeTab === "youtube") {
+    if (isYoutubeSearchOnly) {
+      currentExpandedHeight = COMPACT_HEIGHT;
+    } else if (ytResultsCount > 0) {
+      currentExpandedHeight = Math.min(550, 120 + ytResultsCount * 75);
+    } else if (ytQuery.trim() !== "") {
+      currentExpandedHeight = 160;
+    } else {
+      currentExpandedHeight = 120;
+    }
+  } else if (activeTab === "requests") {
+    const reqCount = pendingRequests?.length || 0;
+    currentExpandedHeight = Math.max(150, Math.min(450, 80 + reqCount * 70));
+  }
 
   const _isPlayingRef = useRef(false);
   const _getTruePosRef = useRef(audio.getTruePosition);
@@ -1532,6 +1586,11 @@ export function DynamicIsland() {
             isRoom={isRoom}
             roomParticipants={roomParticipants}
             pendingRequestsCount={pendingRequests?.length || 0}
+            isHost={isHost}
+            onRequestsClick={() => {
+              setActiveTab("requests");
+              setIsExpanded(true);
+            }}
           />
 
           <motion.div
@@ -1581,6 +1640,8 @@ export function DynamicIsland() {
                     onTabChange={handleTabChange}
                     isRoom={isRoom}
                     roomParticipants={roomParticipants}
+                    pendingRequestsCount={pendingRequests?.length || 0}
+                    isHost={isHost}
                   />
                 </motion.div>
               )}
