@@ -32,10 +32,21 @@ export class SocketHandler {
 
     eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
       this.io.to(roomId).emit('room:participantJoined', participant);
+      
+      const p = participant as any;
+      if (p.userId) {
+        this.roomRepo.recordParticipantJoin(roomId, p.userId, p.socketId, p.displayName).catch(err => {
+          console.error(`[DB Sync] Failed to record join for ${p.userId} in ${roomId}:`, err);
+        });
+      }
     });
 
     eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }: { roomId: string; socketId: string }) => {
       this.io.to(roomId).emit('room:participantLeft', socketId);
+
+      this.roomRepo.recordParticipantLeave(roomId, socketId).catch(err => {
+        console.error(`[DB Sync] Failed to record leave for socket ${socketId} in ${roomId}:`, err);
+      });
     });
 
     eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }: { roomId: string; hostId: string }) => {
@@ -176,6 +187,12 @@ export class SocketHandler {
           this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName, isNudge: true });
         });
       }
+    });
+
+    socket.on('room:updateDevice', ({ roomId, deviceName, deviceType }: { roomId: string, deviceName?: string, deviceType?: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      room.updateParticipantDevice(socket.id, deviceName, deviceType);
     });
 
     // ── Playback — any participant can control ────────────────────────────

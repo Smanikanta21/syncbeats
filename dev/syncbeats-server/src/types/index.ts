@@ -10,6 +10,8 @@ export interface Participant {
   volume:      number; // 0-100
   isBlocked?:  boolean;
   userId?:     string;
+  outputDeviceName?: string;
+  outputDeviceType?: string;
 }
 
 export interface TrackQueueItem {

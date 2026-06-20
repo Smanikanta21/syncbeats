@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -33,7 +33,10 @@ import {
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
 
-function DeviceIcon({ index }: { index: number }) {
+function DeviceIcon({ index, type }: { index: number, type?: string }) {
+  if (type === 'bluetooth') return <Bluetooth className="w-3 h-3 text-foreground/60" />;
+  if (type === 'headphones') return <Headphones className="w-3 h-3 text-foreground/60" />;
+  
   const icons = [Smartphone, Laptop, Speaker];
   const Icon  = icons[index % icons.length];
   return <Icon className="w-3 h-3 text-foreground/60" />;
@@ -137,6 +140,17 @@ export default function RoomPage() {
   useEffect(() => {
     pushParticipants(participants);
   }, [participants, pushParticipants]);
+
+  // Broadcast local audio output device info to the room
+  useEffect(() => {
+    if (isConnected && audio.outputDeviceName) {
+      getSocket()?.emit('room:updateDevice', {
+        roomId,
+        deviceName: audio.outputDeviceName,
+        deviceType: audio.outputDeviceType
+      });
+    }
+  }, [isConnected, audio.outputDeviceName, audio.outputDeviceType, roomId]);
 
   const groupedParticipants = participants.reduce((acc, p) => {
     const parts = p.displayName.split("::");
@@ -528,8 +542,8 @@ export default function RoomPage() {
                           <span className="font-black text-foreground/70 text-sm tracking-widest">
                             {p.devName.slice(0, 2).toUpperCase()}
                           </span>
-                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm">
-                            <DeviceIcon index={i} />
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm" title={p.outputDeviceName || "Default Device"}>
+                            <DeviceIcon index={i} type={p.outputDeviceType} />
                           </div>
                         </div>
                         <div className="max-w-50 mx-auto">

@@ -217,6 +217,14 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
+  updateParticipantDevice(socketId: string, deviceName?: string, deviceType?: string): void {
+    const p = this.participants.get(socketId);
+    if (!p) return;
+    if (deviceName !== undefined) p.outputDeviceName = deviceName;
+    if (deviceType !== undefined) p.outputDeviceType = deviceType;
+    this.emit('stateChanged', this.snapshot());
+  }
+
   allReady(): boolean {
     if (this.participants.size === 0) return false;
     return Array.from(this.participants.values()).every(p => p.isReady || p.isBlocked);

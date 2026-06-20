@@ -18,6 +18,11 @@ export interface AudioPlayerState {
   trackTitle:    string;
   trackArtist:   string;
   error:         string | null;
+  outputLatency: number;
+  manualLatency: number;
+  isLatencyAutoDetected: boolean;
+  outputDeviceName: string | null;
+  outputDeviceType: string | null;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -30,6 +35,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   setTrack:    (url: string, title?: string, artist?: string) => void;
   clearTrack:  () => void;
   unlockAudio: () => void;
+  setManualLatency: (latency: number) => void;
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
   playNow:     (expectedPosition: number) => void;
   pauseAt:     (position: number) => void;
@@ -63,6 +69,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [error,       setError]       = useState<string | null>(null);
+
+  const [outputLatency, setOutputLatencyState] = useState(0);
+  const [manualLatency, setManualLatencyState] = useState(0);
+  const [isLatencyAutoDetected, setIsLatencyAutoDetectedState] = useState(false);
+  const [outputDeviceName, setOutputDeviceName] = useState<string | null>(null);
+  const [outputDeviceType, setOutputDeviceType] = useState<string | null>(null);
+
+  const outputLatencyRef = useRef(0);
+  const manualLatencyRef = useRef(0);
+  const isLatencyAutoDetectedRef = useRef(false);
+
+  const setOutputLatency = useCallback((v: number) => { outputLatencyRef.current = v; setOutputLatencyState(v); }, []);
+  const setManualLatency = useCallback((v: number) => { manualLatencyRef.current = v; setManualLatencyState(v); }, []);
+  const setIsLatencyAutoDetected = useCallback((v: boolean) => { isLatencyAutoDetectedRef.current = v; setIsLatencyAutoDetectedState(v); }, []);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -183,6 +203,57 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.removeEventListener('pointerdown', unlock);
     };
   }, [unlockAudio]);
+
+  const detectOutputDevice = useCallback(async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      
+      let activeDevice = audioOutputs.find(d => d.deviceId === 'default') || audioOutputs[0];
+      
+      if (audioCtxRef.current && typeof (audioCtxRef.current as any).sinkId === 'string') {
+        const sinkId = (audioCtxRef.current as any).sinkId;
+        if (sinkId) activeDevice = audioOutputs.find(d => d.deviceId === sinkId) || activeDevice;
+      }
+
+      if (activeDevice) {
+        const label = activeDevice.label || "System Default";
+        setOutputDeviceName(label);
+        
+        let type = 'speaker';
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel.includes('bluetooth') || lowerLabel.includes('airpods') || lowerLabel.includes('bose') || lowerLabel.includes('sony') || lowerLabel.includes('wh-') || lowerLabel.includes('wf-') || lowerLabel.includes('galaxy buds')) {
+          type = 'bluetooth';
+        } else if (lowerLabel.includes('headphone') || lowerLabel.includes('earpods') || lowerLabel.includes('headset')) {
+          type = 'headphones';
+        }
+        setOutputDeviceType(type);
+      }
+      
+      if (audioCtxRef.current) {
+        const outLat = audioCtxRef.current.outputLatency || 0;
+        const baseLat = audioCtxRef.current.baseLatency || 0;
+        const totalLat = outLat + baseLat;
+        if (totalLat > 0) {
+          setOutputLatency(totalLat);
+          setIsLatencyAutoDetected(true);
+        } else {
+          setIsLatencyAutoDetected(false);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not enumerate devices", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
+      navigator.mediaDevices.addEventListener('devicechange', detectOutputDevice);
+      detectOutputDevice();
+      return () => navigator.mediaDevices.removeEventListener('devicechange', detectOutputDevice);
+    }
+  }, [detectOutputDevice]);
 
   const fetchAndDecode = (url: string) => {
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
@@ -456,14 +527,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
 
     if (msUntilStart > 50) {
-      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+      const hardwareLatency = isLatencyAutoDetectedRef.current ? outputLatencyRef.current : manualLatencyRef.current;
       const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
       source.start(audioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
-      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+      const hardwareLatency = isLatencyAutoDetectedRef.current ? outputLatencyRef.current : manualLatencyRef.current;
       const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000 + hardwareLatency;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
       source.start(0, Math.max(0, clampedPosition));
@@ -588,9 +659,30 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist, error,
-    play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, unlockAudio,
+    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked,
+    currentTime,
+    duration,
+    progress: duration > 0 ? (currentTime / duration) * 100 : 0,
+    volume,
+    trackUrl,
+    trackTitle,
+    trackArtist,
+    error,
+    outputLatency,
+    manualLatency,
+    isLatencyAutoDetected,
+    outputDeviceName,
+    outputDeviceType,
+    play,
+    pause,
+    toggle,
+    seek,
+    seekPct,
+    setVolume,
+    setTrack,
+    clearTrack,
+    unlockAudio,
+    setManualLatency,
     scheduleStart, playNow, pauseAt,    getTruePosition,
     setPlaybackRate,
     audioEl: null,

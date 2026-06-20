@@ -105,6 +105,33 @@ export class RoomRepository {
     await prisma.room.delete({ where: { id: roomId } });
   }
 
+  async recordParticipantJoin(roomId: string, userId: string, socketId: string, displayName: string): Promise<void> {
+    await prisma.roomParticipant.upsert({
+      where: {
+        roomId_userId: { roomId, userId }
+      },
+      create: {
+        roomId,
+        userId,
+        socketId,
+        displayName,
+        joinedAt: new Date(),
+      },
+      update: {
+        socketId,
+        displayName,
+        leftAt: null,
+      }
+    });
+  }
+
+  async recordParticipantLeave(roomId: string, socketId: string): Promise<void> {
+    await prisma.roomParticipant.updateMany({
+      where: { roomId, socketId },
+      data: { leftAt: new Date() }
+    });
+  }
+
   async getQueue(roomId: string): Promise<TrackQueueItem[]> {
     const items = await prisma.roomQueueItem.findMany({
       where: { roomId },
