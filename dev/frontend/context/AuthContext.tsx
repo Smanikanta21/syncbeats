@@ -7,7 +7,7 @@ import {
   createContext, useContext, useEffect, useState, useCallback,
   type ReactNode,
 } from "react";
-import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User } from "../lib/api";
+import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
 
 interface AuthContextType {
   user:     User | null;
@@ -57,11 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNeedsDeviceRename(needsDeviceRename);
         setEmailVerified(!!user.email_verified_at);
       })
-      .catch(() => {
-        // Token expired or invalid — clear it
-        clearAuthToken();
-        setToken(null);
-        setEmailVerified(false);
+      .catch((err) => {
+        // Only clear token if we get a definitive authentication failure.
+        // If the server is restarting (502, 503) or network fails, do NOT log out the user!
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearAuthToken();
+          setToken(null);
+          setEmailVerified(false);
+        }
       })
       .finally(() => setLoading(false));
   }, [token]);

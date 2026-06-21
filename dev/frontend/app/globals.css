@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @layer base {
   :root {
     --background: #ffffff;
@@ -11,7 +13,6 @@
     --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
   }
 
-  /*
   [data-theme="dark"] {
     --background: #09090b;
     --foreground: #fafafa;
@@ -21,7 +22,6 @@
     --glass-bg-hover: #27272a;
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
-  */
 
   body {
     background: var(--background);

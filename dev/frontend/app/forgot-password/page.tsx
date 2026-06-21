@@ -2,6 +2,8 @@
 
 import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { Disc } from "lucide-react";
 import { authApi } from "../../lib/api";
 
 export default function ForgotPasswordPage() {
@@ -97,7 +99,21 @@ export default function ForgotPasswordPage() {
   const isAutoSetup = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("autoSent") === "true";
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6">
+    <main className="min-h-screen flex items-center justify-center px-6 relative">
+      {/* Home link */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="absolute top-8 left-8 z-50"
+      >
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+            <Disc className="w-4 h-4 text-foreground/80 animate-[spin_4s_linear_infinite]" />
+          </div>
+          <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
+        </Link>
+      </motion.div>
       <div className="w-full max-w-md rounded-3xl border border-foreground/10 bg-background/40 p-8">
         <h1 className="text-2xl font-bold text-foreground">
           {isAutoSetup ? "Setup Local Password" : "Forgot Password"}

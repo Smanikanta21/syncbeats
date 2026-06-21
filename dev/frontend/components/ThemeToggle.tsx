@@ -18,9 +18,6 @@ export function ThemeToggle() {
     return null;
   }
 
-  // Hidden globally as requested by user
-  return null;
-
   const toggleTheme = (e: React.MouseEvent) => {
     const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
 

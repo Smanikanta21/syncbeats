@@ -41,7 +41,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [activeTransfers] = useState<Record<string, TransferState>>({});
 
   // 1. Seed Local File via WebSockets
-  const uploadFile = useCallback(async (file: File, roomId: string): Promise<UploadResult> => {
+  const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string): Promise<UploadResult> => {
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
@@ -49,7 +49,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
     try {
       // Generate custom websocket P2P URL
-      const trackUrl = `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const trackUrl = customTrackUrl || `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       setUploadProgress(40);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 40 });
@@ -110,8 +110,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
       const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
       
+      const customTrackUrl = `ws-p2p:yt:${videoId}_${Date.now()}`;
+      
       // Re-use the existing upload logic
-      await uploadFile(file, roomId);
+      await uploadFile(file, roomId, customTrackUrl);
 
     } catch (err) {
       console.error("[UploadContext] downloadYoutubeToP2P failed:", err);
