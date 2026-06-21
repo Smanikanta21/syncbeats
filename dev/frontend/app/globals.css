@@ -1,31 +1,26 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @layer base {
   :root {
     --background: #ffffff;
     --foreground: #09090b;
-    --accent-primary: #6366f1;
-    --accent-secondary: #06b6d4;
-    --accent-tertiary: #f43f5e;
-    --glass-border: #0000000f;
-    --glass-border-hover: #00000026;
-    --glass-bg: linear-gradient(135deg, #fffc 0%, #fff6 100%);
-    --glass-bg-hover: linear-gradient(135deg, #ffffffe6 0%, #fff9 100%);
-    --glass-shadow: 0 8px 32px #0000000d, inset 0 1px 0 #fff9;
-    --glass-shadow-hover: 0 12px 40px #6366f126, inset 0 1px 0 #fffc;
-    --mesh-opacity: .12;
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-border-hover: rgba(0, 0, 0, 0.12);
+    --glass-bg: #f4f4f5;
+    --glass-bg-hover: #e4e4e7;
+    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
   }
 
   [data-theme="dark"] {
     --background: #09090b;
     --foreground: #fafafa;
-    --glass-border: #ffffff14;
-    --glass-border-hover: #ffffff26;
-    --glass-bg: linear-gradient(135deg, #ffffff08 0%, #ffffff03 100%);
-    --glass-bg-hover: linear-gradient(135deg, #ffffff0f 0%, #ffffff08 100%);
-    --glass-shadow: 0 8px 32px #0006, inset 0 1px 0 #ffffff0d;
-    --glass-shadow-hover: 0 12px 40px #6366f126, inset 0 1px 0 #ffffff1a;
-    --mesh-opacity: 0;
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-border-hover: rgba(255, 255, 255, 0.15);
+    --glass-bg: #18181b;
+    --glass-bg-hover: #27272a;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
 
   body {
@@ -35,47 +30,21 @@
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
+
+  @media (max-width: 768px) {
+    /* Mobile-specific adjustments if necessary */
+  }
 }
 
 @layer utilities {
-  .text-gradient-primary {
-    background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
-    -webkit-text-fill-color: transparent;
-    -webkit-background-clip: text;
-    background-clip: text;
-  }
-
   .glass-panel {
     background: var(--glass-bg);
-    -webkit-backdrop-filter: blur(24px);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
     transition: all .3s cubic-bezier(.4, 0, .2, 1);
   }
 
-  .glass-panel:hover {
-    background: var(--glass-bg-hover);
-    border-color: var(--glass-border-hover);
-    box-shadow: var(--glass-shadow-hover);
-  }
 
-  .mesh-bg {
-    z-index: -1;
-    background: radial-gradient(circle at 15% 50%, rgba(99, 102, 241, var(--mesh-opacity)), transparent 30%),
-      radial-gradient(circle at 85% 30%, rgba(6, 182, 212, var(--mesh-opacity)), transparent 30%),
-      radial-gradient(circle at 50% 80%, rgba(244, 63, 94, calc(var(--mesh-opacity) * .8)), transparent 40%);
-    filter: blur(60px);
-    pointer-events: none;
-    width: 100vw;
-    height: 100vh;
-    position: fixed;
-    top: 0;
-    left: 0;
-  }
-
-  [data-theme="dark"] .mesh-bg {
-    display: none;
-  }
 
   input[type="range"].volume-slider {
     height: 40px;

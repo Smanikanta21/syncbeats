@@ -50,6 +50,23 @@ export function createDeviceRoutes(): Router {
     }
   });
 
+  router.delete('/:deviceId', requireAuth, async (req: Request, res: Response) => {
+    const deviceId = req.params['deviceId'] as string;
+
+    try {
+      const success = await repo.remove(req.user!.sub, deviceId);
+      if (!success) {
+        res.status(404).json({ error: 'Device not found' });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Devices] remove error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   router.post('/replace', requireAuth, async (req: Request, res: Response) => {
     const { targetDeviceId } = req.body as { targetDeviceId?: string };
     const { deviceKey, userAgent } = getDeviceContext(req);

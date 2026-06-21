@@ -52,7 +52,7 @@ export function Contact() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="glass-panel group-hover:border-foreground/10 p-6 sm:p-8 md:p-12 rounded-[2rem] sm:rounded-[3rem] relative overflow-hidden transition-all duration-700 bg-background/60 backdrop-blur-3xl shadow-xl group-hover:shadow-[0_0_40px_rgba(255,255,255,0.02)]"
+          className="glass-panel group-hover:border-foreground/10 p-6 sm:p-8 md:p-12 rounded-[2rem] sm:rounded-[3rem] relative overflow-hidden transition-all duration-700 bg-background/60 backdrop-blur-3xl shadow-xl group-[0_0_40px_rgba(255,255,255,0.02)]"
         >
           {/* Subtle top right silver blur */}
           <div className="absolute top-0 right-0 w-48 sm:w-64 h-48 sm:h-64 bg-foreground/5 group-hover:bg-foreground/10 filter blur-[60px] transition-colors duration-1000" />

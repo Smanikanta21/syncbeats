@@ -15,7 +15,7 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="p-2 w-10 h-10" />;
+    return null;
   }
 
   const toggleTheme = (e: React.MouseEvent) => {
@@ -39,6 +39,13 @@ export function ThemeToggle() {
       // without waiting for React's massive context re-render tree to finish
       document.documentElement.setAttribute("data-theme", nextTheme);
       setTheme(nextTheme);
+      
+      // Broadcast instant change to other tabs
+      try {
+        const channel = new BroadcastChannel("theme-sync");
+        channel.postMessage({ theme: nextTheme });
+        channel.close();
+      } catch(e) {}
     });
 
     transition.ready.then(() => {

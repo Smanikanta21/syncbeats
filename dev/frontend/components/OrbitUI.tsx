@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { motion, useMotionValue, useTransform } from "framer-motion";
+import { motion, useMotionValue } from "framer-motion";
 import { DeviceSpatialState } from "../lib/types";
 import { Participant } from "../lib/types";
-import { SpatialAudioEngine } from "../audio/SpatialAudioEngine";
 import { Headphones } from "lucide-react";
 
 interface SpatialPosition {
@@ -157,56 +156,9 @@ export function OrbitUI({
   isPlaying = false,
 }: OrbitUIProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const maxUiDragRef = useRef(125);
   const [maxUiDrag, setMaxUiDrag] = useState(125);
-
-  const centerHubRef = useRef<HTMLDivElement>(null);
-  const ring1Ref = useRef<HTMLDivElement>(null);
-  const ring2Ref = useRef<HTMLDivElement>(null);
-  const ring3Ref = useRef<HTMLDivElement>(null);
-
-  // Visualizer RAF Loop
-  useEffect(() => {
-    let rafId: number;
-    let currentVol = 0;
-    let targetVol = 0;
-
-    const tick = () => {
-      if (isPlaying) {
-        let vol = SpatialAudioEngine.getInstance().getVolume();
-        targetVol = vol;
-
-        const data = SpatialAudioEngine.getInstance().getFrequencyData();
-
-        // Lerp towards target volume for buttery smooth animation
-        currentVol += (targetVol - currentVol) * 0.15;
-
-        if (centerHubRef.current) {
-          centerHubRef.current.style.transform = `scale(${1 + currentVol * 0.3})`;
-          centerHubRef.current.style.boxShadow = `0 0 ${30 + currentVol * 50}px rgba(150, 150, 150, ${0.2 + currentVol * 0.4})`;
-        }
-        const scale = 1 + currentVol * 0.05;
-        if (ring1Ref.current) ring1Ref.current.style.transform = `scale(${scale})`;
-        if (ring2Ref.current) ring2Ref.current.style.transform = `scale(${scale})`;
-        if (ring3Ref.current) ring3Ref.current.style.transform = `scale(${scale})`;
-      } else {
-        currentVol = 0;
-        targetVol = 0;
-        if (centerHubRef.current) {
-          centerHubRef.current.style.transform = `scale(1)`;
-          centerHubRef.current.style.boxShadow = "";
-        }
-        if (ring1Ref.current) ring1Ref.current.style.transform = "scale(1)";
-        if (ring2Ref.current) ring2Ref.current.style.transform = "scale(1)";
-        if (ring3Ref.current) ring3Ref.current.style.transform = "scale(1)";
-      }
-      
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying]);
-
+  const [nodeHalf, setNodeHalf] = useState(24);
+  const maxUiDragRef = useRef(125);
 
   const spatialDevicesRef = useRef(spatialDevices);
   useEffect(() => { spatialDevicesRef.current = spatialDevices; }, [spatialDevices]);
@@ -234,11 +186,11 @@ export function OrbitUI({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const minDim = Math.min(entry.contentRect.width, entry.contentRect.height);
-        // On mobile node is w-8(32px) so half=16, on desktop w-12(48px) so half=24
-        // Use 16 as a safe default that works for both
-        const nodeHalf = minDim < 200 ? 16 : 24;
-        const val = minDim > 0 ? minDim / 2 - nodeHalf : 125;
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+        const currentHalf = isMobile ? 16 : 24;
+        const val = minDim > 0 ? minDim / 2 - currentHalf : 125;
         setMaxUiDrag(val);
+        setNodeHalf(currentHalf);
         maxUiDragRef.current = val;
       }
     });
@@ -333,50 +285,45 @@ export function OrbitUI({
   const otherListeners = Array.from(otherListenersMap.values());
 
   return (
-    <div 
-      className="w-full h-full flex flex-col items-center justify-center px-4 pb-4 pt-6 md:pt-28"
-      style={{ perspective: 1200 }}
-    >
+    <div className="w-full h-full flex flex-col items-center justify-center pt-6 md:pt-28">
       <div className="text-center mb-6 space-y-1.5 shrink-0 z-10 relative">
         <h3 className="text-xs font-black uppercase tracking-widest text-foreground/50 flex items-center justify-center gap-2">
           Spatial Audio Hub
           <span className="px-1.5 py-0.5 rounded text-[8px] bg-foreground/10 text-foreground/70 font-bold border border-foreground/5">BETA</span>
         </h3>
-        <p className="text-sm text-foreground/70 font-semibold max-w-62.5 mx-auto min-h-10 flex items-center justify-center">
+        <p className="text-sm text-foreground/70 font-semibold max-w-62.5 mx-auto">
           {isPlaying ? "Devices orbiting in sync." : "Drag devices to arrange your 3D stage."}
         </p>
       </div>
 
-      {/* Orbit ring — TILTING */}
-      <motion.div
+      {/* Orbit ring — STATIC */}
+      <div
         ref={containerRef}
-        className="relative aspect-square w-full max-w-87.5 sm:max-w-112.5 md:max-w-137.5 lg:max-w-162.5 xl:max-w-187.5 rounded-full border border-foreground/5 bg-foreground/5 shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6 shrink-0 transition-transform duration-100 ease-linear"
+        className="relative aspect-square w-full max-w-[85vh] max-h-[85vh] rounded-full border border-foreground/5 bg-foreground/[0.02] shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6"
       >
         {/* Concentric rings — dynamically sized to match exact device orbit positions */}
         {(() => {
-          // maxUiDrag = containerRadius - 24 (half of w-12 node size)
-          // rings must be at the same radii as computeXY output
-          const r3 = (maxUiDrag / (maxUiDrag + 24)) * 100; // orbit3 = maxUiDrag
-          const r2 = ((maxUiDrag * 2 / 3) / (maxUiDrag + 24)) * 100;
-          const r1 = ((maxUiDrag / 3) / (maxUiDrag + 24)) * 100;
-          const ringRefs = [ring1Ref, ring2Ref, ring3Ref];
           return (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              {[r1, r2, r3].map((r, i) => (
-                <div
-                  key={i}
-                  ref={ringRefs[i]}
-                  className="absolute rounded-full border border-foreground/20 opacity-30 transition-transform duration-75"
-                  style={{ width: `${r}%`, height: `${r}%` }}
-                />
-              ))}
+            <div className="absolute inset-0 pointer-events-none">
+              {[1/3, 2/3, 1].map((scale, i) => {
+                const diameter = maxUiDrag * 2 * scale;
+                return (
+                  <div
+                    key={i}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/20 opacity-30"
+                    style={{ width: `${diameter}px`, height: `${diameter}px` }}
+                  />
+                );
+              })}
             </div>
           );
         })()}
 
+
+
         {/* Center Core Listener */}
-        <div ref={centerHubRef} className="absolute top-1/2 left-1/2 -ml-4 -mt-4 md:-ml-7 md:-mt-7 w-8 h-8 md:w-14 md:h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none origin-center">
-          {isPlaying && <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-foreground" style={{ animationDuration: '3s' }} />}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 md:w-14 md:h-14 rounded-full bg-foreground text-background flex items-center justify-center shadow-[0_0_30px_rgba(0,0,0,0.2)] dark:shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10 pointer-events-none">
+          <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-foreground" style={{ animationDuration: '3s' }} />
           <Headphones className="w-4 h-4 md:w-6 md:h-6" />
         </div>
 
@@ -399,7 +346,7 @@ export function OrbitUI({
             onUnregister={handleUnregister}
           />
         ))}
-      </motion.div>
+      </div>
 
       {/* Other Listeners Dock */}
       {otherListeners.length > 0 && (

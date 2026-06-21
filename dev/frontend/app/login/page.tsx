@@ -99,9 +99,12 @@ export default function AuthPage() {
     }
 
     try {
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get('returnTo') || '/hub';
+      
       if (isLogin) {
         await login(email, password);
-        router.push("/hub");
+        router.push(returnTo);
       } else {
         if (password !== confirmPassword) {
           triggerShake(["signup-password", "signup-confirm-password"]);
@@ -147,7 +150,6 @@ export default function AuthPage() {
           triggerShake(["signup-name", "signup-email", "signup-password", "signup-confirm-password"]);
         }
       }
-    } finally {
       setLoading(false);
     }
   };
@@ -201,11 +203,12 @@ export default function AuthPage() {
           setGoogleRedirectLoading(true);
           setLoading(true);
           try {
+            const params = new URLSearchParams(window.location.search);
+            const returnTo = params.get('returnTo') || '/hub';
             await googleLogin(response.credential);
-            router.push("/hub");
+            router.push(returnTo);
           } catch (err) {
             setError((err as Error).message);
-          } finally {
             setLoading(false);
             setGoogleRedirectLoading(false);
           }
@@ -288,7 +291,7 @@ export default function AuthPage() {
         </div>
       )}
 
-      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
+      {/* Background ambient lighting removed (now in layout) */}
 
       {/* Home link */}
       <motion.div
@@ -309,14 +312,12 @@ export default function AuthPage() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-5xl min-h-150 sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-background/80 overflow-y-auto overflow-x-hidden md:overflow-hidden flex border border-foreground/10 shadow-[0_20px_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
+        className="relative w-full max-w-5xl min-h-150 sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)]"
       >
-        <div className="absolute top-0 right-1/2 w-64 h-64 bg-foreground/5 filter blur-[60px] pointer-events-none" />
 
-        {/* PANEL A — Form */}
+
         <div
-          className={`absolute top-0 left-0 w-full md:w-1/2 h-full z-30 flex flex-col justify-center p-6 sm:p-12 md:p-16 bg-background transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} overflow-y-auto`}
+          className={`absolute top-0 left-0 w-full md:w-1/2 h-full z-30 flex flex-col justify-center p-6 sm:p-12 md:p-16 bg-transparent transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} overflow-y-auto`}
         >
           <AnimatePresence mode="wait">
             {/* ── LOGIN FORM ── */}
@@ -519,7 +520,7 @@ export default function AuthPage() {
 
         {/* PANEL B — Branding */}
         <div
-          className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
+          className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background/5 backdrop-blur-xl transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-30">
             <div className="absolute w-200 h-200 border border-foreground/5 rounded-full animate-[spin_40s_linear_infinite]" />

@@ -370,9 +370,15 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.setHeader('Content-Type', 'audio/mpeg');
       res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
 
-      // 3. Pipe the Web Stream to the Express Response
+      if (audioRes.headers.has('content-length')) {
+        res.setHeader('Content-Length', audioRes.headers.get('content-length')!);
+      }
+
       const { Readable } = require('stream');
-      Readable.fromWeb(audioRes.body as any).pipe(res);
+      const readable = Readable.fromWeb(audioRes.body as any);
+      
+      // 3. Pipe the Web Stream to the Express Response
+      readable.pipe(res);
 
     } catch (err) {
       console.error('[Proxy] yt-proxy error:', err);

@@ -26,7 +26,7 @@ interface UploadCtx {
   isUploading:      boolean;
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
-  uploadFile:       (file: File, roomId: string, sourceId?: string) => Promise<UploadResult>;
+  uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
   downloadYoutubeToP2P: (roomId: string, videoId: string, title: string) => Promise<void>;
   activeTransfers:  Record<string, TransferState>;
 }
@@ -38,18 +38,18 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
   const [isUploading,    setIsUploading]    = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [activeTransfers, setActiveTransfers] = useState<Record<string, TransferState>>({});
+  const [activeTransfers] = useState<Record<string, TransferState>>({});
 
   // 1. Seed Local File via WebSockets
-  const uploadFile = useCallback(async (file: File, roomId: string, sourceId?: string): Promise<UploadResult> => {
+  const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string): Promise<UploadResult> => {
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
     getSocket().emit('room:upload_progress', { roomId, title, progress: 10 });
 
     try {
-      // Generate custom websocket P2P URL, embedding sourceId if it's a YouTube video
-      const trackUrl = sourceId ? `ws-p2p:yt:${sourceId}_${Date.now()}` : `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      // Generate custom websocket P2P URL
+      const trackUrl = customTrackUrl || `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       setUploadProgress(40);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 40 });
@@ -110,8 +110,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
       const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
       
-      // Re-use the existing upload logic, passing the videoId to embed the thumbnail
-      await uploadFile(file, roomId, videoId);
+      const customTrackUrl = `ws-p2p:yt:${videoId}_${Date.now()}`;
+      
+      // Re-use the existing upload logic
+      await uploadFile(file, roomId, customTrackUrl);
 
     } catch (err) {
       console.error("[UploadContext] downloadYoutubeToP2P failed:", err);
@@ -141,11 +143,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         console.log(`[WebSocket P2P] Found ${trackUrl} in IDB! Seeding ${file.size} bytes to ${requesterSocketId}...`);
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-        setActiveTransfers(prev => ({
-          ...prev,
-          [trackUrl]: { chunks: [], totalChunks, progress: 0 }
-        }));
-
         for (let i = 0; i < totalChunks; i++) {
           const start = i * CHUNK_SIZE;
           const end = Math.min(start + CHUNK_SIZE, file.size);
@@ -168,39 +165,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             setTimeout(done, 5000);
           });
           
-          setActiveTransfers(prev => {
-            const current = prev[trackUrl];
-            if (!current) return prev;
-            return {
-              ...prev,
-              [trackUrl]: { ...current, progress: Math.round(((i + 1) / totalChunks) * 100) }
-            };
-          });
-
           // Tiny extra delay to give the event loop a breather
           await new Promise(resolve => setTimeout(resolve, 5));
         }
         console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
-        
-        setActiveTransfers(prev => {
-          const next = { ...prev };
-          delete next[trackUrl];
-          return next;
-        });
-        console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
-        
-        setActiveTransfers(prev => {
-          const next = { ...prev };
-          delete next[trackUrl];
-          return next;
-        });
       } catch (err) {
         console.error("[WebSocket P2P] Failed to send chunks:", err);
-        setActiveTransfers(prev => {
-          const next = { ...prev };
-          delete next[trackUrl];
-          return next;
-        });
       }
     };
 

@@ -32,10 +32,21 @@ export class SocketHandler {
 
     eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
       this.io.to(roomId).emit('room:participantJoined', participant);
+      
+      const p = participant as any;
+      if (p.userId) {
+        this.roomRepo.recordParticipantJoin(roomId, p.userId, p.socketId, p.displayName).catch(err => {
+          console.error(`[DB Sync] Failed to record join for ${p.userId} in ${roomId}:`, err);
+        });
+      }
     });
 
     eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }: { roomId: string; socketId: string }) => {
       this.io.to(roomId).emit('room:participantLeft', socketId);
+
+      this.roomRepo.recordParticipantLeave(roomId, socketId).catch(err => {
+        console.error(`[DB Sync] Failed to record leave for socket ${socketId} in ${roomId}:`, err);
+      });
     });
 
     eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }: { roomId: string; hostId: string }) => {
@@ -66,8 +77,9 @@ export class SocketHandler {
 
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName, isReady = false }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, userId, isReady = false }: JoinPayload) => {
       try {
+        if (userId) socket.data.userId = userId;
         const room = this.roomManager.getOrCreate(roomId);
 
         // Disconnect from previous room if any to prevent ghosts
@@ -90,6 +102,21 @@ export class SocketHandler {
           }
         }
 
+        // --- Private Mode Gate ---
+        const snapshot = room.snapshot();
+        const isHost = snapshot.hostId === socket.data.userId;
+        const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
+
+        if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
+          socket.emit('room:joinPendingApproval', { roomId });
+          const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
+          hostSockets.forEach(p => {
+            this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
+          });
+          return;
+        }
+        // -------------------------
+
         if (room.hasParticipant(socket.id)) {
           socket.join(roomId);
           this.roomManager.trackSocket(socket.id, roomId);
@@ -99,7 +126,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, joinedAt: Date.now(), isReady, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
@@ -114,6 +141,61 @@ export class SocketHandler {
         room.removeParticipant(socket.id);
       }
       socket.leave(roomId);
+    });
+
+    socket.on('room:togglePrivate', ({ roomId, isPrivate }: { roomId: string, isPrivate: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      if (room.snapshot().hostId !== socket.data.userId) {
+        socket.emit('error', { message: 'Only host can toggle private mode' });
+        return;
+      }
+      room.setIsPrivate(isPrivate);
+    });
+
+    socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room || room.snapshot().hostId !== socket.data.userId) return;
+      
+      const targetSocket = this.io.sockets.sockets.get(targetSocketId);
+      if (!targetSocket) return;
+
+      targetSocket.join(roomId);
+      this.roomManager.trackSocket(targetSocketId, roomId);
+      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, joinedAt: Date.now(), isReady: false, volume: 100 });
+      targetSocket.emit('room:joinApproved');
+      targetSocket.emit('room:snapshot', room.snapshot());
+      console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
+    });
+
+    socket.on('room:denyJoin', ({ roomId, targetSocketId }: { roomId: string, targetSocketId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room || room.snapshot().hostId !== socket.data.userId) return;
+
+      this.io.to(targetSocketId).emit('room:joinDenied');
+      console.log(`[Room ${roomId}] Host denied ${targetSocketId}`);
+    });
+
+    socket.on('room:notifyHost', ({ roomId, displayName }: { roomId: string, displayName: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      const hostId = room.snapshot().hostId;
+      if (hostId) {
+        const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === hostId);
+        hostSockets.forEach(p => {
+          this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName, isNudge: true });
+        });
+      }
+    });
+
+    socket.on('room:updateDevice', ({ roomId, deviceName, deviceType }: { roomId: string, deviceName?: string, deviceType?: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      room.updateParticipantDevice(socket.id, deviceName, deviceType);
+    });
+
+    socket.on('device:ping', ({ targetSocketId, message }: { targetSocketId: string, message?: string }) => {
+      this.io.to(targetSocketId).emit('device:ping', { message: message || "Ping!", from: socket.id });
     });
 
     // ── Playback — any participant can control ────────────────────────────
@@ -262,6 +344,14 @@ export class SocketHandler {
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {
       const now = Date.now();
       socket.emit('sync:pong', { t0, t1: now, t2: now, seq });
+    });
+
+    socket.on('sync:stats', ({ roomId, latency, jitter }: { roomId: string, latency: number, jitter: number }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      room.updateParticipantStats(socket.id, latency, jitter);
+      // Broadcast this lightweight payload to other users in the room
+      socket.to(roomId).emit('room:participantStats', { socketId: socket.id, latency, jitter });
     });
 
     // ── Spatial Audio Sync ───────────────────────────────────────────────

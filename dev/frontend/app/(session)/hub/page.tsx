@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera } from "lucide-react";
+import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera, LogOut, Radio } from "lucide-react";
 import Image from "next/image";
 import { useState, useEffect, useRef, useCallback } from "react";
 import jsQR from "jsqr";
@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 
-interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; }
+interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; host_id: string; participant_count?: number; }
 
 function getPlatformLabel(userAgent: string | null): string {
   if (!userAgent) return "Unknown";
@@ -25,12 +25,13 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function HubPage() {
   const router = useRouter();
-  const { device: currentDevice } = useAuth();
+  const { user, device: currentDevice } = useAuth();
   const [joinCode, setJoinCode] = useState("");
   const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [roomMenu, setRoomMenu] = useState<{ room: RecentRoom; x: number; y: number } | null>(null);
+  const [deviceMenu, setDeviceMenu] = useState<{ device: Device; x: number; y: number } | null>(null);
   const [roomToEnd, setRoomToEnd] = useState<RecentRoom | null>(null);
   const [roomInfo, setRoomInfo] = useState<RecentRoom | null>(null);
   const [roomToTransfer, setRoomToTransfer] = useState<RecentRoom | null>(null);
@@ -82,11 +83,11 @@ export default function HubPage() {
   }, []);
 
   useEffect(() => {
-    if (!roomMenu) return;
+    if (!roomMenu && !deviceMenu) return;
 
-    const closeMenu = () => setRoomMenu(null);
+    const closeMenu = () => { setRoomMenu(null); setDeviceMenu(null); };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setRoomMenu(null);
+      if (event.key === "Escape") { setRoomMenu(null); setDeviceMenu(null); };
     };
 
     window.addEventListener("click", closeMenu);
@@ -95,7 +96,7 @@ export default function HubPage() {
       window.removeEventListener("click", closeMenu);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [roomMenu]);
+  }, [roomMenu, deviceMenu]);
 
   useEffect(() => {
     return () => {
@@ -257,7 +258,7 @@ export default function HubPage() {
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     if (joinCode.trim().length > 3) {
-      router.push(`/room/${joinCode.trim().toUpperCase()}`);
+      window.open(`/room/${joinCode.trim().toUpperCase()}`, '_blank');
     }
   };
 
@@ -265,11 +266,11 @@ export default function HubPage() {
     setIsHosting(true);
     try {
       const data = await roomsApi.create();
-      router.push(`/room/${data.roomId}`);
+      window.open(`/room/${data.roomId}`, '_blank');
     } catch {
       // Fallback to client-side ID if server unreachable
       const randomId = Math.floor(100000 + Math.random() * 900000).toString();
-      router.push(`/room/${randomId}`);
+      window.open(`/room/${randomId}`, '_blank');
     } finally {
       setIsHosting(false);
     }
@@ -346,12 +347,9 @@ export default function HubPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 bg-background text-foreground transition-colors duration-300">
-      {/* Background ambient lighting */}
-      <div className={`${theme === 'light' ? 'mesh-bg' : ''}`} />
-
+    <div className="min-h-screen relative px-4 sm:px-6 lg:px-8 z-0 bg-transparent text-foreground transition-colors duration-300">
       {/* Main Hub Content */}
-      <main className="w-full max-w-4xl mx-auto flex-1 flex flex-col justify-center pb-20 pt-10">
+      <main className="w-full max-w-4xl mx-auto pb-20 pt-4">
 
         <div className="text-center mb-16">
           <motion.h1
@@ -379,8 +377,7 @@ export default function HubPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            whileHover={{ y: -5 }}
-            className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
+            className="glass-panel p-8 rounded-[2.5rem] shadow-xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
             <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Plus className="w-10 h-10 text-foreground" />
@@ -405,8 +402,7 @@ export default function HubPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
-            whileHover={{ y: -5 }}
-            className="glass-panel p-8 rounded-[2.5rem] shadow-xl hover:shadow-2xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
+            className="glass-panel p-8 rounded-[2.5rem] shadow-xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
           >
             <div className="w-20 h-20 rounded-3xl bg-foreground/5 border border-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-foreground/10 transition-all duration-300">
               <Search className="w-10 h-10 text-foreground" />
@@ -469,7 +465,7 @@ export default function HubPage() {
               {recentRooms.map((room) => (
                 <div
                   key={room.id}
-                  onClick={() => router.push(`/room/${room.id}`)}
+                  onClick={() => window.open(`/room/${room.id}`, '_blank')}
                   onContextMenu={(event) => handleRoomContextMenu(event, room)}
                   className="glass-panel p-4 rounded-2xl border border-foreground/5 bg-foreground/5 hover:bg-foreground/10 flex items-center justify-between cursor-pointer transition-colors group"
                 >
@@ -484,7 +480,7 @@ export default function HubPage() {
                       <div className="text-sm font-bold text-foreground/70 font-mono tracking-widest">{room.id}</div>
                       <div className="flex items-center gap-2 mt-0.5">
                         {!room.ended_at && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
+                          <span className={`w-1.5 h-1.5 rounded-full ${!room.participant_count ? 'bg-red-400' : (room.playback_state === 'playing' ? 'bg-green-400 animate-pulse' : 'bg-green-400')} inline-block`} title={!room.participant_count ? 'Empty' : (room.playback_state === 'playing' ? 'Playing' : 'Paused')} />
                         )}
                         <div className="text-xs text-foreground/40 font-medium">
                           {new Date(room.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -530,10 +526,15 @@ export default function HubPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {devices.map((savedDevice) => {
                 const isCurrent = currentDevice?.id === savedDevice.id;
+                const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
 
                 return (
                   <div
                     key={savedDevice.id}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setDeviceMenu({ device: savedDevice, x: event.clientX, y: event.clientY });
+                    }}
                     className={`glass-panel p-4 rounded-2xl border bg-foreground/5 flex items-center justify-between gap-3 transition-colors ${isCurrent ? "border-foreground/20" : "border-foreground/5 hover:bg-foreground/10"}`}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -541,20 +542,24 @@ export default function HubPage() {
                         <DeviceGlyph userAgent={savedDevice.user_agent} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 mb-0.5">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} title={isOffline ? 'Offline' : 'Online'} />
                           <span className="text-sm font-bold text-foreground truncate block" title={savedDevice.name}>
                             {savedDevice.name}
                           </span>
-                          {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
+                          {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
                         </div>
                         <div className="text-xs text-foreground/40 font-medium truncate">{getPlatformLabel(savedDevice.user_agent)}</div>
                       </div>
                     </div>
                     <button
-                      onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDeviceMenu({ device: savedDevice, x: event.clientX, y: event.clientY });
+                      }}
                       className="h-10 w-12 shrink-0 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
                     >
-                      <Edit3 className="w-4 h-4 mx-auto" />
+                      <MoreHorizontal className="w-4 h-4 mx-auto" />
                     </button>
                   </div>
                 );
@@ -580,16 +585,18 @@ export default function HubPage() {
                 <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Room: {roomMenu.room.id}</p>
                 
                 <div className="flex flex-col gap-2.5">
-                  <button
-                    onClick={() => {
-                      setRoomToEnd(roomMenu.room);
-                      setRoomMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <Trash2 className="w-5 h-5 text-red-400" />
-                    End session
-                  </button>
+                  {roomMenu.room.host_id === user?.id && (
+                    <button
+                      onClick={() => {
+                        setRoomToEnd(roomMenu.room);
+                        setRoomMenu(null);
+                      }}
+                      className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                    >
+                      <Trash2 className="w-5 h-5 text-red-400" />
+                      End session
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setRoomInfo(roomMenu.room);
@@ -600,16 +607,18 @@ export default function HubPage() {
                     <QrCode className="w-5 h-5 text-foreground/70" />
                     Room info + QR
                   </button>
-                  <button
-                    onClick={() => {
-                      setRoomToTransfer(roomMenu.room);
-                      setRoomMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <UserRoundCog className="w-5 h-5 text-foreground/70" />
-                    Change host
-                  </button>
+                  {roomMenu.room.host_id === user?.id && (
+                    <button
+                      onClick={() => {
+                        setRoomToTransfer(roomMenu.room);
+                        setRoomMenu(null);
+                      }}
+                      className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                    >
+                      <UserRoundCog className="w-5 h-5 text-foreground/70" />
+                      Change host
+                    </button>
+                  )}
                 </div>
                 
                 <button
@@ -625,21 +634,23 @@ export default function HubPage() {
             <div
               className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
               style={{
-                left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : roomMenu.x),
-                top: roomMenu.y,
+                left: Math.min(roomMenu.x, typeof window !== "undefined" ? window.innerWidth - 200 : roomMenu.x),
+                top: Math.min(roomMenu.y, typeof window !== "undefined" ? window.innerHeight - 160 : roomMenu.y),
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              <button
-                onClick={() => {
-                  setRoomToEnd(roomMenu.room);
-                  setRoomMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <Trash2 className="w-4 h-4 text-red-400" />
-                End session
-              </button>
+              {roomMenu.room.host_id === user?.id && (
+                <button
+                  onClick={() => {
+                    setRoomToEnd(roomMenu.room);
+                    setRoomMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                  End session
+                </button>
+              )}
               <button
                 onClick={() => {
                   setRoomInfo(roomMenu.room);
@@ -650,15 +661,129 @@ export default function HubPage() {
                 <QrCode className="w-4 h-4 text-foreground/70" />
                 Room info + QR
               </button>
+              {roomMenu.room.host_id === user?.id && (
+                <button
+                  onClick={() => {
+                    setRoomToTransfer(roomMenu.room);
+                    setRoomMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+                >
+                  <UserRoundCog className="w-4 h-4 text-foreground/70" />
+                  Change host
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {deviceMenu && (
+          <>
+            {/* Mobile Bottom Sheet Menu */}
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+                <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
+                <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.name}</p>
+                
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={() => {
+                      openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Edit3 className="w-5 h-5 text-foreground/70" />
+                    Rename this device
+                  </button>
+                  <button
+                    onClick={() => {
+                      alert("Ping sent to device!");
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Radio className="w-5 h-5 text-foreground/70" />
+                    Ping this device
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await devicesApi.remove(deviceMenu.device.id);
+                        const { devices: updatedDevices } = await devicesApi.mine();
+                        setDevices(updatedDevices);
+                      } catch (err) {
+                        alert("Failed to logout device");
+                      }
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <LogOut className="w-5 h-5 text-red-400" />
+                    Logout this device
+                  </button>
+                </div>
+                <button
+                  onClick={() => setDeviceMenu(null)}
+                  className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Desktop Context Menu */}
+            <div
+              className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              style={{
+                left: Math.min(deviceMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x),
+                top: Math.min(deviceMenu.y, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y),
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
               <button
                 onClick={() => {
-                  setRoomToTransfer(roomMenu.room);
-                  setRoomMenu(null);
+                  openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
+                  setDeviceMenu(null);
                 }}
                 className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
               >
-                <UserRoundCog className="w-4 h-4 text-foreground/70" />
-                Change host
+                <Edit3 className="w-4 h-4 text-foreground/70" />
+                Rename this device
+              </button>
+              <button
+                onClick={() => {
+                  alert("Ping sent to device!");
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Radio className="w-4 h-4 text-foreground/70" />
+                Ping this device
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await devicesApi.remove(deviceMenu.device.id);
+                    const { devices: updatedDevices } = await devicesApi.mine();
+                    setDevices(updatedDevices);
+                  } catch (err) {
+                    alert("Failed to logout device");
+                  }
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4 text-red-400" />
+                Logout this device
               </button>
             </div>
           </>
@@ -754,6 +879,22 @@ export default function HubPage() {
                 <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
               <form className="space-y-4" onSubmit={handleDeviceRename}>
+                {(() => {
+                  const dev = devices.find(d => d.id === editingDeviceId);
+                  return dev ? (
+                    <div className="flex items-center gap-3 mb-4 p-3.5 rounded-2xl border border-foreground/10 bg-foreground/5">
+                      <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center shrink-0 shadow-sm border border-foreground/5">
+                        <DeviceGlyph userAgent={dev.user_agent} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold uppercase tracking-widest text-foreground/40">Detected Type</span>
+                        <span className="text-sm text-foreground font-semibold">
+                          {getPlatformLabel(dev.user_agent)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 <input
                   autoFocus
                   type="text"
@@ -792,12 +933,12 @@ export default function HubPage() {
 
                 {/* Laser animation */}
                 {scanStatus === "scanning" && (
-                  <div className="absolute inset-x-0 h-0.5 bg-green-400 shadow-[0_0_8px_#4ade80] animate-scan-laser z-10 pointer-events-none" />
+                  <div className="absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-background via-background/80 to-transparent z-80 pointer-events-none" />
                 )}
 
                 {/* Target crop corner brackets */}
                 {scanStatus === "scanning" && (
-                  <div className="absolute inset-10 border border-white/5 rounded-2xl pointer-events-none">
+                  <div className="absolute -inset-[1px] bg-linear-to-b from-transparent to-background/90 z-80 pointer-events-none rounded-[32px]">
                     <div className="absolute -top-1 -left-1 w-5 h-5 border-t-2 border-l-2 border-green-400 rounded-tl-md" />
                     <div className="absolute -top-1 -right-1 w-5 h-5 border-t-2 border-r-2 border-green-400 rounded-tr-md" />
                     <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-2 border-l-2 border-green-400 rounded-bl-md" />

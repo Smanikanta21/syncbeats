@@ -11,6 +11,7 @@ export interface RoomRow {
   position_ms: number;
   created_at: Date;
   ended_at: Date | null;
+  participant_count?: number;
 }
 
 interface NewQueueTrackInput {
@@ -53,10 +54,24 @@ export class RoomRepository {
 
   async listByUser(userId: string): Promise<RoomRow[]> {
     const rooms = await prisma.room.findMany({
-      where: { hostId: userId, endedAt: null },
+      where: { 
+        OR: [
+          { hostId: userId },
+          { roomParticipants: { some: { userId } } }
+        ],
+        endedAt: null 
+      },
+      include: {
+        _count: {
+          select: { roomParticipants: { where: { leftAt: null } } }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
-    return rooms.map(r => this.mapRoom(r));
+    return rooms.map(r => ({
+      ...this.mapRoom(r),
+      participant_count: r._count.roomParticipants
+    }));
   }
 
   async updateState(
@@ -97,6 +112,33 @@ export class RoomRepository {
 
   async removeRoom(roomId: string): Promise<void> {
     await prisma.room.delete({ where: { id: roomId } });
+  }
+
+  async recordParticipantJoin(roomId: string, userId: string, socketId: string, displayName: string): Promise<void> {
+    await prisma.roomParticipant.upsert({
+      where: {
+        roomId_userId: { roomId, userId }
+      },
+      create: {
+        roomId,
+        userId,
+        socketId,
+        displayName,
+        joinedAt: new Date(),
+      },
+      update: {
+        socketId,
+        displayName,
+        leftAt: null,
+      }
+    });
+  }
+
+  async recordParticipantLeave(roomId: string, socketId: string): Promise<void> {
+    await prisma.roomParticipant.updateMany({
+      where: { roomId, socketId },
+      data: { leftAt: new Date() }
+    });
   }
 
   async getQueue(roomId: string): Promise<TrackQueueItem[]> {

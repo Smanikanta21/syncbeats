@@ -61,6 +61,13 @@ function getToken(): string | null {
   return getAuthToken();
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -77,8 +84,21 @@ async function request<T>(
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = {};
+  }
+  if (!res.ok) {
+    const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
+    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
+      if (typeof window !== 'undefined') {
+        window.alert(`[API Error] ${errorMsg}`);
+      }
+    }
+    throw new ApiError(errorMsg, res.status);
+  }
   return data as T;
 }
 
@@ -171,6 +191,12 @@ export const authApi = {
       body: JSON.stringify({ email, otp }),
     }),
 
+  updateProfile: (name: string) =>
+    request<{ user: User }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }, true),
+
   me: () => request<AuthResponse>('/auth/me', {}, true),
 };
 
@@ -203,6 +229,8 @@ export interface RoomRecord {
   position_ms:    number;
   created_at:     string;
   ended_at:       string | null;
+  is_private?:    boolean;
+  participant_count?: number;
 }
 
 export interface DeviceListResponse {
@@ -268,6 +296,11 @@ export const devicesApi = {
     request<DeviceUpdateResponse>(`/devices/${deviceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
+    }, true),
+
+  remove: (deviceId: string) =>
+    request<{ ok: boolean }>(`/devices/${deviceId}`, {
+      method: 'DELETE',
     }, true),
 
   replace: (targetDeviceId: string) =>

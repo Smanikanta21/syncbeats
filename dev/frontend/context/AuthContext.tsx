@@ -7,7 +7,7 @@ import {
   createContext, useContext, useEffect, useState, useCallback,
   type ReactNode,
 } from "react";
-import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User } from "../lib/api";
+import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
 
 interface AuthContextType {
   user:     User | null;
@@ -22,6 +22,7 @@ interface AuthContextType {
   resendVerification: (email?: string) => Promise<void>;
   renameDevice: (name: string) => Promise<void>;
   replaceDevice: (targetDeviceId: string) => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
   logout:   () => void;
 }
 
@@ -56,11 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNeedsDeviceRename(needsDeviceRename);
         setEmailVerified(!!user.email_verified_at);
       })
-      .catch(() => {
-        // Token expired or invalid — clear it
-        clearAuthToken();
-        setToken(null);
-        setEmailVerified(false);
+      .catch((err) => {
+        // Only clear token if we get a definitive authentication failure.
+        // If the server is restarting (502, 503) or network fails, do NOT log out the user!
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearAuthToken();
+          setToken(null);
+          setEmailVerified(false);
+        }
       })
       .finally(() => setLoading(false));
   }, [token]);
@@ -106,6 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsDeviceRename(false);
   }, [device]);
 
+  const updateProfile = useCallback(async (name: string) => {
+    const { user: updated } = await authApi.updateProfile(name);
+    setUser(updated);
+  }, []);
+
   const replaceDevice = useCallback(async (targetDeviceId: string) => {
     const { device: updated } = await devicesApi.replace(targetDeviceId);
     setDevice(updated);
@@ -123,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, logout }}>
+    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, updateProfile, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -8,8 +8,6 @@ export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
   isBuffering:   boolean;
-  error:         string | null;
-  downloadProgress: number;
   hasTrack:      boolean;       
   audioUnlocked: boolean;       
   currentTime:   number;       
@@ -19,6 +17,12 @@ export interface AudioPlayerState {
   trackUrl:      string | null;
   trackTitle:    string;
   trackArtist:   string;
+  error:         string | null;
+  outputLatency: number;
+  manualLatency: number;
+  isLatencyAutoDetected: boolean;
+  outputDeviceName: string | null;
+  outputDeviceType: string | null;
 }
 
 interface UseAudioPlayerReturn extends AudioPlayerState {
@@ -30,8 +34,8 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   setVolume:   (volume: number) => void;
   setTrack:    (url: string, title?: string, artist?: string) => void;
   clearTrack:  () => void;
-  prefetchTrack: (url: string) => Promise<void>;
   unlockAudio: () => void;
+  setManualLatency: (latency: number) => void;
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
   playNow:     (expectedPosition: number) => void;
   pauseAt:     (position: number) => void;
@@ -40,6 +44,8 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   audioEl:     HTMLAudioElement | null;
   audioCtx?:   AudioContext | null;
   gainNode?:   GainNode | null;
+  getAudioData: () => number;
+  getRawAudioData: () => Uint8Array | null;
 }
 
 export function formatTime(seconds: number): string {
@@ -55,19 +61,32 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
   const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
-  const trackUrlRef = useRef<string | null>(null);
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+
+  const [outputLatency, setOutputLatencyState] = useState(0);
+  const [manualLatency, setManualLatencyState] = useState(0);
+  const [isLatencyAutoDetected, setIsLatencyAutoDetectedState] = useState(false);
+  const [outputDeviceName, setOutputDeviceName] = useState<string | null>(null);
+  const [outputDeviceType, setOutputDeviceType] = useState<string | null>(null);
+
+  const outputLatencyRef = useRef(0);
+  const manualLatencyRef = useRef(0);
+  const isLatencyAutoDetectedRef = useRef(false);
+
+  const setOutputLatency = useCallback((v: number) => { outputLatencyRef.current = v; setOutputLatencyState(v); }, []);
+  const setManualLatency = useCallback((v: number) => { manualLatencyRef.current = v; setManualLatencyState(v); }, []);
+  const setIsLatencyAutoDetected = useCallback((v: boolean) => { isLatencyAutoDetectedRef.current = v; setIsLatencyAutoDetectedState(v); }, []);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
@@ -86,7 +105,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass && !audioCtxRef.current) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
-        gainNodeRef.current.connect(audioCtxRef.current.destination);
+        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
+        analyserNodeRef.current.fftSize = 256;
+        
+        gainNodeRef.current.connect(analyserNodeRef.current);
+        analyserNodeRef.current.connect(audioCtxRef.current.destination);
       }
     }
   }, []);
@@ -114,20 +137,50 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     return pauseOffsetRef.current + elapsed;
   }, [isPlaying]);
 
-  const unlockAudio = useCallback(async () => {
-    if (!audioCtxRef.current) return;
+  const getAudioData = useCallback(() => {
+    if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return 0;
+    const dataArray = new Uint8Array(analyserNodeRef.current.frequencyBinCount);
+    analyserNodeRef.current.getByteFrequencyData(dataArray);
+    
+    // Average the lower frequencies (bass) for the "beat" pulse
+    let sum = 0;
+    const sampleCount = 10;
+    for (let i = 0; i < sampleCount; i++) {
+      sum += dataArray[i];
+    }
+    const avg = sum / sampleCount;
+    return avg / 255; // Normalized 0 to 1
+  }, []);
 
-    // Quick path if already fully unlocked
-    if (audioCtxRef.current.state === 'running') {
-      setAudioUnlocked(true);
-    } else if (audioCtxRef.current.state === 'suspended') {
-      try {
-        await audioCtxRef.current.resume();
-        setAudioUnlocked(true);
-      } catch {
-        console.warn("Failed to resume AudioContext");
+  const getRawAudioData = useCallback(() => {
+    if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return null;
+    const dataArray = new Uint8Array(analyserNodeRef.current.frequencyBinCount);
+    analyserNodeRef.current.getByteFrequencyData(dataArray);
+    return dataArray;
+  }, []);
+
+  const unlockAudio = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtxRef.current = new AudioContextClass();
+        gainNodeRef.current = audioCtxRef.current.createGain();
+        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
+        analyserNodeRef.current.fftSize = 256;
+        gainNodeRef.current.connect(analyserNodeRef.current);
+        analyserNodeRef.current.connect(audioCtxRef.current.destination);
+      } else {
         return;
       }
+    }
+
+    // Always optimistically unlock in the UI so the user isn't stuck forever.
+    setAudioUnlocked(true);
+
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume().catch((err) => {
+        console.warn("Failed to resume AudioContext", err);
+      });
     }
 
     setTimeout(() => {
@@ -159,14 +212,65 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
   }, [unlockAudio]);
 
-  const fetchArrayBuffer = async (url: string, silent = false): Promise<ArrayBuffer> => {
-    if (!silent) {
+  const detectOutputDevice = useCallback(async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      
+      let activeDevice = audioOutputs.find(d => d.deviceId === 'default') || audioOutputs[0];
+      
+      if (audioCtxRef.current && typeof (audioCtxRef.current as any).sinkId === 'string') {
+        const sinkId = (audioCtxRef.current as any).sinkId;
+        if (sinkId) activeDevice = audioOutputs.find(d => d.deviceId === sinkId) || activeDevice;
+      }
+
+      if (activeDevice) {
+        const label = activeDevice.label || "System Default";
+        setOutputDeviceName(label);
+        
+        let type = 'speaker';
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel.includes('bluetooth') || lowerLabel.includes('airpods') || lowerLabel.includes('bose') || lowerLabel.includes('sony') || lowerLabel.includes('wh-') || lowerLabel.includes('wf-') || lowerLabel.includes('galaxy buds')) {
+          type = 'bluetooth';
+        } else if (lowerLabel.includes('headphone') || lowerLabel.includes('earpods') || lowerLabel.includes('headset')) {
+          type = 'headphones';
+        }
+        setOutputDeviceType(type);
+      }
+      
+      if (audioCtxRef.current) {
+        const outLat = audioCtxRef.current.outputLatency || 0;
+        const baseLat = audioCtxRef.current.baseLatency || 0;
+        const totalLat = outLat + baseLat;
+        if (totalLat > 0) {
+          setOutputLatency(totalLat);
+          setIsLatencyAutoDetected(true);
+        } else {
+          setIsLatencyAutoDetected(false);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not enumerate devices", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
+      navigator.mediaDevices.addEventListener('devicechange', detectOutputDevice);
+      detectOutputDevice();
+      return () => navigator.mediaDevices.removeEventListener('devicechange', detectOutputDevice);
+    }
+  }, [detectOutputDevice]);
+
+  const fetchAndDecode = (url: string) => {
+    if (fetchPromiseRef.current) return fetchPromiseRef.current;
+
+    const promise = (async () => {
       setIsReady(false);
       setError(null);
-      setDownloadProgress(0);
-    }
-    
-    let arrayBuffer: ArrayBuffer;
+      try {
+        let arrayBuffer: ArrayBuffer;
 
         if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
@@ -261,12 +365,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
                 
                 chunks[payload.chunkIndex] = bufferData;
-                const progressPct = expectedChunks > 0 ? Math.round((receivedIndices.size / expectedChunks) * 100) : 0;
-                if (!silent) setDownloadProgress(progressPct);
-                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks} (${progressPct}%)`);
+                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
                 // Show buffering indicator for long downloads
-                if (!silent && receivedIndices.size === 1 && typeof document !== 'undefined') {
+                if (receivedIndices.size === 1 && typeof document !== 'undefined') {
                   const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
                   document.dispatchEvent(event);
                 }
@@ -295,7 +397,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     console.error('[WebSocket P2P] Failed to save track to IDB:', e);
                   }
                   
-                  if (!silent) setDownloadProgress(100);
                   resolve(buffer);
                 } else {
                   resetTimeout();
@@ -329,24 +430,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           arrayBuffer = await response.arrayBuffer();
         }
 
-    return arrayBuffer;
-  };
-
-  const fetchAndDecode = (url: string) => {
-    if (fetchPromiseRef.current) return fetchPromiseRef.current;
-
-    const promise = (async () => {
-      try {
-        const arrayBuffer = await fetchArrayBuffer(url, false);
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
         setIsReady(true);
         return decodedData;
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error decoding audio data", err);
-        setError(err.message || "Failed to load audio track");
-        setIsReady(true);
+        setError(err instanceof Error ? err.message : "Failed to load audio");
         return null;
       } finally {
         fetchPromiseRef.current = null;
@@ -356,15 +447,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     fetchPromiseRef.current = promise;
     return promise;
   };
-
-  const prefetchTrack = useCallback(async (url: string) => {
-    try {
-      console.log("[Prefetch] Pre-seeding next track:", url);
-      await fetchArrayBuffer(url, true);
-    } catch (e) {
-      console.error("[Prefetch] Failed to pre-seed track:", e);
-    }
-  }, []);
 
   useEffect(() => {
     if (!trackUrl) {
@@ -387,25 +469,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [volume]);
 
   useEffect(() => {
-    let lastUpdate = 0;
-    const tick = (now: number) => {
-      if (isPlaying) {
-        if (now - lastUpdate > 1000) {
-          if (audioCtxRef.current) {
-            const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
-            setCurrentTime(pauseOffsetRef.current + elapsed);
-          }
-          lastUpdate = now;
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
+    let intervalId: any;
     if (isPlaying) {
-      rafRef.current = requestAnimationFrame(tick);
-    } else {
-      cancelAnimationFrame(rafRef.current);
+      intervalId = setInterval(() => {
+        if (audioCtxRef.current) {
+          const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+          setCurrentTime(pauseOffsetRef.current + elapsed);
+        }
+      }, 250);
     }
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [isPlaying]);
 
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
@@ -456,20 +531,27 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { url: trackUrlRef.current } }));
+      document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    if (msUntilStart > 50) {
-      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
-      const audioCtxStartTime = Math.max(audioCtxRef.current.currentTime, audioCtxRef.current.currentTime + msUntilStart / 1000 - hardwareLatency);
-      source.start(audioCtxStartTime, Math.max(0, payload.fromPosition));
+    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+    const totalLatency = hardwareLatency + manualLatencyRef.current;
+    
+    // time until the global start epoch
+    const idealAudioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000 - totalLatency;
+
+    if (idealAudioCtxStartTime >= audioCtxRef.current.currentTime) {
+      // We have enough time to schedule it in the future
+      source.start(idealAudioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxStartTime;
+      startTimeRef.current = idealAudioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
-      const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
-      const correctPosition = payload.fromPosition + Math.abs(msUntilStart) / 1000 + hardwareLatency;
+      // We are late! We must start immediately and seek into the buffer
+      const lateBySeconds = audioCtxRef.current.currentTime - idealAudioCtxStartTime;
+      const correctPosition = payload.fromPosition + lateBySeconds;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
+      
       source.start(0, Math.max(0, clampedPosition));
       sourceNodeRef.current = source;
       startTimeRef.current = audioCtxRef.current.currentTime;
@@ -497,7 +579,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.onended = () => {
       setIsPlaying(false);
       setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { url: trackUrlRef.current } }));
+      document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
     const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
@@ -571,7 +653,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       ? `${getServerUrl()}/${url}` 
       : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
     setTrackUrl(absoluteUrl);
-    trackUrlRef.current = absoluteUrl;
     setTrackTitle(title);
     setTrackArtist(artist);
   }, []);
@@ -579,9 +660,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const clearTrack = useCallback(() => {
     stopCurrentSource();
     setTrackUrl(null);
-    trackUrlRef.current = null;
     setTrackTitle("");
     setTrackArtist("");
+    setError(null);
     setIsPlaying(false);
     setCurrentTime(0);
     pauseOffsetRef.current = 0;
@@ -593,12 +674,36 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, isBuffering, error, downloadProgress, hasTrack, audioUnlocked, currentTime, duration, progress, volume,
-    trackUrl, trackTitle, trackArtist,
-    play, pause, toggle, seek, seekPct, setVolume, setTrack, clearTrack, prefetchTrack, unlockAudio,
-    scheduleStart, playNow, pauseAt, getTruePosition, setPlaybackRate,
+    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked,
+    currentTime,
+    duration,
+    progress: duration > 0 ? (currentTime / duration) * 100 : 0,
+    volume,
+    trackUrl,
+    trackTitle,
+    trackArtist,
+    error,
+    outputLatency,
+    manualLatency,
+    isLatencyAutoDetected,
+    outputDeviceName,
+    outputDeviceType,
+    play,
+    pause,
+    toggle,
+    seek,
+    seekPct,
+    setVolume,
+    setTrack,
+    clearTrack,
+    unlockAudio,
+    setManualLatency,
+    scheduleStart, playNow, pauseAt,    getTruePosition,
+    setPlaybackRate,
     audioEl: null,
     audioCtx: audioCtxRef.current,
-    gainNode: gainNodeRef.current
+    gainNode: gainNodeRef.current,
+    getAudioData,
+    getRawAudioData
   };
 }

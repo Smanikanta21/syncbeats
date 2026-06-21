@@ -44,7 +44,7 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
         : {})}
       className={`rounded-2xl px-3 py-2 text-sm border flex items-center gap-3 relative transition-colors ${
         item.isCurrent
-          ? "border-green-500/40 bg-green-500/10 text-green-300"
+          ? "border-green-500/40 bg-green-500/10 text-green-600 font-medium dark:text-green-300"
           : "border-foreground/5 bg-foreground/5 text-foreground/70"
       }`}
     >
@@ -64,12 +64,12 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
         <Music2 className="w-3.5 h-3.5 text-foreground/50" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold truncate">{item.title}</div>
-        <div className="text-[11px] uppercase tracking-widest opacity-70 flex flex-col gap-1 mt-0.5">
+        <div className="font-semibold truncate text-green-600 dark:text-green-300">{item.title}</div>
+        <div className="text-[11px] uppercase tracking-widest flex flex-col gap-1 mt-0.5 text-green-600/90 dark:text-green-300/80">
           <div className="flex items-center gap-2 flex-wrap">
             <span>{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}</span>
           </div>
-          <span className="text-[9px] opacity-60 normal-case font-bold ">Added by: {addedByName}</span>
+          <span className="text-[9px] normal-case font-bold">Added by: {addedByName}</span>
         </div>
       </div>
 
@@ -78,7 +78,7 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
           type="button"
           onClick={(e) => onPlay(e, item.id)}
           title="Play this track now"
-          className="w-8 h-8 rounded-full hover:bg-green-500/10 text-foreground/20 hover:text-green-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer"
+          className="w-8 h-8 rounded-full hover:bg-green-500/10 text-foreground/20 hover:text-green-600 dark:hover:text-green-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
         </button>
@@ -96,7 +96,7 @@ export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: Sorta
             btn.disabled = false;
           }
         }}
-        className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-600 dark:hover:text-red-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Trash2 className="w-4 h-4" />
       </button>

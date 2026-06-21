@@ -151,6 +151,14 @@ export class DeviceRepository {
     return this.mapDevice(updatedTarget);
   }
 
+  async remove(userId: string, deviceId: string): Promise<boolean> {
+    const target = await prisma.device.findUnique({ where: { id: deviceId } });
+    if (!target || target.userId !== userId) return false;
+    
+    await prisma.device.delete({ where: { id: deviceId } });
+    return true;
+  }
+
   private mapDevice(d: any): PublicDevice {
     return {
       id: d.id,

@@ -34,7 +34,7 @@ export interface NetworkStats {
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const PING_INTERVAL_MS   = 1000;   // ping once per second for real-time stats
-const MAX_HISTORY        = 60;     // keep 60 samples (1 min at 1/s)
+const MAX_HISTORY        = 240;    // keep 240 samples (supports 1 min of 250ms pings)
 const STORAGE_KEY        = "syncbeats:netStats";
 const RTT_TIMEOUT_MS     = 2000;   // discard pings slower than 2s
 
@@ -76,7 +76,7 @@ export function metricColor(value: number, thresholds: [number, number, number])
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
-export function useNetworkStats(enabled: boolean = true): NetworkStats {
+export function useNetworkStats(enabled: boolean = true, fastPing: boolean = false, roomId?: string): NetworkStats {
   const socket = getSocket();
   const seqRef = useRef(0);
   const lastLatencyRef = useRef<number | null>(null);
@@ -131,7 +131,11 @@ export function useNetworkStats(enabled: boolean = true): NetworkStats {
       avgRtt, avgLatency, avgJitter,
       quality, history: [...historyRef.current], hasData: true,
     });
-  }, []);
+
+    if (roomId && socket.connected) {
+      socket.emit("sync:stats", { roomId, latency, jitter });
+    }
+  }, [roomId, socket]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -161,7 +165,8 @@ export function useNetworkStats(enabled: boolean = true): NetworkStats {
       socket.emit("sync:ping", { t0, seq });
     };
 
-    const pingTimer = setInterval(doPing, PING_INTERVAL_MS);
+    const intervalMs = fastPing ? 250 : PING_INTERVAL_MS;
+    const pingTimer = setInterval(doPing, intervalMs);
     const persistTimer = setInterval(persist, 5000); // persist every 5s
     doPing(); // fire immediately
 
@@ -170,7 +175,7 @@ export function useNetworkStats(enabled: boolean = true): NetworkStats {
       clearInterval(persistTimer);
       persist(); // save on unmount
     };
-  }, [enabled, socket, addSample, persist]);
+  }, [enabled, fastPing, socket, addSample, persist]);
 
   return stats;
 }

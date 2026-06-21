@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth, Edit3, Radio, LogOut, Orbit, Activity, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -33,11 +33,176 @@ import {
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
 
-function DeviceIcon({ index }: { index: number }) {
+const LoadingOverlay = () => {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress(p => {
+        if (p < 80) return p + Math.random() * 15;
+        if (p < 95) return p + Math.random() * 2;
+        return p;
+      });
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-xl"
+    >
+      <div className="flex flex-col items-center glass-panel p-10 rounded-[2.5rem] shadow-2xl border border-foreground/10 w-[320px]">
+        <Loader2 className="w-10 h-10 text-foreground animate-spin mb-6" />
+        
+        <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden mb-4">
+          <motion.div 
+            className="h-full bg-foreground rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ ease: "easeOut", duration: 0.2 }}
+          />
+        </div>
+        
+        <p className="text-foreground/80 tracking-widest uppercase font-bold text-[10px] h-3">
+          {progress < 30 ? "Connecting to Sync Server..." : progress < 70 ? "Synchronizing NTP Clock..." : "Loading Room Data..."}
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
+function DeviceIcon({ index, type }: { index: number, type?: string }) {
+  if (type === 'bluetooth') return <Bluetooth className="w-3 h-3 text-foreground/60" />;
+  if (type === 'headphones') return <Headphones className="w-3 h-3 text-foreground/60" />;
+  
   const icons = [Smartphone, Laptop, Speaker];
   const Icon  = icons[index % icons.length];
   return <Icon className="w-3 h-3 text-foreground/60" />;
 }
+
+const ArcItem = ({ index, icon: Icon, title, dragY, activeTab, onClick, containerRef }: any) => {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [offsetX, setOffsetX] = useState(0);
+
+  useEffect(() => {
+    if (dragY === null || !itemRef.current || !containerRef.current) {
+      setOffsetX(0);
+      return;
+    }
+    const rect = itemRef.current.getBoundingClientRect();
+    const cRect = containerRef.current.getBoundingClientRect();
+    const centerY = rect.top - cRect.top + rect.height / 2;
+    
+    const distance = Math.abs(dragY - centerY);
+    const maxDist = 140;
+    if (distance < maxDist) {
+      const arc = Math.cos((distance / maxDist) * (Math.PI / 2));
+      setOffsetX(-70 * arc);
+    } else {
+      setOffsetX(0);
+    }
+  }, [dragY, containerRef]);
+
+  const isActive = activeTab === index;
+  const isDragging = dragY !== null;
+  const targetScale = isActive ? (isDragging ? 1.25 : 1) : 0.75;
+
+  return (
+    <div ref={itemRef} data-tab-index={index} className="w-full h-12 relative flex justify-end pr-4">
+      <motion.button
+        animate={{ x: offsetX, scale: targetScale }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        onClick={onClick}
+        className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors absolute ${isActive ? "bg-foreground text-background shadow-[0_0_20px_rgba(255,255,255,0.4)]" : "bg-background/80 backdrop-blur-md text-foreground/50 border border-foreground/10 hover:text-foreground"}`}
+        title={title}
+      >
+        <Icon className="w-5 h-5" />
+      </motion.button>
+    </div>
+  );
+};
+
+const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: number, setActiveTab: (t: number) => void, handleLeave: () => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragY, setDragY] = useState<number | null>(null);
+
+  const tabs = [
+    { icon: QrCode, title: "Room Info" },
+    { icon: Smartphone, title: "Devices" },
+    { icon: Orbit, title: "Spatial Audio" },
+    { icon: ListMusic, title: "Queue" }
+  ];
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    setDragY(y);
+
+    const tabsElements = Array.from(containerRef.current.querySelectorAll('[data-tab-index]')) as HTMLElement[];
+    let closestDist = Infinity;
+    let closestIndex = activeTab;
+
+    for (const tabEl of tabsElements) {
+      const tabRect = tabEl.getBoundingClientRect();
+      const tabCenterY = tabRect.top - rect.top + tabRect.height / 2;
+      const dist = Math.abs(y - tabCenterY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIndex = parseInt(tabEl.getAttribute('data-tab-index')!, 10);
+      }
+    }
+    
+    if (closestDist < 70 && closestIndex !== activeTab) {
+      setActiveTab(closestIndex);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    setDragY(null);
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className="absolute right-0 top-0 h-full w-24 z-50 touch-none pointer-events-none"
+    >
+      <div 
+        className={`absolute top-1/2 -translate-y-1/2 right-0 w-full flex flex-col items-end pointer-events-auto py-10 transition-[gap] duration-300 ${dragY !== null ? 'gap-4' : 'gap-1'}`}
+        onPointerDown={(e) => {
+           (e.target as HTMLElement).setPointerCapture(e.pointerId);
+           handlePointerMove(e);
+        }}
+        onPointerMove={dragY !== null ? handlePointerMove : undefined}
+        onPointerUp={dragY !== null ? handlePointerUp : undefined}
+        onPointerCancel={dragY !== null ? handlePointerUp : undefined}
+      >
+        {tabs.map((tab, i) => (
+          <ArcItem 
+            key={i} 
+            index={i} 
+            icon={tab.icon} 
+            title={tab.title} 
+            dragY={dragY} 
+            activeTab={activeTab} 
+            onClick={() => setActiveTab(i)}
+            containerRef={containerRef}
+          />
+        ))}
+      </div>
+      
+      <div className="absolute bottom-6 right-0 w-full flex justify-end pr-4 pointer-events-none">
+        <button onClick={handleLeave} className="w-12 h-12 rounded-full flex items-center justify-center text-red-500 bg-background/80 backdrop-blur-md border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 shadow-lg pointer-events-auto" title="Leave Room">
+           <LogOut className="w-5 h-5 ml-1" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function RoomPage() {
   const params  = useParams();
@@ -56,12 +221,15 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
+  const { snapshot, participants, isConnected, joinStatus, pendingRequests, togglePrivate, approveJoin, denyJoin, notifyHost, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
     roomId,
     displayName,
+    userId: user?.id,
   });
-  const isLocalPlayBlocked = snapshot?.isPlaying && audio.isReady && !audio.isPlaying;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack } = useSyncInfo();
+  // Show Audio Unlock overlay if the browser hasn't been unlocked via a user gesture yet
+  const isLocalPlayBlocked = isConnected && !audio.audioUnlocked;
+  const isHost = snapshot?.hostId === user?.id;
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId, setJoinStatus: pushJoinStatus, setIsPrivate: pushIsPrivate } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
   useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
@@ -91,6 +259,40 @@ export default function RoomPage() {
     pushIncomingTrack(incomingTrack);
   }, [incomingTrack, pushIncomingTrack]);
 
+  // Push pendingRequests to shared context
+  useEffect(() => {
+    pushPendingRequests(pendingRequests);
+  }, [pendingRequests, pushPendingRequests]);
+
+  // Push hostId to shared context
+  useEffect(() => {
+    pushHostId(snapshot?.hostId || null);
+  }, [snapshot?.hostId, pushHostId]);
+
+  // Push joinStatus to shared context
+  useEffect(() => {
+    pushJoinStatus(joinStatus);
+  }, [joinStatus, pushJoinStatus]);
+
+  // Push isPrivate to shared context
+  useEffect(() => {
+    pushIsPrivate(snapshot?.isPrivate ?? false);
+  }, [snapshot?.isPrivate, pushIsPrivate]);
+
+  // Listen for actions from DynamicIsland
+  useEffect(() => {
+    const handleApprove = (e: CustomEvent) => approveJoin(e.detail.socketId, e.detail.displayName);
+    const handleDeny = (e: CustomEvent) => denyJoin(e.detail.socketId);
+    
+    document.addEventListener('room:action-approve', handleApprove as EventListener);
+    document.addEventListener('room:action-deny', handleDeny as EventListener);
+    
+    return () => {
+      document.removeEventListener('room:action-approve', handleApprove as EventListener);
+      document.removeEventListener('room:action-deny', handleDeny as EventListener);
+    };
+  }, [approveJoin, denyJoin]);
+
   // Push server-side playing state so DynamicIsland shows correct button
   useEffect(() => {
     setIsRoomPlaying(snapshot?.isPlaying ?? false);
@@ -105,6 +307,17 @@ export default function RoomPage() {
   useEffect(() => {
     pushParticipants(participants);
   }, [participants, pushParticipants]);
+
+  // Broadcast local audio output device info to the room
+  useEffect(() => {
+    if (isConnected && audio.outputDeviceName) {
+      getSocket()?.emit('room:updateDevice', {
+        roomId,
+        deviceName: audio.outputDeviceName,
+        deviceType: audio.outputDeviceType
+      });
+    }
+  }, [isConnected, audio.outputDeviceName, audio.outputDeviceType, roomId]);
 
   const groupedParticipants = participants.reduce((acc, p) => {
     const parts = p.displayName.split("::");
@@ -197,6 +410,7 @@ export default function RoomPage() {
   }, []);
 
   const handleLeave = () => {
+    if (!window.confirm("Do you really want to leave the room?")) return;
     audio.pause();
     audio.clearTrack();
     leave();
@@ -353,6 +567,34 @@ export default function RoomPage() {
     }, 1300);
   };
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deviceMenu, setDeviceMenu] = useState<{ device: Participant & { devName: string }; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (deviceMenu) setDeviceMenu(null);
+    };
+    
+    const handleGlobalContextMenu = () => {
+      if (deviceMenu) setDeviceMenu(null);
+    };
+    
+    // Defer attaching the listener so the current click/contextmenu event doesn't trigger it immediately
+    let timer: number;
+    if (deviceMenu) {
+      timer = window.setTimeout(() => {
+        window.addEventListener("click", handleGlobalClick);
+        window.addEventListener("contextmenu", handleGlobalContextMenu);
+      }, 50);
+    }
+    
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("click", handleGlobalClick);
+      window.removeEventListener("contextmenu", handleGlobalContextMenu);
+    };
+  }, [deviceMenu]);
+
   const [activeTab, setActiveTab] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
 
@@ -363,16 +605,27 @@ export default function RoomPage() {
     if (tab !== activeTab) setActiveTab(tab);
   };
 
-  const PANEL_CLASSES = "w-full h-full flex flex-col bg-background/40 backdrop-blur-xl rounded-[2.5rem] border border-foreground/10 p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
+  const PANEL_CLASSES = "w-full h-full flex flex-col md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
 
   const renderInfoPanel = () => (
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
-      <div className="md:hidden w-full flex flex-col pt-30 pb-20 px-4 space-y-6">
+      <div className="md:hidden w-full flex flex-col pt-6 pb-6 px-4 space-y-6">
         {/* Badges */}
         <div className="flex justify-center items-center gap-3 mb-6">
-          <span className="hidden px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest md:inline-flex items-center gap-2">
-            <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-foreground/70 text-sm font-semibold tracking-widest md:inline-flex items-center gap-2">
+              <Users className="w-4 h-4 text-foreground/60" /> Sync Session Active
+            </span>
+            {isHost && (
+              <button 
+                onClick={() => togglePrivate(!snapshot?.isPrivate)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase flex items-center gap-2 transition-colors border ${snapshot?.isPrivate ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-foreground/5 text-foreground/50 border-transparent hover:bg-foreground/10'}`}
+              >
+                {snapshot?.isPrivate ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                {snapshot?.isPrivate ? 'Private' : 'Public'}
+              </button>
+            )}
+          </div>
           <span className={`px-3 py-1.5 rounded-full text-xs font-bold tracking-widest inline-flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
             {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             {isConnected ? "Connected" : "Connecting…"}
@@ -467,25 +720,35 @@ export default function RoomPage() {
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4 flex flex-col gap-6">
           {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
             <div key={userName} className="flex flex-col gap-3">
-              <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2">{userName}</h4>
+              <h4 className="text-xs font-bold text-foreground/50 uppercase tracking-widest px-2 flex items-center gap-2">
+                {userName}
+                {userDevices.some(d => d.userId === snapshot?.hostId) && (
+                  <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background shrink-0">Host</span>
+                )}
+              </h4>
               <div className="flex flex-col gap-3">
                 {userDevices.map((p, i) => (
                   <div
                     key={p.socketId}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setDeviceMenu({ device: p, x: event.clientX, y: event.clientY });
+                    }}
                     className="glass-panel p-4 rounded-3xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-sm"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
+                        <div className="w-12 h-12 shrink-0 rounded-full bg-linear-to-tr from-zinc-200 to-zinc-100 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
                           <span className="font-black text-foreground/70 text-sm tracking-widest">
                             {p.devName.slice(0, 2).toUpperCase()}
                           </span>
-                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm">
-                            <DeviceIcon index={i} />
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-foreground/20 flex items-center justify-center shadow-sm" title={p.outputDeviceName || "Default Device"}>
+                            <DeviceIcon index={i} type={p.outputDeviceType} />
                           </div>
                         </div>
                         <div className="max-w-50 mx-auto">
                           <div className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${snapshot?.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-green-400'}`} title={snapshot?.isPlaying ? 'Playing' : 'Online'} />
                             <h4 className="font-bold text-foreground truncate">{p.devName}</h4>
                             {snapshot?.hostId === p.socketId && (
                               <span className="shrink-0 px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
@@ -501,8 +764,19 @@ export default function RoomPage() {
                               : "Ready"
                             }
                           </p>
-                        </div>
                       </div>
+                      </div>
+                      <button
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
+                        }}
+                        className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
                     </div>
 
                     <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
@@ -515,7 +789,7 @@ export default function RoomPage() {
                       </div>
                       <div className="relative h-6 flex items-center">
                         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                          <div className="h-full bg-linear-to-r from-foreground/40 to-foreground/80 rounded-full w-2/3 shadow-[0_0_10px_rgba(var(--foreground-rgb),0.3)]" style={{ width: `${p.volume}%` }} />
+                          <div className="h-full bg-foreground rounded-full" style={{ width: `${p.volume}%` }} />
                         </div>
                         <input
                           type="range"
@@ -536,6 +810,7 @@ export default function RoomPage() {
           ))}
         </div>
       )}
+
     </div>
   );
 
@@ -555,9 +830,9 @@ export default function RoomPage() {
       </div>
 
       {localQueue.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5">
-          <Music2 className="w-8 h-8 mb-3 opacity-20" />
-          No songs in queue
+        <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5 p-6">
+          <Music2 className="w-10 h-10 mb-4 opacity-20" />
+          <p className="mb-6">No songs in queue</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 pb-4">
@@ -593,8 +868,86 @@ export default function RoomPage() {
 
   if (!isMounted) return null;
 
+  if (joinStatus === 'pending') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground px-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-foreground/5 to-background pointer-events-none" />
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="z-10 flex flex-col items-center max-w-md w-full glass-panel p-10 rounded-[2.5rem] border border-foreground/10 text-center relative overflow-hidden shadow-2xl"
+        >
+          <div className="w-24 h-24 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 border border-amber-500/20 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+            <Lock className="w-10 h-10 text-amber-500" />
+          </div>
+          <h2 className="text-3xl font-black mb-3">Private Room</h2>
+          
+          <div className="flex items-center gap-3 bg-foreground/5 pl-4 pr-2 py-2 rounded-xl border border-foreground/10 mb-8">
+            <span className="font-black tracking-[0.2em] text-xl text-foreground/90">{roomId}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(roomId);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="w-8 h-8 rounded-lg bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center transition-colors active:scale-95"
+              title="Copy room code"
+            >
+              {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-foreground/50" />}
+            </button>
+          </div>
+
+          <p className="text-foreground/60 mb-8 leading-relaxed">
+            The host has locked this room. A request to join has been sent, please wait for their approval.
+          </p>
+          <button 
+            onClick={notifyHost}
+            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+          >
+            <BellRing className="w-5 h-5" /> Nudge Host
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (joinStatus === 'denied') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground px-6 relative overflow-hidden">
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="z-10 flex flex-col items-center max-w-md w-full glass-panel p-10 rounded-[2.5rem] border border-red-500/20 text-center shadow-2xl"
+        >
+          <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+            <ShieldAlert className="w-10 h-10 text-red-500" />
+          </div>
+          <h2 className="text-3xl font-black mb-3">Access Denied</h2>
+          <p className="text-foreground/60 mb-8 leading-relaxed">
+            The host did not approve your request to join this private room.
+          </p>
+          <button 
+            onClick={() => router.push('/')}
+            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+          >
+            Return Home
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const isLoading = !snapshot || joinStatus === 'connecting';
+
   return (
-    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-background z-0 flex flex-col items-center select-none">
+    <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-transparent z-0 flex flex-col items-center select-none">
+      
+      {/* ── Loading Overlay ── */}
+      <AnimatePresence>
+        {isLoading && <LoadingOverlay />}
+      </AnimatePresence>
+
+
       {/* ── Buffering Overlay ── */}
       <AnimatePresence>
         {(() => {
@@ -681,7 +1034,7 @@ export default function RoomPage() {
     </AnimatePresence>
 
       {/* Ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] max-w-150 max-h-150 md:w-full md:max-w-2xl md:h-125 bg-foreground/5 blur-[120px] md:blur-[150px] rounded-full pointer-events-none -z-10" />
+      {/* Ambient glow removed (now in layout) */}
 
       {/* ── DESKTOP VIEW ── */}
 
@@ -699,9 +1052,20 @@ export default function RoomPage() {
             {/* Room Info Card */}
             <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
                <div className="flex justify-between items-center">
-                  <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-foreground/60" /> Live
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-foreground/60" /> Live 
+                    </span>
+                    {isHost && (
+                      <button 
+                        onClick={() => togglePrivate(!snapshot?.isPrivate)}
+                        className={`px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest uppercase flex items-center gap-1.5 transition-colors border ${snapshot?.isPrivate ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-foreground/5 text-foreground/50 border-transparent hover:bg-foreground/10'}`}
+                      >
+                        {snapshot?.isPrivate ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                        {snapshot?.isPrivate ? 'Private' : 'Public'}
+                      </button>
+                    )}
+                  </div>
                   <span className={`px-2.5 py-1 rounded-md text-[9px] uppercase font-black tracking-widest flex items-center gap-1.5 border ${isConnected ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-red-500/10 border-red-500/20 text-red-500"}`}>
                     {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
                     {isConnected ? "Connected" : "Connecting"}
@@ -761,29 +1125,39 @@ export default function RoomPage() {
             <div className="w-full flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             {Object.entries(groupedParticipants).map(([userName, userDevices]) => (
               <div key={userName} className="w-full flex flex-col gap-4">
-                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all">{userName}</h4>
+                <h4 className="text-[10px] font-bold text-foreground/50 uppercase tracking-widest px-2 border-b border-foreground/5 pb-1 select-all flex items-center gap-2">
+                  {userName}
+                  {userDevices.some(d => d.userId === snapshot?.hostId) && (
+                    <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background shrink-0">Host</span>
+                  )}
+                </h4>
                 <div className="grid grid-cols-1 gap-3 w-full">
-                  {userDevices.map((p, i) => (
+                  {userDevices.map((p, i) => {
+                    const displayDeviceName = p.devName.replace(new RegExp(`^${userName}['’]s\\s+`, 'i'), '');
+                    
+                    return (
                     <div
                       key={p.socketId}
+                      onContextMenu={(event) => {
+                        if (p.socketId === currentSocketId) return;
+                        event.preventDefault();
+                        setDeviceMenu({ device: p, x: event.clientX, y: event.clientY });
+                      }}
                       className="glass-panel p-5 rounded-4xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
+                          <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-200 to-zinc-100 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
                             <span className="font-black text-foreground/70 text-sm tracking-widest">
-                              {p.devName.slice(0, 2).toUpperCase()}
+                              {userName.slice(0, 2).toUpperCase()}
                             </span>
-                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-foreground/20 flex items-center justify-center">
                               <DeviceIcon index={i} />
                             </div>
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-foreground">{p.devName}</h4>
-                              {snapshot?.hostId === p.socketId && (
-                                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest bg-foreground text-background">Host</span>
-                              )}
+                              <h4 className="font-bold text-foreground">{displayDeviceName}</h4>
                             </div>
                             <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
                               {p.isReady
@@ -795,9 +1169,22 @@ export default function RoomPage() {
                             </p>
                           </div>
                         </div>
+                        {p.socketId !== currentSocketId && (
+                          <button
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
+                            }}
+                            className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                          >
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
 
-                      <motion.div className="flex flex-col h-dvh w-full md:hidden">
+                      <motion.div className="flex flex-col mt-2 w-full">
                         <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                           <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
                             {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
@@ -808,7 +1195,7 @@ export default function RoomPage() {
                         <div className="relative h-10 flex items-center">
                           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-linear-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              className="h-full rounded-full bg-foreground"
                               style={{ width: `${p.volume}%` }}
                             />
                           </div>
@@ -819,13 +1206,13 @@ export default function RoomPage() {
                             step={1}
                             value={p.volume}
                             onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                            aria-label={`${p.devName} volume`}
+                            aria-label={`${displayDeviceName} volume`}
                             className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
                           />
                         </div>
                       </motion.div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               </div>
             ))}
@@ -835,7 +1222,7 @@ export default function RoomPage() {
 
           {/* Middle Column: Spatial Audio */}
           <div className="flex flex-col flex-1 h-full min-w-0 relative z-10">
-            <div className="w-full h-full flex flex-col items-center justify-center p-4">
+            <div className="w-full h-full flex flex-col items-center justify-center px-0 py-4 md:p-4">
               <OrbitUI
                 myDeviceId={currentSocketId || ""}
                 spatialDevices={spatialDevices}
@@ -854,13 +1241,15 @@ export default function RoomPage() {
                   <ListMusic className="w-4 h-4" />
                   Room Queue ({localQueue.length})
                 </h3>
-                <button
-                  onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
-                  className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
-                  title="Add music to queue"
-                >
-                  <Plus className="w-3.5 h-3.5 text-foreground/50" />
-                </button>
+                {audio.hasTrack && (
+                  <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
+                    className="w-7 h-7 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/15 hover:border-foreground/20 flex items-center justify-center transition-all active:scale-90"
+                    title="Add music to queue"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-foreground/50" />
+                  </button>
+                )}
               </div>
               
               {localQueue.length ? (
@@ -892,9 +1281,9 @@ export default function RoomPage() {
                   </DndContext>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5">
-                  <Music2 className="w-8 h-8 mb-3 opacity-20" />
-                  No songs in queue
+                <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-xl border border-foreground/5 p-6">
+                  <Music2 className="w-10 h-10 mb-4 opacity-20" />
+                  <p className="mb-6">No songs in queue</p>
                 </div>
               )}
             </div>
@@ -902,61 +1291,44 @@ export default function RoomPage() {
         </motion.div>
       </div>
 
-      {/* ── MOBILE VIEW (Swipeable Carousel) ── */}
-      <div className="flex md:hidden flex-col w-full h-full relative pt-30 pb-20">
-        {/* Pagination Dots */}
-        <div className="flex justify-center items-center gap-3 mb-4 shrink-0 px-4">
-          <button aria-label="View room info" onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 0 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View connected devices" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 1 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View spatial audio" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 2, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 2 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View music queue" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 3, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 3 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
+      {/* ── MOBILE VIEW (Vertical Side Nav) ── */}
+      <div className="flex md:hidden w-full h-full relative pt-20">
+        {/* Main Content Area */}
+        <div className="flex-1 h-full w-full overflow-hidden relative">
+           <AnimatePresence mode="wait">
+             <motion.div 
+               key={activeTab}
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: -10 }}
+               transition={{ duration: 0.2 }}
+               className="absolute inset-0 w-full h-full overflow-hidden flex flex-col px-4 pb-8"
+             >
+                {activeTab === 0 && <div className="flex-1 flex flex-col min-h-0">{renderInfoPanel()}</div>}
+                {activeTab === 1 && <div className="flex-1 flex flex-col min-h-0">{renderDevicesPanel()}</div>}
+                {activeTab === 2 && <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+                  <div className="w-full h-full md:max-h-[400px] md:rounded-[2.5rem] flex flex-col items-center justify-center md:border md:border-foreground/10 md:bg-background/40 md:backdrop-blur-xl md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
+                    <OrbitUI
+                      myDeviceId={currentSocketId || ""}
+                      spatialDevices={spatialDevices}
+                      participants={participants}
+                      onUpdatePosition={updatePosition}
+                      isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
+                    />
+                  </div>
+                </div>}
+                {activeTab === 3 && <div className="flex-1 flex flex-col min-h-0">{renderQueuePanel()}</div>}
+             </motion.div>
+           </AnimatePresence>
         </div>
 
-        {/* Carousel */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          ref={carouselRef}
-          onScroll={handleScroll}
-          className="w-full h-full rounded-4xl overflow-x-auto overflow-y-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
-        >
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderInfoPanel()}
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderDevicesPanel()}
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0 flex items-center justify-center">
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 h-full flex flex-col items-center justify-center max-h-100">
-              <OrbitUI
-                myDeviceId={currentSocketId || ""}
-                spatialDevices={spatialDevices}
-                participants={participants}
-                onUpdatePosition={updatePosition}
-                isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
-              />
-            </div>
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderQueuePanel()}
-          </div>
-        </motion.div>
-
-        {/* Mobile Leave Button */}
-        <div className="absolute bottom-6 left-0 w-full flex justify-center z-10 px-6 pointer-events-none">
-          <button 
-            onClick={handleLeave} 
-            className="pointer-events-auto flex items-center justify-center w-full max-w-50 gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-sm tracking-widest uppercase px-6 py-3.5 rounded-full font-bold shadow-lg backdrop-blur-xl border border-red-500/20 transition-all active:scale-95"
-          >
-            Leave Room
-          </button>
-        </div>
+        {/* Floating Vertical Side Navigation Bar */}
+        <FloatingSideNav activeTab={activeTab} setActiveTab={setActiveTab} handleLeave={handleLeave} />
       </div>
 
-      {/* ── Tap to Sync Mobile/iOS Audio Context Unlock Overlay ── */}
+      {/* ── Tap to Enable Mobile/iOS Audio Context Unlock Overlay ── */}
       {isLocalPlayBlocked && (
-        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-99999 px-6 text-center">
+        <div className="fixed inset-0 bg-background/85 backdrop-blur-lg flex flex-col items-center justify-center z-[99999] px-6 text-center">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -967,9 +1339,9 @@ export default function RoomPage() {
               🎵
             </div>
             <div className="space-y-2">
-              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Sync Audio</h2>
-              <p className="text-xs text-foreground/40 font-medium max-w-70 mx-auto leading-relaxed">
-                Mobile browsers require a physical tap to enable synchronized player audio. Tap below to join.
+              <h2 className="text-lg font-bold tracking-widest uppercase text-foreground">Tap to Enable Audio</h2>
+              <p className="text-xs text-foreground/40 font-medium max-w-[70%] mx-auto leading-relaxed">
+                Browsers require a physical tap to allow audio playback. Tap below to enable sound.
               </p>
             </div>
             <button
@@ -978,10 +1350,142 @@ export default function RoomPage() {
               }}
               className="w-full bg-foreground hover:bg-foreground/90 text-background font-bold tracking-widest uppercase text-xs py-4 px-6 rounded-full transition-transform active:scale-95 shadow-xl shadow-foreground/5 border border-foreground/10"
             >
-              Sync Audio Now
+              Enable Audio Now
             </button>
           </motion.div>
         </div>
+      )}
+      {/* Device Context Menu (Must be outside carousel due to fixed positioning) */}
+      {deviceMenu && (
+        <>
+          {/* Mobile Bottom Sheet Menu */}
+          <div className="md:hidden fixed inset-0 z-[100] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+              <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
+              <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.devName}</p>
+              
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    alert("Rename only available from Hub or Profile!");
+                    setDeviceMenu(null);
+                  }}
+                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                >
+                  <Edit3 className="w-5 h-5 text-foreground/70" />
+                  Rename this device
+                </button>
+                {deviceMenu.device.socketId !== currentSocketId && (
+                  <button
+                    onClick={() => {
+                      getSocket().emit('device:ping', { targetSocketId: deviceMenu.device.socketId });
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Radio className="w-5 h-5 text-foreground/70" />
+                    Ping this device
+                  </button>
+                )}
+                {deviceMenu.device.socketId !== currentSocketId && (
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Activity className="w-5 h-5 text-blue-400" />
+                    View Device Info
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    alert("Device logged out!");
+                    setDeviceMenu(null);
+                  }}
+                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                >
+                  <LogOut className="w-5 h-5 text-red-400" />
+                  Logout this device
+                </button>
+              </div>
+              <button
+                onClick={() => setDeviceMenu(null)}
+                className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </div>
+
+          {/* Desktop Context Menu */}
+          <div
+            className="hidden md:block fixed z-[100] min-w-[200px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+            style={{
+              left: Math.min(deviceMenu.x + 5, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x + 5),
+              top: Math.min(deviceMenu.y + 5, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y + 5),
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <button
+              onClick={() => {
+                alert("Rename only available from Hub or Profile!");
+                setDeviceMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+            >
+              <Edit3 className="w-4 h-4 text-foreground/70" />
+              Rename this device
+            </button>
+            {deviceMenu.device.socketId !== currentSocketId && (
+              <button
+                onClick={() => {
+                  getSocket().emit('device:ping', { targetSocketId: deviceMenu.device.socketId });
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Radio className="w-4 h-4 text-foreground/70" />
+                Ping this device
+              </button>
+            )}
+            {deviceMenu.device.socketId !== currentSocketId && (
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Activity className="w-4 h-4 text-blue-400" />
+                View Device Info
+              </button>
+            )}
+            <button
+              onClick={() => {
+                alert("Device logged out!");
+                setDeviceMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4 text-red-400" />
+              Logout this device
+            </button>
+          </div>
+        </>
       )}
     </main>
   );

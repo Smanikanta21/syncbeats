@@ -28,7 +28,15 @@ export class SyncBeatsServer {
   private httpServer = http.createServer(this.app);
   private io         = new Server(this.httpServer, {
     cors: { 
-      origin: [FRONTEND_URL, 'http://localhost:3000', 'https://syncbeats.app', 'https://www.syncbeats.app'], 
+      origin: (origin, callback) => {
+        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
+          callback(null, true);
+        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] 
     },
@@ -71,7 +79,15 @@ export class SyncBeatsServer {
     }));
 
     this.app.use(cors({
-      origin: [FRONTEND_URL, 'http://localhost:3000', 'https://syncbeats.app', 'https://www.syncbeats.app'], 
+      origin: (origin, callback) => {
+        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
+          callback(null, true);
+        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     }));

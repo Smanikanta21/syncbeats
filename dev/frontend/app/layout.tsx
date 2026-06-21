@@ -13,18 +13,17 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
   preload: true,
-  display: "swap",  
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   preload: true,
-  display: "swap",  
+  display: "swap",
 });
 
 const BASE_URL = "https://syncbeats.app";
-
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -39,29 +38,37 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
-  title: 'SyncBeats | One track. Every phone. Zero lag.',
-  description: 'Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.',
-  keywords: ['music sync', 'listen together', 'spatial audio app', 'sync music across phones', 'AmpMe alternative'],
+  title: "SyncBeats | One track. Every phone. Zero lag.",
+  description:
+    "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.",
+  keywords: [
+    "music sync",
+    "listen together",
+    "spatial audio app",
+    "sync music across phones",
+    "AmpMe alternative",
+  ],
   openGraph: {
-    title: 'SyncBeats - 3D audio that hits everyone at once.',
-    description: 'Your crew. Your music. One massive speaker.',
+    title: "SyncBeats - 3D audio that hits everyone at once.",
+    description: "Your crew. Your music. One massive speaker.",
     url: BASE_URL,
-    siteName: 'SyncBeats',
+    siteName: "SyncBeats",
     images: [
       {
-        url: '/syncbeats-og.png',
+        url: "/syncbeats-og.png",
         width: 1200,
         height: 630,
-        alt: 'SyncBeats — synchronized music player',
+        alt: "SyncBeats — synchronized music player",
       },
     ],
-    locale: 'en_US',
-    type: 'website',
+    locale: "en_US",
+    type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "SyncBeats | One track. Every phone. Zero lag.",
-    description: "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience.",
+    description:
+      "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience.",
     site: "@syncbeatsapp",
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
@@ -147,17 +154,38 @@ export default function RootLayout({
       </Script>
 
       {/* Ahrefs Analytics */}
-      <Script 
-        src="https://analytics.ahrefs.com/analytics.js" 
-        data-key="+9fzuLLzZbLhEJcB+CsBWA" 
-        strategy="lazyOnload" 
+      <Script
+        src="https://analytics.ahrefs.com/analytics.js"
+        data-key="+9fzuLLzZbLhEJcB+CsBWA"
+        strategy="lazyOnload"
       />
 
-      <body className="min-h-full flex flex-col transition-colors duration-300" suppressHydrationWarning>
+      {/* Google Adsense */}
+
+      <Script
+        id="google-adsense"
+        async
+        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4470861398200894"
+        crossOrigin="anonymous"
+        strategy="afterInteractive"
+      />
+
+      <body
+        className="transition-colors duration-300 bg-background text-foreground"
+        suppressHydrationWarning
+      >
+        {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
+        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+          <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-violet-600/10 dark:bg-violet-900/20 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-[8000ms]" />
+          <div className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] bg-emerald-500/10 dark:bg-emerald-900/20 blur-[150px] rounded-full mix-blend-screen animate-pulse duration-[12000ms] delay-1000" />
+          <div className="absolute bottom-[-20%] left-[20%] w-[70vw] h-[70vw] bg-blue-500/10 dark:bg-blue-900/20 blur-[130px] rounded-full mix-blend-screen animate-pulse duration-[10000ms] delay-500" />
+          <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+        </div>
+
         <ThemeProvider>
           <AuthProvider>
             <AudioProvider>
-              {children}
+              <div className="relative z-10 w-full">{children}</div>
             </AudioProvider>
           </AuthProvider>
         </ThemeProvider>

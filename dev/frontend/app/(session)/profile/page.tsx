@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, LogOut, Edit3, Shield, Activity, Heart, Laptop, Smartphone, X, KeyRound } from "lucide-react";
+import { CheckCircle2, LogOut, Edit3, Shield, Activity, Heart, Laptop, Smartphone, X, KeyRound, Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
@@ -26,7 +26,7 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, device, logout, emailVerified } = useAuth();
+  const { user, device, logout, emailVerified, updateProfile } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -36,6 +36,15 @@ export default function ProfilePage() {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingDeviceName, setEditingDeviceName] = useState("");
   const [savingDeviceRename, setSavingDeviceRename] = useState(false);
+  const [deviceMenu, setDeviceMenu] = useState<{ device: Device; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (deviceMenu) setDeviceMenu(null);
+    };
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, [deviceMenu]);
 
   const displayName = profileName.trim() || user?.name || "—";
   const displayEmail = profileEmail.trim() || user?.email || "—";
@@ -78,9 +87,17 @@ export default function ProfilePage() {
     setIsEditingProfile(false);
   };
 
-  const saveEditProfile = () => {
-    // TODO: Add API endpoint to update profile (name, email)
-    setIsEditingProfile(false);
+  const saveEditProfile = async () => {
+    try {
+      if (profileName.trim() && profileName.trim() !== user?.name) {
+        await updateProfile(profileName.trim());
+      }
+      setIsEditingProfile(false);
+    } catch (err) {
+      console.error("Failed to update profile", err);
+      // fallback in case of error
+      setProfileName(user?.name ?? "");
+    }
   };
 
   const openDeviceRename = (deviceId: string, currentName: string) => {
@@ -261,6 +278,7 @@ export default function ProfilePage() {
 
           {/* 6. Change Password */}
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
+            onClick={() => router.push("/forgot-password" + (user?.email ? "?email=" + encodeURIComponent(user.email) : ""))}
             className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-blue-500/30 hover:bg-blue-500/5 transition-all cursor-pointer">
             <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
               <KeyRound className="w-5 h-5 text-blue-500" />
@@ -287,9 +305,14 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {devices.map((savedDevice) => {
                   const isCurrent = device?.id === savedDevice.id;
+                  const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
                   return (
                     <div
                       key={savedDevice.id}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setDeviceMenu({ device: savedDevice, x: event.clientX, y: event.clientY });
+                      }}
                       className={`rounded-3xl border p-4 transition-colors ${isCurrent ? "border-foreground/20 bg-foreground/5" : "border-foreground/5 bg-foreground/5"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -299,15 +322,16 @@ export default function ProfilePage() {
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} title={isOffline ? 'Offline' : 'Online'} />
                               <h4 className="font-bold text-foreground truncate">{savedDevice.name}</h4>
-                              {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest">Current</span>}
+                              {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
                             </div>
                             <p className="text-xs text-foreground/50 mt-1 truncate">{getPlatformLabel(savedDevice.user_agent)}</p>
                           </div>
                         </div>
                         <button
                           onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
-                          className="h-8 w-8 rounded-lg bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 flex items-center justify-center text-foreground/60 hover:text-white transition-colors"
+                          className="h-8 w-8 rounded-lg bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -333,9 +357,25 @@ export default function ProfilePage() {
                   <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device</p>
                   <h2 className="text-2xl font-black text-foreground mt-1">Rename Device</h2>
                 </div>
-                <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-white"><X className="w-5 h-5" /></button>
+                <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
               <form className="space-y-4" onSubmit={handleDeviceRename}>
+                {(() => {
+                  const dev = devices.find(d => d.id === editingDeviceId);
+                  return dev ? (
+                    <div className="flex items-center gap-3 mb-4 p-3.5 rounded-2xl border border-foreground/10 bg-foreground/5">
+                      <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center shrink-0 shadow-sm border border-foreground/5">
+                        <DeviceGlyph userAgent={dev.user_agent} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold uppercase tracking-widest text-foreground/40">Detected Type</span>
+                        <span className="text-sm text-foreground font-semibold">
+                          {getPlatformLabel(dev.user_agent)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-foreground/60">Device Name</label>
                   <input
@@ -356,6 +396,118 @@ export default function ProfilePage() {
               </form>
             </motion.div>
           </div>
+        )}
+
+        {deviceMenu && (
+          <>
+            {/* Mobile Bottom Sheet Menu */}
+            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+                <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
+                <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.name}</p>
+                
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={() => {
+                      openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Edit3 className="w-5 h-5 text-foreground/70" />
+                    Rename this device
+                  </button>
+                  <button
+                    onClick={() => {
+                      alert("Ping sent to device!");
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Radio className="w-5 h-5 text-foreground/70" />
+                    Ping this device
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await devicesApi.remove(deviceMenu.device.id);
+                        const { devices: updatedDevices } = await devicesApi.mine();
+                        setDevices(updatedDevices);
+                      } catch (err) {
+                        alert("Failed to logout device");
+                      }
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <LogOut className="w-5 h-5 text-red-400" />
+                    Logout this device
+                  </button>
+                </div>
+                <button
+                  onClick={() => setDeviceMenu(null)}
+                  className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Desktop Context Menu */}
+            <div
+              className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+              style={{
+                left: Math.min(deviceMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x),
+                top: Math.min(deviceMenu.y, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y),
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Edit3 className="w-4 h-4 text-foreground/70" />
+                Rename this device
+              </button>
+              <button
+                onClick={() => {
+                  alert("Ping sent to device!");
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Radio className="w-4 h-4 text-foreground/70" />
+                Ping this device
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await devicesApi.remove(deviceMenu.device.id);
+                    const { devices: updatedDevices } = await devicesApi.mine();
+                    setDevices(updatedDevices);
+                  } catch (err) {
+                    alert("Failed to logout device");
+                  }
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4 text-red-400" />
+                Logout this device
+              </button>
+            </div>
+          </>
         )}
       </main>
     </div>

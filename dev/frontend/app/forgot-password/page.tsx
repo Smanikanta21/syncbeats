@@ -2,6 +2,8 @@
 
 import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { Disc } from "lucide-react";
 import { authApi } from "../../lib/api";
 
 export default function ForgotPasswordPage() {
@@ -97,7 +99,21 @@ export default function ForgotPasswordPage() {
   const isAutoSetup = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("autoSent") === "true";
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6">
+    <main className="min-h-screen flex items-center justify-center px-6 relative">
+      {/* Home link */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="absolute top-8 left-8 z-50"
+      >
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+            <Disc className="w-4 h-4 text-foreground/80 animate-[spin_4s_linear_infinite]" />
+          </div>
+          <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
+        </Link>
+      </motion.div>
       <div className="w-full max-w-md rounded-3xl border border-foreground/10 bg-background/40 p-8">
         <h1 className="text-2xl font-bold text-foreground">
           {isAutoSetup ? "Setup Local Password" : "Forgot Password"}
@@ -123,13 +139,13 @@ export default function ForgotPasswordPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@email.com"
-              className="w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 disabled:opacity-70"
+              className="w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 disabled:opacity-60"
             />
 
             {otpSent && (
               <>
                 {devOtp && (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-500 flex items-center justify-between gap-3">
                     <span className="font-semibold tracking-[0.2em]">OTP: {devOtp}</span>
                     <button type="button" onClick={copyDevOtp} className="rounded-lg border border-emerald-400/30 px-2 py-1 text-xs text-emerald-200 hover:border-emerald-200/60">
                       {copied ? "Copied" : "Copy"}
@@ -148,13 +164,13 @@ export default function ForgotPasswordPage() {
                       setOtpVerified(false);
                     }}
                     placeholder="Enter 6-digit OTP"
-                    className={`flex-1 rounded-xl border bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${otpError ? "border-red-500/70" : "border-foreground/10"}`}
+                    className={`flex-1 rounded-xl border bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${otpError ? "border-red-500/70" : "border-foreground/10"}`}
                   />
                   <button
                     type="button"
                     onClick={verifyOtp}
                     disabled={verifyingOtp || otp.trim().length !== 6}
-                    className="rounded-xl border border-white/15 px-4 py-3 text-sm font-semibold text-foreground hover:border-white/40 disabled:opacity-60"
+                    className="rounded-xl border border-foreground/15 px-4 py-3 text-sm font-semibold text-foreground hover:border-foreground/40 disabled:opacity-60"
                   >
                     {verifyingOtp ? "Checking..." : otpVerified ? "Verified" : "Verify"}
                   </button>
@@ -168,7 +184,7 @@ export default function ForgotPasswordPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="New password (min 8 characters)"
-                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
                 <input
                   type="password"
@@ -178,19 +194,19 @@ export default function ForgotPasswordPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Confirm new password"
-                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-white/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
               </>
             )}
 
-            {message && <p className="text-sm text-emerald-300">{message}</p>}
+            {message && <p className="text-sm text-green-500 dark:text-green-400">{message}</p>}
             {error && (
               <p className="text-sm text-red-400">{error}</p>
             )}
             <button
               type="submit"
               disabled={loading || (otpSent && !otpVerified)}
-              className="w-full rounded-xl bg-zinc-100 px-4 py-3 font-semibold text-background disabled:opacity-60"
+              className="w-full rounded-xl bg-foreground px-4 py-3 font-semibold text-background disabled:opacity-60"
             >
               {loading ? "Processing..." : otpSent ? "Change Password" : "Send OTP"}
             </button>
@@ -215,7 +231,7 @@ export default function ForgotPasswordPage() {
                     setLoading(false);
                   }
                 }}
-                className="w-full rounded-xl border border-foreground/10 px-4 py-3 font-semibold text-foreground hover:border-white/30 disabled:opacity-60"
+                className="w-full rounded-xl border border-foreground/10 px-4 py-3 font-semibold text-foreground hover:border-foreground/30 disabled:opacity-60"
               >
                 Resend OTP
               </button>
