@@ -128,6 +128,8 @@ const ArcItem = ({ index, icon: Icon, title, dragY, activeTab, onClick, containe
 const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: number, setActiveTab: (t: number) => void, handleLeave: () => void }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragY, setDragY] = useState<number | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const startYRef = useRef<number | null>(null);
 
   const tabs = [
     { icon: QrCode, title: "Room Info" },
@@ -136,7 +138,31 @@ const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: 
     { icon: ListMusic, title: "Queue" }
   ];
 
+  const handlePointerDown = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const clientY = e.clientY;
+    startYRef.current = clientY;
+    
+    timeoutRef.current = setTimeout(() => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setDragY(clientY - rect.top);
+    }, 250);
+  };
+
   const handlePointerMove = (e: React.PointerEvent) => {
+    // If not expanded yet
+    if (dragY === null) {
+      // If we moved too much before the timeout, cancel the hold
+      if (startYRef.current !== null && Math.abs(e.clientY - startYRef.current) > 10) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+        startYRef.current = null;
+      }
+      return;
+    }
+
+    // If expanded, update drag position
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const y = e.clientY - rect.top;
@@ -162,6 +188,9 @@ const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: 
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+    startYRef.current = null;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     setDragY(null);
   };
@@ -169,17 +198,14 @@ const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: 
   return (
     <div 
       ref={containerRef}
-      className="absolute right-0 top-0 h-full w-24 z-50 touch-none pointer-events-none"
+      className="absolute right-0 top-0 h-full w-14 z-50 touch-none pointer-events-none"
     >
       <div 
         className={`absolute top-1/2 -translate-y-1/2 right-0 w-full flex flex-col items-end pointer-events-auto py-10 transition-[gap] duration-300 ${dragY !== null ? 'gap-3' : 'gap-0'}`}
-        onPointerDown={(e) => {
-           (e.target as HTMLElement).setPointerCapture(e.pointerId);
-           handlePointerMove(e);
-        }}
-        onPointerMove={dragY !== null ? handlePointerMove : undefined}
-        onPointerUp={dragY !== null ? handlePointerUp : undefined}
-        onPointerCancel={dragY !== null ? handlePointerUp : undefined}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         {tabs.map((tab, i) => (
           <ArcItem 
