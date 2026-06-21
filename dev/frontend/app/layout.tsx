@@ -160,15 +160,7 @@ export default function RootLayout({
         strategy="lazyOnload"
       />
 
-      {/* Google Adsense */}
 
-      <Script
-        id="google-adsense"
-        async
-        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4470861398200894"
-        crossOrigin="anonymous"
-        strategy="afterInteractive"
-      />
 
       <body
         className="transition-colors duration-300 bg-background text-foreground"
