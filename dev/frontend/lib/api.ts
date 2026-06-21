@@ -210,6 +210,7 @@ export interface RoomRecord {
   created_at:     string;
   ended_at:       string | null;
   is_private?:    boolean;
+  participant_count?: number;
 }
 
 export interface DeviceListResponse {
@@ -275,6 +276,11 @@ export const devicesApi = {
     request<DeviceUpdateResponse>(`/devices/${deviceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
+    }, true),
+
+  remove: (deviceId: string) =>
+    request<{ ok: boolean }>(`/devices/${deviceId}`, {
+      method: 'DELETE',
     }, true),
 
   replace: (targetDeviceId: string) =>

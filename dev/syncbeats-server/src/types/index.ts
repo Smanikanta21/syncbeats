@@ -12,6 +12,8 @@ export interface Participant {
   userId?:     string;
   outputDeviceName?: string;
   outputDeviceType?: string;
+  latency?:    number;
+  jitter?:     number;
 }
 
 export interface TrackQueueItem {

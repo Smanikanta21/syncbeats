@@ -171,7 +171,7 @@ export default function RootLayout({
       />
 
       <body
-        className="min-h-full flex flex-col transition-colors duration-300 bg-background text-foreground"
+        className="transition-colors duration-300 bg-background text-foreground"
         suppressHydrationWarning
       >
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
@@ -185,7 +185,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <AudioProvider>
-              <div className="relative z-10 flex-1 flex flex-col w-full">{children}</div>
+              <div className="relative z-10 w-full">{children}</div>
             </AudioProvider>
           </AuthProvider>
         </ThemeProvider>

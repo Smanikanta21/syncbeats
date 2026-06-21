@@ -225,6 +225,15 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
+  updateParticipantStats(socketId: string, latency: number, jitter: number): void {
+    const p = this.participants.get(socketId);
+    if (!p) return;
+    p.latency = latency;
+    p.jitter = jitter;
+    // Note: We deliberately do NOT emit stateChanged here because it would cause 
+    // too many snapshot broadcasts. The SocketHandler will broadcast a lightweight event instead.
+  }
+
   allReady(): boolean {
     if (this.participants.size === 0) return false;
     return Array.from(this.participants.values()).every(p => p.isReady || p.isBlocked);

@@ -11,6 +11,7 @@ export interface RoomRow {
   position_ms: number;
   created_at: Date;
   ended_at: Date | null;
+  participant_count?: number;
 }
 
 interface NewQueueTrackInput {
@@ -60,9 +61,17 @@ export class RoomRepository {
         ],
         endedAt: null 
       },
+      include: {
+        _count: {
+          select: { roomParticipants: { where: { leftAt: null } } }
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
-    return rooms.map(r => this.mapRoom(r));
+    return rooms.map(r => ({
+      ...this.mapRoom(r),
+      participant_count: r._count.roomParticipants
+    }));
   }
 
   async updateState(

@@ -29,7 +29,7 @@ export function Navbar() {
           opacity: { duration: 0.8 },
           boxShadow: { duration: 3, repeat: Infinity, ease: "easeInOut" }
         }}
-        className={`w-full max-w-5xl glass-panel bg-background/80 backdrop-blur-3xl px-6 md:px-8 py-4 pointer-events-auto shadow-2xl relative transition-all duration-300 ${isOpen ? 'rounded-[2rem]' : 'rounded-full'}`}
+        className={`w-full max-w-5xl glass-panel px-6 md:px-8 py-4 pointer-events-auto shadow-2xl relative transition-all duration-300 ${isOpen ? 'rounded-[2rem]' : 'rounded-full'}`}
       >
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-4">

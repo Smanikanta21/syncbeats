@@ -51,7 +51,7 @@ const COMPACT_WIDTH = 160;
 const COMPACT_HEIGHT = 50;
 const EXPANDED_HEIGHT = 350;
 
-type IslandTab = "player" | "network" | "youtube" | "requests";
+type IslandTab = "player" | "network" | "youtube" | "requests" | "deviceInfo";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -825,9 +825,17 @@ const NetworkTab = ({
               background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)`
             }}
           />
-          <p className="text-[10px] text-white/40 mt-1">
-            Browser reported latency: {Math.round(audio.outputLatency * 1000)}ms. Adjust the slider if your Bluetooth device is still out of sync.
-          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[10px] text-white/40">
+              Reported: {Math.round(audio.outputLatency * 1000)}ms.
+            </p>
+            <button
+              onClick={() => audio.setManualLatency(0)}
+              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors"
+            >
+              Auto Sync
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1153,6 +1161,117 @@ const RequestsTab = ({
 };
 
 // ─────────────────────────────────────────────────────────
+// DeviceInfoTab
+// ─────────────────────────────────────────────────────────
+
+const DeviceInfoTab = ({
+  targetSocketId,
+  roomParticipants,
+  localStats,
+  onBack,
+}: {
+  targetSocketId: string | null;
+  roomParticipants: any[];
+  localStats: any;
+  onBack: () => void;
+}) => {
+  const [remoteStats, setRemoteStats] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!targetSocketId) return;
+    const socket = getSocket();
+    
+    const handleStats = (data: any) => {
+      if (data.socketId === targetSocketId) {
+        setRemoteStats(prev => {
+          const newStats = [...prev.slice(-30), { ts: Date.now(), latency: data.latency }];
+          return newStats;
+        });
+      }
+    };
+    
+    socket.on('room:participantStats', handleStats);
+    return () => {
+      socket.off('room:participantStats', handleStats);
+    };
+  }, [targetSocketId]);
+
+  const targetParticipant = roomParticipants.find(p => p.socketId === targetSocketId);
+  const targetName = targetParticipant?.displayName || "Unknown Device";
+
+  // Build SVG paths for local and remote stats
+  const width = 280;
+  const height = 80;
+  const maxLatency = 200; // Cap visual scale at 200ms
+  
+  const buildPath = (data: any[], color: string) => {
+    if (data.length < 2) return null;
+    const dx = width / 30;
+    const points = data.map((d, i) => {
+      const x = width - (data.length - 1 - i) * dx;
+      const y = height - Math.min(height, (d.latency / maxLatency) * height);
+      return `${x},${y}`;
+    });
+    return <polyline points={points.join(" ")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />;
+  };
+
+  return (
+    <div className="flex flex-col h-full text-white pt-2 pb-4 pointer-events-auto">
+      <div className="flex items-center justify-between px-6 mb-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onBack(); }}
+          className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2"
+        >
+          <ChevronLeft className="w-5 h-5 text-white/50" />
+        </button>
+        <span className="text-sm font-bold uppercase tracking-widest text-white/50 truncate max-w-[200px]">
+          {targetName}
+        </span>
+        <div className="w-9" />
+      </div>
+
+      <div className="flex-1 px-6 flex flex-col gap-4">
+        {/* Real-time Graph */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col relative overflow-hidden">
+          <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2 flex justify-between">
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500" /> You</span>
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Remote</span>
+          </div>
+          
+          <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible mt-2">
+            {/* Grid lines */}
+            <line x1="0" y1={height} x2={width} y2={height} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+            <line x1="0" y1={height/2} x2={width} y2={height/2} stroke="rgba(255,255,255,0.05)" strokeWidth="1" strokeDasharray="4 4" />
+            
+            {buildPath(localStats.history || [], "#3b82f6")}
+            {buildPath(remoteStats, "#10b981")}
+          </svg>
+          
+          <div className="flex justify-between mt-3 text-xs font-bold">
+            <span className="text-blue-400">{Math.round(localStats.latency || 0)}ms</span>
+            <span className="text-emerald-400">{remoteStats.length > 0 ? Math.round(remoteStats[remoteStats.length - 1].latency) : "--"}ms</span>
+          </div>
+        </div>
+
+        {/* Metadata */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">Output Device</div>
+            <div className="font-semibold truncate">{targetParticipant?.outputDeviceName || "System Default"}</div>
+          </div>
+          <div className="bg-white/5 rounded-xl p-3">
+            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">Status</div>
+            <div className="font-semibold truncate">
+              {targetParticipant?.isBlocked ? "Blocked" : targetParticipant?.isReady ? "Ready & Syncing" : "Buffering"}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
 // DynamicIsland
 // ─────────────────────────────────────────────────────────
 
@@ -1183,11 +1302,24 @@ export function DynamicIsland() {
     scrubTimeRef.current = scrubTime;
   }, [scrubTime]);
 
-  const netStats = useNetworkStats(isRoom);
+  const roomId = isRoom
+    ? (pathname.split("/room/")[1]?.split("/")[0] ?? "")
+    : "";
+  const [activeTab, setActiveTab] = useState<IslandTab>("player");
+  const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
   const islandRef = useRef<HTMLDivElement>(null);
 
-  // ── Tab State ──
-  const [activeTab, setActiveTab] = useState<IslandTab>("player");
+  const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleShowDeviceInfo = (e: any) => {
+      setDeviceInfoTarget(e.detail.socketId);
+      setActiveTab("deviceInfo");
+      setIsExpanded(true);
+    };
+    window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
+    return () => window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
+  }, []);
   const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReqCountRef = useRef(0);
 
@@ -1259,7 +1391,7 @@ export function DynamicIsland() {
     (newTab: IslandTab) => {
       if (activeTab === newTab) return;
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      const order = { network: -1, player: 0, youtube: 1, requests: 2 };
+      const order: Record<IslandTab, number> = { network: -1, player: 0, youtube: 1, requests: 2, deviceInfo: 3 };
       setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
       setActiveTab(newTab);
     },
@@ -1307,6 +1439,8 @@ export function DynamicIsland() {
   } else if (activeTab === "requests") {
     const reqCount = pendingRequests?.length || 0;
     currentExpandedHeight = Math.max(150, Math.min(450, 80 + reqCount * 70));
+  } else if (activeTab === "deviceInfo") {
+    currentExpandedHeight = 240;
   }
 
   const _isPlayingRef = useRef(false);
@@ -1341,9 +1475,6 @@ export function DynamicIsland() {
     .toUpperCase()
     .slice(0, 2);
   const isProfile = pathname.includes("/profile");
-  const roomId = isRoom
-    ? (pathname.split("/room/")[1]?.split("/")[0] ?? "")
-    : "";
 
   const displayTime = scrubTime !== null ? scrubTime : audio.currentTime || 0;
   const displayProgress =
@@ -1502,9 +1633,8 @@ export function DynamicIsland() {
   if (!isRoom) {
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <motion.div
-          transition={SPRING}
-          className="pointer-events-auto glass-panel bg-background/80 backdrop-blur-3xl w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none"
+        <div
+          className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none"
         >
           <Link href="/hub" className="flex items-center gap-2 sm:gap-3 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
@@ -1545,7 +1675,7 @@ export function DynamicIsland() {
               </Link>
             )}
           </div>
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -1775,6 +1905,28 @@ export function DynamicIsland() {
                       if (pendingRequests.length <= 1) setActiveTab("player");
                     }}
                     onBack={() => setActiveTab("player")}
+                  />
+                </motion.div>
+              )}
+              {activeTab === "deviceInfo" && (
+                <motion.div
+                  key="deviceInfo"
+                  custom={slideDir}
+                  variants={tabVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={SPRING}
+                  className="absolute inset-0"
+                >
+                  <DeviceInfoTab
+                    targetSocketId={deviceInfoTarget}
+                    roomParticipants={roomParticipants}
+                    localStats={netStats}
+                    onBack={() => {
+                      setActiveTab("player");
+                      setDeviceInfoTarget(null);
+                    }}
                   />
                 </motion.div>
               )}

@@ -150,7 +150,6 @@ export default function AuthPage() {
           triggerShake(["signup-name", "signup-email", "signup-password", "signup-confirm-password"]);
         }
       }
-    } finally {
       setLoading(false);
     }
   };
@@ -210,7 +209,6 @@ export default function AuthPage() {
             router.push(returnTo);
           } catch (err) {
             setError((err as Error).message);
-          } finally {
             setLoading(false);
             setGoogleRedirectLoading(false);
           }

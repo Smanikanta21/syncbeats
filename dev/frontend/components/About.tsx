@@ -15,7 +15,7 @@ export function About() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8 }}
-          className="glass-panel border-foreground/5 group-hover:border-foreground/10 rounded-[3rem] p-12 md:p-20 relative overflow-hidden transition-all duration-700 shadow-xl group-hover:shadow-[0_0_40px_rgba(255,255,255,0.02)] bg-background/60 backdrop-blur-3xl"
+          className="glass-panel border-foreground/5 group-hover:border-foreground/10 rounded-[3rem] p-12 md:p-20 relative overflow-hidden transition-all duration-700 shadow-xl group-[0_0_40px_rgba(255,255,255,0.02)] bg-background/60 backdrop-blur-3xl"
         >
           {/* Decorative glowing border effect pulsating on hover */}
           <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-foreground/20 to-transparent opacity-10 group-hover:opacity-30 transition-opacity duration-1000" />

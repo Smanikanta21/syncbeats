@@ -15,8 +15,11 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="p-2 w-10 h-10" />;
+    return null;
   }
+
+  // Hidden globally as requested by user
+  return null;
 
   const toggleTheme = (e: React.MouseEvent) => {
     const nextTheme = resolvedTheme === "dark" ? "light" : "dark";

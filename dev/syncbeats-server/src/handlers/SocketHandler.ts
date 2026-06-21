@@ -343,6 +343,14 @@ export class SocketHandler {
       socket.emit('sync:pong', { t0, t1: now, t2: now, seq });
     });
 
+    socket.on('sync:stats', ({ roomId, latency, jitter }: { roomId: string, latency: number, jitter: number }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      room.updateParticipantStats(socket.id, latency, jitter);
+      // Broadcast this lightweight payload to other users in the room
+      socket.to(roomId).emit('room:participantStats', { socketId: socket.id, latency, jitter });
+    });
+
     // ── Spatial Audio Sync ───────────────────────────────────────────────
 
     socket.on('spatial:update', ({ roomId, deviceId, position }: { roomId: string; deviceId: string; position: any }) => {

@@ -4,22 +4,24 @@
   :root {
     --background: #ffffff;
     --foreground: #09090b;
-    --glass-border: rgba(0, 0, 0, 0.08);
-    --glass-border-hover: rgba(0, 0, 0, 0.15);
-    --glass-bg: rgba(255, 255, 255, 0.6);
-    --glass-bg-hover: rgba(255, 255, 255, 0.8);
-    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-border-hover: rgba(0, 0, 0, 0.12);
+    --glass-bg: #f4f4f5;
+    --glass-bg-hover: #e4e4e7;
+    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
   }
 
+  /*
   [data-theme="dark"] {
     --background: #09090b;
     --foreground: #fafafa;
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --glass-border-hover: rgba(255, 255, 255, 0.2);
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-bg-hover: rgba(255, 255, 255, 0.08);
-    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-border-hover: rgba(255, 255, 255, 0.15);
+    --glass-bg: #18181b;
+    --glass-bg-hover: #27272a;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
+  */
 
   body {
     background: var(--background);
@@ -30,42 +32,19 @@
   }
 
   @media (max-width: 768px) {
-    :root {
-      --glass-bg: rgba(255, 255, 255, 0.85);
-    }
-    [data-theme="dark"] {
-      --glass-bg: rgba(24, 24, 27, 0.85);
-    }
+    /* Mobile-specific adjustments if necessary */
   }
 }
 
 @layer utilities {
   .glass-panel {
     background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
     transition: all .3s cubic-bezier(.4, 0, .2, 1);
   }
 
-  .glass-panel:hover {
-    background: var(--glass-bg-hover);
-    border-color: var(--glass-border-hover);
-  }
 
-  @media (max-width: 768px) {
-    .glass-panel {
-      backdrop-filter: blur(6px) !important;
-      -webkit-backdrop-filter: blur(6px) !important;
-    }
-    
-    /* Cap all tailwind backdrop-blur classes */
-    [class*="backdrop-blur"] {
-      backdrop-filter: blur(4px) !important;
-      -webkit-backdrop-filter: blur(4px) !important;
-    }
-  }
 
   input[type="range"].volume-slider {
     height: 40px;

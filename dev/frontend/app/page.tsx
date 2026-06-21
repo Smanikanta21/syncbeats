@@ -9,6 +9,8 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
 import { AmbientBackground } from "../components/AmbientBackground";
+import { FeaturesExplanation } from "../components/FeaturesExplanation";
+import { GsapProvider } from "../components/GsapProvider";
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -43,7 +45,8 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="w-full bg-transparent text-foreground overflow-x-hidden font-sans relative selection:bg-foreground selection:text-background custom-scrollbar">
+    <GsapProvider>
+    <div className="w-full bg-transparent text-foreground overflow-x-clip font-sans relative selection:bg-foreground selection:text-background custom-scrollbar">
       
       {/* Interactive Mouse Gradient Follower (Fixed) */}
       <motion.div 
@@ -71,7 +74,7 @@ export default function LandingPage() {
             borderRadius: isScrolled ? "9999px" : "0px",
           }}
           transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-          className={`pointer-events-auto flex items-center justify-between transition-all duration-300 ${isScrolled ? 'glass-panel bg-background/80 backdrop-blur-3xl shadow-xl' : 'bg-transparent border-transparent'}`}
+          className={`pointer-events-auto flex items-center justify-between transition-all duration-300 ${isScrolled ? 'glass-panel shadow-xl' : 'bg-transparent border-transparent'}`}
         >
         <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center">
           <Link href="/" className="text-xl md:text-2xl font-black tracking-tighter text-foreground group flex items-center gap-3">
@@ -375,106 +378,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* SECTION 3: Built For Performance & Footer */}
-      <section className="relative z-10 w-full min-h-[100dvh] flex flex-col items-center justify-between px-6 pt-28">
+      {/* SECTION 3: GSAP Features Deep Dive */}
+      <FeaturesExplanation />
+
+      {/* SECTION 4: Footer CTA */}
+      <section className="relative z-10 w-full flex flex-col items-center justify-between px-6 pt-28">
         <div className="flex-1 w-full flex flex-col items-center justify-center pb-10">
-           <h2 className="text-3xl md:text-5xl font-black tracking-tighter mb-16 text-center">
-             BUILT FOR <span className="text-zinc-500">PERFORMANCE</span>
-           </h2>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full max-w-5xl mb-16">
-             
-             {/* Sub-millisecond Precision (Large Feature) */}
-             <motion.div whileHover="hover" className="lg:col-span-2 glass-panel p-8 md:p-10 rounded-[2.5rem] border border-foreground/10 hover:bg-foreground/5 transition-all flex flex-col justify-end min-h-[300px] relative overflow-hidden group">
-                <div className="w-16 h-16 rounded-full bg-foreground/10 flex items-center justify-center mb-6 relative z-10">
-                  <Zap className="w-8 h-8 text-foreground" />
-                </div>
-                <h3 className="text-2xl md:text-3xl font-black mb-3 relative z-10">Sub-millisecond Precision</h3>
-                <p className="text-foreground/50 text-base max-w-md relative z-10">Client-side predictive offset ensures audio frames align flawlessly across all connected devices.</p>
-                <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-foreground/5 rounded-full blur-3xl group-hover:bg-foreground/10 transition-colors" />
-                
-                {/* Interactive Wave Sync Demo */}
-                <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-20 group-hover:opacity-100 transition-opacity duration-500 hidden md:flex items-center justify-center">
-                  <div className="relative w-32 h-32 flex items-center justify-center">
-                    <motion.div 
-                      variants={{ hover: { x: 0, opacity: 1 } }}
-                      initial={{ x: -20, opacity: 0.5 }}
-                      className="absolute flex items-center gap-1.5"
-                    >
-                      {[2, 4, 6, 3, 5, 2].map((h, idx) => (
-                        <motion.div key={`w1-${idx}`} animate={{ height: [`${h*10}px`, `${h*15}px`, `${h*10}px`] }} transition={{ duration: 1.5, repeat: Infinity, delay: idx * 0.1 }} className="w-1.5 bg-foreground/50 rounded-full" />
-                      ))}
-                    </motion.div>
-                    <motion.div 
-                      variants={{ hover: { x: 0, opacity: 1, filter: "drop-shadow(0 0 12px rgba(var(--foreground-rgb), 0.8))" } }}
-                      initial={{ x: 20, opacity: 0.5 }}
-                      className="absolute flex items-center gap-1.5 mix-blend-plus-lighter"
-                    >
-                      {[2, 4, 6, 3, 5, 2].map((h, idx) => (
-                        <motion.div key={`w2-${idx}`} animate={{ height: [`${h*10}px`, `${h*15}px`, `${h*10}px`] }} transition={{ duration: 1.5, repeat: Infinity, delay: idx * 0.1 }} className="w-1.5 bg-foreground rounded-full" />
-                      ))}
-                    </motion.div>
-                  </div>
-                </div>
-             </motion.div>
-
-             {/* Browser Native */}
-             <motion.div whileHover="hover" className="lg:col-span-1 glass-panel p-8 md:p-10 rounded-[2.5rem] border border-foreground/10 hover:bg-foreground/5 transition-all flex flex-col justify-end min-h-[300px] relative overflow-hidden group">
-                <div className="w-14 h-14 rounded-full bg-foreground/10 flex items-center justify-center mb-6 relative z-10">
-                  <Globe className="w-6 h-6 text-foreground" />
-                </div>
-                <h3 className="text-2xl font-black mb-3 relative z-10">Browser Native</h3>
-                <p className="text-foreground/50 text-sm relative z-10">Works on iOS, Android, macOS, and Windows directly in the browser.</p>
-                {/* Device Connect Graphic */}
-                <div className="absolute right-6 top-6 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity duration-300">
-                  <motion.div variants={{ hover: { scale: 1.1, rotate: -10, filter: "drop-shadow(0 0 10px rgba(var(--foreground-rgb), 0.5))" } }} className="text-foreground z-10">
-                    <Smartphone className="w-8 h-8" />
-                  </motion.div>
-                  <motion.div variants={{ hover: { scale: 1.1, rotate: 10, filter: "drop-shadow(0 0 10px rgba(var(--foreground-rgb), 0.5))" } }} className="text-foreground -ml-2">
-                    <Laptop className="w-12 h-12" />
-                  </motion.div>
-                </div>
-             </motion.div>
-
-             {/* Private Sessions */}
-             <motion.div whileHover="hover" className="lg:col-span-1 glass-panel p-8 md:p-10 rounded-[2.5rem] border border-foreground/10 hover:bg-foreground/5 transition-all flex flex-col justify-end min-h-[300px] relative overflow-hidden group">
-                <div className="w-14 h-14 rounded-full bg-foreground/10 flex items-center justify-center mb-6 relative z-10">
-                  <Shield className="w-6 h-6 text-foreground" />
-                </div>
-                <h3 className="text-2xl font-black mb-3 relative z-10">Private Sessions</h3>
-                <p className="text-foreground/50 text-sm relative z-10">End-to-end control. You decide who can join and what plays.</p>
-                {/* Secure Room Graphic */}
-                <div className="absolute right-6 top-6 w-16 h-16 opacity-30 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                   <motion.div variants={{ hover: { scale: [1, 1.3, 1], opacity: [0.5, 0, 0] } }} transition={{ repeat: Infinity, duration: 1.5 }} className="absolute inset-0 bg-foreground/20 rounded-full" />
-                   <Shield className="w-8 h-8 text-foreground z-10" />
-                   <motion.div variants={{ hover: { y: -8, opacity: 1 } }} initial={{ y: 0, opacity: 0 }} className="absolute -top-4 whitespace-nowrap text-[10px] font-black text-background bg-foreground px-2 py-1 rounded-full shadow-lg">SECURE</motion.div>
-                </div>
-             </motion.div>
-
-             {/* Spatial Audio */}
-             <motion.div whileHover="hover" className="lg:col-span-2 glass-panel p-8 md:p-10 rounded-[2.5rem] border border-foreground/10 hover:bg-foreground/5 transition-all flex flex-col justify-end min-h-[300px] relative overflow-hidden group">
-                <div className="w-16 h-16 rounded-full bg-foreground/10 flex items-center justify-center mb-6 relative z-10">
-                  <Radio className="w-8 h-8 text-foreground" />
-                </div>
-                <h3 className="text-2xl md:text-3xl font-black mb-3 relative z-10">Spatial Audio</h3>
-                <p className="text-foreground/50 text-base max-w-md relative z-10">Assign specific audio channels (Left/Right) to different physical devices, turning multiple phones into a surround sound system.</p>
-                <div className="absolute -left-10 -bottom-10 w-64 h-64 bg-foreground/5 rounded-full blur-3xl group-hover:bg-foreground/10 transition-colors" />
-                
-                {/* Interactive Panning Graphic */}
-                <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-20 group-hover:opacity-100 transition-opacity duration-500 hidden md:flex items-center justify-center">
-                   <div className="relative w-48 h-12 flex items-center justify-between border-b-2 border-dashed border-foreground/20">
-                     <Speaker className="w-6 h-6 text-foreground/50" />
-                     <motion.div 
-                       variants={{ hover: { x: [-70, 70, -70] } }} 
-                       transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                       className="absolute left-1/2 top-1/2 -translate-y-1/2 w-4 h-4 bg-foreground rounded-full shadow-[0_0_15px_rgba(var(--foreground-rgb),0.8)]" 
-                     />
-                     <Speaker className="w-6 h-6 text-foreground/50" />
-                   </div>
-                </div>
-             </motion.div>
-
-           </div>
+           <div className="mb-16"></div>
 
            <Link href="/login" className="h-14 px-10 rounded-full bg-foreground text-background flex items-center justify-center text-lg font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
              Start Your Session Now
@@ -556,6 +466,7 @@ export default function LandingPage() {
       </section>
 
     </div>
+    </GsapProvider>
   );
 }
 
