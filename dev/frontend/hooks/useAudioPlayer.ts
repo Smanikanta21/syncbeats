@@ -46,6 +46,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   gainNode?:   GainNode | null;
   getAudioData: () => number;
   getRawAudioData: () => Uint8Array | null;
+  prefetchTrack?: (url: string) => void;
 }
 
 export function formatTime(seconds: number): string {
@@ -670,6 +671,37 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     fetchPromiseRef.current = null;
   }, [stopCurrentSource]);
 
+  const prefetchTrack = useCallback((url: string) => {
+    if (!url) return;
+    if (!url.startsWith('magnet:') && !url.startsWith('ws-p2p:')) {
+      const fetchUrl = (!url.startsWith('/') && !url.startsWith('http')) 
+        ? `${getServerUrl()}/${url}` 
+        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+      fetch(fetchUrl).catch(() => {});
+    } else if (url.startsWith('magnet:')) {
+      getWebTorrentClient().then(async client => {
+        if (!client) return;
+        const { getTrack } = await import('../lib/idb');
+        if (await getTrack(url)) return;
+        
+        const existing = client.get(url);
+        if (!existing) {
+          client.add(url, async (torrent: any) => {
+             const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
+             if (file) {
+                file.getBlob(async (err: any, blob: Blob) => {
+                  if (!err) {
+                    const { saveTrack } = await import('../lib/idb');
+                    saveTrack(url, blob).catch(() => {});
+                  }
+                });
+             }
+          });
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
   const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
@@ -704,6 +736,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioCtx: audioCtxRef.current,
     gainNode: gainNodeRef.current,
     getAudioData,
-    getRawAudioData
+    getRawAudioData,
+    prefetchTrack
   };
 }
