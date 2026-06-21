@@ -195,6 +195,10 @@ export class SocketHandler {
       room.updateParticipantDevice(socket.id, deviceName, deviceType);
     });
 
+    socket.on('device:ping', ({ targetSocketId, message }: { targetSocketId: string, message?: string }) => {
+      this.io.to(targetSocketId).emit('device:ping', { message: message || "Ping!", from: socket.id });
+    });
+
     // ── Playback — any participant can control ────────────────────────────
 
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {

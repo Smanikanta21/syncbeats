@@ -446,11 +446,16 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:hostChanged', handleHostChanged);
 
+    const handleDevicePing = ({ message, from }: { message: string, from: string }) => {
+      alert(message);
+    };
+    socket.on('device:ping', handleDevicePing);
+
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
     roomsApi.get(roomId).then(details => {
-      if (!cancelled) applyRoomDetails(details);
+      if (!cancelled && !snapshotRef.current) applyRoomDetails(details);
     }).catch(() => {});
 
     const ntpInterval = setInterval(runNtpBurst, NTP_RESYNC_INTERVAL_MS);
@@ -474,6 +479,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:joinDenied', handleJoinDenied);
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
       socket.off('room:hostChanged', handleHostChanged);
+      socket.off('device:ping', handleDevicePing);
       socket.off('error', handleError);
     };
   }, [applyRoomDetails, roomId, displayName, socket, runNtpBurst]);

@@ -34,7 +34,7 @@ export interface NetworkStats {
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const PING_INTERVAL_MS   = 1000;   // ping once per second for real-time stats
-const MAX_HISTORY        = 60;     // keep 60 samples (1 min at 1/s)
+const MAX_HISTORY        = 240;    // keep 240 samples (supports 1 min of 250ms pings)
 const STORAGE_KEY        = "syncbeats:netStats";
 const RTT_TIMEOUT_MS     = 2000;   // discard pings slower than 2s
 

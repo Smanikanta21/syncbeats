@@ -159,20 +159,28 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     return dataArray;
   }, []);
 
-  const unlockAudio = useCallback(async () => {
-    if (!audioCtxRef.current) return;
-
-    // Quick path if already fully unlocked
-    if (audioCtxRef.current.state === 'running') {
-      setAudioUnlocked(true);
-    } else if (audioCtxRef.current.state === 'suspended') {
-      try {
-        await audioCtxRef.current.resume();
-        setAudioUnlocked(true);
-      } catch {
-        console.warn("Failed to resume AudioContext");
+  const unlockAudio = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtxRef.current = new AudioContextClass();
+        gainNodeRef.current = audioCtxRef.current.createGain();
+        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
+        analyserNodeRef.current.fftSize = 256;
+        gainNodeRef.current.connect(analyserNodeRef.current);
+        analyserNodeRef.current.connect(audioCtxRef.current.destination);
+      } else {
         return;
       }
+    }
+
+    // Always optimistically unlock in the UI so the user isn't stuck forever.
+    setAudioUnlocked(true);
+
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume().catch((err) => {
+        console.warn("Failed to resume AudioContext", err);
+      });
     }
 
     setTimeout(() => {

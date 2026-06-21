@@ -20,6 +20,8 @@ interface SyncCtx {
   setHostId: (v: string | null) => void;
   joinStatus: 'joined' | 'pending' | 'denied' | 'connecting';
   setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting') => void;
+  isPrivate: boolean;
+  setIsPrivate: (v: boolean) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -31,6 +33,7 @@ const Ctx = createContext<SyncCtx>({
   pendingRequests: [], setPendingRequests: () => {},
   hostId: null, setHostId: () => {},
   joinStatus: 'connecting', setJoinStatus: () => {},
+  isPrivate: false, setIsPrivate: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -42,6 +45,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
+  const [isPrivate, setIsPrivate] = useState(false);
 
   return (
     <Ctx.Provider value={{
@@ -53,6 +57,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       pendingRequests, setPendingRequests,
       hostId, setHostId,
       joinStatus, setJoinStatus,
+      isPrivate, setIsPrivate,
     }}>
       {children}
     </Ctx.Provider>

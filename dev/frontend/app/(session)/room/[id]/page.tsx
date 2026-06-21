@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth, Edit3, Radio, LogOut, Activity } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth, Edit3, Radio, LogOut, Activity, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -67,7 +67,7 @@ export default function RoomPage() {
   // Show Audio Unlock overlay if the browser hasn't been unlocked via a user gesture yet
   const isLocalPlayBlocked = isConnected && !audio.audioUnlocked;
   const isHost = snapshot?.hostId === user?.id;
-  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId, setJoinStatus: pushJoinStatus } = useSyncInfo();
+  const { setClockOffset: pushClockOffset, setIsRoomPlaying, setParticipants: pushParticipants, setPendingPlay: pushPendingPlay, setIncomingTrack: pushIncomingTrack, setPendingRequests: pushPendingRequests, setHostId: pushHostId, setJoinStatus: pushJoinStatus, setIsPrivate: pushIsPrivate } = useSyncInfo();
 
   // Keep the screen awake while connected to a room or while audio is playing
   useWakeLock(isConnected || audio.isPlaying || (snapshot?.isPlaying ?? false));
@@ -111,6 +111,11 @@ export default function RoomPage() {
   useEffect(() => {
     pushJoinStatus(joinStatus);
   }, [joinStatus, pushJoinStatus]);
+
+  // Push isPrivate to shared context
+  useEffect(() => {
+    pushIsPrivate(snapshot?.isPrivate ?? false);
+  }, [snapshot?.isPrivate, pushIsPrivate]);
 
   // Listen for actions from DynamicIsland
   useEffect(() => {
@@ -406,8 +411,25 @@ export default function RoomPage() {
     const handleGlobalClick = () => {
       if (deviceMenu) setDeviceMenu(null);
     };
-    window.addEventListener("click", handleGlobalClick);
-    return () => window.removeEventListener("click", handleGlobalClick);
+    
+    const handleGlobalContextMenu = () => {
+      if (deviceMenu) setDeviceMenu(null);
+    };
+    
+    // Defer attaching the listener so the current click/contextmenu event doesn't trigger it immediately
+    let timer: number;
+    if (deviceMenu) {
+      timer = window.setTimeout(() => {
+        window.addEventListener("click", handleGlobalClick);
+        window.addEventListener("contextmenu", handleGlobalContextMenu);
+      }, 50);
+    }
+    
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("click", handleGlobalClick);
+      window.removeEventListener("contextmenu", handleGlobalContextMenu);
+    };
   }, [deviceMenu]);
 
   const [activeTab, setActiveTab] = useState(0);
@@ -579,8 +601,19 @@ export default function RoomPage() {
                               : "Ready"
                             }
                           </p>
-                        </div>
                       </div>
+                      </div>
+                      <button
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
+                        }}
+                        className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
                     </div>
 
                     <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
@@ -615,125 +648,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {deviceMenu && (
-        <>
-          {/* Mobile Bottom Sheet Menu */}
-          <div className="md:hidden fixed inset-0 z-[100] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 220 }}
-              className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
-              <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
-              <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.devName}</p>
-              
-              <div className="flex flex-col gap-2.5">
-                <button
-                  onClick={() => {
-                    alert("Rename only available from Hub or Profile!");
-                    setDeviceMenu(null);
-                  }}
-                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                >
-                  <Edit3 className="w-5 h-5 text-foreground/70" />
-                  Rename this device
-                </button>
-                <button
-                  onClick={() => {
-                    alert("Ping sent to device!");
-                    setDeviceMenu(null);
-                  }}
-                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                >
-                  <Radio className="w-5 h-5 text-foreground/70" />
-                  Ping this device
-                </button>
-                <button
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
-                    setDeviceMenu(null);
-                  }}
-                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                >
-                  <Activity className="w-5 h-5 text-blue-400" />
-                  View Device Info
-                </button>
-                <button
-                  onClick={() => {
-                    alert("Device logged out!");
-                    setDeviceMenu(null);
-                  }}
-                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                >
-                  <LogOut className="w-5 h-5 text-red-400" />
-                  Logout this device
-                </button>
-              </div>
-              <button
-                onClick={() => setDeviceMenu(null)}
-                className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </motion.div>
-          </div>
-
-          {/* Desktop Context Menu */}
-          <div
-            className="hidden md:block fixed z-[100] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
-            style={{
-              left: Math.min(deviceMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x),
-              top: Math.min(deviceMenu.y, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y),
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              onClick={() => {
-                alert("Rename only available from Hub or Profile!");
-                setDeviceMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <Edit3 className="w-4 h-4 text-foreground/70" />
-              Rename this device
-            </button>
-            <button
-              onClick={() => {
-                alert("Ping sent to device!");
-                setDeviceMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <Radio className="w-4 h-4 text-foreground/70" />
-              Ping this device
-            </button>
-            <button
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
-                setDeviceMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <Activity className="w-4 h-4 text-blue-400" />
-              View Device Info
-            </button>
-            <button
-              onClick={() => {
-                alert("Device logged out!");
-                setDeviceMenu(null);
-              }}
-              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-            >
-              <LogOut className="w-4 h-4 text-red-400" />
-              Logout this device
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 
@@ -1071,6 +985,11 @@ export default function RoomPage() {
                     return (
                     <div
                       key={p.socketId}
+                      onContextMenu={(event) => {
+                        if (p.socketId === currentSocketId) return;
+                        event.preventDefault();
+                        setDeviceMenu({ device: p, x: event.clientX, y: event.clientY });
+                      }}
                       className="glass-panel p-5 rounded-4xl border border-foreground/5 bg-background/60 hover:bg-foreground/5 transition-colors group flex flex-col gap-4 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
                     >
                       <div className="flex items-center justify-between">
@@ -1097,6 +1016,19 @@ export default function RoomPage() {
                             </p>
                           </div>
                         </div>
+                        {p.socketId !== currentSocketId && (
+                          <button
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
+                            }}
+                            className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                          >
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
 
                       <motion.div className="flex flex-col h-dvh w-full md:hidden">
@@ -1286,6 +1218,138 @@ export default function RoomPage() {
             </button>
           </motion.div>
         </div>
+      )}
+      {/* Device Context Menu (Must be outside carousel due to fixed positioning) */}
+      {deviceMenu && (
+        <>
+          {/* Mobile Bottom Sheet Menu */}
+          <div className="md:hidden fixed inset-0 z-[100] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
+              <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
+              <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.devName}</p>
+              
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    alert("Rename only available from Hub or Profile!");
+                    setDeviceMenu(null);
+                  }}
+                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                >
+                  <Edit3 className="w-5 h-5 text-foreground/70" />
+                  Rename this device
+                </button>
+                {deviceMenu.device.socketId !== currentSocketId && (
+                  <button
+                    onClick={() => {
+                      getSocket().emit('device:ping', { targetSocketId: deviceMenu.device.socketId });
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Radio className="w-5 h-5 text-foreground/70" />
+                    Ping this device
+                  </button>
+                )}
+                {deviceMenu.device.socketId !== currentSocketId && (
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
+                      setDeviceMenu(null);
+                    }}
+                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                  >
+                    <Activity className="w-5 h-5 text-blue-400" />
+                    View Device Info
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    alert("Device logged out!");
+                    setDeviceMenu(null);
+                  }}
+                  className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
+                >
+                  <LogOut className="w-5 h-5 text-red-400" />
+                  Logout this device
+                </button>
+              </div>
+              <button
+                onClick={() => setDeviceMenu(null)}
+                className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </div>
+
+          {/* Desktop Context Menu */}
+          <div
+            className="hidden md:block fixed z-[100] min-w-[200px] rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
+            style={{
+              left: Math.min(deviceMenu.x + 5, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x + 5),
+              top: Math.min(deviceMenu.y + 5, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y + 5),
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <button
+              onClick={() => {
+                alert("Rename only available from Hub or Profile!");
+                setDeviceMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+            >
+              <Edit3 className="w-4 h-4 text-foreground/70" />
+              Rename this device
+            </button>
+            {deviceMenu.device.socketId !== currentSocketId && (
+              <button
+                onClick={() => {
+                  getSocket().emit('device:ping', { targetSocketId: deviceMenu.device.socketId });
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Radio className="w-4 h-4 text-foreground/70" />
+                Ping this device
+              </button>
+            )}
+            {deviceMenu.device.socketId !== currentSocketId && (
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("showDeviceInfo", { detail: { socketId: deviceMenu.device.socketId } }));
+                  setDeviceMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+              >
+                <Activity className="w-4 h-4 text-blue-400" />
+                View Device Info
+              </button>
+            )}
+            <button
+              onClick={() => {
+                alert("Device logged out!");
+                setDeviceMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4 text-red-400" />
+              Logout this device
+            </button>
+          </div>
+        </>
       )}
     </main>
   );

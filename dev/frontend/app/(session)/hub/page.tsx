@@ -8,7 +8,6 @@ import jsQR from "jsqr";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
-import { ThemeToggle } from "../../../components/ThemeToggle";
 
 interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; host_id: string; participant_count?: number; }
 
@@ -349,10 +348,6 @@ export default function HubPage() {
 
   return (
     <div className="min-h-screen relative px-4 sm:px-6 lg:px-8 z-0 bg-transparent text-foreground transition-colors duration-300">
-      <nav className="w-full max-w-4xl mx-auto pt-6 flex justify-end items-center relative z-20">
-        <ThemeToggle />
-      </nav>
-
       {/* Main Hub Content */}
       <main className="w-full max-w-4xl mx-auto pb-20 pt-4">
 

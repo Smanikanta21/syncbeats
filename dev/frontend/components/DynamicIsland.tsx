@@ -47,8 +47,8 @@ const SPRING = {
   damping: 32,
   mass: 1.1,
 };
-const COMPACT_WIDTH = 160;
-const COMPACT_HEIGHT = 50;
+const COMPACT_WIDTH = 130;
+const COMPACT_HEIGHT = 44;
 const EXPANDED_HEIGHT = 350;
 
 type IslandTab = "player" | "network" | "youtube" | "requests" | "deviceInfo";
@@ -187,7 +187,13 @@ const AudioBars = ({
 // CompactProgressBar
 // ─────────────────────────────────────────────────────────
 
-const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolean; isVisible?: boolean }) => {
+const CompactProgressBar = ({
+  isPlaying,
+  isVisible = true,
+}: {
+  isPlaying: boolean;
+  isVisible?: boolean;
+}) => {
   const barRef = useRef<HTMLDivElement>(null);
   const audio = useAudio();
 
@@ -204,7 +210,7 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
         rafId = requestAnimationFrame(tick);
       }
     };
-    
+
     tick();
 
     if (isPlaying && isVisible) {
@@ -220,7 +226,10 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
       <div
         ref={barRef}
         className="h-full bg-white/80 rounded-full"
-        style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }}
+        style={{
+          width: "0%",
+          transition: isPlaying ? "none" : "width 200ms ease",
+        }}
       />
     </div>
   );
@@ -246,6 +255,7 @@ interface CompactStateProps {
   roomParticipants?: any[];
   pendingRequestsCount?: number;
   isHost?: boolean;
+  isPrivate?: boolean;
   onRequestsClick?: () => void;
 }
 
@@ -264,6 +274,7 @@ const CompactState = ({
   roomParticipants,
   pendingRequestsCount,
   isHost,
+  isPrivate,
   onRequestsClick,
 }: CompactStateProps) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
@@ -276,9 +287,15 @@ const CompactState = ({
     .substring(0, 2)
     .toUpperCase();
 
-  const isRoomReady = isRoom && roomParticipants ? roomParticipants.every(p => p.isReady) : true;
+  const isRoomReady =
+    isRoom && roomParticipants
+      ? roomParticipants.every((p) => p.isReady)
+      : true;
   const isFullyReady = isReady && isRoomReady;
-  const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter(p => !p.isReady) : [];
+  const loadingParticipants =
+    isRoom && roomParticipants
+      ? roomParticipants.filter((p) => !p.isReady)
+      : [];
 
   if (!hasTrack) {
     return (
@@ -293,8 +310,12 @@ const CompactState = ({
               <Search className="w-4 h-4" />
               <span>Search YouTube or upload...</span>
             </div>
-            {isRoom && isHost && pendingRequestsCount && pendingRequestsCount > 0 ? (
-              <button 
+            {isRoom &&
+            isHost &&
+            isPrivate &&
+            pendingRequestsCount &&
+            pendingRequestsCount > 0 ? (
+              <button
                 onPointerDown={(e) => e.stopPropagation()}
                 onPointerUp={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -304,7 +325,9 @@ const CompactState = ({
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors pointer-events-auto active:scale-95"
               >
                 <Users className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-black">{pendingRequestsCount}</span>
+                <span className="text-[10px] font-black">
+                  {pendingRequestsCount}
+                </span>
               </button>
             ) : null}
           </div>
@@ -343,10 +366,12 @@ const CompactState = ({
           ) : isYt ? (
             <Youtube className="w-4 h-4 text-[#FF0000]" />
           ) : (
-            <Disc className={`w-4 h-4 text-white/40 ${effectivePlaying && !thumbnailUrl ? 'animate-[spin_4s_linear_infinite]' : ''}`} />
+            <Disc
+              className={`w-4 h-4 text-white/40 ${effectivePlaying && !thumbnailUrl ? "animate-[spin_4s_linear_infinite]" : ""}`}
+            />
           )}
         </div>
-        
+
         <AnimatePresence>
           {showDetails && (
             <motion.div
@@ -356,10 +381,16 @@ const CompactState = ({
               className="flex-1 min-w-0 overflow-hidden whitespace-nowrap"
             >
               <div className="flex flex-col justify-center min-w-0 pr-2">
-                <div className="text-center text-white text-[11px] sm:text-xs font-semibold truncate leading-tight"> 
-                  {cleanTrackTitle(trackTitle).split(/\s+/).slice(0, 6).join(" ")}
+                <div className="text-center text-white text-[11px] sm:text-xs font-semibold truncate leading-tight">
+                  {cleanTrackTitle(trackTitle)
+                    .split(/\s+/)
+                    .slice(0, 6)
+                    .join(" ")}
                 </div>
-                <CompactProgressBar isPlaying={effectivePlaying} isVisible={!isExpanded} />
+                <CompactProgressBar
+                  isPlaying={effectivePlaying}
+                  isVisible={!isExpanded}
+                />
               </div>
             </motion.div>
           )}
@@ -368,8 +399,12 @@ const CompactState = ({
         <div className="flex items-center pr-1 shrink-0 ml-auto pointer-events-auto">
           {seekIndicator ? (
             <div className="flex items-center gap-1 text-white/80 text-[11px] font-bold bg-white/10 px-2 py-1 rounded-full">
-               {seekIndicator.amount > 0 ? <FastForward className="w-3 h-3" /> : <Rewind className="w-3 h-3" />}
-               {seekIndicator.text}
+              {seekIndicator.amount > 0 ? (
+                <FastForward className="w-3 h-3" />
+              ) : (
+                <Rewind className="w-3 h-3" />
+              )}
+              {seekIndicator.text}
             </div>
           ) : error ? (
             <div className="flex items-center gap-1 text-[#FF0000]/80 text-[10px] font-bold uppercase tracking-wider pr-1 group relative cursor-help">
@@ -387,10 +422,17 @@ const CompactState = ({
             </div>
           ) : !isFullyReady ? (
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
-              <Loader2 className="w-3 h-3 animate-spin" /> {loadingParticipants.length > 0 ? "Syncing..." : `${downloadProgress}%`}
+              <Loader2 className="w-3 h-3 animate-spin" />{" "}
+              {loadingParticipants.length > 0
+                ? "Syncing..."
+                : `${downloadProgress}%`}
             </div>
           ) : effectivePlaying ? (
-            <AudioBars isPlaying={effectivePlaying} isSmall isVisible={!isExpanded} />
+            <AudioBars
+              isPlaying={effectivePlaying}
+              isSmall
+              isVisible={!isExpanded}
+            />
           ) : (
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
               <Pause className="w-3 h-3" /> Paused
@@ -409,7 +451,17 @@ const CompactState = ({
 // RealtimeProgressBar
 // ─────────────────────────────────────────────────────────
 
-const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: { duration: number; onSeek: (pos: number) => void; isPlaying: boolean; isVisible?: boolean }) => {
+const RealtimeProgressBar = ({
+  duration,
+  onSeek,
+  isPlaying,
+  isVisible = true,
+}: {
+  duration: number;
+  onSeek: (pos: number) => void;
+  isPlaying: boolean;
+  isVisible?: boolean;
+}) => {
   const barRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const leftTimeRef = useRef<HTMLSpanElement>(null);
@@ -424,15 +476,19 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: 
       const progress = Math.min(1, pos / dur);
 
       if (barRef.current) barRef.current.style.width = `${progress * 100}%`;
-      if (handleRef.current) handleRef.current.style.left = `calc(${progress * 100}% - 6px)`;
-      if (leftTimeRef.current) leftTimeRef.current.textContent = formatTime(pos);
-      if (rightTimeRef.current) rightTimeRef.current.textContent = "-" + formatTime(Math.max(0, dur - pos));
+      if (handleRef.current)
+        handleRef.current.style.left = `calc(${progress * 100}% - 6px)`;
+      if (leftTimeRef.current)
+        leftTimeRef.current.textContent = formatTime(pos);
+      if (rightTimeRef.current)
+        rightTimeRef.current.textContent =
+          "-" + formatTime(Math.max(0, dur - pos));
 
       if (isPlaying && isVisible) {
         rafId = requestAnimationFrame(tick);
       }
     };
-    
+
     tick();
 
     if (isPlaying && isVisible) {
@@ -445,7 +501,10 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: 
 
   return (
     <div className="flex items-center gap-3 w-full mt-2">
-      <span ref={leftTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">
+      <span
+        ref={leftTimeRef}
+        className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none"
+      >
         0:00
       </span>
       <div
@@ -453,7 +512,10 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: 
         onClick={(e) => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
-          const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const p = Math.max(
+            0,
+            Math.min(1, (e.clientX - rect.left) / rect.width),
+          );
           onSeek(p * duration);
         }}
       >
@@ -461,7 +523,10 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: 
           <div
             ref={barRef}
             className="h-full bg-white/80 rounded-full"
-            style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }}
+            style={{
+              width: "0%",
+              transition: isPlaying ? "none" : "width 200ms ease",
+            }}
           />
         </div>
         <div
@@ -470,7 +535,10 @@ const RealtimeProgressBar = ({ duration, onSeek, isPlaying, isVisible = true }: 
           style={{ left: "-6px" }}
         />
       </div>
-      <span ref={rightTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">
+      <span
+        ref={rightTimeRef}
+        className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none"
+      >
         -0:00
       </span>
     </div>
@@ -519,6 +587,7 @@ const PlayerTab = ({
   roomParticipants,
   pendingRequestsCount,
   isHost,
+  isPrivate,
   isVisible = true,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
@@ -532,8 +601,14 @@ const PlayerTab = ({
     .toUpperCase();
 
   const [showErrorDetails, setShowErrorDetails] = useState(false);
-  const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
-  const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
+  const isRoomReady =
+    isRoom && roomParticipants
+      ? roomParticipants.every((p: any) => p.isReady)
+      : true;
+  const loadingParticipants =
+    isRoom && roomParticipants
+      ? roomParticipants.filter((p: any) => !p.isReady)
+      : [];
 
   return (
     <div className="absolute inset-0 flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10">
@@ -559,10 +634,12 @@ const PlayerTab = ({
           <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
-          
+
           <div
             className={`text-[13px] sm:text-[15px] truncate mt-0.5 transition-colors ${
-              error ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]" : "text-white/50"
+              error
+                ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]"
+                : "text-white/50"
             }`}
             onClick={(e) => {
               if (error) {
@@ -572,7 +649,10 @@ const PlayerTab = ({
             }}
           >
             {error ? (
-              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed to pull • Tap for info</span>
+              <span className="flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" /> Failed to pull • Tap for
+                info
+              </span>
             ) : isReady && !isRoomReady ? (
               "Syncing to peers..."
             ) : isReady ? (
@@ -590,42 +670,61 @@ const PlayerTab = ({
                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                 className="overflow-hidden"
               >
-                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] sm:text-xs text-[#FF0000]/90 leading-relaxed whitespace-normal cursor-text pointer-events-auto" onClick={e => e.stopPropagation()}>
+                <div
+                  className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] sm:text-xs text-[#FF0000]/90 leading-relaxed whitespace-normal cursor-text pointer-events-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <p className="font-bold mb-1">Track Transfer Failed</p>
                   <p className="opacity-80 wrap-break-word">{error}</p>
                   <p className="mt-1.5 opacity-80">
-                    If this persists, ask the host to re-select the track. 
+                    If this persists, ask the host to re-select the track.
                   </p>
                 </div>
               </motion.div>
             )}
-            
-            {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: "auto", marginTop: 8 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                className="overflow-hidden"
-              >
-                 <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1 pointer-events-auto" onClick={e => e.stopPropagation()}>
+
+            {hasTrack &&
+              isRoom &&
+              loadingParticipants.length > 0 &&
+              !error &&
+              !showErrorDetails && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1 pointer-events-auto"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {loadingParticipants.map((p: any) => (
-                       <div key={p.socketId} className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1">
-                          <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                          <span className="text-white/80 text-[10px] font-bold uppercase">{p.displayName}</span>
-                       </div>
+                      <div
+                        key={p.socketId}
+                        className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1"
+                      >
+                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
+                        <span className="text-white/80 text-[10px] font-bold uppercase">
+                          {p.displayName}
+                        </span>
+                      </div>
                     ))}
-                 </div>
-              </motion.div>
-            )}
+                  </div>
+                </motion.div>
+              )}
           </AnimatePresence>
         </div>
         <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
           {error ? (
-             <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
-          ) : (!isReady || !isRoomReady) ? (
-             <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
+            <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
+          ) : !isReady || !isRoomReady ? (
+            <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
           ) : (
-             <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />
+            <AudioBars
+              isPlaying={effectivePlaying}
+              isSmall={false}
+              isVisible={isVisible}
+            />
           )}
 
           {isRoom && (
@@ -642,7 +741,12 @@ const PlayerTab = ({
         </div>
       </div>
 
-      <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
+      <RealtimeProgressBar
+        duration={duration}
+        onSeek={onSeek}
+        isPlaying={effectivePlaying}
+        isVisible={isVisible}
+      />
 
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
@@ -655,8 +759,8 @@ const PlayerTab = ({
           >
             <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
-          
-          {isRoom && isHost && (
+
+          {isRoom && isHost && isPrivate && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -667,7 +771,9 @@ const PlayerTab = ({
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
               {pendingRequestsCount && pendingRequestsCount > 0 ? (
                 <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background animate-pulse flex items-center justify-center">
-                  <span className="text-[7px] text-white font-black leading-none">{pendingRequestsCount}</span>
+                  <span className="text-[7px] text-white font-black leading-none">
+                    {pendingRequestsCount}
+                  </span>
                 </div>
               ) : null}
             </button>
@@ -730,7 +836,6 @@ const PlayerTab = ({
           >
             <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
-
         </div>
       </div>
     </div>
@@ -802,7 +907,7 @@ const NetworkTab = ({
             );
           })}
         </div>
-        
+
         {/* Audio Sync Slider */}
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex justify-between items-center">
@@ -810,7 +915,8 @@ const NetworkTab = ({
               Sync Correction
             </span>
             <span className="text-white font-bold text-sm">
-              {audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms
+              {audio.manualLatency > 0 ? "+" : ""}
+              {Math.round(audio.manualLatency * 1000)}ms
             </span>
           </div>
           <input
@@ -822,7 +928,7 @@ const NetworkTab = ({
             onChange={(e) => audio.setManualLatency(Number(e.target.value))}
             className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer"
             style={{
-              background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)`
+              background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)`,
             }}
           />
           <div className="flex items-center justify-between mt-1">
@@ -922,10 +1028,17 @@ const YouTubeTab = ({
       setAddedSongs((prev) => new Set(prev).add(result.url));
     } catch (err: any) {
       console.error(err);
-      if (err.message?.includes("RapidAPI did not return a valid download link") || err.message?.includes("FATAL: YouTube download returned")) {
-         setDownloadError("This track is age-restricted or blocked by YouTube. Please try another search result.");
+      if (
+        err.message?.includes(
+          "RapidAPI did not return a valid download link",
+        ) ||
+        err.message?.includes("FATAL: YouTube download returned")
+      ) {
+        setDownloadError(
+          "This track is age-restricted or blocked by YouTube. Please try another search result.",
+        );
       } else {
-         setDownloadError(err.message || "Failed to load this track.");
+        setDownloadError(err.message || "Failed to load this track.");
       }
     } finally {
       setEnqueuing(null);
@@ -1105,22 +1218,25 @@ const YouTubeTab = ({
 // RequestsTab
 // ─────────────────────────────────────────────────────────
 
-const RequestsTab = ({ 
-  requests, 
-  onApprove, 
-  onDeny, 
-  onBack 
-}: { 
-  requests: JoinRequest[]; 
-  onApprove: (id: string, name: string) => void; 
-  onDeny: (id: string) => void; 
-  onBack: () => void; 
+const RequestsTab = ({
+  requests,
+  onApprove,
+  onDeny,
+  onBack,
+}: {
+  requests: JoinRequest[];
+  onApprove: (id: string, name: string) => void;
+  onDeny: (id: string) => void;
+  onBack: () => void;
 }) => {
   return (
     <div className="flex flex-col h-full text-white pt-2 pb-4">
       <div className="flex items-center justify-between px-6 mb-4">
         <button
-          onClick={(e) => { e.stopPropagation(); onBack(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBack();
+          }}
           className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto"
         >
           <ChevronLeft className="w-5 h-5 text-white/50" />
@@ -1133,20 +1249,33 @@ const RequestsTab = ({
 
       <div className="flex-1 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto">
         {requests.length === 0 ? (
-          <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
+          <div className="text-center text-white/40 text-xs mt-10">
+            No pending requests
+          </div>
         ) : (
-          requests.map(req => (
-            <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
-              <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
+          requests.map((req) => (
+            <div
+              key={req.socketId}
+              className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10"
+            >
+              <span className="font-semibold text-sm truncate pr-2">
+                {req.displayName}
+              </span>
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDeny(req.socketId); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeny(req.socketId);
+                  }}
                   className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30 transition-colors"
                 >
                   Deny
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onApprove(req.socketId, req.displayName);
+                  }}
                   className="px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors"
                 >
                   Approve
@@ -1180,51 +1309,100 @@ const DeviceInfoTab = ({
   useEffect(() => {
     if (!targetSocketId) return;
     const socket = getSocket();
-    
+
     const handleStats = (data: any) => {
       if (data.socketId === targetSocketId) {
-        setRemoteStats(prev => {
-          const newStats = [...prev.slice(-30), { ts: Date.now(), latency: data.latency }];
+        setRemoteStats((prev) => {
+          const newStats = [
+            ...prev.slice(-120),
+            { ts: Date.now(), latency: data.latency },
+          ];
           return newStats;
         });
       }
     };
-    
-    socket.on('room:participantStats', handleStats);
+
+    socket.on("room:participantStats", handleStats);
     return () => {
-      socket.off('room:participantStats', handleStats);
+      socket.off("room:participantStats", handleStats);
     };
   }, [targetSocketId]);
 
-  const targetParticipant = roomParticipants.find(p => p.socketId === targetSocketId);
+  const targetParticipant = roomParticipants.find(
+    (p) => p.socketId === targetSocketId,
+  );
   const targetName = targetParticipant?.displayName || "Unknown Device";
 
   // Build SVG paths for local and remote stats
   const width = 280;
   const height = 80;
   const maxLatency = 200; // Cap visual scale at 200ms
-  
+
+  const localHistory = localStats.history || [];
+
+  // Find the absolute latest timestamp in both datasets to anchor the right edge
+  const newestLocal =
+    localHistory.length > 0 ? localHistory[localHistory.length - 1].ts : 0;
+  const newestRemote =
+    remoteStats.length > 0 ? remoteStats[remoteStats.length - 1].ts : 0;
+  const latestTs =
+    Math.max(newestLocal, newestRemote) > 0
+      ? Math.max(newestLocal, newestRemote)
+      : Date.now();
+
+  // Calculate oldest timestamp available in either dataset to anchor graph to the left
+  const oldestLocal = localHistory.length > 0 ? localHistory[0].ts : latestTs;
+  const oldestRemote = remoteStats.length > 0 ? remoteStats[0].ts : latestTs;
+  const oldestAvailable = Math.min(oldestLocal, oldestRemote);
+
+  // Dynamic time window: stretch to fill exactly from oldest to newest, capped at 30 seconds
+  const timeWindow = Math.min(
+    30000,
+    Math.max(1000, latestTs - oldestAvailable),
+  );
+
   const buildPath = (data: any[], color: string) => {
-    if (data.length < 2) return null;
-    const dx = width / 30;
-    const points = data.map((d, i) => {
-      const x = width - (data.length - 1 - i) * dx;
+    const visibleData = data.filter((d) => latestTs - d.ts <= timeWindow);
+    if (visibleData.length < 2) return null;
+
+    const points = visibleData.map((d) => {
+      const timeDiff = latestTs - d.ts;
+      // Map x from 0 (timeWindow ago) to width (latestTs)
+      const x = width - (timeDiff / timeWindow) * width;
       const y = height - Math.min(height, (d.latency / maxLatency) * height);
       return `${x},${y}`;
     });
-    return <polyline points={points.join(" ")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />;
+    return (
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
   };
+
+  const currentLocalLatency = Math.round(localStats.latency || 0);
+  const currentRemoteLatency =
+    remoteStats.length > 0
+      ? Math.round(remoteStats[remoteStats.length - 1].latency)
+      : null;
 
   return (
     <div className="flex flex-col h-full text-white pt-2 pb-4 pointer-events-auto">
       <div className="flex items-center justify-between px-6 mb-2">
         <button
-          onClick={(e) => { e.stopPropagation(); onBack(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBack();
+          }}
           className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2"
         >
           <ChevronLeft className="w-5 h-5 text-white/50" />
         </button>
-        <span className="text-sm font-bold uppercase tracking-widest text-white/50 truncate max-w-[200px]">
+        <span className="text-sm font-bold uppercase tracking-widest text-white/50 truncate max-w-50">
           {targetName}
         </span>
         <div className="w-9" />
@@ -1234,35 +1412,82 @@ const DeviceInfoTab = ({
         {/* Real-time Graph */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col relative overflow-hidden">
           <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2 flex justify-between">
-            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500" /> You</span>
-            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Remote</span>
+            <span className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              You:{" "}
+              <span className="text-blue-400 font-extrabold">
+                {currentLocalLatency}ms
+              </span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+              Remote:{" "}
+              <span className="text-emerald-400 font-extrabold">
+                {currentRemoteLatency !== null
+                  ? `${currentRemoteLatency}ms`
+                  : "--"}
+              </span>
+            </span>
           </div>
-          
-          <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible mt-2">
+
+          <svg
+            width="100%"
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            className="overflow-visible mt-2"
+          >
             {/* Grid lines */}
-            <line x1="0" y1={height} x2={width} y2={height} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-            <line x1="0" y1={height/2} x2={width} y2={height/2} stroke="rgba(255,255,255,0.05)" strokeWidth="1" strokeDasharray="4 4" />
-            
+            <line
+              x1="0"
+              y1={height}
+              x2={width}
+              y2={height}
+              stroke="rgba(255,255,255,0.1)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+            <line
+              x1="0"
+              y1={height / 2}
+              x2={width}
+              y2={height / 2}
+              stroke="rgba(255,255,255,0.05)"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+              vectorEffect="non-scaling-stroke"
+            />
+
             {buildPath(localStats.history || [], "#3b82f6")}
             {buildPath(remoteStats, "#10b981")}
           </svg>
-          
-          <div className="flex justify-between mt-3 text-xs font-bold">
-            <span className="text-blue-400">{Math.round(localStats.latency || 0)}ms</span>
-            <span className="text-emerald-400">{remoteStats.length > 0 ? Math.round(remoteStats[remoteStats.length - 1].latency) : "--"}ms</span>
+
+          <div className="flex justify-between mt-3 text-[9px] uppercase tracking-widest text-white/30 font-bold">
+            <span>-30s</span>
+            <span>Now</span>
           </div>
         </div>
 
         {/* Metadata */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-white/5 rounded-xl p-3">
-            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">Output Device</div>
-            <div className="font-semibold truncate">{targetParticipant?.outputDeviceName || "System Default"}</div>
+            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">
+              Output Device
+            </div>
+            <div className="font-semibold truncate">
+              {targetParticipant?.outputDeviceName || "System Default"}
+            </div>
           </div>
           <div className="bg-white/5 rounded-xl p-3">
-            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">Status</div>
+            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">
+              Status
+            </div>
             <div className="font-semibold truncate">
-              {targetParticipant?.isBlocked ? "Blocked" : targetParticipant?.isReady ? "Ready & Syncing" : "Buffering"}
+              {targetParticipant?.isBlocked
+                ? "Blocked"
+                : targetParticipant?.isReady
+                  ? "Ready & Syncing"
+                  : "Buffering"}
             </div>
           </div>
         </div>
@@ -1290,12 +1515,14 @@ export function DynamicIsland() {
     pendingRequests,
     hostId,
     joinStatus,
+    isPrivate,
   } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
   const isHost = hostId === user?.id;
   const [isExpanded, setIsExpanded] = useState(false);
   const localProgressRef = useRef(0);
+  const lastTapRef = useRef<number>(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
   useEffect(() => {
@@ -1306,7 +1533,11 @@ export function DynamicIsland() {
     ? (pathname.split("/room/")[1]?.split("/")[0] ?? "")
     : "";
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
-  const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
+  const netStats = useNetworkStats(
+    isRoom,
+    activeTab === "deviceInfo",
+    roomId || undefined,
+  );
   const islandRef = useRef<HTMLDivElement>(null);
 
   const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
@@ -1316,9 +1547,11 @@ export function DynamicIsland() {
       setDeviceInfoTarget(e.detail.socketId);
       setActiveTab("deviceInfo");
       setIsExpanded(true);
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
-    return () => window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
+    return () =>
+      window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
   }, []);
   const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReqCountRef = useRef(0);
@@ -1326,30 +1559,34 @@ export function DynamicIsland() {
   useEffect(() => {
     const currentCount = pendingRequests?.length || 0;
     const prevCount = prevReqCountRef.current;
-    
+
     if (currentCount > prevCount) {
       // New request arrived
       setIsExpanded(true);
       setActiveTab("requests");
-      
+
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
       shrinkTimerRef.current = setTimeout(() => {
         setIsExpanded(false);
       }, 10000);
     }
-    
+
     prevReqCountRef.current = currentCount;
   }, [pendingRequests?.length]);
   const [slideDir, setSlideDir] = useState(1);
   const [ytResultsCount, setYtResultsCount] = useState(0);
   const [ytQuery, setYtQuery] = useState("");
-  
-  const [seekIndicator, setSeekIndicator] = useState<{ amount: number, text: string } | null>(null);
+
+  const [seekIndicator, setSeekIndicator] = useState<{
+    amount: number;
+    text: string;
+  } | null>(null);
   const seekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const [forceShowDetails, setForceShowDetails] = useState(false);
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHoverLocked, setIsHoverLocked] = useState(false);
 
   const [windowWidth, setWindowWidth] = useState(0);
   useEffect(() => {
@@ -1363,12 +1600,12 @@ export function DynamicIsland() {
 
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    if (isExpanded && windowWidth < 768) {
+    if (isExpanded && windowWidth < 768 && activeTab !== "deviceInfo") {
       inactivityTimerRef.current = setTimeout(() => {
         setIsExpanded(false);
       }, 3000); // 3 seconds timeout
     }
-  }, [isExpanded, windowWidth]);
+  }, [isExpanded, windowWidth, activeTab]);
 
   useEffect(() => {
     resetInactivityTimer();
@@ -1376,7 +1613,6 @@ export function DynamicIsland() {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
   }, [isExpanded, windowWidth, resetInactivityTimer]);
-
 
   const showSeekIndicator = useCallback((amount: number) => {
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
@@ -1391,7 +1627,13 @@ export function DynamicIsland() {
     (newTab: IslandTab) => {
       if (activeTab === newTab) return;
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      const order: Record<IslandTab, number> = { network: -1, player: 0, youtube: 1, requests: 2, deviceInfo: 3 };
+      const order: Record<IslandTab, number> = {
+        network: -1,
+        player: 0,
+        youtube: 1,
+        requests: 2,
+        deviceInfo: 3,
+      };
       setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
       setActiveTab(newTab);
     },
@@ -1409,8 +1651,6 @@ export function DynamicIsland() {
     }
   }, [isExpanded]);
 
-
-
   const dynamicExpandedWidth =
     windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
@@ -1419,7 +1659,8 @@ export function DynamicIsland() {
 
   const dynamicCompactWidth = !hasTrack
     ? dynamicExpandedWidth
-    : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 60 : 0);
+    : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) +
+      (effectivePlaying || forceShowDetails ? 80 : 0);
 
   const isYoutubeSearchOnly =
     !hasTrack && ytQuery.trim() === "" && ytResultsCount === 0;
@@ -1619,23 +1860,21 @@ export function DynamicIsland() {
       setActiveTab("youtube");
       setIsExpanded(true);
     };
-    document.addEventListener('island:expand-add', handleExpandAdd);
+    document.addEventListener("island:expand-add", handleExpandAdd);
     return () => {
-      document.removeEventListener('island:expand-add', handleExpandAdd);
+      document.removeEventListener("island:expand-add", handleExpandAdd);
     };
   }, []);
 
   // Do not render dynamic island in waiting room
-  if (isRoom && (joinStatus === 'pending' || joinStatus === 'denied')) {
+  if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) {
     return null;
   }
 
   if (!isRoom) {
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <div
-          className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none"
-        >
+        <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
           <Link href="/hub" className="flex items-center gap-2 sm:gap-3 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
               <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
@@ -1682,17 +1921,23 @@ export function DynamicIsland() {
 
   const handlePointerDown = () => {
     resetInactivityTimer();
+    // On desktop, hover handles expansion, so ignore long press
+    if (windowWidth >= 768) return;
+
     if (isExpanded) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
-      if (!hasTrack) setActiveTab("youtube");
+      if (!hasTrack) {
+        setActiveTab("youtube");
+        setIsHoverLocked(true);
+      }
       setIsExpanded(true);
       setForceShowDetails(false);
       setIsPressing(false);
       pressTimerRef.current = null;
-      
+
       // Haptic feedback for expanding
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
         navigator.vibrate(50);
       }
     }, 300); // 300ms hold
@@ -1704,14 +1949,23 @@ export function DynamicIsland() {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
       setIsPressing(false);
-      
-      // Short tap
-      if (!isExpanded && hasTrack) {
-        setForceShowDetails(true);
-        setTimeout(() => setForceShowDetails(false), 3000);
-      } else if (!isExpanded && !hasTrack) {
-        setActiveTab("youtube");
-        setIsExpanded(true);
+
+      const nowTime = Date.now();
+      const DOUBLE_TAP_DELAY = 500;
+      if (nowTime - lastTapRef.current < DOUBLE_TAP_DELAY) {
+        // Double tap: toggle play/pause
+        handleToggle();
+        lastTapRef.current = 0;
+      } else {
+        lastTapRef.current = nowTime;
+        // Short tap (Mobile)
+        if (!isExpanded && hasTrack) {
+          setForceShowDetails(true);
+          setTimeout(() => setForceShowDetails(false), 3000);
+        } else if (!isExpanded && !hasTrack) {
+          setActiveTab("youtube");
+          setIsExpanded(true);
+        }
       }
     }
   };
@@ -1730,13 +1984,17 @@ export function DynamicIsland() {
           backdropFilter: isExpanded ? "blur(2px)" : "blur(0px)",
           WebkitBackdropFilter: isExpanded ? "blur(2px)" : "blur(0px)",
         }}
-        onClick={() => setIsExpanded(false)}
+        onClick={() => {
+          setIsExpanded(false);
+          setIsHoverLocked(false);
+        }}
       />
 
       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-100 flex flex-col items-center pointer-events-none">
         <motion.div
           ref={islandRef}
           onPointerDown={(e) => {
+            if (windowWidth >= 768) setIsHoverLocked(true);
             handlePointerDown();
             resetInactivityTimer();
           }}
@@ -1744,17 +2002,45 @@ export function DynamicIsland() {
             handlePointerUp();
             resetInactivityTimer();
           }}
+          onMouseEnter={() => {
+            if (windowWidth >= 768) {
+              setIsExpanded(true);
+              setForceShowDetails(false);
+            }
+          }}
+          onClick={(e) => {
+            if (windowWidth >= 768) {
+              if (hasTrack) {
+                setIsHoverLocked(false);
+                setIsExpanded(false);
+                setForceShowDetails(true);
+                setTimeout(() => setForceShowDetails(false), 3000);
+              } else {
+                setActiveTab("youtube");
+                setIsExpanded(true);
+                setIsHoverLocked(true);
+              }
+            }
+          }}
           onPointerLeave={(e) => {
             handlePointerUp();
             resetInactivityTimer();
           }}
+          onMouseLeave={(e) => {
+            if (windowWidth >= 768 && !isHoverLocked) {
+              setIsExpanded(false);
+            }
+            handlePointerUp();
+          }}
           onPointerMove={resetInactivityTimer}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            handleToggle();
+          }}
           initial={false}
           transition={SPRING}
           animate={{
-            width: isExpanded
-              ? dynamicExpandedWidth
-              : dynamicCompactWidth + (effectivePlaying || forceShowDetails ? 80 : 0),
+            width: isExpanded ? dynamicExpandedWidth : dynamicCompactWidth,
             height: isExpanded ? currentExpandedHeight : COMPACT_HEIGHT,
             borderRadius: isExpanded ? 44 : COMPACT_HEIGHT / 2,
             scale: isPressing && !isExpanded ? 0.96 : 1,
@@ -1785,6 +2071,7 @@ export function DynamicIsland() {
             roomParticipants={roomParticipants}
             pendingRequestsCount={pendingRequests?.length || 0}
             isHost={isHost}
+            isPrivate={isPrivate}
             onRequestsClick={() => {
               setActiveTab("requests");
               setIsExpanded(true);
@@ -1840,6 +2127,7 @@ export function DynamicIsland() {
                     roomParticipants={roomParticipants}
                     pendingRequestsCount={pendingRequests?.length || 0}
                     isHost={isHost}
+                    isPrivate={isPrivate}
                     isVisible={isExpanded}
                   />
                 </motion.div>
@@ -1897,11 +2185,19 @@ export function DynamicIsland() {
                   <RequestsTab
                     requests={pendingRequests || []}
                     onApprove={(id, name) => {
-                      document.dispatchEvent(new CustomEvent('room:action-approve', { detail: { socketId: id, displayName: name } }));
+                      document.dispatchEvent(
+                        new CustomEvent("room:action-approve", {
+                          detail: { socketId: id, displayName: name },
+                        }),
+                      );
                       if (pendingRequests.length <= 1) setActiveTab("player");
                     }}
                     onDeny={(id) => {
-                      document.dispatchEvent(new CustomEvent('room:action-deny', { detail: { socketId: id } }));
+                      document.dispatchEvent(
+                        new CustomEvent("room:action-deny", {
+                          detail: { socketId: id },
+                        }),
+                      );
                       if (pendingRequests.length <= 1) setActiveTab("player");
                     }}
                     onBack={() => setActiveTab("player")}
