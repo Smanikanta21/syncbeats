@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAudio } from "../context/AudioContext";
 import { useTheme } from "next-themes";
 
@@ -9,7 +9,13 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
   const blob2Ref = useRef<HTMLDivElement>(null);
   const blob3Ref = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme !== "light";
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = mounted ? resolvedTheme !== "light" : true;
 
   // Conditionally get audio context
   let audioContext: ReturnType<typeof useAudio> | null = null;
@@ -141,6 +147,8 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
     animate();
     return () => cancelAnimationFrame(rafId);
   }, [syncWithAudio, audioContext, isDark]);
+
+  if (!mounted) return null;
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">

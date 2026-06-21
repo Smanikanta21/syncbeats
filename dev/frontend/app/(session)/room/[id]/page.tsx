@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth, Edit3, Radio, LogOut, Activity, MoreHorizontal } from "lucide-react";
+import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wifi, WifiOff, CheckCircle2, Loader2, ListMusic, Trash2, Music2, Play, Plus, Lock, Unlock, ShieldAlert, BellRing, Crown, Search, Headphones, Bluetooth, Edit3, Radio, LogOut, Orbit, Activity, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -33,6 +33,47 @@ import {
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
 
+const LoadingOverlay = () => {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress(p => {
+        if (p < 80) return p + Math.random() * 15;
+        if (p < 95) return p + Math.random() * 2;
+        return p;
+      });
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-xl"
+    >
+      <div className="flex flex-col items-center glass-panel p-10 rounded-[2.5rem] shadow-2xl border border-foreground/10 w-[320px]">
+        <Loader2 className="w-10 h-10 text-foreground animate-spin mb-6" />
+        
+        <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden mb-4">
+          <motion.div 
+            className="h-full bg-foreground rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ ease: "easeOut", duration: 0.2 }}
+          />
+        </div>
+        
+        <p className="text-foreground/80 tracking-widest uppercase font-bold text-[10px] h-3">
+          {progress < 30 ? "Connecting to Sync Server..." : progress < 70 ? "Synchronizing NTP Clock..." : "Loading Room Data..."}
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
 function DeviceIcon({ index, type }: { index: number, type?: string }) {
   if (type === 'bluetooth') return <Bluetooth className="w-3 h-3 text-foreground/60" />;
   if (type === 'headphones') return <Headphones className="w-3 h-3 text-foreground/60" />;
@@ -41,6 +82,127 @@ function DeviceIcon({ index, type }: { index: number, type?: string }) {
   const Icon  = icons[index % icons.length];
   return <Icon className="w-3 h-3 text-foreground/60" />;
 }
+
+const ArcItem = ({ index, icon: Icon, title, dragY, activeTab, onClick, containerRef }: any) => {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [offsetX, setOffsetX] = useState(0);
+
+  useEffect(() => {
+    if (dragY === null || !itemRef.current || !containerRef.current) {
+      setOffsetX(0);
+      return;
+    }
+    const rect = itemRef.current.getBoundingClientRect();
+    const cRect = containerRef.current.getBoundingClientRect();
+    const centerY = rect.top - cRect.top + rect.height / 2;
+    
+    const distance = Math.abs(dragY - centerY);
+    const maxDist = 140;
+    if (distance < maxDist) {
+      const arc = Math.cos((distance / maxDist) * (Math.PI / 2));
+      setOffsetX(-70 * arc);
+    } else {
+      setOffsetX(0);
+    }
+  }, [dragY, containerRef]);
+
+  const isActive = activeTab === index;
+  const isDragging = dragY !== null;
+  const targetScale = isActive ? (isDragging ? 1.25 : 1) : 0.75;
+
+  return (
+    <div ref={itemRef} data-tab-index={index} className="w-full h-12 relative flex justify-end pr-4">
+      <motion.button
+        animate={{ x: offsetX, scale: targetScale }}
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        onClick={onClick}
+        className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors absolute ${isActive ? "bg-foreground text-background shadow-[0_0_20px_rgba(255,255,255,0.4)]" : "bg-background/80 backdrop-blur-md text-foreground/50 border border-foreground/10 hover:text-foreground"}`}
+        title={title}
+      >
+        <Icon className="w-5 h-5" />
+      </motion.button>
+    </div>
+  );
+};
+
+const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: number, setActiveTab: (t: number) => void, handleLeave: () => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragY, setDragY] = useState<number | null>(null);
+
+  const tabs = [
+    { icon: QrCode, title: "Room Info" },
+    { icon: Smartphone, title: "Devices" },
+    { icon: Orbit, title: "Spatial Audio" },
+    { icon: ListMusic, title: "Queue" }
+  ];
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    setDragY(y);
+
+    const tabsElements = Array.from(containerRef.current.querySelectorAll('[data-tab-index]')) as HTMLElement[];
+    let closestDist = Infinity;
+    let closestIndex = activeTab;
+
+    for (const tabEl of tabsElements) {
+      const tabRect = tabEl.getBoundingClientRect();
+      const tabCenterY = tabRect.top - rect.top + tabRect.height / 2;
+      const dist = Math.abs(y - tabCenterY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIndex = parseInt(tabEl.getAttribute('data-tab-index')!, 10);
+      }
+    }
+    
+    if (closestDist < 70 && closestIndex !== activeTab) {
+      setActiveTab(closestIndex);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    setDragY(null);
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className="absolute right-0 top-0 h-full w-24 z-50 touch-none pointer-events-none"
+    >
+      <div 
+        className={`absolute top-1/2 -translate-y-1/2 right-0 w-full flex flex-col items-end pointer-events-auto py-10 transition-[gap] duration-300 ${dragY !== null ? 'gap-4' : 'gap-1'}`}
+        onPointerDown={(e) => {
+           (e.target as HTMLElement).setPointerCapture(e.pointerId);
+           handlePointerMove(e);
+        }}
+        onPointerMove={dragY !== null ? handlePointerMove : undefined}
+        onPointerUp={dragY !== null ? handlePointerUp : undefined}
+        onPointerCancel={dragY !== null ? handlePointerUp : undefined}
+      >
+        {tabs.map((tab, i) => (
+          <ArcItem 
+            key={i} 
+            index={i} 
+            icon={tab.icon} 
+            title={tab.title} 
+            dragY={dragY} 
+            activeTab={activeTab} 
+            onClick={() => setActiveTab(i)}
+            containerRef={containerRef}
+          />
+        ))}
+      </div>
+      
+      <div className="absolute bottom-6 right-0 w-full flex justify-end pr-4 pointer-events-none">
+        <button onClick={handleLeave} className="w-12 h-12 rounded-full flex items-center justify-center text-red-500 bg-background/80 backdrop-blur-md border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 shadow-lg pointer-events-auto" title="Leave Room">
+           <LogOut className="w-5 h-5 ml-1" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function RoomPage() {
   const params  = useParams();
@@ -248,6 +410,7 @@ export default function RoomPage() {
   }, []);
 
   const handleLeave = () => {
+    if (!window.confirm("Do you really want to leave the room?")) return;
     audio.pause();
     audio.clearTrack();
     leave();
@@ -442,11 +605,11 @@ export default function RoomPage() {
     if (tab !== activeTab) setActiveTab(tab);
   };
 
-  const PANEL_CLASSES = "w-full h-full flex flex-col bg-background/40 backdrop-blur-xl rounded-[2.5rem] border border-foreground/10 p-6 shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
+  const PANEL_CLASSES = "w-full h-full flex flex-col md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
 
   const renderInfoPanel = () => (
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
-      <div className="md:hidden w-full flex flex-col pt-30 pb-20 px-4 space-y-6">
+      <div className="md:hidden w-full flex flex-col pt-6 pb-6 px-4 space-y-6">
         {/* Badges */}
         <div className="flex justify-center items-center gap-3 mb-6">
           <div className="flex items-center gap-2">
@@ -575,11 +738,11 @@ export default function RoomPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 shrink-0 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
+                        <div className="w-12 h-12 shrink-0 rounded-full bg-linear-to-tr from-zinc-200 to-zinc-100 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center border border-foreground/10 relative shadow-inner">
                           <span className="font-black text-foreground/70 text-sm tracking-widest">
                             {p.devName.slice(0, 2).toUpperCase()}
                           </span>
-                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center shadow-sm" title={p.outputDeviceName || "Default Device"}>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-foreground/20 flex items-center justify-center shadow-sm" title={p.outputDeviceName || "Default Device"}>
                             <DeviceIcon index={i} type={p.outputDeviceType} />
                           </div>
                         </div>
@@ -626,7 +789,7 @@ export default function RoomPage() {
                       </div>
                       <div className="relative h-6 flex items-center">
                         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                          <div className="h-full bg-linear-to-r from-foreground/40 to-foreground/80 rounded-full w-2/3 shadow-[0_0_10px_rgba(var(--foreground-rgb),0.3)]" style={{ width: `${p.volume}%` }} />
+                          <div className="h-full bg-foreground rounded-full" style={{ width: `${p.volume}%` }} />
                         </div>
                         <input
                           type="range"
@@ -670,13 +833,6 @@ export default function RoomPage() {
         <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm font-medium bg-background/20 rounded-3xl border border-foreground/5 p-6">
           <Music2 className="w-10 h-10 mb-4 opacity-20" />
           <p className="mb-6">No songs in queue</p>
-          <button 
-            onClick={() => document.dispatchEvent(new CustomEvent('island:expand-add'))}
-            className="w-full max-w-sm flex items-center gap-3 px-4 py-3 bg-foreground/5 border border-foreground/10 hover:border-foreground/20 hover:bg-foreground/10 rounded-2xl transition-all group shadow-sm"
-          >
-            <Search className="w-5 h-5 text-foreground/40 group-hover:text-foreground/60 transition-colors shrink-0" />
-            <span className="text-foreground/40 group-hover:text-foreground/60 transition-colors font-medium truncate">Search YouTube for a song...</span>
-          </button>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 pb-4">
@@ -781,18 +937,15 @@ export default function RoomPage() {
     );
   }
 
-  if (!snapshot || joinStatus === 'connecting') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-transparent">
-        <Loader2 className="w-10 h-10 text-foreground animate-spin mb-4" />
-        <p className="text-foreground/50 tracking-widest uppercase font-bold text-sm">Connecting...</p>
-      </div>
-    );
-  }
+  const isLoading = !snapshot || joinStatus === 'connecting';
 
   return (
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-transparent z-0 flex flex-col items-center select-none">
       
+      {/* ── Loading Overlay ── */}
+      <AnimatePresence>
+        {isLoading && <LoadingOverlay />}
+      </AnimatePresence>
 
 
       {/* ── Buffering Overlay ── */}
@@ -994,11 +1147,11 @@ export default function RoomPage() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
+                          <div className="w-12 h-12 rounded-full bg-linear-to-tr from-zinc-200 to-zinc-100 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center border border-foreground/10 relative">
                             <span className="font-black text-foreground/70 text-sm tracking-widest">
                               {userName.slice(0, 2).toUpperCase()}
                             </span>
-                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-zinc-800 flex items-center justify-center">
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-background border border-foreground/20 flex items-center justify-center">
                               <DeviceIcon index={i} />
                             </div>
                           </div>
@@ -1031,7 +1184,7 @@ export default function RoomPage() {
                         )}
                       </div>
 
-                      <motion.div className="flex flex-col h-dvh w-full md:hidden">
+                      <motion.div className="flex flex-col mt-2 w-full">
                         <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                           <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
                             {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
@@ -1042,7 +1195,7 @@ export default function RoomPage() {
                         <div className="relative h-10 flex items-center">
                           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-linear-to-r from-zinc-200 via-white to-zinc-400 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              className="h-full rounded-full bg-foreground"
                               style={{ width: `${p.volume}%` }}
                             />
                           </div>
@@ -1069,7 +1222,7 @@ export default function RoomPage() {
 
           {/* Middle Column: Spatial Audio */}
           <div className="flex flex-col flex-1 h-full min-w-0 relative z-10">
-            <div className="w-full h-full flex flex-col items-center justify-center p-4">
+            <div className="w-full h-full flex flex-col items-center justify-center px-0 py-4 md:p-4">
               <OrbitUI
                 myDeviceId={currentSocketId || ""}
                 spatialDevices={spatialDevices}
@@ -1138,56 +1291,39 @@ export default function RoomPage() {
         </motion.div>
       </div>
 
-      {/* ── MOBILE VIEW (Swipeable Carousel) ── */}
-      <div className="flex md:hidden flex-col w-full h-full relative pt-30 pb-20">
-        {/* Pagination Dots */}
-        <div className="flex justify-center items-center gap-3 mb-4 shrink-0 px-4">
-          <button aria-label="View room info" onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 0 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View connected devices" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 1 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View spatial audio" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 2, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 2 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
-          <button aria-label="View music queue" onClick={() => carouselRef.current?.scrollTo({ left: window.innerWidth * 3, behavior: 'smooth' })} className={`h-1.5 rounded-full transition-all duration-300 ${activeTab === 3 ? "w-10 bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.5)]" : "w-3 bg-foreground/20"}`} />
+      {/* ── MOBILE VIEW (Vertical Side Nav) ── */}
+      <div className="flex md:hidden w-full h-full relative pt-20">
+        {/* Main Content Area */}
+        <div className="flex-1 h-full w-full overflow-hidden relative">
+           <AnimatePresence mode="wait">
+             <motion.div 
+               key={activeTab}
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: -10 }}
+               transition={{ duration: 0.2 }}
+               className="absolute inset-0 w-full h-full overflow-hidden flex flex-col px-4 pb-8"
+             >
+                {activeTab === 0 && <div className="flex-1 flex flex-col min-h-0">{renderInfoPanel()}</div>}
+                {activeTab === 1 && <div className="flex-1 flex flex-col min-h-0">{renderDevicesPanel()}</div>}
+                {activeTab === 2 && <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+                  <div className="w-full h-full md:max-h-[400px] md:rounded-[2.5rem] flex flex-col items-center justify-center md:border md:border-foreground/10 md:bg-background/40 md:backdrop-blur-xl md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
+                    <OrbitUI
+                      myDeviceId={currentSocketId || ""}
+                      spatialDevices={spatialDevices}
+                      participants={participants}
+                      onUpdatePosition={updatePosition}
+                      isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
+                    />
+                  </div>
+                </div>}
+                {activeTab === 3 && <div className="flex-1 flex flex-col min-h-0">{renderQueuePanel()}</div>}
+             </motion.div>
+           </AnimatePresence>
         </div>
 
-        {/* Carousel */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          ref={carouselRef}
-          onScroll={handleScroll}
-          className="w-full h-full rounded-4xl overflow-x-auto overflow-y-hidden shadow-2xl relative snap-x snap-mandatory flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] min-h-0"
-        >
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderInfoPanel()}
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderDevicesPanel()}
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0 flex items-center justify-center">
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 h-full flex flex-col items-center justify-center max-h-100">
-              <OrbitUI
-                myDeviceId={currentSocketId || ""}
-                spatialDevices={spatialDevices}
-                participants={participants}
-                onUpdatePosition={updatePosition}
-                isPlaying={audio.isPlaying || (snapshot?.isPlaying ?? false)}
-              />
-            </div>
-          </div>
-          <div className="w-full shrink-0 snap-center h-full px-5 min-h-0">
-            {renderQueuePanel()}
-          </div>
-        </motion.div>
-
-        {/* Mobile Leave Button */}
-        <div className="absolute bottom-6 left-0 w-full flex justify-center z-10 px-6 pointer-events-none">
-          <button 
-            onClick={handleLeave} 
-            className="pointer-events-auto flex items-center justify-center w-full max-w-50 gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-sm tracking-widest uppercase px-6 py-3.5 rounded-full font-bold shadow-lg backdrop-blur-xl border border-red-500/20 transition-all active:scale-95"
-          >
-            Leave Room
-          </button>
-        </div>
+        {/* Floating Vertical Side Navigation Bar */}
+        <FloatingSideNav activeTab={activeTab} setActiveTab={setActiveTab} handleLeave={handleLeave} />
       </div>
 
       {/* ── Tap to Enable Mobile/iOS Audio Context Unlock Overlay ── */}

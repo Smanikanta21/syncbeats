@@ -157,6 +157,7 @@ export function OrbitUI({
 }: OrbitUIProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [maxUiDrag, setMaxUiDrag] = useState(125);
+  const [nodeHalf, setNodeHalf] = useState(24);
   const maxUiDragRef = useRef(125);
 
   const spatialDevicesRef = useRef(spatialDevices);
@@ -185,11 +186,11 @@ export function OrbitUI({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const minDim = Math.min(entry.contentRect.width, entry.contentRect.height);
-        // On mobile node is w-8(32px) so half=16, on desktop w-12(48px) so half=24
-        // Use 16 as a safe default that works for both
-        const nodeHalf = minDim < 200 ? 16 : 24;
-        const val = minDim > 0 ? minDim / 2 - nodeHalf : 125;
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+        const currentHalf = isMobile ? 16 : 24;
+        const val = minDim > 0 ? minDim / 2 - currentHalf : 125;
         setMaxUiDrag(val);
+        setNodeHalf(currentHalf);
         maxUiDragRef.current = val;
       }
     });
@@ -284,7 +285,7 @@ export function OrbitUI({
   const otherListeners = Array.from(otherListenersMap.values());
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center px-4 pb-4 pt-6 md:pt-28">
+    <div className="w-full h-full flex flex-col items-center justify-center pt-6 md:pt-28">
       <div className="text-center mb-6 space-y-1.5 shrink-0 z-10 relative">
         <h3 className="text-xs font-black uppercase tracking-widest text-foreground/50 flex items-center justify-center gap-2">
           Spatial Audio Hub
@@ -302,20 +303,18 @@ export function OrbitUI({
       >
         {/* Concentric rings — dynamically sized to match exact device orbit positions */}
         {(() => {
-          // maxUiDrag = containerRadius - 24 (half of w-12 node size)
-          // rings must be at the same radii as computeXY output
-          const r3 = (maxUiDrag / (maxUiDrag + 24)) * 100; // orbit3 = maxUiDrag
-          const r2 = ((maxUiDrag * 2 / 3) / (maxUiDrag + 24)) * 100;
-          const r1 = ((maxUiDrag / 3) / (maxUiDrag + 24)) * 100;
           return (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              {[r1, r2, r3].map((r, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full border border-foreground/20 opacity-30"
-                  style={{ width: `${r}%`, height: `${r}%` }}
-                />
-              ))}
+            <div className="absolute inset-0 pointer-events-none">
+              {[1/3, 2/3, 1].map((scale, i) => {
+                const diameter = maxUiDrag * 2 * scale;
+                return (
+                  <div
+                    key={i}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/20 opacity-30"
+                    style={{ width: `${diameter}px`, height: `${diameter}px` }}
+                  />
+                );
+              })}
             </div>
           );
         })()}

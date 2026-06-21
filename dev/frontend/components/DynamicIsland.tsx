@@ -2034,6 +2034,7 @@ export function DynamicIsland() {
           }}
           onMouseEnter={() => {
             if (windowWidth >= 768) {
+              if (!hasTrack) return;
               setIsExpanded(true);
               setForceShowDetails(false);
             }
