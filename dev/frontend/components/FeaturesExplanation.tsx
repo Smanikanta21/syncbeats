@@ -67,26 +67,30 @@ export function FeaturesExplanation() {
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
 
   useGSAP(() => {
-    // Horizontal scroll effect on desktop
-    const isDesktop = window.innerWidth >= 768;
-    
-    if (isDesktop && scrollWrapperRef.current) {
-      const scrollWidth = scrollWrapperRef.current.scrollWidth;
-      const amountToScroll = scrollWidth - window.innerWidth + 100;
-      
-      gsap.to(scrollWrapperRef.current, {
-        x: -amountToScroll,
-        ease: "none",
-        scrollTrigger: {
-          trigger: containerRef.current,
-          start: "center center",
-          end: `+=${amountToScroll}`,
-          scrub: 1,
-          pin: true,
-          invalidateOnRefresh: true,
-        }
-      });
-    } else if (!isDesktop) {
+    const mm = gsap.matchMedia();
+
+    mm.add("(min-width: 768px)", () => {
+      // Desktop horizontal scroll
+      if (scrollWrapperRef.current) {
+        const scrollWidth = scrollWrapperRef.current.scrollWidth;
+        const amountToScroll = scrollWidth - window.innerWidth + 100;
+        
+        gsap.to(scrollWrapperRef.current, {
+          x: -amountToScroll,
+          ease: "none",
+          scrollTrigger: {
+            trigger: containerRef.current,
+            start: "center center",
+            end: `+=${amountToScroll}`,
+            scrub: 1,
+            pin: true,
+            invalidateOnRefresh: true,
+          }
+        });
+      }
+    });
+
+    mm.add("(max-width: 767px)", () => {
       // Mobile vertical fade up
       const cards = gsap.utils.toArray('.feature-card');
       cards.forEach((card: any) => {
@@ -101,7 +105,14 @@ export function FeaturesExplanation() {
           }
         });
       });
-    }
+    });
+
+    // Refresh ScrollTrigger after a short delay to account for dynamic imports
+    setTimeout(() => {
+      ScrollTrigger.refresh();
+    }, 100);
+
+    return () => mm.revert();
   }, { scope: containerRef });
 
   return (

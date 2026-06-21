@@ -5,12 +5,14 @@ import { ArrowRight, Smartphone, Laptop, Speaker, Headphones, Radio, Mic2, Play,
 import Link from "next/link";
 import Image from "next/image";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
-import { AmbientBackground } from "../components/AmbientBackground";
-import { FeaturesExplanation } from "../components/FeaturesExplanation";
-import { GsapProvider } from "../components/GsapProvider";
+import dynamic from "next/dynamic";
+
+const AmbientBackground = dynamic(() => import("../components/AmbientBackground").then(mod => mod.AmbientBackground), { ssr: false });
+const FeaturesExplanation = dynamic(() => import("../components/FeaturesExplanation").then(mod => mod.FeaturesExplanation), { ssr: false });
+const MouseGradient = dynamic(() => import("../components/MouseGradient").then(mod => mod.MouseGradient), { ssr: false });
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -28,16 +30,7 @@ export default function LandingPage() {
     else if (latest <= 100 && isScrolled) setIsScrolled(false);
   });
 
-  useEffect(() => {
-    // Optimization: Skip mousemove listener on mobile
-    if (typeof window !== "undefined" && window.innerWidth < 768) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,18 +38,10 @@ export default function LandingPage() {
   };
 
   return (
-    <GsapProvider>
     <div className="w-full bg-transparent text-foreground overflow-x-clip font-sans relative selection:bg-foreground selection:text-background custom-scrollbar">
       
       {/* Interactive Mouse Gradient Follower (Fixed) */}
-      <motion.div 
-        className="fixed w-[40vw] h-[40vw] rounded-full bg-accent-primary/5 blur-[100px] pointer-events-none z-0 hidden md:block"
-        animate={{
-          x: mousePos.x - (typeof window !== "undefined" ? window.innerWidth / 2 : 0),
-          y: mousePos.y - (typeof window !== "undefined" ? window.innerHeight / 2 : 0),
-        }}
-        transition={{ type: "tween", ease: "easeOut", duration: 0.5 }}
-      />
+      <MouseGradient />
 
       {/* Ambient Background Gradients for Continuity */}
       <AmbientBackground syncWithAudio={false} />
@@ -466,7 +451,7 @@ export default function LandingPage() {
       </section>
 
     </div>
-    </GsapProvider>
+    
   );
 }
 

@@ -43,9 +43,17 @@ import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
 
 const SPRING = {
   type: "spring" as const,
-  stiffness: 320,
-  damping: 32,
-  mass: 1.1,
+  stiffness: 260,
+  damping: 28,
+  mass: 0.9,
+};
+
+// Faster spring for size changes (width/height) — iOS snaps shape quickly
+const SHAPE_SPRING = {
+  type: "spring" as const,
+  stiffness: 340,
+  damping: 34,
+  mass: 0.85,
 };
 const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
@@ -94,91 +102,97 @@ const AudioBars = ({
         for (let i = 0; i < children.length; i++) {
           const el = children[i] as HTMLElement;
           el.style.height = "15%";
-          el.style.opacity = "0.4";
+          el.style.opacity = "0.5";
         }
       }
       return;
     }
 
     let rafId: number;
-    // 3 bars: [left=previous, middle=current, right=upcoming]
-    const displayHeights = [15, 15, 15];
-    // History ring buffer for trailing (previous) beat
+    // 4 bars like iOS: [outer-left, inner-left, inner-right, outer-right]
+    const displayHeights = [15, 15, 15, 15];
     const beatHistory: number[] = [];
-    const HISTORY_SIZE = 8; // ~8 frames of history for smooth trailing
+    const HISTORY_SIZE = 6;
 
     const tick = () => {
       const data = audio.getRawAudioData();
 
-      // ── Extract frequency bands ──
-      let bassBeat = 0;    // For the current (middle) bar — punchy bass/kicks
-      let midBeat = 0;     // For the upcoming (right) bar — mid frequencies predict next hit
-      let subBeat = 0;     // For additional dynamics
+      let bass = 0;
+      let sub = 0;
+      let mids = 0;
+      let highs = 0;
 
       if (data && data.length > 40) {
-        // Bass/kick band (bins 1-5, ~86-430 Hz) — most reactive to beats
+        // Bass/kick band (bins 1-5, ~86-430 Hz)
         let bassSum = 0;
         for (let i = 1; i <= 5; i++) bassSum += data[i];
-        bassBeat = Math.max(0, (bassSum / 5) - 80);
+        bass = Math.max(0, (bassSum / 5) - 80);
 
-        // Sub-bass (bins 0-2, ~0-172 Hz) — deep rumble
+        // Sub-bass (bins 0-2, ~0-172 Hz)
         let subSum = 0;
         for (let i = 0; i <= 2; i++) subSum += data[i];
-        subBeat = Math.max(0, (subSum / 3) - 90);
+        sub = Math.max(0, (subSum / 3) - 90);
 
-        // Mid-range band (bins 6-14, ~516-1200 Hz) — vocals, snares, leads
+        // Mid-range (bins 6-14, ~516-1200 Hz)
         let midSum = 0;
         for (let i = 6; i <= 14; i++) midSum += data[i];
-        midBeat = Math.max(0, (midSum / 9) - 70);
+        mids = Math.max(0, (midSum / 9) - 70);
+
+        // Highs (bins 15-30, ~1200-2600 Hz)
+        let highSum = 0;
+        for (let i = 15; i <= 30; i++) highSum += data[i];
+        highs = Math.max(0, (highSum / 16) - 65);
       }
 
-      // ── Current beat (middle bar) — immediate, punchy ──
-      // Combine bass + sub for maximum punch
-      const currentIntensity = bassBeat * 0.7 + subBeat * 0.3;
-      const currentTarget = currentIntensity > 0
-        ? Math.min(15 + (currentIntensity / 140) * 85, 100)
+      // iOS-style: inner bars (bass-driven, tallest), outer bars (mids/highs, shorter)
+      const innerIntensity = bass * 0.7 + sub * 0.3;
+      const outerIntensity = mids * 0.5 + highs * 0.3 + bass * 0.2;
+
+      const innerTarget = innerIntensity > 0
+        ? Math.min(20 + (innerIntensity / 120) * 80, 100)
         : 15;
 
-      // Push current intensity to history for the trailing bar
-      beatHistory.push(currentTarget);
+      // Push to history for trailing
+      beatHistory.push(innerTarget);
       if (beatHistory.length > HISTORY_SIZE) beatHistory.shift();
 
-      // ── Previous beat (left bar) — smooth trailing of the current beat ──
-      // Average the older half of history for a smooth, delayed trail
-      const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.6)));
-      const prevTarget = trailSlice.reduce((a, b) => a + b, 0) / trailSlice.length;
-
-      // ── Upcoming beat (right bar) — uses mids, slightly ahead feel ──
-      const upcomingIntensity = midBeat * 0.6 + bassBeat * 0.4;
-      const upcomingTarget = upcomingIntensity > 0
-        ? Math.min(15 + (upcomingIntensity / 160) * 85, 100)
+      const outerTarget = outerIntensity > 0
+        ? Math.min(18 + (outerIntensity / 150) * 72, 88)
         : 15;
 
-      const targets = [prevTarget, currentTarget, upcomingTarget];
+      // Trailing outer uses history for smooth wave feel
+      const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.5)));
+      const trailedOuter = trailSlice.reduce((a, b) => a + b, 0) / trailSlice.length * 0.7;
 
-      // ── iOS-style interpolation: fast attack, slow decay ──
-      for (let i = 0; i < 3; i++) {
+      // Targets: symmetric — outer mirrors, inner mirrors
+      const targets = [
+        Math.max(outerTarget, trailedOuter * 0.6),  // outer-left
+        innerTarget,                                   // inner-left
+        innerTarget * 0.92,                            // inner-right (slight asymmetry for organic feel)
+        Math.max(outerTarget * 0.9, trailedOuter * 0.5), // outer-right
+      ];
+
+      // iOS-style interpolation: snappy attack, buttery decay
+      for (let i = 0; i < 4; i++) {
         const target = targets[i];
         const current = displayHeights[i];
 
         if (target > current) {
-          // Fast attack — snap up quickly (iOS bars jump on beat)
-          const attackSpeed = i === 1 ? 0.65 : 0.45; // Middle bar is most responsive
+          // Fast attack — iOS bars snap up on beat
+          const attackSpeed = (i === 1 || i === 2) ? 0.55 : 0.40;
           displayHeights[i] += (target - current) * attackSpeed;
         } else {
-          // Slow decay — iOS bars float down smoothly
-          const decaySpeed = i === 1 ? 0.12 : (i === 0 ? 0.08 : 0.10);
+          // Smooth decay — iOS bars glide down gracefully
+          const decaySpeed = (i === 1 || i === 2) ? 0.10 : 0.07;
           displayHeights[i] += (target - current) * decaySpeed;
         }
 
-        // Clamp
         displayHeights[i] = Math.max(15, Math.min(100, displayHeights[i]));
 
         if (barsRef.current) {
           const el = barsRef.current.children[i] as HTMLElement;
           if (el) {
             el.style.height = `${displayHeights[i]}%`;
-            // Brightness scales with intensity for that iOS glow effect
             const brightness = 0.5 + (displayHeights[i] - 15) / 170;
             el.style.opacity = `${Math.min(1, brightness)}`;
           }
@@ -192,22 +206,26 @@ const AudioBars = ({
   }, [isPlaying, isVisible]);
 
   const hClass = isSmall ? "h-3.5" : "h-5";
-  const wClass = isSmall ? "w-[3px]" : "w-[3px]";
-  const gapClass = isSmall ? "gap-[2px]" : "gap-[3px]";
+  const barW = isSmall ? "w-[2.5px]" : "w-[3px]";
+  const gapClass = isSmall ? "gap-[1.5px]" : "gap-[2px]";
 
   return (
-    <div ref={barsRef} className={`flex items-end ${gapClass} ${hClass}`}>
+    <div ref={barsRef} className={`flex items-center ${gapClass} ${hClass}`}>
       <div
-        className={`${wClass} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
+        className={`${barW} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
       />
       <div
-        className={`${wClass} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
+        className={`${barW} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
       />
       <div
-        className={`${wClass} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
+        className={`${barW} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
+      />
+      <div
+        className={`${barW} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
       />
     </div>
   );
@@ -332,7 +350,7 @@ const CompactState = ({
       <motion.div
         className="absolute inset-0 flex items-center pointer-events-none"
         animate={{ opacity: isExpanded ? 0 : 1 }}
-        transition={{ duration: 0.15 }}
+        transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
       >
         <div className="w-full h-full p-0.5 pointer-events-auto">
           <div className="w-full h-full bg-white/10 rounded-full flex items-center justify-between px-4 text-white/50 text-sm gap-2">
@@ -371,13 +389,13 @@ const CompactState = ({
       className="absolute inset-0 flex items-center pointer-events-none"
       animate={{
         opacity: isExpanded ? 0 : 1,
-        scale: isExpanded ? 0.96 : 1,
-        filter: isExpanded ? "blur(4px)" : "blur(0px)",
+        scale: isExpanded ? 0.97 : 1,
+        filter: isExpanded ? "blur(6px)" : "blur(0px)",
       }}
       transition={{
-        opacity: { duration: 0.15, delay: isExpanded ? 0 : 0.2 },
-        filter: { duration: 0.15, delay: isExpanded ? 0 : 0.2 },
-        scale: SPRING,
+        opacity: { duration: 0.2, delay: isExpanded ? 0 : 0.15, ease: [0.32, 0.72, 0, 1] },
+        filter: { duration: 0.2, delay: isExpanded ? 0 : 0.15, ease: [0.32, 0.72, 0, 1] },
+        scale: { type: "spring", stiffness: 260, damping: 28, mass: 0.9 },
       }}
       style={{ zIndex: isExpanded ? 0 : 1 }}
     >
@@ -2008,7 +2026,7 @@ export function DynamicIsland() {
           opacity: isExpanded ? 1 : 0,
           backgroundColor: isExpanded ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0)",
         }}
-        transition={SPRING}
+        transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
         style={{
           pointerEvents: isExpanded ? "auto" : "none",
           backdropFilter: isExpanded ? "blur(2px)" : "blur(0px)",
@@ -2069,12 +2087,17 @@ export function DynamicIsland() {
             handleToggle();
           }}
           initial={false}
-          transition={SPRING}
+          transition={{
+            width: SHAPE_SPRING,
+            height: SHAPE_SPRING,
+            borderRadius: { ...SPRING, stiffness: 200 },
+            scale: { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
+          }}
           animate={{
             width: isExpanded ? dynamicExpandedWidth : dynamicCompactWidth,
             height: isExpanded ? currentExpandedHeight : COMPACT_HEIGHT,
             borderRadius: isExpanded ? 44 : COMPACT_HEIGHT / 2,
-            scale: isPressing && !isExpanded ? 0.96 : 1,
+            scale: isPressing && !isExpanded ? 0.94 : 1,
           }}
           style={{
             backgroundColor: "#000000",
@@ -2113,13 +2136,13 @@ export function DynamicIsland() {
             className="absolute inset-0 pointer-events-none"
             animate={{
               opacity: isExpanded ? 1 : 0,
-              scale: isExpanded ? 1 : 0.96,
-              filter: isExpanded ? "blur(0px)" : "blur(4px)",
+              scale: isExpanded ? 1 : 0.97,
+              filter: isExpanded ? "blur(0px)" : "blur(6px)",
             }}
             transition={{
-              opacity: { duration: 0.2, delay: isExpanded ? 0.1 : 0 },
-              filter: { duration: 0.2, delay: isExpanded ? 0.1 : 0 },
-              scale: SPRING,
+              opacity: { duration: 0.25, delay: isExpanded ? 0.08 : 0, ease: [0.32, 0.72, 0, 1] },
+              filter: { duration: 0.25, delay: isExpanded ? 0.08 : 0, ease: [0.32, 0.72, 0, 1] },
+              scale: { ...SPRING, stiffness: 200 },
             }}
             style={{
               zIndex: isExpanded ? 1 : 0,

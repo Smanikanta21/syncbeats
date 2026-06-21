@@ -155,13 +155,12 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 1: Bass — warm red/orange */}
       <div
         ref={blob1Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[100px]"
         style={{
           width: "45vw",
           height: "45vw",
           maxWidth: "600px",
           maxHeight: "600px",
-          filter: "blur(100px)",
           willChange: "transform, opacity, background",
           transform: "translate3d(30vw, 25vh, 0)",
           opacity: baseOpacity[0],
@@ -174,13 +173,12 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 2: Mids — teal/cyan */}
       <div
         ref={blob2Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[90px]"
         style={{
           width: "40vw",
           height: "40vw",
           maxWidth: "500px",
           maxHeight: "500px",
-          filter: "blur(90px)",
           willChange: "transform, opacity, background",
           transform: "translate3d(70vw, 65vh, 0)",
           opacity: baseOpacity[1],
@@ -193,13 +191,12 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 3: Highs — violet/purple */}
       <div
         ref={blob3Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[120px]"
         style={{
           width: "50vw",
           height: "50vw",
           maxWidth: "650px",
           maxHeight: "650px",
-          filter: "blur(120px)",
           willChange: "transform, opacity, background",
           transform: "translate3d(50vw, 85vh, 0)",
           opacity: baseOpacity[2],
