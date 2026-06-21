@@ -92,65 +92,99 @@ const AudioBars = ({
       if (barsRef.current) {
         const children = barsRef.current.children;
         for (let i = 0; i < children.length; i++) {
-          (children[i] as HTMLElement).style.height = "20%";
+          const el = children[i] as HTMLElement;
+          el.style.height = "15%";
+          el.style.opacity = "0.4";
         }
       }
       return;
     }
 
     let rafId: number;
-    const currentHeights = [20, 20, 20, 20];
-    const targetHeights = [20, 20, 20, 20];
-    let lastShiftTime = performance.now();
+    // 3 bars: [left=previous, middle=current, right=upcoming]
+    const displayHeights = [15, 15, 15];
+    // History ring buffer for trailing (previous) beat
+    const beatHistory: number[] = [];
+    const HISTORY_SIZE = 8; // ~8 frames of history for smooth trailing
 
     const tick = () => {
-      const now = performance.now();
       const data = audio.getRawAudioData();
 
-      let currentBeat = 0;
+      // ── Extract frequency bands ──
+      let bassBeat = 0;    // For the current (middle) bar — punchy bass/kicks
+      let midBeat = 0;     // For the upcoming (right) bar — mid frequencies predict next hit
+      let subBeat = 0;     // For additional dynamics
+
       if (data && data.length > 40) {
-        let sum = 0;
-        // Focus on a narrow band for punchy bass/kicks (bins 2-6)
-        for (let i = 2; i <= 6; i++) {
-          sum += data[i];
-        }
-        let avg = sum / 5;
+        // Bass/kick band (bins 1-5, ~86-430 Hz) — most reactive to beats
+        let bassSum = 0;
+        for (let i = 1; i <= 5; i++) bassSum += data[i];
+        bassBeat = Math.max(0, (bassSum / 5) - 80);
 
-        // Subtract a noise floor to make the bounces much more dynamic
-        currentBeat = Math.max(0, avg - 100) * 1.5;
+        // Sub-bass (bins 0-2, ~0-172 Hz) — deep rumble
+        let subSum = 0;
+        for (let i = 0; i <= 2; i++) subSum += data[i];
+        subBeat = Math.max(0, (subSum / 3) - 90);
+
+        // Mid-range band (bins 6-14, ~516-1200 Hz) — vocals, snares, leads
+        let midSum = 0;
+        for (let i = 6; i <= 14; i++) midSum += data[i];
+        midBeat = Math.max(0, (midSum / 9) - 70);
       }
 
-      let newTarget = 20;
-      if (currentBeat > 0) {
-        newTarget = Math.min(20 + (currentBeat / 155) * 80, 100);
-      }
+      // ── Current beat (middle bar) — immediate, punchy ──
+      // Combine bass + sub for maximum punch
+      const currentIntensity = bassBeat * 0.7 + subBeat * 0.3;
+      const currentTarget = currentIntensity > 0
+        ? Math.min(15 + (currentIntensity / 140) * 85, 100)
+        : 15;
 
-      if (now - lastShiftTime > 90) {
-        targetHeights[0] = targetHeights[1];
-        targetHeights[1] = targetHeights[2];
-        targetHeights[2] = targetHeights[3];
-        targetHeights[3] = newTarget;
-        lastShiftTime = now;
-      } else {
-        // Peak-hold the current bin for responsiveness
-        if (newTarget > targetHeights[3]) {
-          targetHeights[3] = newTarget;
+      // Push current intensity to history for the trailing bar
+      beatHistory.push(currentTarget);
+      if (beatHistory.length > HISTORY_SIZE) beatHistory.shift();
+
+      // ── Previous beat (left bar) — smooth trailing of the current beat ──
+      // Average the older half of history for a smooth, delayed trail
+      const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.6)));
+      const prevTarget = trailSlice.reduce((a, b) => a + b, 0) / trailSlice.length;
+
+      // ── Upcoming beat (right bar) — uses mids, slightly ahead feel ──
+      const upcomingIntensity = midBeat * 0.6 + bassBeat * 0.4;
+      const upcomingTarget = upcomingIntensity > 0
+        ? Math.min(15 + (upcomingIntensity / 160) * 85, 100)
+        : 15;
+
+      const targets = [prevTarget, currentTarget, upcomingTarget];
+
+      // ── iOS-style interpolation: fast attack, slow decay ──
+      for (let i = 0; i < 3; i++) {
+        const target = targets[i];
+        const current = displayHeights[i];
+
+        if (target > current) {
+          // Fast attack — snap up quickly (iOS bars jump on beat)
+          const attackSpeed = i === 1 ? 0.65 : 0.45; // Middle bar is most responsive
+          displayHeights[i] += (target - current) * attackSpeed;
         } else {
-          // Allow it to decay a bit faster to emphasize the punch
-          targetHeights[3] = targetHeights[3] * 0.85 + newTarget * 0.15;
+          // Slow decay — iOS bars float down smoothly
+          const decaySpeed = i === 1 ? 0.12 : (i === 0 ? 0.08 : 0.10);
+          displayHeights[i] += (target - current) * decaySpeed;
         }
-      }
 
-      for (let i = 0; i < 4; i++) {
-        currentHeights[i] += (targetHeights[i] - currentHeights[i]) * 0.4;
+        // Clamp
+        displayHeights[i] = Math.max(15, Math.min(100, displayHeights[i]));
 
         if (barsRef.current) {
-          const children = barsRef.current.children;
-          if (children[i]) {
-            (children[i] as HTMLElement).style.height = `${currentHeights[i]}%`;
+          const el = barsRef.current.children[i] as HTMLElement;
+          if (el) {
+            el.style.height = `${displayHeights[i]}%`;
+            // Brightness scales with intensity for that iOS glow effect
+            const brightness = 0.5 + (displayHeights[i] - 15) / 170;
+            el.style.opacity = `${Math.min(1, brightness)}`;
           }
         }
       }
+
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -158,26 +192,22 @@ const AudioBars = ({
   }, [isPlaying, isVisible]);
 
   const hClass = isSmall ? "h-3.5" : "h-5";
-  const wClass = isSmall ? "w-[3px]" : "w-1.5";
-  const gapClass = isSmall ? "gap-[2px]" : "gap-1";
+  const wClass = isSmall ? "w-[3px]" : "w-[3px]";
+  const gapClass = isSmall ? "gap-[2px]" : "gap-[3px]";
 
   return (
     <div ref={barsRef} className={`flex items-end ${gapClass} ${hClass}`}>
       <div
-        className={`${wClass} bg-white/60 rounded-full`}
-        style={{ height: "20%" }}
+        className={`${wClass} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
       />
       <div
-        className={`${wClass} bg-white/60 rounded-full`}
-        style={{ height: "20%" }}
+        className={`${wClass} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
       />
       <div
-        className={`${wClass} bg-white/60 rounded-full`}
-        style={{ height: "20%" }}
-      />
-      <div
-        className={`${wClass} bg-white/60 rounded-full`}
-        style={{ height: "20%" }}
+        className={`${wClass} bg-white rounded-full`}
+        style={{ height: "15%", opacity: 0.4, willChange: "height, opacity" }}
       />
     </div>
   );
