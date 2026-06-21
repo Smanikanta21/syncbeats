@@ -51,6 +51,11 @@ export class SpatialAudioEngine {
   /** Master gain — lets you fade everything at once */
   private masterGain: GainNode | null = null;
 
+  private analyser: AnalyserNode | null = null;
+  private dataArray: Uint8Array | null = null;
+  private lastPollTime: number = 0;
+  private lastVolume: number = 0;
+
   private myDeviceId: string | null = null;
   private isInitialised = false;
 
@@ -76,6 +81,12 @@ export class SpatialAudioEngine {
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = 1;
     this.masterGain.connect(this.ctx.destination);
+    
+    // Setup Analyser for beat detection
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+    this.masterGain.connect(this.analyser);
 
     this.source = inputNode;
     
@@ -88,6 +99,39 @@ export class SpatialAudioEngine {
   }
 
   // --- AudioContext lifecycle ---
+
+  getVolume(): number {
+    if (!this.analyser || !this.dataArray) return 0;
+    
+    // Cache polling per frame (~16ms) to avoid WebKit double-poll zeroing bug
+    const now = performance.now();
+    if (now - this.lastPollTime > 10) {
+      this.analyser.getByteFrequencyData(this.dataArray as any);
+      this.lastPollTime = now;
+      
+      let sum = 0;
+      // Focus on lower frequencies (bass) for the "beat" effect (first 10 bins)
+      const bins = Math.min(10, this.dataArray.length);
+      for (let i = 0; i < bins; i++) {
+        sum += this.dataArray[i];
+      }
+      this.lastVolume = sum / bins / 255;
+    }
+    
+    return this.lastVolume;
+  }
+
+  getFrequencyData(): Uint8Array | null {
+    if (!this.analyser || !this.dataArray) return null;
+    
+    const now = performance.now();
+    if (now - this.lastPollTime > 10) {
+      this.analyser.getByteFrequencyData(this.dataArray as any);
+      this.lastPollTime = now;
+    }
+    
+    return this.dataArray;
+  }
 
   async resume(): Promise<void> {
     if (this.ctx?.state === 'suspended') {

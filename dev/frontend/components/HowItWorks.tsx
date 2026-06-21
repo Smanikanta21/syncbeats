@@ -54,16 +54,16 @@ export function HowItWorks() {
                 className="relative flex flex-col items-center text-center group"
               >
                 {/* Minute subtle hover glow behind the component */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 sm:w-48 h-32 sm:h-48 bg-transparent group-hover:bg-foreground/5 blur-[40px] rounded-full transition-colors duration-700 pointer-events-none -z-10" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 sm:w-48 h-32 sm:h-48 bg-transparent group-hover:bg-foreground/5 blur-2xl rounded-full transition-colors duration-700 pointer-events-none -z-10" />
 
-                <div className="w-20 h-20 sm:w-24 sm:h-24 mb-6 sm:mb-8 rounded-[1.5rem] sm:rounded-[2rem] glass-panel flex items-center justify-center relative overflow-hidden group-hover:scale-110 group-hover:border-foreground/20 transition-all duration-500 z-10 bg-background/40">
-                  <div className="absolute inset-0 bg-gradient-to-br from-foreground/5 to-transparent border border-foreground/5 rounded-[1.5rem] sm:rounded-[2rem]" />
+                <div className="w-20 h-20 sm:w-24 sm:h-24 mb-6 sm:mb-8 rounded-3xl sm:rounded-4xl glass-panel flex items-center justify-center relative overflow-hidden group-hover:scale-110 group-hover:border-foreground/20 transition-all duration-500 z-10 bg-background/40">
+                  <div className="absolute inset-0 bg-linear-to-br from-foreground/5 to-transparent border border-foreground/5 rounded-3xl sm:rounded-4xl" />
                   {/* Using standard icon classes here, assuming they scale or we adjust manually */}
                   <div className="scale-75 sm:scale-100 flex items-center justify-center">{step.icon}</div>
                 </div>
                 
                 {/* Step Number Badge */}
-                <div className="absolute top-0 right-[15%] text-[6rem] sm:text-[8rem] font-black text-foreground/[0.02] leading-none z-0 pointer-events-none group-hover:text-foreground/[0.04] transition-colors">
+                <div className="absolute top-0 right-[15%] text-[6rem] sm:text-[8rem] font-black text-foreground/2 leading-none z-0 pointer-events-none group-hover:text-foreground/4 transition-colors">
                   {index + 1}
                 </div>
 

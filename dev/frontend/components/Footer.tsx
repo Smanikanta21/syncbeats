@@ -13,7 +13,13 @@ export function Footer() {
         <div className="flex flex-col sm:flex-row gap-12 md:gap-24">
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Support</h4>
+            <a href="/contact" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Contact Us</a>
             <a href="https://github.com/Smanikanta21/syncbeats/issues" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Report an Issue</a>
+          </div>
+          <div className="flex flex-col gap-4">
+            <h4 className="text-foreground font-bold mb-2">Social</h4>
+            <a href="https://github.com/Smanikanta21" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">GitHub</a>
+            <a href="https://linkedin.com/in/abhinay-siraparapu" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">LinkedIn</a>
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Legal</h4>

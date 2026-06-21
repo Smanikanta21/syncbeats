@@ -18,6 +18,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1068.0",
     "@aws-sdk/lib-storage": "^3.1057.0",
     "@google-cloud/storage": "^7.19.0",
     "@prisma/adapter-pg": "^7.7.0",
@@ -36,6 +37,7 @@
     "nodemailer": "^8.0.5",
     "pg": "^8.20.0",
     "redis": "^6.0.0",
+    "resend": "^6.12.4",
     "socket.io": "^4.8.3",
     "uuid": "^13.0.0",
     "yt-search": "^2.13.1"
