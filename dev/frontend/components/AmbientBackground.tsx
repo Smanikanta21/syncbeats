@@ -155,7 +155,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 1: Bass — warm red/orange */}
       <div
         ref={blob1Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[100px]"
         style={{
           width: "45vw",
           height: "45vw",
@@ -173,7 +173,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 2: Mids — teal/cyan */}
       <div
         ref={blob2Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[90px]"
         style={{
           width: "40vw",
           height: "40vw",
@@ -191,7 +191,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 3: Highs — violet/purple */}
       <div
         ref={blob3Ref}
-        className="absolute rounded-full"
+        className="absolute rounded-full md:blur-[120px]"
         style={{
           width: "50vw",
           height: "50vw",
