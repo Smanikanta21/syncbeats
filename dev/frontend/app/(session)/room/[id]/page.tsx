@@ -108,18 +108,18 @@ const ArcItem = ({ index, icon: Icon, title, dragY, activeTab, onClick, containe
 
   const isActive = activeTab === index;
   const isDragging = dragY !== null;
-  const targetScale = isActive ? (isDragging ? 1.25 : 1) : 0.75;
+  const targetScale = isActive ? (isDragging ? 1.15 : 1) : 0.7;
 
   return (
-    <div ref={itemRef} data-tab-index={index} className="w-full h-12 relative flex justify-end pr-4">
+    <div ref={itemRef} data-tab-index={index} className="w-full h-10 relative flex justify-end pr-2">
       <motion.button
         animate={{ x: offsetX, scale: targetScale }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
         onClick={onClick}
-        className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors absolute ${isActive ? "bg-foreground text-background shadow-[0_0_20px_rgba(255,255,255,0.4)]" : "bg-background/80 backdrop-blur-md text-foreground/50 border border-foreground/10 hover:text-foreground"}`}
+        className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-colors absolute origin-right ${isActive ? "bg-foreground text-background shadow-[0_0_20px_rgba(255,255,255,0.4)]" : "bg-background/80 backdrop-blur-md text-foreground/50 border border-foreground/10 hover:text-foreground"}`}
         title={title}
       >
-        <Icon className="w-5 h-5" />
+        <Icon className="w-4 h-4" />
       </motion.button>
     </div>
   );
@@ -172,7 +172,7 @@ const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: 
       className="absolute right-0 top-0 h-full w-24 z-50 touch-none pointer-events-none"
     >
       <div 
-        className={`absolute top-1/2 -translate-y-1/2 right-0 w-full flex flex-col items-end pointer-events-auto py-10 transition-[gap] duration-300 ${dragY !== null ? 'gap-4' : 'gap-1'}`}
+        className={`absolute top-1/2 -translate-y-1/2 right-0 w-full flex flex-col items-end pointer-events-auto py-10 transition-[gap] duration-300 ${dragY !== null ? 'gap-3' : 'gap-0'}`}
         onPointerDown={(e) => {
            (e.target as HTMLElement).setPointerCapture(e.pointerId);
            handlePointerMove(e);
@@ -195,9 +195,9 @@ const FloatingSideNav = ({ activeTab, setActiveTab, handleLeave }: { activeTab: 
         ))}
       </div>
       
-      <div className="absolute bottom-6 right-0 w-full flex justify-end pr-4 pointer-events-none">
-        <button onClick={handleLeave} className="w-12 h-12 rounded-full flex items-center justify-center text-red-500 bg-background/80 backdrop-blur-md border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 shadow-lg pointer-events-auto" title="Leave Room">
-           <LogOut className="w-5 h-5 ml-1" />
+      <div className="absolute bottom-6 right-0 w-full flex justify-end pr-2 pointer-events-none">
+        <button onClick={handleLeave} className="w-10 h-10 rounded-full flex items-center justify-center text-red-500 bg-background/80 backdrop-blur-md border border-red-500/20 hover:bg-red-500/20 transition-all active:scale-95 shadow-lg pointer-events-auto" title="Leave Room">
+           <LogOut className="w-4 h-4 ml-0.5" />
         </button>
       </div>
     </div>
@@ -766,17 +766,19 @@ export default function RoomPage() {
                           </p>
                       </div>
                       </div>
-                      <button
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
-                        }}
-                        className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
-                      >
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
+                      {p.socketId !== currentSocketId && (
+                        <button
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setDeviceMenu({ device: p, x: rect.right, y: rect.bottom });
+                          }}
+                          className="p-2 -mr-2 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
