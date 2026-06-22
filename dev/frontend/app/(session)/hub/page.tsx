@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3, MoreHorizontal, Trash2, QrCode, UserRoundCog, X, Copy, Check, ScanLine, Camera, LogOut, Radio } from "lucide-react";
 import Image from "next/image";
 import { useState, useEffect, useRef, useCallback } from "react";
-import jsQR from "jsqr";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
@@ -168,8 +167,10 @@ export default function HubPage() {
       const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (opts?: { formats?: string[] }) => { detect: (input: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
       const nativeDetector = BarcodeDetectorCtor ? new BarcodeDetectorCtor({ formats: ["qr_code"] }) : null;
 
+      let jsQRFallback: any = null;
+
       // Create a hidden canvas for frame extraction (needed for jsQR fallback)
-      if (!canvasRef.current) {
+      if (!nativeDetector && !canvasRef.current) {
         canvasRef.current = document.createElement("canvas");
       }
 
@@ -192,6 +193,9 @@ export default function HubPage() {
                 const codes = await nativeDetector.detect(videoRef.current);
                 if (codes.length) rawValue = codes[0].rawValue ?? "";
               } else {
+                if (!jsQRFallback) {
+                  jsQRFallback = (await import("jsqr")).default;
+                }
                 const video = videoRef.current;
                 const canvas = canvasRef.current!;
                 // Downscale image dimension to max 480px to speed up jsQR analysis by 10-20x
@@ -202,7 +206,7 @@ export default function HubPage() {
                 if (ctx) {
                   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                  const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                  const result = jsQRFallback(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
                   if (result) rawValue = result.data;
                 }
               }
@@ -352,21 +356,12 @@ export default function HubPage() {
       <main className="w-full max-w-4xl mx-auto pb-20 pt-4">
 
         <div className="text-center mb-16">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-5xl font-black mb-4 text-foreground"
-          >
+          <h1 className="text-4xl md:text-5xl font-black mb-4 text-foreground animate-fade-in-up">
             What&apos;s the move?
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-foreground/50 text-lg font-medium tracking-wide"
-          >
+          </h1>
+          <p className="text-foreground/60 text-lg font-medium tracking-wide animate-fade-in-up-delay">
             Start a new session to broadcast audio, or join a friend&apos;s room.
-          </motion.p>
+          </p>
         </div>
 
         {/* The Action Cards */}
@@ -383,8 +378,8 @@ export default function HubPage() {
               <Plus className="w-10 h-10 text-foreground" />
             </div>
 
-            <h3 className="text-2xl font-bold text-foreground mb-3">Host a Session</h3>
-            <p className="text-foreground/50 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
+            <h2 className="text-2xl font-bold text-foreground mb-3">Host a Session</h2>
+            <p className="text-foreground/60 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
               Create a massive synchronized room. You&apos;ll control the playlist, volume, and playback.
             </p>
 
@@ -408,8 +403,8 @@ export default function HubPage() {
               <Search className="w-10 h-10 text-foreground" />
             </div>
 
-            <h3 className="text-2xl font-bold text-foreground mb-3">Join a Session</h3>
-            <p className="text-foreground/50 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
+            <h2 className="text-2xl font-bold text-foreground mb-3">Join a Session</h2>
+            <p className="text-foreground/60 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
               Already have a code? Punch it in below to instantly sync your audio to the host.
             </p>
 
@@ -419,12 +414,13 @@ export default function HubPage() {
                 maxLength={6}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                className="w-full bg-foreground/5 border border-foreground/10 hover:border-foreground/20 focus:border-accent-primary/40 rounded-2xl pl-6 pr-16 py-4 text-foreground font-bold tracking-[0.2em] text-center focus:outline-none transition-all placeholder:text-foreground/20 placeholder:tracking-normal placeholder:font-medium"
+                className="w-full bg-foreground/5 border border-foreground/10 hover:border-foreground/20 focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 rounded-2xl pl-6 pr-16 py-4 text-foreground font-bold tracking-[0.2em] text-center focus:outline-none transition-all placeholder:text-foreground/40 placeholder:tracking-normal placeholder:font-medium"
                 placeholder="Enter 6-digit Code"
               />
               <button
                 type="submit"
                 disabled={joinCode.length < 3}
+                aria-label="Join Room"
                 className="absolute right-2 top-2 bottom-2 w-12 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground hover:bg-foreground hover:text-background disabled:opacity-30 transition-all"
               >
                 <ArrowRight className="w-5 h-5" />
@@ -452,8 +448,8 @@ export default function HubPage() {
           className="mt-20 w-full max-w-4xl mx-auto"
         >
           <div className="flex items-center gap-2 mb-6 ml-2">
-            <Clock className="w-4 h-4 text-foreground/50" />
-            <h4 className="text-sm font-semibold tracking-widest text-foreground/50 uppercase">Recent Sessions</h4>
+            <Clock className="w-4 h-4 text-foreground/60" />
+            <h2 className="text-sm font-semibold tracking-widest text-foreground/60 uppercase">Recent Sessions</h2>
           </div>
 
           {recentRooms.length === 0 ? (
@@ -494,7 +490,7 @@ export default function HubPage() {
                         event.stopPropagation();
                         setRoomMenu({ room, x: event.clientX, y: event.clientY });
                       }}
-                      className="md:hidden h-8 w-8 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
+                      className="md:hidden h-8 w-8 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
                     >
                       <MoreHorizontal className="w-4 h-4 mx-auto" />
                     </button>
@@ -514,10 +510,10 @@ export default function HubPage() {
         >
           <div className="flex items-center justify-between gap-4 mb-6 ml-2">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Devices</p>
-              <h4 className="text-sm font-semibold tracking-widest text-foreground/50 uppercase mt-1">Your saved devices</h4>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/60">Devices</p>
+              <h2 className="text-sm font-semibold tracking-widest text-foreground/60 uppercase mt-1">Your saved devices</h2>
             </div>
-            <div className="text-sm text-foreground/50 font-medium">{devices.length} saved</div>
+            <div className="text-sm text-foreground/60 font-medium">{devices.length} saved</div>
           </div>
 
           {devices.length === 0 ? (
@@ -557,7 +553,7 @@ export default function HubPage() {
                         event.stopPropagation();
                         setDeviceMenu({ device: savedDevice, x: event.clientX, y: event.clientY });
                       }}
-                      className="h-10 w-12 shrink-0 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
+                      className="h-10 w-12 shrink-0 rounded-lg border border-foreground/10 bg-foreground/5 text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
                     >
                       <MoreHorizontal className="w-4 h-4 mx-auto" />
                     </button>
@@ -581,7 +577,7 @@ export default function HubPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
-                <h3 className="text-lg font-black text-foreground text-center mb-1">Room Settings</h3>
+                <h2 className="text-lg font-black text-foreground text-center mb-1">Room Settings</h2>
                 <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Room: {roomMenu.room.id}</p>
                 
                 <div className="flex flex-col gap-2.5">
@@ -690,7 +686,7 @@ export default function HubPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
-                <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
+                <h2 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h2>
                 <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.name}</p>
                 
                 <div className="flex flex-col gap-2.5">
@@ -794,7 +790,7 @@ export default function HubPage() {
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">End Session?</h2>
-                <button onClick={() => setRoomToEnd(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <button onClick={() => setRoomToEnd(null)} aria-label="Close" className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
               <p className="text-foreground/60 text-sm mb-6">
                 Do you really want to end session <span className="font-mono text-foreground">{roomToEnd.id}</span>?
@@ -812,7 +808,7 @@ export default function HubPage() {
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Room Info</h2>
-                <button onClick={() => setRoomInfo(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <button onClick={() => setRoomInfo(null)} aria-label="Close" className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="rounded-2xl border border-foreground/10 bg-background p-4 w-fit mx-auto mb-5">
@@ -821,11 +817,11 @@ export default function HubPage() {
 
               <div className="space-y-3">
                 <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
-                  <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">Room Code</p>
+                  <p className="text-xs text-foreground/60 uppercase tracking-widest mb-1">Room Code</p>
                   <p className="font-mono text-foreground tracking-widest">{roomInfo.id}</p>
                 </div>
                 <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-3">
-                  <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">Room Link</p>
+                  <p className="text-xs text-foreground/60 uppercase tracking-widest mb-1">Room Link</p>
                   <p className="text-foreground/70 text-sm break-all">{roomLink}</p>
                 </div>
                 <button
@@ -845,7 +841,7 @@ export default function HubPage() {
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Change Host</h2>
-                <button onClick={() => setRoomToTransfer(null)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <button onClick={() => setRoomToTransfer(null)} aria-label="Close" className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
               <p className="text-foreground/60 text-sm mb-4">
@@ -858,7 +854,7 @@ export default function HubPage() {
                   value={newHostEmail}
                   onChange={(event) => setNewHostEmail(event.target.value)}
                   placeholder="new-host@example.com"
-                  className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
+                  className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none transition-all placeholder:text-foreground/40 focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30"
                 />
                 <button
                   disabled={isTransferringHost || !newHostEmail.trim()}
@@ -876,7 +872,7 @@ export default function HubPage() {
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-foreground">Rename Device</h2>
-                <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <button onClick={() => setShowDeviceRename(false)} aria-label="Close" className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
               <form className="space-y-4" onSubmit={handleDeviceRename}>
                 {(() => {
@@ -900,7 +896,7 @@ export default function HubPage() {
                   type="text"
                   value={editingDeviceName}
                   onChange={(event) => setEditingDeviceName(event.target.value)}
-                  className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
+                  className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none transition-all placeholder:text-foreground/40 focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30"
                   placeholder="My Device"
                 />
                 <button
@@ -919,7 +915,7 @@ export default function HubPage() {
             <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-5 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-black text-foreground">Scan Room QR</h2>
-                <button onClick={stopScanner} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <button onClick={stopScanner} aria-label="Close" className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
               </div>
 
               <div className={`rounded-2xl overflow-hidden border bg-background/60 relative aspect-3/4 flex items-center justify-center transition-all duration-300 ${
@@ -991,7 +987,7 @@ export default function HubPage() {
                 )}
               </div>
 
-              <p className="mt-4 text-xs text-foreground/50 text-center">Point your camera at the room QR code.</p>
+              <p className="mt-4 text-xs text-foreground/60 text-center">Point your camera at the room QR code.</p>
             </div>
           </div>
         )}

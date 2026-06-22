@@ -410,15 +410,15 @@ export default function LandingPage() {
              <div className="glass-panel p-8 md:p-12 rounded-[2.5rem] border border-foreground/10 flex flex-col gap-6 shadow-lg">
                <div>
                  <label htmlFor="name" className="block text-xs font-bold uppercase tracking-widest text-foreground/60 mb-2">Name</label>
-                 <input type="text" id="name" className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 outline-none focus:border-foreground/30 transition-colors" placeholder="Your name" />
+                  <input type="text" id="name" className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40" placeholder="Your name" />
                </div>
                <div>
                  <label htmlFor="email" className="block text-xs font-bold uppercase tracking-widest text-foreground/60 mb-2">Email</label>
-                 <input type="email" id="email" className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 outline-none focus:border-foreground/30 transition-colors" placeholder="your@email.com" />
+                  <input type="email" id="email" className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40" placeholder="your@email.com" />
                </div>
                <div>
                  <label htmlFor="message" className="block text-xs font-bold uppercase tracking-widest text-foreground/60 mb-2">Message</label>
-                 <textarea id="message" rows={4} className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 outline-none focus:border-foreground/30 transition-colors resize-none" placeholder="How can we help?" />
+                  <textarea id="message" rows={4} className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all resize-none placeholder:text-foreground/40" placeholder="How can we help?" />
                </div>
                <button className="w-full h-14 bg-black text-white rounded-xl font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all mt-2">
                  <Send className="w-4 h-4" /> Send Message
