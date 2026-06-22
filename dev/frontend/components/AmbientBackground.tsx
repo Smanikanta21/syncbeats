@@ -26,6 +26,8 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
     // Ignore error if not wrapped in AudioProvider
   }
 
+  const isPlaying = audioContext?.isPlaying ?? false;
+
   // Theme-adaptive values
   const blendMode = isDark ? "screen" : "multiply";
   // Light mode needs much higher base opacity to be visible on white
@@ -151,11 +153,13 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
   if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div 
+      className={`fixed inset-0 overflow-hidden pointer-events-none z-0 transition-opacity duration-[3000ms] ease-in-out ${syncWithAudio && !isPlaying ? 'opacity-10' : 'opacity-100'}`}
+    >
       {/* Blob 1: Bass — warm red/orange */}
       <div
         ref={blob1Ref}
-        className="absolute rounded-full md:blur-[100px]"
+        className="absolute rounded-full blur-[60px] md:blur-[100px]"
         style={{
           width: "45vw",
           height: "45vw",
@@ -173,7 +177,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 2: Mids — teal/cyan */}
       <div
         ref={blob2Ref}
-        className="absolute rounded-full md:blur-[90px]"
+        className="absolute rounded-full blur-[50px] md:blur-[90px]"
         style={{
           width: "40vw",
           height: "40vw",
@@ -191,7 +195,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 3: Highs — violet/purple */}
       <div
         ref={blob3Ref}
-        className="absolute rounded-full md:blur-[120px]"
+        className="absolute rounded-full blur-[70px] md:blur-[120px]"
         style={{
           width: "50vw",
           height: "50vw",
