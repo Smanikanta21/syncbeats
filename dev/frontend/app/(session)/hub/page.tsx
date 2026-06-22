@@ -5,6 +5,8 @@ import { Disc, Play, Plus, Search, ArrowRight, Clock, Laptop, Smartphone, Edit3,
 import Image from "next/image";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import Magnetic from "../../../components/Magnetic";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 
@@ -36,7 +38,6 @@ export default function HubPage() {
   const [roomToTransfer, setRoomToTransfer] = useState<RecentRoom | null>(null);
   const [newHostEmail, setNewHostEmail] = useState("");
   const [isTransferringHost, setIsTransferringHost] = useState(false);
-  const [copyDone, setCopyDone] = useState(false);
   const [showDeviceRename, setShowDeviceRename] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingDeviceName, setEditingDeviceName] = useState("");
@@ -293,7 +294,7 @@ export default function HubPage() {
       setRecentRooms(prev => prev.filter(room => room.id !== roomToEnd.id));
       setRoomToEnd(null);
     } catch {
-      alert("Failed to end session. Please try again.");
+      toast.error("Failed to end session. Please try again.");
     }
   };
 
@@ -301,10 +302,9 @@ export default function HubPage() {
     if (!roomLink) return;
     try {
       await navigator.clipboard.writeText(roomLink);
-      setCopyDone(true);
-      setTimeout(() => setCopyDone(false), 1200);
+      toast.success("Room link copied to clipboard!");
     } catch {
-      alert("Could not copy link.");
+      toast.error("Could not copy link.");
     }
   };
 
@@ -319,7 +319,7 @@ export default function HubPage() {
       setRoomToTransfer(null);
       setNewHostEmail("");
     } catch {
-      alert("Failed to change host. Make sure the email exists.");
+      toast.error("Failed to change host. Make sure the email exists.");
     } finally {
       setIsTransferringHost(false);
     }
@@ -344,7 +344,7 @@ export default function HubPage() {
       setShowDeviceRename(false);
       setEditingDeviceId(null);
     } catch {
-      alert("Failed to rename device.");
+      toast.error("Failed to rename device.");
     } finally {
       setIsRenamingDevice(false);
     }
@@ -383,13 +383,15 @@ export default function HubPage() {
               Create a massive synchronized room. You&apos;ll control the playlist, volume, and playback.
             </p>
 
-            <button
-              onClick={handleHost}
-              disabled={isHosting}
-              className="mt-auto w-full h-14 rounded-2xl bg-foreground text-background font-black text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg disabled:opacity-60"
-            >
-              {isHosting ? "Creating Room…" : "Start Session"}
-            </button>
+            <Magnetic className="w-full mt-auto">
+              <button
+                onClick={handleHost}
+                disabled={isHosting}
+                className="w-full h-14 rounded-2xl bg-foreground text-background font-black text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg disabled:opacity-60"
+              >
+                {isHosting ? "Creating Room…" : "Start Session"}
+              </button>
+            </Magnetic>
           </motion.div>
 
           {/* JOIN CARD */}
@@ -441,7 +443,6 @@ export default function HubPage() {
 
         {/* Recent Sessions */}
         <motion.div
-          // ... rest of component ...
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -702,7 +703,7 @@ export default function HubPage() {
                   </button>
                   <button
                     onClick={() => {
-                      alert("Ping sent to device!");
+                      toast.success("Ping sent to device!");
                       setDeviceMenu(null);
                     }}
                     className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
@@ -716,8 +717,8 @@ export default function HubPage() {
                         await devicesApi.remove(deviceMenu.device.id);
                         const { devices: updatedDevices } = await devicesApi.mine();
                         setDevices(updatedDevices);
-                      } catch (err) {
-                        alert("Failed to logout device");
+                      } catch {
+                        toast.error("Failed to logout device");
                       }
                       setDeviceMenu(null);
                     }}
@@ -757,7 +758,7 @@ export default function HubPage() {
               </button>
               <button
                 onClick={() => {
-                  alert("Ping sent to device!");
+                  toast.success("Ping sent to device!");
                   setDeviceMenu(null);
                 }}
                 className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
@@ -771,8 +772,8 @@ export default function HubPage() {
                     await devicesApi.remove(deviceMenu.device.id);
                     const { devices: updatedDevices } = await devicesApi.mine();
                     setDevices(updatedDevices);
-                  } catch (err) {
-                    alert("Failed to logout device");
+                  } catch {
+                    toast.error("Failed to logout device");
                   }
                   setDeviceMenu(null);
                 }}
@@ -826,10 +827,10 @@ export default function HubPage() {
                 </div>
                 <button
                   onClick={handleCopyRoomLink}
-                  className="w-full h-11 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold flex items-center justify-center gap-2"
+                  className="w-full h-11 rounded-2xl border border-foreground/10 bg-foreground/5 text-foreground font-semibold flex items-center justify-center gap-2 hover:bg-foreground/10 transition-colors"
                 >
-                  {copyDone ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                  {copyDone ? "Copied" : "Copy Link"}
+                  <Copy className="w-4 h-4" />
+                  Copy Link
                 </button>
               </div>
             </div>

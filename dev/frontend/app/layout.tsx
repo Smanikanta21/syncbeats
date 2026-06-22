@@ -8,6 +8,9 @@ import { AudioProvider } from "../context/AudioContext";
 import { ThemeProvider } from "../context/ThemeProvider";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Toaster } from "sonner";
+import SmoothScrolling from "../components/SmoothScrolling";
+import Preloader from "../components/Preloader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -187,15 +190,19 @@ export default function RootLayout({
 
         </div>
 
-        <ThemeProvider>
-          <AuthProvider>
-            <AudioProvider>
-              <div className="relative z-10 w-full">{children}</div>
-            </AudioProvider>
-          </AuthProvider>
-        </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
+        <SmoothScrolling>
+          <Preloader />
+          <ThemeProvider>
+            <AuthProvider>
+              <AudioProvider>
+                <div className="relative z-10 w-full">{children}</div>
+              </AudioProvider>
+            </AuthProvider>
+          </ThemeProvider>
+          <Toaster position="bottom-right" theme="system" richColors closeButton />
+          <Analytics />
+          <SpeedInsights />
+        </SmoothScrolling>
       </body>
     </html>
   );

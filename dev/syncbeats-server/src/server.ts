@@ -38,7 +38,8 @@ export class SyncBeatsServer {
         }
       },
       credentials: true, 
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] 
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id']
     },
   });
 
@@ -90,6 +91,8 @@ export class SyncBeatsServer {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
+      optionsSuccessStatus: 200,
     }));
     this.app.use(express.json());
 

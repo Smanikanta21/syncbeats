@@ -3,6 +3,7 @@
 import { useState, FormEvent, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { FullscreenLoader } from "../../components/FullscreenLoader";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -29,7 +30,6 @@ export default function AuthPage() {
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
-  const [googleRedirectLoading, setGoogleRedirectLoading] = useState(false);
   const [theme, setTheme] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,9 +48,9 @@ export default function AuthPage() {
 
     if (!cameFromGoogle && !hasGoogleOAuthParams) return;
 
-    setGoogleRedirectLoading(true);
+    setLoading(true);
     const timeoutId = window.setTimeout(() => {
-      setGoogleRedirectLoading(false);
+      setLoading(false);
     }, 6000);
 
     return () => window.clearTimeout(timeoutId);
@@ -200,7 +200,6 @@ export default function AuthPage() {
         callback: async (response: { credential?: string }) => {
           if (!response.credential) return;
           setError(null);
-          setGoogleRedirectLoading(true);
           setLoading(true);
           try {
             const params = new URLSearchParams(window.location.search);
@@ -210,7 +209,6 @@ export default function AuthPage() {
           } catch (err) {
             setError((err as Error).message);
             setLoading(false);
-            setGoogleRedirectLoading(false);
           }
         },
       });
@@ -275,21 +273,14 @@ export default function AuthPage() {
           width: 320,
         });
       }
-    }, 150);
+    }, 400); // 400ms ensures AnimatePresence mode="wait" (300ms duration) fully mounts the new ref
 
     return () => clearTimeout(timer);
   }, [isLogin, googleReady]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
-      {googleRedirectLoading && (
-        <div className="fixed inset-0 z-95 bg-background/70 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="rounded-3xl border border-foreground/10 bg-background px-6 py-5 flex items-center gap-3 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
-            <LoaderCircle className="w-5 h-5 text-foreground animate-spin" />
-            <p className="text-sm font-semibold text-foreground">Completing Google sign in...</p>
-          </div>
-        </div>
-      )}
+      <FullscreenLoader isVisible={loading} message={isLogin ? "Authenticating ..." : "Signing Up..."} />
 
       {/* Background ambient lighting removed (now in layout) */}
 
@@ -312,7 +303,7 @@ export default function AuthPage() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-5xl min-h-150 sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)]"
+        className={`relative w-full max-w-5xl ${isLogin ? 'min-h-[650px]' : 'min-h-[850px]'} sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500`}
       >
 
 

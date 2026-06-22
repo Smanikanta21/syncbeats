@@ -9,9 +9,11 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import Magnetic from "../components/Magnetic";
+
+import { FeaturesExplanation } from "../components/FeaturesExplanation";
 
 const AmbientBackground = dynamic(() => import("../components/AmbientBackground").then(mod => mod.AmbientBackground), { ssr: false });
-const FeaturesExplanation = dynamic(() => import("../components/FeaturesExplanation").then(mod => mod.FeaturesExplanation), { ssr: false });
 const MouseGradient = dynamic(() => import("../components/MouseGradient").then(mod => mod.MouseGradient), { ssr: false });
 
 export default function LandingPage() {
@@ -70,17 +72,21 @@ export default function LandingPage() {
         
         <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} className="flex items-center gap-3 md:gap-4">
           {user ? (
-            <Link href="/hub" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full glass-panel flex items-center justify-center text-sm font-bold tracking-widest uppercase hover:scale-105 transition-all`}>
-              Launch Hub
-            </Link>
+            <Magnetic>
+              <Link href="/hub" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full glass-panel flex items-center justify-center text-sm font-bold tracking-widest uppercase hover:scale-105 transition-all`}>
+                Launch Hub
+              </Link>
+            </Magnetic>
           ) : (
             <>
             <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-10 px-4' : 'h-12 px-6'} rounded-full items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:bg-foreground/5 transition-all`}>
               Login
             </Link>
-            <Link href="/login" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full bg-black text-white flex items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.3)]`}>
-              Start Session
-            </Link>
+            <Magnetic>
+              <Link href="/login" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full bg-foreground text-background flex items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg`}>
+                Start Session
+              </Link>
+            </Magnetic>
             </>
           )}
           <AnimatePresence>
@@ -147,14 +153,14 @@ export default function LandingPage() {
 
              <form onSubmit={handleJoin} className="absolute inset-0 flex flex-col items-center justify-center z-10 w-full px-6 md:px-14">
                 <div className="flex flex-col items-center justify-center w-full -mt-4 md:-mt-8">
-                  <h2 className="text-[10px] md:text-sm font-black tracking-[0.3em] uppercase text-foreground/50 mb-3 md:mb-6">Enter Room Code</h2>
+                  <h2 className="text-[10px] md:text-sm font-black tracking-[0.3em] uppercase text-foreground/70 mb-3 md:mb-6">Enter Room Code</h2>
                   <input
                     type="tel"
                     maxLength={6}
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                     placeholder="------"
-                    className="w-full bg-transparent border-b-2 border-foreground/20 focus:border-foreground pb-2 text-center text-3xl md:text-4xl font-black tracking-[0.15em] outline-none transition-colors placeholder:text-foreground/10 uppercase"
+                    className="w-full bg-transparent border-b-2 border-foreground/40 focus:border-foreground pb-2 text-center text-3xl md:text-4xl font-black tracking-[0.15em] outline-none transition-colors placeholder:text-foreground/40 uppercase"
                   />
                 </div>
                 
@@ -205,27 +211,25 @@ export default function LandingPage() {
       <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center flex flex-col items-center">
            <motion.span 
-             initial={{ opacity: 0, y: 20 }}
-             whileInView={{ opacity: 1, y: 0 }}
-             viewport={{ once: true }}
+             initial={{ opacity: 0, y: 10 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ duration: 0.5, delay: 0.2 }}
              className="px-4 py-1.5 rounded-full border border-foreground/10 bg-foreground/5 text-xs font-bold tracking-widest uppercase text-foreground/60 mb-8 inline-block"
            >
              How it works
            </motion.span>
            <motion.h1 
-             initial={{ opacity: 0, y: 30 }}
-             whileInView={{ opacity: 1, y: 0 }}
-             viewport={{ once: true }}
-             transition={{ delay: 0.1 }}
+             initial={{ opacity: 0, y: 10 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ duration: 0.5, delay: 0.3 }}
              className="text-6xl md:text-7xl font-black tracking-tighter mb-8 text-foreground"
            >
              ZERO SETUP. <br className="md:hidden" /> <span className="text-zinc-500">INFINITE SPEAKERS.</span>
            </motion.h1>
            <motion.p 
              initial={{ opacity: 0 }}
-             whileInView={{ opacity: 1 }}
-             viewport={{ once: true }}
-             transition={{ delay: 0.2 }}
+             animate={{ opacity: 1 }}
+             transition={{ duration: 0.5, delay: 0.4 }}
              className="text-lg md:text-xl text-gray-500 max-w-2xl leading-relaxed mb-16"
            >
              No bluetooth pairing, no tangled wires. Just open the link on any device with a browser, and our sub-millisecond sync engine automatically aligns the audio perfectly.
@@ -233,10 +237,9 @@ export default function LandingPage() {
            
            <motion.div 
              initial="hidden"
-             whileInView="visible"
-             viewport={{ once: true, margin: "-50px" }}
+             animate="visible"
              variants={{
-               visible: { transition: { staggerChildren: 0.2 } },
+               visible: { transition: { staggerChildren: 0.1, delayChildren: 0.5 } },
                hidden: {}
              }}
              onMouseLeave={() => setHoveredStep(0)}
@@ -420,7 +423,7 @@ export default function LandingPage() {
                  <label htmlFor="message" className="block text-xs font-bold uppercase tracking-widest text-foreground/60 mb-2">Message</label>
                   <textarea id="message" rows={4} className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all resize-none placeholder:text-foreground/40" placeholder="How can we help?" />
                </div>
-               <button className="w-full h-14 bg-black text-white rounded-xl font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all mt-2">
+               <button className="w-full h-14 bg-foreground text-background rounded-xl font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all mt-2 shadow-lg">
                  <Send className="w-4 h-4" /> Send Message
                </button>
              </div>
