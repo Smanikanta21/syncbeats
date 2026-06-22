@@ -5,6 +5,7 @@ import { Copy, Users, QrCode, Smartphone, Laptop, Speaker, Volume2, VolumeX, Wif
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { FullscreenLoader } from "../../../../components/FullscreenLoader";
 import { useRoom }   from "../../../../hooks/useRoom";
 import { useAudio }  from "../../../../context/AudioContext";
 import { useUpload } from "../../../../context/UploadContext";
@@ -35,46 +36,7 @@ import {
 } from "@dnd-kit/sortable";
 import { SortableTrackItem } from "../../../../components/SortableTrackItem";
 
-const LoadingOverlay = () => {
-  const [progress, setProgress] = useState(0);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setProgress(p => {
-        if (p < 80) return p + Math.random() * 15;
-        if (p < 95) return p + Math.random() * 2;
-        return p;
-      });
-    }, 150);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-xl"
-    >
-      <div className="flex flex-col items-center glass-panel p-10 rounded-[2.5rem] shadow-2xl border border-foreground/10 w-[320px]">
-        <Loader2 className="w-10 h-10 text-foreground animate-spin mb-6" />
-        
-        <div className="w-full h-1.5 bg-foreground/10 rounded-full overflow-hidden mb-4">
-          <motion.div 
-            className="h-full bg-foreground rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            transition={{ ease: "easeOut", duration: 0.2 }}
-          />
-        </div>
-        
-        <p className="text-foreground/80 tracking-widest uppercase font-bold text-[10px] h-3">
-          {progress < 30 ? "Connecting to Sync Server..." : progress < 70 ? "Synchronizing NTP Clock..." : "Loading Room Data..."}
-        </p>
-      </div>
-    </motion.div>
-  );
-};
 
 function DeviceIcon({ index, type }: { index: number, type?: string }) {
   if (type === 'bluetooth') return <Bluetooth className="w-3 h-3 text-foreground/60" />;
@@ -973,9 +935,7 @@ export default function RoomPage() {
     <main role="main" aria-label="SyncBeats Room" className="fixed inset-0 w-full h-dvh overflow-hidden bg-transparent z-0 flex flex-col items-center select-none">
       
       {/* ── Loading Overlay ── */}
-      <AnimatePresence>
-        {isLoading && <LoadingOverlay />}
-      </AnimatePresence>
+      <FullscreenLoader isVisible={isLoading} message="Preparing Room..." />
 
 
       {/* ── Buffering Overlay ── */}

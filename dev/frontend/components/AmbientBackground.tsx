@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAudio } from "../context/AudioContext";
 import { useTheme } from "next-themes";
+import { useSyncInfo } from "../context/SyncContext";
 
 export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: boolean }) {
   const blob1Ref = useRef<HTMLDivElement>(null);
@@ -19,14 +20,19 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
 
   // Conditionally get audio context
   let audioContext: ReturnType<typeof useAudio> | null = null;
+  let isRoomPlaying = false;
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    if (syncWithAudio) audioContext = useAudio();
+    if (syncWithAudio) {
+      audioContext = useAudio();
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      isRoomPlaying = useSyncInfo().isRoomPlaying;
+    }
   } catch {
-    // Ignore error if not wrapped in AudioProvider
+    // Ignore error if not wrapped in AudioProvider/SyncProvider
   }
 
-  const isPlaying = audioContext?.isPlaying ?? false;
+  const isPlaying = isRoomPlaying || (audioContext?.isPlaying ?? false);
 
   // Theme-adaptive values
   const blendMode = isDark ? "screen" : "multiply";
@@ -159,10 +165,8 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       {/* Blob 1: Bass — warm red/orange */}
       <div
         ref={blob1Ref}
-        className="absolute rounded-full blur-[60px] md:blur-[100px]"
+        className="absolute rounded-full blur-[40px] md:blur-[100px] w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]"
         style={{
-          width: "45vw",
-          height: "45vw",
           maxWidth: "600px",
           maxHeight: "600px",
           willChange: "transform, opacity, background",
@@ -170,17 +174,13 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           opacity: baseOpacity[0],
           mixBlendMode: blendMode,
           background: `radial-gradient(circle, hsla(0, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(0, ${bassSat}%, ${bassLight}%, 0) 70%)`,
-          marginLeft: "-22.5vw",
-          marginTop: "-22.5vw",
         }}
       />
       {/* Blob 2: Mids — teal/cyan */}
       <div
         ref={blob2Ref}
-        className="absolute rounded-full blur-[50px] md:blur-[90px]"
+        className="absolute rounded-full blur-[35px] md:blur-[90px] w-[70vw] h-[70vw] -ml-[35vw] -mt-[35vw] md:w-[40vw] md:h-[40vw] md:-ml-[20vw] md:-mt-[20vw]"
         style={{
-          width: "40vw",
-          height: "40vw",
           maxWidth: "500px",
           maxHeight: "500px",
           willChange: "transform, opacity, background",
@@ -188,17 +188,13 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           opacity: baseOpacity[1],
           mixBlendMode: blendMode,
           background: `radial-gradient(circle, hsla(180, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(180, ${midSat}%, ${midLight}%, 0) 70%)`,
-          marginLeft: "-20vw",
-          marginTop: "-20vw",
         }}
       />
       {/* Blob 3: Highs — violet/purple */}
       <div
         ref={blob3Ref}
-        className="absolute rounded-full blur-[70px] md:blur-[120px]"
+        className="absolute rounded-full blur-[45px] md:blur-[120px] w-[90vw] h-[90vw] -ml-[45vw] -mt-[45vw] md:w-[50vw] md:h-[50vw] md:-ml-[25vw] md:-mt-[25vw]"
         style={{
-          width: "50vw",
-          height: "50vw",
           maxWidth: "650px",
           maxHeight: "650px",
           willChange: "transform, opacity, background",
@@ -206,8 +202,6 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           opacity: baseOpacity[2],
           mixBlendMode: blendMode,
           background: `radial-gradient(circle, hsla(270, ${highSat}%, ${highLight}%, 0.8) 0%, hsla(270, ${highSat}%, ${highLight}%, 0) 70%)`,
-          marginLeft: "-25vw",
-          marginTop: "-25vw",
         }}
       />
     </div>
