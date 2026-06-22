@@ -1113,12 +1113,18 @@ const YouTubeTab = ({
             <ChevronLeft className="w-6 h-6" />
           </button>
         )}
-        <form onSubmit={handleSearch} className="flex-1 relative h-full">
+        <div className="flex-1 relative h-full">
           <input
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setShowSuggestions(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                performSearch(query);
+              }
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -1166,8 +1172,7 @@ const YouTubeTab = ({
               </motion.div>
             )}
           </AnimatePresence>
-          <button type="submit" className="hidden" />
-        </form>
+        </div>
       </motion.div>
 
       {downloadError && (
