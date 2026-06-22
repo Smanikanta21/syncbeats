@@ -15,7 +15,9 @@ import { getSocket } from "../../../../lib/socket";
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
-import { OrbitUI } from "../../../../components/OrbitUI";
+import dynamic from "next/dynamic";
+
+const OrbitUI = dynamic(() => import("../../../../components/OrbitUI").then(mod => mod.OrbitUI), { ssr: false });
 
 import {
   DndContext,
@@ -930,7 +932,7 @@ export default function RoomPage() {
           </p>
           <button 
             onClick={notifyHost}
-            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+            className="h-14 w-full rounded-full bg-black text-white font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
           >
             <BellRing className="w-5 h-5" /> Nudge Host
           </button>
@@ -956,7 +958,7 @@ export default function RoomPage() {
           </p>
           <button 
             onClick={() => router.push('/')}
-            className="h-14 w-full rounded-full bg-foreground text-background font-bold tracking-widest uppercase flex items-center justify-center hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
+            className="h-14 w-full rounded-full bg-black text-white font-bold tracking-widest uppercase flex items-center justify-center hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
           >
             Return Home
           </button>

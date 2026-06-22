@@ -63,7 +63,7 @@ export default function LandingPage() {
         >
         <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center">
           <Link href="/" className="text-xl md:text-2xl font-black tracking-tighter text-foreground group flex items-center gap-3">
-            <Image src="/syncbeats-icon.svg" alt="SyncBeats Logo" width={isScrolled ? 28 : 36} height={isScrolled ? 28 : 36} className="group-hover:scale-110 md:block hidden transition-all duration-300" />
+            <Image src="/syncbeats-icon.svg" alt="SyncBeats Logo" width={isScrolled ? 28 : 36} height={isScrolled ? 28 : 36} priority className="group-hover:scale-110 md:block hidden transition-all duration-300" />
             <span>SYNC<span className="text-zinc-500 transition-colors group-hover:text-foreground">BEATS</span></span>
           </Link>
         </motion.div>
@@ -78,7 +78,7 @@ export default function LandingPage() {
             <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-10 px-4' : 'h-12 px-6'} rounded-full items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:bg-foreground/5 transition-all`}>
               Login
             </Link>
-            <Link href="/login" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full bg-foreground text-background flex items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.3)]`}>
+            <Link href="/login" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full bg-black text-white flex items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.3)]`}>
               Start Session
             </Link>
             </>
@@ -101,7 +101,7 @@ export default function LandingPage() {
       </div>
 
       {/* SECTION 1: Central Immersive Core */}
-      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center px-4 pt-24 pb-10">
+      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center px-4 py-24">
         
         {/* Massive Typography Behind */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-5 select-none overflow-hidden">
@@ -202,8 +202,8 @@ export default function LandingPage() {
       </section>
 
       {/* SECTION 2: How It Works */}
-      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center px-6 pt-28 pb-10">
-        <div className="max-w-5xl w-full text-center flex flex-col items-center">
+      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center py-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center flex flex-col items-center">
            <motion.span 
              initial={{ opacity: 0, y: 20 }}
              whileInView={{ opacity: 1, y: 0 }}
@@ -212,21 +212,21 @@ export default function LandingPage() {
            >
              How it works
            </motion.span>
-           <motion.h2 
+           <motion.h1 
              initial={{ opacity: 0, y: 30 }}
              whileInView={{ opacity: 1, y: 0 }}
              viewport={{ once: true }}
              transition={{ delay: 0.1 }}
-             className="text-4xl md:text-6xl font-black tracking-tighter mb-8 text-foreground"
+             className="text-6xl md:text-7xl font-black tracking-tighter mb-8 text-foreground"
            >
              ZERO SETUP. <br className="md:hidden" /> <span className="text-zinc-500">INFINITE SPEAKERS.</span>
-           </motion.h2>
+           </motion.h1>
            <motion.p 
              initial={{ opacity: 0 }}
              whileInView={{ opacity: 1 }}
              viewport={{ once: true }}
              transition={{ delay: 0.2 }}
-             className="text-lg md:text-xl text-foreground/60 max-w-2xl leading-relaxed mb-16"
+             className="text-lg md:text-xl text-gray-500 max-w-2xl leading-relaxed mb-16"
            >
              No bluetooth pairing, no tangled wires. Just open the link on any device with a browser, and our sub-millisecond sync engine automatically aligns the audio perfectly.
            </motion.p>
@@ -240,7 +240,7 @@ export default function LandingPage() {
                hidden: {}
              }}
              onMouseLeave={() => setHoveredStep(0)}
-             className="flex flex-col md:flex-row gap-3 md:gap-6 w-full h-[550px] md:h-[400px]"
+             className="flex flex-col md:flex-row gap-6 md:gap-8 w-full h-[550px] md:h-[400px]"
            >
              {[
                { icon: Play, title: "1. Create Room", desc: "Start a session and upload your favorite tracks instantly." },
@@ -367,17 +367,17 @@ export default function LandingPage() {
       <FeaturesExplanation />
 
       {/* SECTION 4: Footer CTA */}
-      <section className="relative z-10 w-full flex flex-col items-center justify-between px-6 pt-28">
+      <section className="relative z-10 w-full flex flex-col items-center justify-between px-6 py-24">
         <div className="flex-1 w-full flex flex-col items-center justify-center pb-10">
            <div className="mb-16"></div>
 
-           <Link href="/login" className="h-14 px-10 rounded-full bg-foreground text-background flex items-center justify-center text-lg font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+           <Link href="/login" className="h-14 px-10 rounded-full bg-black text-white flex items-center justify-center text-lg font-bold tracking-widest uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
              Start Your Session Now
            </Link>
         </div>
 
         {/* Contact Section */}
-        <div id="contact" className="w-full max-w-5xl mt-24 mb-12 flex flex-col gap-12">
+        <div id="contact" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full mt-24 mb-12 flex flex-col gap-12">
            <div className="text-center">
              <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-4">Contact Us</h2>
              <p className="text-foreground/50 font-medium max-w-2xl mx-auto">Have questions, feedback, or need support? We'd love to hear from you.</p>
@@ -420,7 +420,7 @@ export default function LandingPage() {
                  <label htmlFor="message" className="block text-xs font-bold uppercase tracking-widest text-foreground/60 mb-2">Message</label>
                  <textarea id="message" rows={4} className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 outline-none focus:border-foreground/30 transition-colors resize-none" placeholder="How can we help?" />
                </div>
-               <button className="w-full h-14 bg-foreground text-background rounded-xl font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all mt-2">
+               <button className="w-full h-14 bg-black text-white rounded-xl font-bold tracking-widest uppercase flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all mt-2">
                  <Send className="w-4 h-4" /> Send Message
                </button>
              </div>
@@ -428,7 +428,7 @@ export default function LandingPage() {
         </div>
 
         {/* Footer */}
-        <footer className="w-full max-w-5xl flex flex-col md:flex-row items-center justify-between pt-8 mt-12 text-xs font-bold uppercase tracking-widest text-foreground/40 border-t border-foreground/5">
+        <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex flex-col md:flex-row items-center justify-between pt-8 mt-6 md:mt-12 text-xs font-bold uppercase tracking-widest text-foreground/40 border-t border-foreground/5">
            <div className="flex items-center gap-3 mb-4 md:mb-0">
              <Image src="/syncbeats-icon.svg" alt="Logo" width={20} height={20} className="opacity-50 grayscale md:block hidden" />
              SYNCBEATS © {new Date().getFullYear()}
