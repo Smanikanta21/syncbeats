@@ -116,17 +116,17 @@ export function FeaturesExplanation() {
   }, { scope: containerRef });
 
   return (
-    <section ref={containerRef} className="relative z-10 w-full min-h-[100dvh] flex flex-col items-center justify-center pt-28 pb-10 overflow-hidden bg-background">
+    <section ref={containerRef} className="relative z-10 w-full min-h-[100dvh] flex flex-col items-center justify-center py-24 overflow-hidden bg-background">
       <div className="absolute inset-0 bg-gradient-to-b from-background via-foreground/[0.02] to-background pointer-events-none" />
       
-      <div className="text-center mb-16 md:mb-24 px-6 relative z-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16 md:mb-24 relative z-20">
         <span className="px-4 py-1.5 rounded-full border border-foreground/10 bg-foreground/5 text-xs font-bold tracking-widest uppercase text-foreground/60 mb-6 inline-block">
           Deep Dive
         </span>
         <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-6">
           MASTER THE <span className="text-zinc-500">ROOM</span>
         </h2>
-        <p className="text-foreground/50 max-w-2xl mx-auto md:text-lg">
+        <p className="text-lg md:text-xl text-gray-500 max-w-2xl mx-auto">
           SyncBeats is packed with advanced audio routing and network features. Here's how to get the most out of your session.
         </p>
       </div>
@@ -136,7 +136,7 @@ export function FeaturesExplanation() {
           {features.map((feature, i) => (
             <div 
               key={feature.id}
-              className="feature-card w-[85vw] md:w-[400px] shrink-0 h-[450px] glass-panel rounded-[2.5rem] p-8 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group hover:border-foreground/20 transition-colors"
+              className="feature-card will-change-transform w-[85vw] md:w-[400px] shrink-0 h-[450px] glass-panel rounded-[2.5rem] p-8 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group hover:border-foreground/20 transition-colors"
             >
             <div className={`absolute -right-20 -top-20 w-64 h-64 bg-gradient-to-br ${feature.color} rounded-full blur-[80px] opacity-30`} />
             

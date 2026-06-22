@@ -44,7 +44,25 @@
     transition: all .3s cubic-bezier(.4, 0, .2, 1);
   }
 
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  .animate-fade-in-up-delay {
+    animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s forwards;
+    opacity: 0; /* Keep hidden until animation starts */
+  }
 
   input[type="range"].volume-slider {
     height: 40px;

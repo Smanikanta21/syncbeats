@@ -139,7 +139,7 @@ export default function ForgotPasswordPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@email.com"
-              className="w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 disabled:opacity-60"
+              className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40 disabled:opacity-60"
             />
 
             {otpSent && (
@@ -164,7 +164,7 @@ export default function ForgotPasswordPage() {
                       setOtpVerified(false);
                     }}
                     placeholder="Enter 6-digit OTP"
-                    className={`flex-1 rounded-xl border bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${otpError ? "border-red-500/70" : "border-foreground/10"}`}
+                    className={`flex-1 bg-foreground/5 border rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40 ${otpError ? "border-red-500/70" : "border-foreground/10"}`}
                   />
                   <button
                     type="button"
@@ -184,7 +184,7 @@ export default function ForgotPasswordPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="New password (min 8 characters)"
-                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
                 <input
                   type="password"
@@ -194,7 +194,7 @@ export default function ForgotPasswordPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Confirm new password"
-                  className={`w-full rounded-xl border border-foreground/10 bg-background/80 px-4 py-3 text-foreground outline-none focus:border-foreground/30 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
+                  className={`w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-foreground outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40 ${!otpVerified ? "cursor-not-allowed opacity-60" : ""}`}
                 />
               </>
             )}
