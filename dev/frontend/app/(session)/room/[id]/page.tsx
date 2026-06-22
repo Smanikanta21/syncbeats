@@ -1002,7 +1002,7 @@ export default function RoomPage() {
           initial={{ opacity: 1 }}
           animate={{ opacity: isConnected ? 0 : 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-x-0 bottom-0 z-99999 p-4 pointer-events-none flex items-center justify-center bg-background/60 backdrop-blur-sm px-4 cursor-pointer"
+          className="md:hidden fixed inset-x-0 bottom-0 z-99999 p-4 pointer-events-auto flex items-center justify-center bg-background/60 backdrop-blur-sm px-4 cursor-pointer"
           onClick={() => audio.unlockAudio()}
         >
           <motion.div

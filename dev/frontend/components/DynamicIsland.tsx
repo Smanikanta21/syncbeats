@@ -126,39 +126,38 @@ const AudioBars = ({
         // Bass/kick band (bins 1-5, ~86-430 Hz)
         let bassSum = 0;
         for (let i = 1; i <= 5; i++) bassSum += data[i];
-        bass = Math.max(0, (bassSum / 5) - 80);
+        bass = bassSum / 5;
 
         // Sub-bass (bins 0-2, ~0-172 Hz)
         let subSum = 0;
         for (let i = 0; i <= 2; i++) subSum += data[i];
-        sub = Math.max(0, (subSum / 3) - 90);
+        sub = subSum / 3;
 
         // Mid-range (bins 6-14, ~516-1200 Hz)
         let midSum = 0;
         for (let i = 6; i <= 14; i++) midSum += data[i];
-        mids = Math.max(0, (midSum / 9) - 70);
+        mids = midSum / 9;
 
         // Highs (bins 15-30, ~1200-2600 Hz)
         let highSum = 0;
         for (let i = 15; i <= 30; i++) highSum += data[i];
-        highs = Math.max(0, (highSum / 16) - 65);
+        highs = highSum / 16;
       }
 
-      // iOS-style: inner bars (bass-driven, tallest), outer bars (mids/highs, shorter)
-      const innerIntensity = bass * 0.7 + sub * 0.3;
-      const outerIntensity = mids * 0.5 + highs * 0.3 + bass * 0.2;
+      // Use exponential scaling to reduce sensitivity to noise and make peaks pop
+      const expScale = (val: number) => Math.pow(val / 255, 2.5) * 100;
 
-      const innerTarget = innerIntensity > 0
-        ? Math.min(20 + (innerIntensity / 120) * 80, 100)
-        : 15;
+      // iOS-style: inner bars (bass-driven, tallest), outer bars (mids/highs, shorter)
+      const innerIntensity = expScale(bass * 0.7 + sub * 0.3);
+      const outerIntensity = expScale(mids * 0.6 + highs * 0.4);
+
+      const innerTarget = Math.max(15, Math.min(15 + innerIntensity, 100));
 
       // Push to history for trailing
       beatHistory.push(innerTarget);
       if (beatHistory.length > HISTORY_SIZE) beatHistory.shift();
 
-      const outerTarget = outerIntensity > 0
-        ? Math.min(18 + (outerIntensity / 150) * 72, 88)
-        : 15;
+      const outerTarget = Math.max(15, Math.min(15 + outerIntensity, 88));
 
       // Trailing outer uses history for smooth wave feel
       const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.5)));
