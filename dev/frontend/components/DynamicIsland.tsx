@@ -1134,7 +1134,7 @@ const YouTubeTab = ({
             onBlur={() => setShowSuggestions(false)}
             placeholder="Search YouTube or upload..."
             className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query ? "pr-4" : "pr-10"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
-            autoFocus={isSearchOnly}
+            autoFocus={true}
           />
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
           <AnimatePresence>

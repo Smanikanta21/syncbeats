@@ -37,8 +37,8 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
   // Theme-adaptive values
   const blendMode = isDark ? "screen" : "multiply";
   // Light mode needs much higher base opacity to be visible on white
-  const baseOpacity = isDark ? [0.04, 0.03, 0.03] : [0.15, 0.12, 0.12];
-  const peakOpacity = isDark ? [0.18, 0.15, 0.13] : [0.45, 0.38, 0.35];
+  const baseOpacity = isDark ? [0.06, 0.05, 0.05] : [0.15, 0.12, 0.12];
+  const peakOpacity = isDark ? [0.45, 0.38, 0.35] : [0.55, 0.48, 0.45];
   // Light mode uses deeper, more saturated colors
   const bassSat = isDark ? 85 : 75;
   const bassLight = isDark ? 55 : 50;
@@ -80,32 +80,37 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
         // Bass band (bins 0-6, ~0-516 Hz)
         let bassSum = 0;
         for (let i = 0; i <= 6; i++) bassSum += data[i];
-        bass = Math.max(0, (bassSum / 7) - 60) / 195;
+        bass = bassSum / 7 / 255;
 
         // Mid band (bins 7-24, ~600-2000 Hz)
         let midSum = 0;
         for (let i = 7; i <= 24; i++) midSum += data[i];
-        mids = Math.max(0, (midSum / 18) - 50) / 205;
+        mids = midSum / 18 / 255;
 
         // High band (bins 25-60, ~2000-5000 Hz)
         let highSum = 0;
         for (let i = 25; i <= 60; i++) highSum += data[i];
-        highs = Math.max(0, (highSum / 36) - 40) / 215;
+        highs = highSum / 36 / 255;
       }
 
-      bass = Math.min(1, bass);
-      mids = Math.min(1, mids);
-      highs = Math.min(1, highs);
+      // Exponential curve: quiet parts stay dim, beats punch through hard
+      bass = Math.pow(bass, 1.5);
+      mids = Math.pow(mids, 1.5);
+      highs = Math.pow(highs, 1.5);
+
+      bass = Math.min(1, bass * 2.2);
+      mids = Math.min(1, mids * 2.0);
+      highs = Math.min(1, highs * 1.8);
 
       const targets = [bass, mids, highs];
       const blobs = [blob1, blob2, blob3];
 
-      // ── iOS-style smoothing: fast attack, slow decay ──
+      // ── Smoothing: snappy attack, moderate decay ──
       for (let i = 0; i < 3; i++) {
         if (targets[i] > smoothed[i]) {
-          smoothed[i] += (targets[i] - smoothed[i]) * 0.35;
+          smoothed[i] += (targets[i] - smoothed[i]) * 0.55;
         } else {
-          smoothed[i] += (targets[i] - smoothed[i]) * 0.06;
+          smoothed[i] += (targets[i] - smoothed[i]) * 0.08;
         }
         smoothed[i] = Math.max(0, Math.min(1, smoothed[i]));
       }
@@ -128,28 +133,28 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
 
       // ── Apply styles to each blob ──
       // Blob 1: Bass → warm red/orange
-      const bassScale = 1 + smoothed[0] * 0.5;
+      const bassScale = 1 + smoothed[0] * 0.7;
       const bassOpacityVal = baseOpacity[0] + smoothed[0] * (peakOpacity[0] - baseOpacity[0]);
       const bassHue = 0 + smoothed[0] * 25;
       blob1.style.transform = `translate3d(${posX[0]}vw, ${posY[0]}vh, 0) scale(${bassScale})`;
       blob1.style.opacity = `${bassOpacityVal}`;
-      blob1.style.background = `radial-gradient(circle, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0) 70%)`;
+      blob1.style.background = `radial-gradient(circle, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0.9) 0%, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0) 70%)`;
 
       // Blob 2: Mids → teal/cyan
-      const midScale = 1 + smoothed[1] * 0.4;
+      const midScale = 1 + smoothed[1] * 0.55;
       const midOpacityVal = baseOpacity[1] + smoothed[1] * (peakOpacity[1] - baseOpacity[1]);
       const midHue = 180 + smoothed[1] * 30;
       blob2.style.transform = `translate3d(${posX[1]}vw, ${posY[1]}vh, 0) scale(${midScale})`;
       blob2.style.opacity = `${midOpacityVal}`;
-      blob2.style.background = `radial-gradient(circle, hsla(${midHue}, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(${midHue}, ${midSat}%, ${midLight}%, 0) 70%)`;
+      blob2.style.background = `radial-gradient(circle, hsla(${midHue}, ${midSat}%, ${midLight}%, 0.9) 0%, hsla(${midHue}, ${midSat}%, ${midLight}%, 0) 70%)`;
 
       // Blob 3: Highs → violet/purple
-      const highScale = 1 + smoothed[2] * 0.35;
+      const highScale = 1 + smoothed[2] * 0.5;
       const highOpacityVal = baseOpacity[2] + smoothed[2] * (peakOpacity[2] - baseOpacity[2]);
       const highHue = 270 + smoothed[2] * 20;
       blob3.style.transform = `translate3d(${posX[2]}vw, ${posY[2]}vh, 0) scale(${highScale})`;
       blob3.style.opacity = `${highOpacityVal}`;
-      blob3.style.background = `radial-gradient(circle, hsla(${highHue}, ${highSat}%, ${highLight}%, 0.8) 0%, hsla(${highHue}, ${highSat}%, ${highLight}%, 0) 70%)`;
+      blob3.style.background = `radial-gradient(circle, hsla(${highHue}, ${highSat}%, ${highLight}%, 0.9) 0%, hsla(${highHue}, ${highSat}%, ${highLight}%, 0) 70%)`;
     };
 
     animate();
