@@ -5,7 +5,7 @@ import { ArrowRight, Smartphone, Laptop, Speaker, Headphones, Radio, Mic2, Play,
 import Link from "next/link";
 import Image from "next/image";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { useState, useEffect } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -107,7 +107,7 @@ export default function LandingPage() {
       </div>
 
       {/* SECTION 1: Central Immersive Core */}
-      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center px-4 py-24">
+      <section className="relative z-10 w-full min-h-dvh snap-start snap-always shrink-0 flex flex-col items-center justify-center px-4 py-24">
         
         {/* Massive Typography Behind */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-5 select-none overflow-hidden">
@@ -115,13 +115,13 @@ export default function LandingPage() {
         </div>
 
         {/* The Core Ring UI */}
-        <div className="relative w-full h-[500px] md:h-[700px] flex flex-col items-center justify-center group mb-10">
+        <div className="relative w-full h-125 md:h-175 flex flex-col items-center justify-center group mb-10">
           
           {/* Pulsing Rings for Desktop */}
-          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] rounded-full border border-foreground/10 border-dashed animate-[spin_60s_linear_infinite]" />
-          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] h-[560px] rounded-full border border-foreground/5 animate-[spin_40s_linear_infinite_reverse]" />
-          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] h-[640px] rounded-full border border-foreground/5 animate-[spin_20s_linear_infinite]" />
-          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[720px] rounded-full border border-foreground/5 animate-[spin_50s_linear_infinite_reverse]" />
+          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-120 h-120 rounded-full border border-foreground/10 border-dashed animate-[spin_60s_linear_infinite]" />
+          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-140 h-140 rounded-full border border-foreground/5 animate-[spin_40s_linear_infinite_reverse]" />
+          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-160 h-160 rounded-full border border-foreground/5 animate-[spin_20s_linear_infinite]" />
+          <div className="hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-180 h-180 rounded-full border border-foreground/5 animate-[spin_50s_linear_infinite_reverse]" />
 
           {/* Orbiting Elements Desktop */}
           <div className="hidden md:block">
@@ -132,8 +132,8 @@ export default function LandingPage() {
           </div>
 
           {/* Pulsing Rings for Mobile */}
-          <div className="md:hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full border border-foreground/10 border-dashed animate-[spin_60s_linear_infinite]" />
-          <div className="md:hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[360px] h-[360px] rounded-full border border-foreground/5 animate-[spin_40s_linear_infinite_reverse]" />
+          <div className="md:hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-75 h-75 rounded-full border border-foreground/10 border-dashed animate-[spin_60s_linear_infinite]" />
+          <div className="md:hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-90 h-90 rounded-full border border-foreground/5 animate-[spin_40s_linear_infinite_reverse]" />
 
           {/* Orbiting Elements Mobile */}
           <div className="md:hidden">
@@ -158,8 +158,10 @@ export default function LandingPage() {
                     type="tel"
                     maxLength={6}
                     value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setJoinCode(e.target.value.toUpperCase())}
                     placeholder="------"
+                    autoComplete="off"
+                    suppressHydrationWarning
                     className="w-full bg-transparent border-b-2 border-foreground/40 focus:border-foreground pb-2 text-center text-3xl md:text-4xl font-black tracking-[0.15em] outline-none transition-colors placeholder:text-foreground/40 uppercase"
                   />
                 </div>
@@ -208,7 +210,7 @@ export default function LandingPage() {
       </section>
 
       {/* SECTION 2: How It Works */}
-      <section className="relative z-10 w-full min-h-[100dvh] snap-start snap-always shrink-0 flex flex-col items-center justify-center py-24">
+      <section className="relative z-10 w-full min-h-dvh snap-start snap-always shrink-0 flex flex-col items-center justify-center py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center flex flex-col items-center">
            <motion.span 
              initial={{ opacity: 0, y: 10 }}
@@ -243,7 +245,7 @@ export default function LandingPage() {
                hidden: {}
              }}
              onMouseLeave={() => setHoveredStep(0)}
-             className="flex flex-col md:flex-row gap-6 md:gap-8 w-full h-[550px] md:h-[400px]"
+             className="flex flex-col md:flex-row gap-6 md:gap-8 w-full h-137.5 md:h-100"
            >
              {[
                { icon: Play, title: "1. Create Room", desc: "Start a session and upload your favorite tracks instantly." },
@@ -263,7 +265,7 @@ export default function LandingPage() {
                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                    onMouseEnter={() => setHoveredStep(i)}
                    onClick={() => setHoveredStep(i)}
-                   className={`glass-panel rounded-3xl relative overflow-hidden cursor-pointer border-foreground/10 flex flex-col md:flex-row transition-all duration-300 ${isExpanded ? 'h-[350px] md:h-full md:w-[60%] shadow-2xl' : 'h-[70px] md:h-full md:w-[20%] opacity-80 md:opacity-60 hover:opacity-100 hover:bg-foreground/5'}`}
+                   className={`glass-panel rounded-3xl relative overflow-hidden cursor-pointer border-foreground/10 flex flex-col md:flex-row transition-all duration-300 ${isExpanded ? 'h-87.5 md:h-full md:w-[60%] shadow-2xl' : 'h-17.5 md:h-full md:w-[20%] opacity-80 md:opacity-60 hover:opacity-100 hover:bg-foreground/5'}`}
                  >
                    
                    {/* Collapsed State Content */}
@@ -317,7 +319,7 @@ export default function LandingPage() {
                            animate={{ opacity: 1, scale: 1 }}
                            exit={{ opacity: 0, scale: 0.9 }}
                            transition={{ delay: 0.2, duration: 0.4 }}
-                           className="w-full md:w-1/2 h-1/2 md:h-full relative flex items-center justify-center z-10 bg-gradient-to-b md:bg-gradient-to-r from-transparent to-foreground/5 border-t md:border-t-0 md:border-l border-foreground/5"
+                           className="w-full md:w-1/2 h-1/2 md:h-full relative flex items-center justify-center z-10 bg-linear-to-b md:bg-linear-to-r from-transparent to-foreground/5 border-t md:border-t-0 md:border-l border-foreground/5"
                          >
                            {/* Graphic Overlays */}
                            <div className="absolute inset-0 bg-background/20 z-0" />

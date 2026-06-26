@@ -213,7 +213,7 @@ export function DiscoveryExperience() {
         <div
           className={`pointer-events-auto flex items-center justify-between w-full max-w-5xl px-5 py-3 rounded-2xl transition-all duration-500 ${
             isScrolled
-              ? "bg-[#0F0F12]/95 md:bg-[#0F0F12]/80 md:backdrop-blur-xl border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
+              ? "bg-[#0F0F12]/95 md:bg-[#0F0F12]/80 md:backdrop-blur-xl border border-white/6 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
               : "bg-transparent border border-transparent"
           }`}
         >
@@ -246,7 +246,7 @@ export function DiscoveryExperience() {
       {/* ============================================ */}
       {/* SECTION 1 — HERO                             */}
       {/* ============================================ */}
-      <section className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-24 pb-16">
+      <section className="relative min-h-dvh flex flex-col items-center justify-center px-4 pt-24 pb-16">
         {/* Headline */}
         <div className="text-center mb-8 md:mb-10">
           <h1 className="text-[clamp(2.8rem,10vw,7rem)] font-black tracking-tighter leading-[0.9] mb-6">
@@ -284,7 +284,7 @@ export function DiscoveryExperience() {
                 placeholder="Enter Room Code"
                 autoComplete="off"
                 aria-label="Room code"
-                className="w-full bg-[#0F0F12] border border-white/[0.08] rounded-xl px-5 py-3.5 text-center text-lg font-mono font-bold tracking-[0.2em] text-white outline-none placeholder:text-white/20 placeholder:tracking-widest placeholder:text-sm transition-all duration-300 focus:border-[#00FFB2]/40 focus:shadow-[0_0_30px_rgba(0,255,178,0.06)]"
+                className="w-full bg-[#0F0F12] border border-white/8 rounded-xl px-5 py-3.5 text-center text-lg font-mono font-bold tracking-[0.2em] text-white outline-none placeholder:text-white/20 placeholder:tracking-widest placeholder:text-sm transition-all duration-300 focus:border-[#00FFB2]/40 focus:shadow-[0_0_30px_rgba(0,255,178,0.06)]"
               />
               <AnimatePresence>
                 {joinCode.length > 3 && (
@@ -344,7 +344,7 @@ export function DiscoveryExperience() {
         <div className="max-w-3xl mx-auto">
           {/* Section badge */}
           <div className="text-center mb-14 md:mb-16">
-            <span className="inline-block font-mono text-[10px] uppercase tracking-[0.3em] text-[#7B61FF] px-4 py-1.5 rounded-full border border-[#7B61FF]/20 bg-[#7B61FF]/[0.05]">
+            <span className="inline-block font-mono text-[10px] uppercase tracking-[0.3em] text-[#7B61FF] px-4 py-1.5 rounded-full border border-[#7B61FF]/20 bg-[#7B61FF]/5">
               How It Works
             </span>
           </div>
@@ -355,7 +355,7 @@ export function DiscoveryExperience() {
               <div
                 key={step.num}
                 data-step
-                className="group relative bg-[#0F0F12]/50 border border-white/[0.04] rounded-2xl p-6 md:p-8 hover:border-white/[0.08] hover:bg-[#0F0F12]/70 transition-all duration-300"
+                className="group relative bg-[#0F0F12]/50 border border-white/4 rounded-2xl p-6 md:p-8 hover:border-white/8 hover:bg-[#0F0F12]/70 transition-all duration-300"
               >
                 {/* Neon accent line (left edge) */}
                 <div
@@ -392,7 +392,7 @@ export function DiscoveryExperience() {
         <div className="max-w-4xl mx-auto">
           {/* Section badge */}
           <div className="text-center mb-14 md:mb-16">
-            <span className="inline-block font-mono text-[10px] uppercase tracking-[0.3em] text-[#00FFB2] px-4 py-1.5 rounded-full border border-[#00FFB2]/20 bg-[#00FFB2]/[0.05]">
+            <span className="inline-block font-mono text-[10px] uppercase tracking-[0.3em] text-[#00FFB2] px-4 py-1.5 rounded-full border border-[#00FFB2]/20 bg-[#00FFB2]/5">
               Built Different
             </span>
           </div>
@@ -403,7 +403,7 @@ export function DiscoveryExperience() {
               <div
                 key={feat.title}
                 data-feature
-                className="group bg-[#0F0F12]/40 border border-white/[0.04] rounded-2xl p-6 hover:border-white/[0.08] hover:bg-[#0F0F12]/60 transition-all duration-300"
+                className="group bg-[#0F0F12]/40 border border-white/4 rounded-2xl p-6 hover:border-white/8 hover:bg-[#0F0F12]/60 transition-all duration-300"
               >
                 <feat.icon className="w-5 h-5 text-[#00FFB2]/50 mb-4 group-hover:text-[#00FFB2]/90 transition-colors duration-300" />
                 <h4 className="text-sm font-bold tracking-tight text-white mb-1.5">
