@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@source "../components";
-@source "../app";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -88,61 +86,4 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-/* ===== Landing Page Scoped Styles ===== */
-
-.landing-scope {
-  --neon-mint: #00FFB2;
-  --neon-violet: #7B61FF;
-  --neon-coral: #FF3D71;
-  --matte-black: #050507;
-  --matte-surface: #0F0F12;
-  --matte-border: rgba(255, 255, 255, 0.06);
-}
-
-@keyframes aurora-drift-1 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  25% { transform: translate(10%, -15%) rotate(45deg); }
-  50% { transform: translate(-5%, 10%) rotate(90deg); }
-  75% { transform: translate(-15%, -5%) rotate(135deg); }
-}
-
-@keyframes aurora-drift-2 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  33% { transform: translate(-15%, 10%) rotate(-60deg); }
-  66% { transform: translate(10%, -10%) rotate(-120deg); }
-}
-
-@keyframes aurora-drift-3 {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  20% { transform: translate(15%, 5%) rotate(72deg); }
-  40% { transform: translate(-10%, 15%) rotate(144deg); }
-  60% { transform: translate(-15%, -10%) rotate(216deg); }
-  80% { transform: translate(5%, -15%) rotate(288deg); }
-}
-
-@keyframes waveform-pulse {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
-}
-
-@keyframes neon-glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 178, 0.15); }
-  50% { box-shadow: 0 0 30px rgba(0, 255, 178, 0.25), 0 0 60px rgba(0, 255, 178, 0.1); }
-}
-
-@keyframes subtle-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-scope *,
-  .landing-scope *::before,
-  .landing-scope *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
 }
