@@ -7,7 +7,7 @@ export interface Participant {
   displayName: string;
   joinedAt:    number; // epoch ms
   isReady:     boolean;
-  volume:      number; // 0-100
+  volume:      number;
   isBlocked?:  boolean;
   userId?:     string;
   outputDeviceName?: string;

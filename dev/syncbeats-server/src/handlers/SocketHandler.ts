@@ -194,8 +194,13 @@ export class SocketHandler {
       room.updateParticipantDevice(socket.id, deviceName, deviceType);
     });
 
-    socket.on('device:ping', ({ targetSocketId, message }: { targetSocketId: string, message?: string }) => {
-      this.io.to(targetSocketId).emit('device:ping', { message: message || "Ping!", from: socket.id });
+    socket.on('device:register', ({ deviceKey }: { deviceKey: string }) => {
+      socket.join(deviceKey);
+      console.log(`[WS] socket ${socket.id} registered for deviceKey: ${deviceKey}`);
+    });
+
+    socket.on('device:ping', ({ targetDeviceKey, message }: { targetDeviceKey: string, message?: string }) => {
+      this.io.to(targetDeviceKey).emit('device:ping', { message: message || "Ping!", fromDeviceKey: socket.data.deviceKey || socket.id });
     });
 
     // ── Playback — any participant can control ────────────────────────────

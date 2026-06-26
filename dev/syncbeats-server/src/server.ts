@@ -13,7 +13,8 @@ import { SocketHandler }       from './handlers/SocketHandler';
 
 import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
-import { createDeviceRoutes }  from './handlers/DeviceRoutes';
+import { createDeviceRoutes } from './handlers/DeviceRoutes';
+import { createSearchRoutes }  from './handlers/SearchRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
@@ -150,6 +151,7 @@ export class SyncBeatsServer {
     this.app.use('/auth',    createAuthRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
+    this.app.use('/search',  createSearchRoutes());
   }
 
   private setupSocketIO(): void {

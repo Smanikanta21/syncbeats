@@ -1,4 +1,4 @@
-// handlers/DeviceRoutes.ts — /devices REST endpoints
+// handlers/DeviceRoutes.ts - /devices REST endpoints
 
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
