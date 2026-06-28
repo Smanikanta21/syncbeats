@@ -1,5 +1,6 @@
 package com.example.syncbeats.ui.profile
 
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -118,12 +119,17 @@ fun ProfileScreen(
                     CircularProgressIndicator(color = AccentPrimary)
                 }
             } else if (error != null) {
-                Text(text = "Error: \$error", color = MaterialTheme.colorScheme.error)
+                Text(text = "Error: $error", color = MaterialTheme.colorScheme.error)
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(devices) { device ->
+                    // Filter only native application devices
+                    val appPrefixes = listOf("IOS-", "MAC-", "ANDROID-", "WINDOWS-", "APP-")
+                    val filteredDevices = devices.filter { device ->
+                        appPrefixes.any { prefix -> device.device_key.startsWith(prefix) }
+                    }
+                    items(filteredDevices) { device ->
                         DeviceCard(
                             device = device,
                             isCurrentDevice = device.device_key == viewModel.currentDeviceId,
@@ -144,6 +150,8 @@ fun DeviceCard(
 ) {
     val isMobile = device.user_agent?.lowercase()?.contains("android") == true || device.user_agent?.lowercase()?.contains("iphone") == true
     val icon = if (isMobile) Icons.Default.PhoneAndroid else Icons.Default.Computer
+    
+    val (statusText, isOnline) = formatLastSeen(device.last_seen_at)
 
     Row(
         modifier = Modifier
@@ -177,6 +185,7 @@ fun DeviceCard(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            
             if (isCurrentDevice) {
                 Text(
                     text = "This Device",
@@ -185,11 +194,20 @@ fun DeviceCard(
                     fontWeight = FontWeight.Bold
                 )
             } else {
-                Text(
-                    text = "Last seen: \${device.last_seen_at.take(10)}",
-                    color = ForegroundMuted,
-                    fontSize = 12.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (isOnline) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Gray)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = statusText,
+                        color = if (isOnline) androidx.compose.ui.graphics.Color.Green else ForegroundMuted,
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
 
@@ -201,6 +219,59 @@ fun DeviceCard(
             ) {
                 Text("Ping")
             }
+        }
+    }
+}
+
+private fun formatLastSeen(dateString: String): Pair<String, Boolean> {
+    return try {
+        // Parse date using standard SimpleDateFormat which works on all API levels
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+        format.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val date = format.parse(dateString) ?: return Pair("Offline", false)
+        
+        val now = java.util.Date()
+        val diffSeconds = (now.time - date.time) / 1000
+        
+        if (diffSeconds < 180) {
+            Pair("Online", true)
+        } else {
+            val diffMinutes = diffSeconds / 60
+            val diffHours = diffMinutes / 60
+            val diffDays = diffHours / 24
+            
+            val text = when {
+                diffMinutes < 60 -> "$diffMinutes minutes ago"
+                diffHours < 24 -> "$diffHours hours ago"
+                else -> "$diffDays days ago"
+            }
+            Pair(text, false)
+        }
+    } catch (e: Exception) {
+        // Fallback for differently formatted dates (e.g. without milliseconds)
+        try {
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            format.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val date = format.parse(dateString) ?: return Pair("Offline", false)
+            val now = java.util.Date()
+            val diffSeconds = (now.time - date.time) / 1000
+            
+            if (diffSeconds < 180) {
+                return Pair("Online", true)
+            } else {
+                val diffMinutes = diffSeconds / 60
+                val diffHours = diffMinutes / 60
+                val diffDays = diffHours / 24
+                
+                val text = when {
+                    diffMinutes < 60 -> "$diffMinutes minutes ago"
+                    diffHours < 24 -> "$diffHours hours ago"
+                    else -> "$diffDays days ago"
+                }
+                return Pair(text, false)
+            }
+        } catch (e2: Exception) {
+            Pair("Offline", false)
         }
     }
 }

@@ -82,7 +82,7 @@ export class RoomRepository {
   ): Promise<void> {
     const data: { playbackState: string; positionMs: bigint; trackUrl?: string | null } = {
       playbackState: state,
-      positionMs: BigInt(positionMs),
+      positionMs: BigInt(Math.round(positionMs)),
     };
     if (trackUrl !== undefined) data.trackUrl = trackUrl;
 
@@ -115,6 +115,16 @@ export class RoomRepository {
   }
 
   async recordParticipantJoin(roomId: string, userId: string, socketId: string, displayName: string): Promise<void> {
+    // Ensure the room exists in the DB first (since some rooms like personal_room are created on the fly)
+    await prisma.room.upsert({
+      where: { id: roomId },
+      create: {
+        id: roomId,
+        hostId: userId,
+      },
+      update: {}
+    });
+
     await prisma.roomParticipant.upsert({
       where: {
         roomId_userId: { roomId, userId }

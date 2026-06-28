@@ -10,7 +10,7 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 object RetrofitClient {
     // 192.168.29.211 is your computer's local network IP address, which physical devices need to connect to.
     // (10.0.2.2 only works inside the Android Emulator)
-    private const val BASE_URL = "http://192.168.29.211:4000/"
+    private const val BASE_URL = "http://192.168.29.61:4000/"
 
     private val json = Json { ignoreUnknownKeys = true }
 

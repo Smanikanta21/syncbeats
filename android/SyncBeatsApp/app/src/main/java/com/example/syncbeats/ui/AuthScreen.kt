@@ -50,8 +50,12 @@ fun AuthScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(uiState.isSuccess) {
         if (uiState.isSuccess) {
+            val sessionManager = com.example.syncbeats.data.SessionManager(context)
             if (uiState.token != null) {
-                com.example.syncbeats.data.SessionManager(context).saveAuthToken(uiState.token!!)
+                sessionManager.saveAuthToken(uiState.token!!)
+            }
+            if (uiState.userId != null) {
+                sessionManager.saveUserId(uiState.userId!!)
             }
             onLoginSuccess()
         }

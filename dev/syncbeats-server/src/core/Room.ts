@@ -105,6 +105,52 @@ export class Room extends EventEmitter {
     this.emit('pause', { pauseOffset: this.timeline.pauseOffset });
     this.emit('stateChanged', this.snapshot());
   }
+  
+  // Directly syncs the room state from a client-emitted playback:schedule event
+  syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string): void {
+    this.trackUrl = trackUrl;
+    this.timeline.isPlaying = true;
+    this.timeline.startEpoch = startEpoch - positionMs;
+    this.timeline.pauseOffset = 0;
+    this.state = PlaybackState.PLAYING;
+    this.position = positionMs;
+    this.snapshotTime = Date.now();
+    this.pendingPlay = false;
+    
+    this.emit('schedule', {
+        // Mobile App Keys
+        positionMs: positionMs,
+        startTime: startEpoch,
+        senderId: senderId,
+        // Web App Keys
+        atEpoch: startEpoch,
+        fromPosition: positionMs / 1000,
+        startEpoch: this.timeline.startEpoch,
+        // Shared
+        trackUrl: trackUrl,
+    });
+    this.emit('stateChanged', this.snapshot());
+  }
+
+  // Directly syncs the room state from a client-emitted playback:pause event
+  syncPause(positionMs: number, senderId?: string): void {
+    this.pendingPlay = false;
+    this.timeline.startEpoch = null;
+    this.timeline.isPlaying = false;
+    this.timeline.pauseOffset = positionMs / 1000;
+    this.position = positionMs;
+    this.state = PlaybackState.PAUSED;
+    this.snapshotTime = Date.now();
+    
+    this.emit('pause', { 
+        // Mobile App Keys
+        positionMs: positionMs,
+        senderId: senderId,
+        // Web App Keys
+        pauseOffset: this.timeline.pauseOffset
+    });
+    this.emit('stateChanged', this.snapshot());
+  }
 
   seek(_requesterId: string, positionMs: number): void {
     const positionSec = positionMs / 1000;

@@ -47,8 +47,7 @@ data class SearchResult(
     val title: String,
     val artist: String,
     val duration: String,
-    val thumbnail: String,
-    val url: String
+    val thumbnail: String
 )
 
 @Serializable

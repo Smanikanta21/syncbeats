@@ -43,15 +43,61 @@ fun MainScreen(
     onNavigateToProfile: () -> Unit = {}
 ) {
     var isSyncBeatMode by remember { mutableStateOf(false) }
-    var islandState by remember { mutableStateOf(IslandState.COMPACT) }
     var searchQuery by remember { mutableStateOf("") }
+    
+    var showFullScreenPlayer by remember { mutableStateOf(false) }
+    var showDevicePicker by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val nearbyManager = remember { com.example.syncbeats.network.NearbyDeviceManager(context) }
     
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val downloadingIds by viewModel.downloadingIds.collectAsState()
     val isPlaying by audioPlayer.isPlaying.collectAsState()
     val currentTrackName by audioPlayer.currentTrackName.collectAsState()
+    val progress by audioPlayer.progress.collectAsState()
+    val currentPositionMs by audioPlayer.currentPositionMs.collectAsState()
+    val durationMs by audioPlayer.durationMs.collectAsState()
     val recentlyAdded by viewModel.recentlyAdded.collectAsState()
+
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotEmpty()) {
+            kotlinx.coroutines.delay(200) // Fast 200ms debounce for live typing
+            viewModel.search(searchQuery)
+        } else {
+            viewModel.search("") // Clear results instantly when empty
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        com.example.syncbeats.network.SocketManager.trackSetFlow.collect { data ->
+            val senderId = data.optString("senderId")
+            if (senderId != com.example.syncbeats.network.DeviceManager.deviceId) {
+                val trackData = data.optJSONObject("track")
+                if (trackData != null) {
+                    val trackId = trackData.optString("id")
+                    val title = trackData.optString("title")
+                    val artist = trackData.optString("artist")
+                    val thumbnail = trackData.optString("thumbnailURL")
+                    val duration = trackData.optString("duration")
+                    
+                    val result = com.example.syncbeats.network.SearchResult(
+                        id = trackId,
+                        title = title,
+                        artist = artist,
+                        duration = duration,
+                        thumbnail = thumbnail
+                    )
+                    
+                    audioPlayer.isInternalSyncEvent = true
+                    viewModel.downloadAndPlay(result) { file ->
+                        audioPlayer.playFile(file, result.title)
+                        audioPlayer.isInternalSyncEvent = false
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         containerColor = Background,
@@ -78,7 +124,7 @@ fun MainScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 72.dp) // Spacing to avoid the compact island
+                    .padding(top = 24.dp) // Normal spacing now that island is gone
             ) {
                 // Header
                 Row(
@@ -117,61 +163,67 @@ fun MainScreen(
                 // Main Content
                 LibraryTab(
                     searchQuery = searchQuery,
+                    searchResults = searchResults,
+                    isLoading = isLoading,
+                    downloadingIds = downloadingIds,
                     recentlyAdded = recentlyAdded,
                     onSearchQueryChange = { searchQuery = it },
                     onSearchSubmit = {
-                        islandState = IslandState.SEARCH_EXPANDED
                         viewModel.search(searchQuery)
                     },
                     onPlayResult = { result ->
+                        audioPlayer.isInternalSyncEvent = false
                         viewModel.downloadAndPlay(result) { file ->
                             audioPlayer.playFile(file, result.title)
+                            
+                            val audioUrl = "http://192.168.29.61:4000/search/youtube/download?videoId=${result.id}"
+                            com.example.syncbeats.network.SocketManager.emitTrackSet(
+                                context,
+                                result.id,
+                                result.title,
+                                result.artist,
+                                result.thumbnail,
+                                result.duration,
+                                audioUrl
+                            )
                         }
                     }
                 )
             }
 
-            // Invisible overlay to catch clicks outside the island when expanded
-            if (islandState != IslandState.COMPACT) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null, // No ripple effect
-                            onClick = { islandState = IslandState.COMPACT }
-                        )
-                )
-            }
-
-            // Dynamic Island Overlay (Fixed at top)
+            // MiniPlayer (Fixed at bottom)
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.Bottom
             ) {
-                // Pushes Dynamic Island exactly to the top hardware camera area
-                Spacer(modifier = Modifier.height(2.dp))
-                DynamicIslandPlayer(
-                    islandState = islandState,
-                    searchQuery = searchQuery,
-                    searchResults = searchResults,
-                    isLoading = isLoading,
-                    downloadingIds = downloadingIds,
+                MiniPlayer(
                     isPlaying = isPlaying,
+                    progress = progress,
                     currentTrackName = currentTrackName,
-                    isSyncBeatMode = isSyncBeatMode,
-                    onToggleExpanded = {
-                        islandState = if (islandState == IslandState.COMPACT) IslandState.PLAYER_EXPANDED else IslandState.COMPACT
-                    },
-                    onCollapse = { islandState = IslandState.COMPACT },
-                    onPlayResult = { result ->
-                        viewModel.downloadAndPlay(result) { file ->
-                            audioPlayer.playFile(file, result.title)
-                            // We don't change islandState here so user can download multiple songs
-                        }
-                    },
                     onTogglePlayPause = { audioPlayer.togglePlayPause() },
-                    onToggleSyncBeatMode = { isSyncBeatMode = !isSyncBeatMode }
+                    onExpand = { showFullScreenPlayer = true }
+                )
+            }
+            
+            if (showFullScreenPlayer) {
+                FullScreenPlayerSheet(
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    currentPositionMs = currentPositionMs,
+                    durationMs = durationMs,
+                    currentTrackName = currentTrackName,
+                    onTogglePlayPause = { audioPlayer.togglePlayPause() },
+                    onDismissRequest = { showFullScreenPlayer = false },
+                    onOpenDevicePicker = { showDevicePicker = true }
+                )
+            }
+            
+            if (showDevicePicker) {
+                DevicePickerSheet(
+                    onDismissRequest = { showDevicePicker = false },
+                    nearbyDeviceManager = nearbyManager
                 )
             }
         }
@@ -568,6 +620,9 @@ fun DynamicIslandPlayer(
 @Composable
 fun LibraryTab(
     searchQuery: String,
+    searchResults: List<SearchResult>,
+    isLoading: Boolean,
+    downloadingIds: Set<String>,
     recentlyAdded: List<SearchResult>,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
@@ -603,92 +658,164 @@ fun LibraryTab(
         
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Import Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            LibraryActionCard(
-                title = "Spotify",
-                subtitle = "Connect",
-                icon = Icons.Default.LibraryMusic,
-                onClick = { /* Spotify Connect */ },
-                modifier = Modifier.weight(1f)
+        if (searchQuery.isNotEmpty()) {
+            Text(
+                text = "Results for \"$searchQuery\"",
+                color = Foreground,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
-            LibraryActionCard(
-                title = "Upload",
-                subtitle = "Local Files",
-                icon = Icons.Default.UploadFile,
-                onClick = { /* Upload Files */ },
-                modifier = Modifier.weight(1f)
-            )
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Apple Music (Coming Soon)
-        LibraryActionCard(
-            title = "Apple Music",
-            subtitle = "Coming Soon",
-            icon = Icons.Default.QueueMusic,
-            onClick = { },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = false
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = "Recently Added Songs",
-            color = Foreground,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        if (recentlyAdded.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("No offline tracks yet.", color = ForegroundMuted)
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentPrimary)
+                }
+            } else if (searchResults.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text("No results found.", color = ForegroundMuted)
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(searchResults.size) { index ->
+                        val result = searchResults[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .clickable(enabled = !downloadingIds.contains(result.id)) { onPlayResult(result) }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(AccentPrimary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = result.thumbnail,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(result.title, color = Foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(result.artist, color = ForegroundMuted, fontSize = 12.sp, maxLines = 1)
+                            }
+                            if (downloadingIds.contains(result.id)) {
+                                CircularProgressIndicator(
+                                    color = AccentPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Download & Play",
+                                    tint = ForegroundMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Import Actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                recentlyAdded.forEach { result ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.05f))
-                            .clickable { onPlayResult(result) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+                LibraryActionCard(
+                    title = "Spotify",
+                    subtitle = "Connect",
+                    icon = Icons.Default.LibraryMusic,
+                    onClick = { /* Spotify Connect */ },
+                    modifier = Modifier.weight(1f)
+                )
+                LibraryActionCard(
+                    title = "Upload",
+                    subtitle = "Local Files",
+                    icon = Icons.Default.UploadFile,
+                    onClick = { /* Upload Files */ },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Apple Music (Coming Soon)
+            LibraryActionCard(
+                title = "Apple Music",
+                subtitle = "Coming Soon",
+                icon = Icons.Default.QueueMusic,
+                onClick = { },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = false
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "Recently Added Songs",
+                color = Foreground,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            if (recentlyAdded.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text("No offline tracks yet.", color = ForegroundMuted)
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(recentlyAdded.size) { index ->
+                        val result = recentlyAdded[index]
+                        Row(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AccentPrimary.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .clickable { onPlayResult(result) }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AsyncImage(
-                                model = result.thumbnail,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(AccentPrimary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = result.thumbnail,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(result.title, color = Foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(result.artist, color = ForegroundMuted, fontSize = 12.sp, maxLines = 1)
+                            }
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = AccentPrimary,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                            Text(result.title, color = Foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text(result.artist, color = ForegroundMuted, fontSize = 12.sp, maxLines = 1)
-                        }
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play",
-                            tint = AccentPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
             }

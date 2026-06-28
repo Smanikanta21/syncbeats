@@ -30,7 +30,10 @@ class AuthViewModel : ViewModel() {
                     if (authResponse.error != null) {
                         _uiState.value = _uiState.value.copy(isLoading = false, error = authResponse.error)
                     } else {
-                        _uiState.value = _uiState.value.copy(isLoading = false, isSuccess = true, token = authResponse.token)
+                        // Normally we would inject SessionManager, but for simplicity here if we have context
+                        // Since AuthViewModel doesn't have context, we'll let MainActivity or AuthScreen handle saving it,
+                        // Wait, I will just emit the user id in the ui state so AuthScreen can save it.
+                        _uiState.value = _uiState.value.copy(isLoading = false, isSuccess = true, token = authResponse.token, userId = authResponse.user?.id)
                     }
                 } else {
                     _uiState.value = _uiState.value.copy(
@@ -86,7 +89,8 @@ class AuthViewModel : ViewModel() {
 
 data class AuthUiState(
     val isLoading: Boolean = false,
-    val error: String? = null,
     val isSuccess: Boolean = false,
-    val token: String? = null
+    val token: String? = null,
+    val userId: String? = null,
+    val error: String? = null
 )

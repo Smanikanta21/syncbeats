@@ -43,33 +43,35 @@ export function createSearchRoutes(): Router {
 
       const { spawn } = require('child_process');
       const path = require('path');
+      const fs = require('fs');
       
-      const ytDlpPath = path.resolve(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
-      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio', '-o', '-', url]);
+      const tmpDir = path.resolve(process.cwd(), 'tmp');
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir);
+      }
+      
+      const outputFile = path.resolve(tmpDir, `${videoId}.m4a`);
+      
+      // If already downloaded, just serve it
+      if (fs.existsSync(outputFile)) {
+        return res.sendFile(outputFile);
+      }
 
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Transfer-Encoding', 'chunked');
-
-      ytDlp.stdout.pipe(res);
-
-      ytDlp.stderr.on('data', (data: any) => {
-        // yt-dlp logs progress to stderr, we can ignore or log it
-        // console.log(`[yt-dlp]: ${data.toString()}`);
-      });
+      const ytDlpPath = path.resolve(process.cwd(), 'yt-dlp');
+      // Use bestaudio[ext=m4a] to force it to download AAC audio natively (which iOS AVPlayer supports)
+      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, url]);
 
       ytDlp.on('close', (code: number) => {
-        if (code !== 0) {
-          console.error(`[Search] yt-dlp stream error: exited with code ${code}`);
+        if (code === 0) {
+          if (!res.headersSent) {
+            res.sendFile(outputFile);
+          }
+        } else {
+          console.error(`[Search] yt-dlp error: exited with code ${code}`);
           if (!res.headersSent) {
             res.status(500).json({ error: 'Failed to download audio' });
-          } else {
-            res.end();
           }
         }
-      });
-
-      req.on('close', () => {
-        ytDlp.kill();
       });
 
     } catch (err) {

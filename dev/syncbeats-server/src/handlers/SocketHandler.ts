@@ -205,6 +205,16 @@ export class SocketHandler {
 
     // ── Playback — any participant can control ────────────────────────────
 
+    socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string }) => {
+      try {
+        const room = this.roomManager.get(roomId);
+        if (!room) return;
+        room.syncSchedule(trackUrl, positionMs, startTime, senderId);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
@@ -215,11 +225,11 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:pause', ({ roomId, positionMs }: { roomId: string; positionMs?: number }) => {
+    socket.on('playback:pause', ({ roomId, positionMs, senderId }: { roomId: string; positionMs?: number, senderId?: string }) => {
       try {
         const room = this.roomManager.get(roomId);
         if (!room) return;
-        room.pause(socket.id, positionMs);
+        room.syncPause(positionMs || 0, senderId);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -252,6 +262,23 @@ export class SocketHandler {
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
+    });
+
+    // ── Global Account Sync ──────────────────────────────────────────────────
+
+    socket.on('sync:forceAll', async () => {
+      const userId = socket.data.userId;
+      if (!userId) return;
+
+      // Find all sockets connected with this userId
+      const sockets = await this.io.fetchSockets();
+      const userSockets = sockets.filter(s => s.data.userId === userId);
+
+      userSockets.forEach(s => {
+        // Emit to every socket (including the sender, to ensure it turns on too)
+        s.emit('sync:forceEnable');
+      });
+      console.log(`[WS] Force Syncing all ${userSockets.length} devices for user ${userId}`);
     });
 
     socket.on('playback:next', async ({ roomId }: { roomId: string }) => {

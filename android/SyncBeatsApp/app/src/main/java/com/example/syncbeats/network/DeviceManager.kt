@@ -17,8 +17,16 @@ object DeviceManager {
     val deviceId: String
         get() {
             var id = prefs.getString(KEY_DEVICE_ID, null)
+            
+            // Migrate old IDs that don't have the prefix
+            if (id != null && !id.startsWith("ANDROID-")) {
+                id = "ANDROID-$id"
+                prefs.edit().putString(KEY_DEVICE_ID, id).apply()
+                return id
+            }
+            
             if (id == null) {
-                id = UUID.randomUUID().toString()
+                id = "ANDROID-" + UUID.randomUUID().toString()
                 prefs.edit().putString(KEY_DEVICE_ID, id).apply()
             }
             return id

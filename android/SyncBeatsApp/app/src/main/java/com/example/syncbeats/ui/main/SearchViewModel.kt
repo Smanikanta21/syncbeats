@@ -15,6 +15,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -65,22 +66,31 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     fun search(query: String) {
+        searchJob?.cancel()
         if (query.isBlank()) {
             _searchResults.value = emptyList()
             return
         }
 
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             _isLoading.value = true
             try {
                 val response = RetrofitClient.searchApi.searchYouTube(query)
-                _searchResults.value = response.results
+                if (isActive) {
+                    _searchResults.value = response.results
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
-                _searchResults.value = emptyList()
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    e.printStackTrace()
+                    _searchResults.value = emptyList()
+                }
             } finally {
-                _isLoading.value = false
+                if (isActive) {
+                    _isLoading.value = false
+                }
             }
         }
     }
