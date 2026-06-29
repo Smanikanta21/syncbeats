@@ -2,6 +2,7 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 RUN npm ci
 COPY tsconfig.json ./
 COPY prisma.config.ts ./
@@ -12,11 +13,12 @@ RUN npx tsc
 
 FROM node:20-slim
 
-# Install curl just in case
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Install curl, python3, and symlink python for yt-dlp runtime
+RUN apt-get update && apt-get install -y curl python3 python-is-python3 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package*.json ./
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 RUN npm ci --omit=dev
 COPY prisma.config.ts ./
 COPY prisma ./prisma
