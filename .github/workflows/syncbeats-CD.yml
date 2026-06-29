@@ -97,6 +97,7 @@ jobs:
           DB_HOST="postgres"
           if [ "${{ github.ref_name }}" != "main" ]; then
             APP_DIR="sync-beats-dev"
+            DB_HOST="sync-beats-postgres-1"
           fi
 
           {
