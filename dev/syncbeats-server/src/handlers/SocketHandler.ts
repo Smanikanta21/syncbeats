@@ -134,7 +134,10 @@ export class SocketHandler {
       }
     });
 
-    socket.on('room:leave', ({ roomId }: LeavePayload) => {
+    socket.on('room:leave', (payload?: LeavePayload) => {
+      const roomId = payload?.roomId;
+      if (!roomId) return;
+      
       const room = this.roomManager.get(roomId);
       if (room) {
         // We should NOT pause the room just because one person leaves.
@@ -194,9 +197,17 @@ export class SocketHandler {
       room.updateParticipantDevice(socket.id, deviceName, deviceType);
     });
 
-    socket.on('device:register', ({ deviceKey }: { deviceKey: string }) => {
-      socket.join(deviceKey);
-      console.log(`[WS] socket ${socket.id} registered for deviceKey: ${deviceKey}`);
+    socket.on('device:register', (payload: any) => {
+      const deviceKey = payload.deviceKey;
+      const userId = payload.userId;
+      if (deviceKey) {
+        socket.join(deviceKey);
+        socket.data.deviceKey = deviceKey;
+      }
+      if (userId) {
+        socket.data.userId = userId;
+      }
+      console.log(`[WS] socket ${socket.id} registered for deviceKey: ${deviceKey}, userId: ${userId}`);
     });
 
     socket.on('device:ping', ({ targetDeviceKey, message }: { targetDeviceKey: string, message?: string }) => {
@@ -204,6 +215,39 @@ export class SocketHandler {
     });
 
     // ── Playback — any participant can control ────────────────────────────
+    
+    socket.on('room:updateQueue', (payload: any) => {
+      const roomId = payload.roomId;
+      if (roomId) {
+        socket.to(roomId).emit('room:updateQueue', payload);
+        
+        // Update server state so late joiners get it in the snapshot
+        try {
+          const room = this.roomManager.get(roomId);
+          if (room && payload.track) {
+            const track = payload.track;
+            const item = {
+              id: track.id || track.trackUrl,
+              trackUrl: track.id || track.trackUrl,
+              title: track.title || 'Unknown',
+              artist: track.artist || 'Unknown',
+              thumbnailURL: track.thumbnailURL || '',
+              duration: parseFloat(track.duration) || 0,
+              queueIndex: 0,
+              isCurrent: true,
+              fileName: "",
+              addedBy: track.addedBy || 'system',
+              createdAt: Date.now()
+            };
+            console.log(`[Room ${roomId}] New track set: "${item.title}" by ${socket.id}. Resetting all participants to not-ready.`);
+            room.addToQueue(item);
+            // addToQueue → setCurrentQueueItem already resets isReady for all participants
+          }
+        } catch (e) {
+          console.error("Error updating queue on server:", e);
+        }
+      }
+    });
 
     socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string }) => {
       try {
@@ -215,11 +259,40 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:play', ({ roomId }: { roomId: string }) => {
+    socket.on('playback:play', async ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
       try {
-        room.play(socket.id);
+        // Check if there are other connected sockets for this user that haven't joined the room
+        const userId = socket.data.userId;
+        let hasUnjoinedDevices = false;
+        
+        if (userId) {
+          const allSockets = await this.io.fetchSockets();
+          const userSockets = allSockets.filter(s => s.data.userId === userId);
+          const roomParticipantIds = new Set(room.snapshot().participants.map((p: any) => p.socketId));
+          const unjoinedSockets = userSockets.filter(s => !roomParticipantIds.has(s.id));
+          
+          if (unjoinedSockets.length > 0) {
+            hasUnjoinedDevices = true;
+            console.log(`[Room ${roomId}] Play requested, but ${unjoinedSockets.length} user socket(s) haven't joined yet. Force-syncing them in first.`);
+            // Force them to join by emitting sync:forceEnable
+            unjoinedSockets.forEach(s => s.emit('sync:forceEnable'));
+          }
+        }
+        
+        // Log detailed readiness state
+        const snap = room.snapshot();
+        const readiness = snap.participants.map((p: any) => `${p.displayName || p.socketId}: isReady=${p.isReady}, isBlocked=${p.isBlocked}`);
+        console.log(`[Room ${roomId}] Play requested by ${socket.id}. Participants readiness: [${readiness.join(' | ')}]`);
+        
+        if (hasUnjoinedDevices) {
+          // Don't call room.play() yet — it would see 1/1 ready and start immediately.
+          // Instead, set forcePendingPlay so we wait for the unjoined devices to join + be ready.
+          room.forcePendingPlay();
+        } else {
+          room.play(socket.id);
+        }
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -273,6 +346,10 @@ export class SocketHandler {
       // Find all sockets connected with this userId
       const sockets = await this.io.fetchSockets();
       const userSockets = sockets.filter(s => s.data.userId === userId);
+      
+      // Log all connected sockets for debugging
+      const allDevices = sockets.map(s => `${s.id} (deviceKey=${s.data.deviceKey}, userId=${s.data.userId})`);
+      console.log(`[WS] sync:forceAll from ${socket.id}. All connected sockets: [${allDevices.join(', ')}]`);
 
       userSockets.forEach(s => {
         // Emit to every socket (including the sender, to ensure it turns on too)

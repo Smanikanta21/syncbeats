@@ -22,6 +22,16 @@ struct ProfileScreen: View {
                             if let user = appState.currentUser {
                                 Text(user.name).font(.title3).fontWeight(.bold)
                                 Text(user.email).font(.subheadline).foregroundColor(.secondary)
+                                
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(socketManager.isConnected ? Color.green : Color.red)
+                                        .frame(width: 8, height: 8)
+                                    Text(socketManager.isConnected ? "Server Connected" : "Server Disconnected")
+                                        .font(.caption2)
+                                        .foregroundColor(socketManager.isConnected ? .green : .red)
+                                }
+                                .padding(.top, 2)
                             } else {
                                 Text("User Profile").font(.title3).fontWeight(.bold)
                             }
@@ -56,12 +66,19 @@ struct ProfileScreen: View {
                                         .font(.headline)
                                     
                                     HStack(spacing: 4) {
+                                        let isOnline = device.isOnline ?? false
                                         Circle()
-                                            .fill(formatted.isOnline ? Color.green : Color.gray)
+                                            .fill(isOnline ? Color.green : Color.gray)
                                             .frame(width: 8, height: 8)
-                                        Text(formatted.text)
+                                        Text(isOnline ? "Online" : formatted.text)
                                             .font(.caption)
-                                            .foregroundColor(formatted.isOnline ? .green : .secondary)
+                                            .foregroundColor(isOnline ? .green : .secondary)
+                                        
+                                        if device.isCurrentDevice == true {
+                                            Text("• This Device")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
                                     }
                                 }
                                 Spacer()
@@ -122,12 +139,16 @@ struct ProfileScreen: View {
     
     private func fetchDevices() {
         NetworkManager.shared.getDevices { result in
-            if case .success(let response) = result {
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
                     let appPrefixes = ["IOS-", "MAC-", "ANDROID-", "WINDOWS-", "APP-"]
                     self.devices = response.devices.filter { device in
                         appPrefixes.contains { device.device_key.hasPrefix($0) }
                     }
+                    print("[ProfileScreen] Fetched \(self.devices.count) devices successfully.")
+                case .failure(let error):
+                    print("[ProfileScreen] Failed to fetch devices: \(error)")
                 }
             }
         }

@@ -54,6 +54,8 @@ struct PublicDevice: Codable, Identifiable {
     let created_at: String
     let updated_at: String
     let last_seen_at: String
+    let isOnline: Bool?
+    let isCurrentDevice: Bool?
 }
 
 struct DevicesResponse: Codable {

@@ -6,11 +6,12 @@ import { DeviceRepository } from '../db/DeviceRepository';
 
 const repo = new DeviceRepository();
 
-export function createDeviceRoutes(): Router {
+export function createDeviceRoutes(io: import('socket.io').Server): Router {
   const router = Router();
 
   function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: string | null } {
     const deviceId = req.header('x-device-id');
+    console.log(`[Devices] Request headers - x-device-id: ${deviceId}, user-agent: ${req.header('user-agent')}`);
     return {
       deviceKey: deviceId?.trim() || null,
       userAgent: req.header('user-agent') || null,
@@ -23,8 +24,21 @@ export function createDeviceRoutes(): Router {
       if (deviceKey) {
         await repo.ensureForUser(req.user!.sub, deviceKey, userAgent, req.user!.name);
       }
-      const devices = await repo.listByUser(req.user!.sub);
-      res.json({ devices });
+      let devices = await repo.listByUser(req.user!.sub);
+      
+      const sockets = await io.fetchSockets();
+      const onlineDeviceKeys = new Set(sockets.map(s => s.data.deviceKey).filter(Boolean));
+      
+      console.log(`[Devices] Online socket deviceKeys:`, Array.from(onlineDeviceKeys));
+      console.log(`[Devices] DB devices for user ${req.user!.sub}:`, devices.map(d => `${d.name} (${d.device_key})`));
+
+      const enrichedDevices = devices.map(d => ({
+        ...d,
+        isOnline: onlineDeviceKeys.has(d.device_key),
+        isCurrentDevice: d.device_key === deviceKey
+      }));
+      
+      res.json({ devices: enrichedDevices });
     } catch (err) {
       console.error('[Devices] mine error:', err);
       res.status(500).json({ error: 'Failed to fetch devices' });

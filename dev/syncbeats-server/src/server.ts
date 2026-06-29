@@ -150,7 +150,7 @@ export class SyncBeatsServer {
     });
     this.app.use('/auth',    createAuthRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
-    this.app.use('/devices', createDeviceRoutes());
+    this.app.use('/devices', createDeviceRoutes(this.io));
     this.app.use('/search',  createSearchRoutes());
   }
 
@@ -207,7 +207,7 @@ export class SyncBeatsServer {
   }
 
   start(): void {
-    this.httpServer.listen(PORT, () => {
+    this.httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.app/api' : `
         
         |-----------------------------|

@@ -3,6 +3,8 @@ package com.example.syncbeats.ui.main
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import com.example.syncbeats.theme.*
 @Composable
 fun MiniPlayer(
     isPlaying: Boolean,
+    isPendingPlay: Boolean,
     progress: Float,
     currentTrackName: String?,
     onTogglePlayPause: () -> Unit,
@@ -81,16 +84,29 @@ fun MiniPlayer(
             }
             
             // Play/Pause
-            IconButton(
-                onClick = onTogglePlayPause,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play/Pause",
-                    tint = Foreground,
-                    modifier = Modifier.size(32.dp)
-                )
+            if (isPendingPlay) {
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Foreground,
+                        strokeWidth = 2.dp
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onTogglePlayPause,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        tint = Foreground,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
             
             // Next
@@ -125,14 +141,18 @@ fun MiniPlayer(
 @Composable
 fun FullScreenPlayerSheet(
     isPlaying: Boolean,
+    isPendingPlay: Boolean,
     progress: Float,
     currentPositionMs: Long,
     durationMs: Long,
     currentTrackName: String?,
+    isSyncBeatMode: Boolean,
     onTogglePlayPause: () -> Unit,
+    onToggleSyncBeatMode: () -> Unit,
     onDismissRequest: () -> Unit,
     onOpenDevicePicker: () -> Unit
 ) {
+    @OptIn(ExperimentalFoundationApi::class)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         containerColor = Background,
@@ -221,16 +241,21 @@ fun FullScreenPlayerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // SyncBeats Icon (Far left)
-                IconButton(
-                    onClick = onOpenDevicePicker,
+                Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .combinedClickable(
+                            onClick = onToggleSyncBeatMode,
+                            onLongClick = onOpenDevicePicker
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Sync,
                         contentDescription = "Sync",
-                        tint = AccentPrimary,
+                        tint = if (isSyncBeatMode) AccentPrimary else Foreground,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -244,19 +269,35 @@ fun FullScreenPlayerSheet(
                     )
                 }
                 
-                IconButton(
-                    onClick = onTogglePlayPause,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(Foreground)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        tint = Color.Black,
-                        modifier = Modifier.size(48.dp)
-                    )
+                if (isPendingPlay) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Foreground),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            color = Color.Black,
+                            strokeWidth = 3.dp
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Foreground)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.Black,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
                 }
                 
                 IconButton(onClick = { /* Next */ }, modifier = Modifier.size(64.dp)) {

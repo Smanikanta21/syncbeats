@@ -144,13 +144,27 @@ struct FullScreenPlayerView: View {
                 Spacer()
                 
                 // SyncBeats Icon
-                Button(action: {
-                    showingDevicePicker = true
-                }) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 20))
-                        .foregroundColor(.blue) // Highlighted to represent SyncBeats
-                }
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 20))
+                    .foregroundColor(SocketManager.shared.isSyncBeatMode ? .accentColor : .gray) // Highlighted if active
+                    .padding(10)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        let newMode = !SocketManager.shared.isSyncBeatMode
+                        SocketManager.shared.toggleSyncBeatMode()
+                        if newMode, let track = audioPlayer.currentTrack {
+                            SocketManager.shared.emitTrackSet(track: track)
+                            if audioPlayer.isPlaying {
+                                audioPlayer.pauseLocalForSync()
+                                SocketManager.shared.emitPlaybackPlay()
+                            }
+                        }
+                    }
+                    .onLongPressGesture {
+                        showingDevicePicker = true
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                    }
             }
             .padding(.horizontal, 40)
             

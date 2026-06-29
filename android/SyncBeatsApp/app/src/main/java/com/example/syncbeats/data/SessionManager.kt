@@ -28,8 +28,13 @@ class SessionManager(context: Context) {
         val token = fetchAuthToken() ?: return null
         try {
             val parts = token.split(".")
-            if (parts.size == 3) {
-                val payload = String(android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE))
+            if (parts.size >= 2) {
+                var base64 = parts[1]
+                val padding = base64.length % 4
+                if (padding > 0) {
+                    base64 = base64.padEnd(base64.length + 4 - padding, '=')
+                }
+                val payload = String(android.util.Base64.decode(base64, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
                 val jsonObject = org.json.JSONObject(payload)
                 val sub = jsonObject.optString("sub", null)
                 if (sub != null) {

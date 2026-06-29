@@ -57,6 +57,7 @@ fun AuthScreen(
             if (uiState.userId != null) {
                 sessionManager.saveUserId(uiState.userId!!)
             }
+            com.example.syncbeats.network.SocketManager.registerDevice()
             onLoginSuccess()
         }
     }

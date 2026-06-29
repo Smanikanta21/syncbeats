@@ -176,14 +176,24 @@ struct IslandExpandedView: View {
                         }
                         
                         // Play/Pause
-                        Button(action: { audioPlayer.togglePlayPause() }) {
+                        if SocketManager.shared.isPendingPlay {
                             ZStack {
                                 Circle()
                                     .fill(Color.white)
                                     .frame(width: 44, height: 44)
-                                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.black)
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            }
+                        } else {
+                            Button(action: { audioPlayer.togglePlayPause() }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white)
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.black)
+                                }
                             }
                         }
                         
@@ -198,16 +208,29 @@ struct IslandExpandedView: View {
                     // SyncBeats button and Search button on edges
                     HStack {
                         // SyncBeats button on far left
-                        Button(action: {
-                            showingDevicePicker = true
-                        }) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.blue)
-                                .padding(10)
-                                .background(Color.white.opacity(0.15))
-                                .clipShape(Circle())
-                        }
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(SocketManager.shared.isSyncBeatMode ? .accentColor : .gray)
+                            .padding(10)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Circle())
+                            .onTapGesture {
+                                let newMode = !SocketManager.shared.isSyncBeatMode
+                                SocketManager.shared.toggleSyncBeatMode()
+                                if newMode, let track = audioPlayer.currentTrack {
+                                    SocketManager.shared.emitTrackSet(track: track)
+                                    if audioPlayer.isPlaying {
+                                        audioPlayer.pauseLocalForSync()
+                                        SocketManager.shared.emitPlaybackPlay()
+                                    }
+                                }
+                            }
+                            .onLongPressGesture {
+                                showingDevicePicker = true
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.impactOccurred()
+                            }
+                        
                         
                         Spacer()
                         

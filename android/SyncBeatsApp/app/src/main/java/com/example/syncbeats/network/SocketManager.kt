@@ -19,6 +19,9 @@ object SocketManager {
     private val _pingFlow = MutableSharedFlow<String>()
     val pingFlow = _pingFlow.asSharedFlow()
 
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
     fun connect() {
         if (socket?.connected() == true) return
 
@@ -30,15 +33,24 @@ object SocketManager {
 
             socket?.on(Socket.EVENT_CONNECT) {
                 Log.d(TAG, "Socket connected: ${socket?.id()}")
+                _isConnected.value = true
                 
-                // Register this device with its deviceKey to receive pings
+                // Register this device with its deviceKey and userId to receive pings and syncs
                 val payload = org.json.JSONObject()
                 payload.put("deviceKey", DeviceManager.deviceId)
+                
+                val session = com.example.syncbeats.data.SessionManager(DeviceManager.appContext)
+                val userId = session.fetchUserId()
+                if (userId != null) {
+                    payload.put("userId", userId)
+                }
+                
                 socket?.emit("device:register", payload)
             }
 
             socket?.on(Socket.EVENT_DISCONNECT) {
                 Log.d(TAG, "Socket disconnected")
+                _isConnected.value = false
             }
 
             socket?.on("device:ping") { args ->
@@ -51,11 +63,33 @@ object SocketManager {
                     }
                 }
             }
+            
+            socket?.on("sync:forceEnable") { args ->
+                GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    if (!_isSyncBeatMode.value) {
+                        _isSyncBeatMode.value = true
+                        joinPersonalRoom(DeviceManager.appContext)
+                    }
+                }
+            }
 
             socket?.connect()
         } catch (e: Exception) {
             Log.e(TAG, "Error connecting socket", e)
         }
+    }
+    
+    fun registerDevice() {
+        val payload = org.json.JSONObject()
+        payload.put("deviceKey", DeviceManager.deviceId)
+        
+        val session = com.example.syncbeats.data.SessionManager(DeviceManager.appContext)
+        val userId = session.fetchUserId()
+        if (userId != null) {
+            payload.put("userId", userId)
+        }
+        
+        socket?.emit("device:register", payload)
     }
 
     fun pingDevice(targetDeviceKey: String) {
@@ -72,9 +106,10 @@ object SocketManager {
 
     fun toggleSyncBeatMode(context: android.content.Context) {
         if (_isSyncBeatMode.value) {
-            leavePersonalRoom()
+            leavePersonalRoom(context)
         } else {
             joinPersonalRoom(context)
+            socket?.emit("sync:forceAll")
         }
     }
     
@@ -100,9 +135,18 @@ object SocketManager {
         setupPlaybackListeners()
     }
     
-    private fun leavePersonalRoom() {
+    private fun leavePersonalRoom(context: android.content.Context) {
         _isSyncBeatMode.value = false
-        socket?.emit("room:leave")
+        val session = com.example.syncbeats.data.SessionManager(context)
+        val userId = session.fetchUserId()
+        if (userId != null) {
+            val payload = org.json.JSONObject().apply {
+                put("roomId", "personal_room_$userId")
+            }
+            socket?.emit("room:leave", payload)
+        } else {
+            socket?.emit("room:leave")
+        }
         ClockSyncManager.stopSyncing()
         removePlaybackListeners()
     }
@@ -114,10 +158,78 @@ object SocketManager {
     private val _playbackPauseFlow = MutableSharedFlow<org.json.JSONObject>()
     val playbackPauseFlow = _playbackPauseFlow.asSharedFlow()
     
+    private val _isPendingPlay = MutableStateFlow(false)
+    val isPendingPlay = _isPendingPlay.asStateFlow()
+    
     private val _trackSetFlow = MutableSharedFlow<org.json.JSONObject>()
     val trackSetFlow = _trackSetFlow.asSharedFlow()
 
     private fun setupPlaybackListeners() {
+        socket?.on("room:snapshot") { args ->
+            if (args.isNotEmpty()) {
+                val data = args[0] as? org.json.JSONObject ?: return@on
+                val trackUrl = data.optString("trackUrl", null)
+                val queueArray = data.optJSONArray("queue")
+                val pendingPlay = data.optBoolean("pendingPlay", false)
+                _isPendingPlay.value = pendingPlay
+                
+                if (trackUrl != null && trackUrl != "null" && trackUrl.isNotEmpty()) {
+                    var currentTrack: org.json.JSONObject? = null
+                    if (queueArray != null) {
+                        for (i in 0 until queueArray.length()) {
+                            val item = queueArray.optJSONObject(i)
+                            if (item?.optString("trackUrl") == trackUrl) {
+                                currentTrack = item
+                                break
+                            }
+                        }
+                    }
+                    
+                    if (currentTrack == null) {
+                        currentTrack = org.json.JSONObject().apply {
+                            put("id", trackUrl)
+                            put("trackUrl", trackUrl)
+                            put("title", "Synced Audio")
+                            put("artist", "Unknown")
+                            put("thumbnailURL", "")
+                            put("duration", "0")
+                        }
+                    }
+                    
+                    val trackData = org.json.JSONObject(currentTrack.toString())
+                    if (!trackData.has("id")) {
+                        trackData.put("id", trackUrl)
+                    }
+                    
+                    val eventData = org.json.JSONObject().apply {
+                        put("track", trackData)
+                        put("senderId", "server")
+                    }
+                    
+                    kotlinx.coroutines.GlobalScope.launch {
+                        _trackSetFlow.emit(eventData)
+                    }
+                    
+                    val state = data.optString("state", "")
+                    if (state == "PLAYING") {
+                        val position = data.optDouble("position", 0.0)
+                        val startEpoch = data.optDouble("startEpoch", 0.0)
+                        if (startEpoch > 0) {
+                            val scheduleData = org.json.JSONObject().apply {
+                                put("trackUrl", trackUrl)
+                                put("positionMs", position)
+                                put("startTime", startEpoch)
+                                put("senderId", "server")
+                            }
+                            kotlinx.coroutines.GlobalScope.launch {
+                                _playbackScheduleFlow.emit(scheduleData)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         socket?.on("playback:schedule") { args ->
             if (args.isNotEmpty()) {
                 val data = args[0] as? org.json.JSONObject
@@ -135,11 +247,19 @@ object SocketManager {
             }
         }
         socket?.on("room:updateQueue") { args ->
+            Log.d(TAG, "Received room:updateQueue event with args: ${args.contentToString()}")
             if (args.isNotEmpty()) {
                 val data = args[0] as? org.json.JSONObject
                 if (data != null) {
                     GlobalScope.launch { _trackSetFlow.emit(data) }
                 }
+            }
+        }
+        socket?.on("room:stateChanged") { args ->
+            if (args.isNotEmpty()) {
+                val data = args[0] as? org.json.JSONObject ?: return@on
+                val pendingPlay = data.optBoolean("pendingPlay", false)
+                _isPendingPlay.value = pendingPlay
             }
         }
     }
@@ -148,8 +268,35 @@ object SocketManager {
         socket?.off("playback:schedule")
         socket?.off("playback:pause")
         socket?.off("room:updateQueue")
+        socket?.off("room:stateChanged")
     }
     
+    fun emitClientReady(context: android.content.Context, isReady: Boolean) {
+        if (!_isSyncBeatMode.value) return
+        val session = com.example.syncbeats.data.SessionManager(context)
+        val userId = session.fetchUserId() ?: return
+        
+        val payload = org.json.JSONObject().apply {
+            put("roomId", "personal_room_$userId")
+            put("isReady", isReady)
+        }
+        Log.d(TAG, "Emitting room:clientReady with payload: $payload")
+        socket?.emit("room:clientReady", payload)
+    }
+
+    fun emitPlaybackPlay(context: android.content.Context) {
+        if (!_isSyncBeatMode.value) return
+        val session = com.example.syncbeats.data.SessionManager(context)
+        val userId = session.fetchUserId() ?: return
+        
+        val payload = org.json.JSONObject().apply {
+            put("roomId", "personal_room_$userId")
+            put("senderId", DeviceManager.deviceId)
+        }
+        Log.d(TAG, "Emitting playback:play with payload: $payload")
+        socket?.emit("playback:play", payload)
+    }
+
     fun emitPlaybackSchedule(context: android.content.Context, trackUrl: String, positionMs: Double, startTime: Double) {
         if (!_isSyncBeatMode.value) return
         val session = com.example.syncbeats.data.SessionManager(context)
@@ -162,6 +309,7 @@ object SocketManager {
             put("startTime", startTime)
             put("senderId", DeviceManager.deviceId)
         }
+        Log.d(TAG, "Emitting playback:schedule with payload: $payload")
         socket?.emit("playback:schedule", payload)
     }
     
@@ -175,6 +323,7 @@ object SocketManager {
             put("positionMs", positionMs)
             put("senderId", DeviceManager.deviceId)
         }
+        Log.d(TAG, "Emitting playback:pause with payload: $payload")
         socket?.emit("playback:pause", payload)
     }
 
@@ -197,6 +346,7 @@ object SocketManager {
             put("track", trackJson)
             put("senderId", DeviceManager.deviceId)
         }
+        Log.d(TAG, "Emitting room:updateQueue with payload: $payload")
         socket?.emit("room:updateQueue", payload)
     }
 
@@ -214,5 +364,6 @@ object SocketManager {
     fun disconnect() {
         socket?.disconnect()
         socket = null
+        _isConnected.value = false
     }
 }

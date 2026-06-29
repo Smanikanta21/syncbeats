@@ -49,15 +49,21 @@ struct MiniPlayerView: View {
                 Spacer()
                 
                 // Play/Pause Button
-                Button(action: {
-                    audioPlayer.togglePlayPause()
-                }) {
-                    Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.white)
+                if SocketManager.shared.isPendingPlay {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .frame(width: 44, height: 44)
+                } else {
+                    Button(action: {
+                        audioPlayer.togglePlayPause()
+                    }) {
+                        Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                    .disabled(audioPlayer.currentTrack == nil)
                 }
-                .disabled(audioPlayer.currentTrack == nil)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)

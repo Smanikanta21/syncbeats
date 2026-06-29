@@ -55,10 +55,13 @@ fun MainScreen(
     val downloadingIds by viewModel.downloadingIds.collectAsState()
     val isPlaying by audioPlayer.isPlaying.collectAsState()
     val currentTrackName by audioPlayer.currentTrackName.collectAsState()
+    val isPendingPlay by com.example.syncbeats.network.SocketManager.isPendingPlay.collectAsState()
     val progress by audioPlayer.progress.collectAsState()
     val currentPositionMs by audioPlayer.currentPositionMs.collectAsState()
     val durationMs by audioPlayer.durationMs.collectAsState()
     val recentlyAdded by viewModel.recentlyAdded.collectAsState()
+    
+    var currentSearchResult by remember { androidx.compose.runtime.mutableStateOf<com.example.syncbeats.network.SearchResult?>(null) }
 
     LaunchedEffect(searchQuery) {
         if (searchQuery.isNotEmpty()) {
@@ -76,22 +79,35 @@ fun MainScreen(
                 val trackData = data.optJSONObject("track")
                 if (trackData != null) {
                     val trackId = trackData.optString("id")
+                    
+                    var cleanTrackId = trackId
+                    if (cleanTrackId.startsWith("youtube:")) {
+                        cleanTrackId = cleanTrackId.removePrefix("youtube:")
+                    }
+                    
+                    // Prevent duplicate reload loop
+                    if (audioPlayer.currentTrackId == cleanTrackId) {
+                        return@collect
+                    }
+                    
                     val title = trackData.optString("title")
                     val artist = trackData.optString("artist")
                     val thumbnail = trackData.optString("thumbnailURL")
                     val duration = trackData.optString("duration")
                     
                     val result = com.example.syncbeats.network.SearchResult(
-                        id = trackId,
+                        id = cleanTrackId,
                         title = title,
                         artist = artist,
                         duration = duration,
                         thumbnail = thumbnail
                     )
                     
+                    currentSearchResult = result
+                    
                     audioPlayer.isInternalSyncEvent = true
                     viewModel.downloadAndPlay(result) { file ->
-                        audioPlayer.playFile(file, result.title)
+                        audioPlayer.playFile(file, cleanTrackId, result.title)
                         audioPlayer.isInternalSyncEvent = false
                     }
                 }
@@ -172,9 +188,10 @@ fun MainScreen(
                         viewModel.search(searchQuery)
                     },
                     onPlayResult = { result ->
+                        currentSearchResult = result
                         audioPlayer.isInternalSyncEvent = false
                         viewModel.downloadAndPlay(result) { file ->
-                            audioPlayer.playFile(file, result.title)
+                            audioPlayer.playFile(file, result.id, result.title)
                             
                             val audioUrl = "http://192.168.29.61:4000/search/youtube/download?videoId=${result.id}"
                             com.example.syncbeats.network.SocketManager.emitTrackSet(
@@ -200,6 +217,7 @@ fun MainScreen(
             ) {
                 MiniPlayer(
                     isPlaying = isPlaying,
+                    isPendingPlay = isPendingPlay,
                     progress = progress,
                     currentTrackName = currentTrackName,
                     onTogglePlayPause = { audioPlayer.togglePlayPause() },
@@ -210,18 +228,46 @@ fun MainScreen(
             if (showFullScreenPlayer) {
                 FullScreenPlayerSheet(
                     isPlaying = isPlaying,
+                    isPendingPlay = isPendingPlay,
                     progress = progress,
                     currentPositionMs = currentPositionMs,
                     durationMs = durationMs,
                     currentTrackName = currentTrackName,
+                    isSyncBeatMode = com.example.syncbeats.network.SocketManager.isSyncBeatMode.value,
                     onTogglePlayPause = { audioPlayer.togglePlayPause() },
+                    onToggleSyncBeatMode = {
+                        val newMode = !com.example.syncbeats.network.SocketManager.isSyncBeatMode.value
+                        if (newMode) {
+                            com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context)
+                            currentSearchResult?.let { result ->
+                                val audioUrl = "http://192.168.29.61:4000/search/youtube/download?videoId=${result.id}"
+                                com.example.syncbeats.network.SocketManager.emitTrackSet(
+                                    context = context,
+                                    trackId = result.id,
+                                    title = result.title,
+                                    artist = result.artist,
+                                    thumbnailURL = result.thumbnail,
+                                    duration = result.duration,
+                                    audioURL = audioUrl
+                                )
+                                // If we are currently playing, pause locally and request server playback 
+                                // so it waits for the other device to be ready!
+                                if (audioPlayer.isPlaying.value) {
+                                    audioPlayer.pauseLocalForSync()
+                                    com.example.syncbeats.network.SocketManager.emitPlaybackPlay(context)
+                                }
+                            }
+                        } else {
+                            com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context)
+                        }
+                    },
                     onDismissRequest = { showFullScreenPlayer = false },
                     onOpenDevicePicker = { showDevicePicker = true }
                 )
             }
             
             if (showDevicePicker) {
-                DevicePickerSheet(
+                DevicePickerModal(
                     onDismissRequest = { showDevicePicker = false },
                     nearbyDeviceManager = nearbyManager
                 )
@@ -229,6 +275,7 @@ fun MainScreen(
         }
     }
 }
+
 
 @Composable
 fun DynamicIslandPlayer(
