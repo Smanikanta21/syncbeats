@@ -144,6 +144,15 @@ export class RoomRepository {
     });
   }
 
+  async hasParticipantPreviouslyJoined(roomId: string, userId: string): Promise<boolean> {
+    const participant = await prisma.roomParticipant.findUnique({
+      where: {
+        roomId_userId: { roomId, userId }
+      }
+    });
+    return !!participant;
+  }
+
   async recordParticipantLeave(roomId: string, socketId: string): Promise<void> {
     await prisma.roomParticipant.updateMany({
       where: { roomId, socketId },

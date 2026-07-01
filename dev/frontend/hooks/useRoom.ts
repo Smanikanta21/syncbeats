@@ -499,6 +499,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:hostJoinRequest', handleHostJoinRequest);
 
+    const handleJoinRequestResolved = ({ targetSocketId }: { targetSocketId: string }) => {
+      setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
+    };
+    socket.on('room:joinRequestResolved', handleJoinRequestResolved);
+
     const handleHostChanged = (newHostId: string | null) => {
       setSnapshot(prev => prev ? { ...prev, hostId: newHostId } : prev);
     };
@@ -536,6 +541,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:joinApproved', handleJoinApproved);
       socket.off('room:joinDenied', handleJoinDenied);
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
+      socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);
       socket.off('device:ping', handleDevicePing);
       socket.off('error', handleError);

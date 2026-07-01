@@ -110,12 +110,15 @@ export class SocketHandler {
         const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
 
         if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
-          socket.emit('room:joinPendingApproval', { roomId });
-          const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
-          hostSockets.forEach(p => {
-            this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
-          });
-          return;
+          const hasJoinedBefore = await this.roomRepo.hasParticipantPreviouslyJoined(roomId, socket.data.userId);
+          if (!hasJoinedBefore) {
+            socket.emit('room:joinPendingApproval', { roomId });
+            const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
+            hostSockets.forEach(p => {
+              this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
+            });
+            return;
+          }
         }
         // -------------------------
 
@@ -168,6 +171,12 @@ export class SocketHandler {
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
+
+      // Clear the notification from all host devices
+      const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === room.snapshot().hostId);
+      hostSockets.forEach(p => {
+        this.io.to(p.socketId).emit('room:joinRequestResolved', { targetSocketId });
+      });
     });
 
     socket.on('room:denyJoin', ({ roomId, targetSocketId }: { roomId: string, targetSocketId: string }) => {
@@ -176,6 +185,12 @@ export class SocketHandler {
 
       this.io.to(targetSocketId).emit('room:joinDenied');
       console.log(`[Room ${roomId}] Host denied ${targetSocketId}`);
+
+      // Clear the notification from all host devices
+      const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === room.snapshot().hostId);
+      hostSockets.forEach(p => {
+        this.io.to(p.socketId).emit('room:joinRequestResolved', { targetSocketId });
+      });
     });
 
     socket.on('room:notifyHost', ({ roomId, displayName }: { roomId: string, displayName: string }) => {

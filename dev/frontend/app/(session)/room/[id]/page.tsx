@@ -609,7 +609,7 @@ export default function RoomPage() {
     if (tab !== activeTab) setActiveTab(tab);
   };
 
-  const PANEL_CLASSES = "w-full h-full flex flex-col overflow-hidden md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
+  const PANEL_CLASSES = "w-full flex-1 min-h-0 flex flex-col overflow-hidden md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
 
   const renderInfoPanel = () => (
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
@@ -1081,7 +1081,7 @@ export default function RoomPage() {
 
 
         {/* ── Connected Devices ── */}
-      <div className="hidden md:flex flex-col w-full h-full pt-20 pb-6 px-6 overflow-hidden">
+      <div className="hidden md:flex flex-col w-full flex-1 min-h-0 pt-20 pb-6 px-6 overflow-hidden">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1357,7 +1357,7 @@ export default function RoomPage() {
       </div>
 
       {/* ── MOBILE VIEW (Vertical Side Nav) ── */}
-      <div className="flex md:hidden w-full h-full relative pt-20">
+      <div className="flex md:hidden w-full flex-1 min-h-0 relative pt-20">
         {/* Main Content Area */}
         <div className="flex-1 h-full w-full overflow-hidden relative">
            <AnimatePresence mode="wait">
