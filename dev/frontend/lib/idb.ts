@@ -1,4 +1,8 @@
+let dbInstance: IDBDatabase | null = null;
+
 export const initDB = (): Promise<IDBDatabase> => {
+  if (dbInstance) return Promise.resolve(dbInstance);
+  
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("SyncBeatsDB", 1);
     req.onupgradeneeded = (e: any) => {
@@ -7,7 +11,10 @@ export const initDB = (): Promise<IDBDatabase> => {
         db.createObjectStore("tracks");
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      dbInstance = req.result;
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
   });
 };
