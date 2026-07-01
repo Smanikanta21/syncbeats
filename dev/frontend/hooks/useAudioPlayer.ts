@@ -291,6 +291,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
                 if (!file) return reject(new Error("No audio file found in torrent"));
 
+                let lastProgress = 0;
+                torrent.on('download', () => {
+                  const pct = Math.round(torrent.progress * 100);
+                  if (pct !== lastProgress && pct >= 0 && pct <= 100) {
+                    lastProgress = pct;
+                    const { getSocket } = require('../lib/socket');
+                    const socket = getSocket();
+                    const roomId = window.location.pathname.split('/').pop();
+                    if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+                  }
+                });
+
                 file.getBlob(async (err: any, blob: Blob) => {
                   if (err) return reject(err);
                   try {
@@ -373,6 +385,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
                   document.dispatchEvent(event);
                 }
+
+                if (expectedChunks > 0) {
+                  const pct = Math.round((receivedIndices.size / expectedChunks) * 100);
+                  socket.emit('room:sync_progress', { roomId, progress: pct });
+                }
                 
                 if (receivedIndices.size === expectedChunks && expectedChunks > 0) {
                   socket.off('track:receive_chunk', onChunk);
@@ -419,7 +436,33 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (!response.ok) {
             throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
           }
-          arrayBuffer = await response.arrayBuffer();
+          const contentLength = response.headers.get('content-length');
+          if (contentLength) {
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+            const reader = response.body!.getReader();
+            const chunks = [];
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              loaded += value.length;
+              const pct = Math.round((loaded / total) * 100);
+              const { getSocket } = require('../lib/socket');
+              const socket = getSocket();
+              const roomId = window.location.pathname.split('/').pop();
+              if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+            }
+            const concat = new Uint8Array(loaded);
+            let offset = 0;
+            for (const chunk of chunks) {
+              concat.set(chunk, offset);
+              offset += chunk.length;
+            }
+            arrayBuffer = concat.buffer;
+          } else {
+            arrayBuffer = await response.arrayBuffer();
+          }
         } else {
           // Ensure we hit the backend if the URL is relative
           const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
@@ -428,7 +471,33 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
           }
-          arrayBuffer = await response.arrayBuffer();
+          const contentLength = response.headers.get('content-length');
+          if (contentLength) {
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+            const reader = response.body!.getReader();
+            const chunks = [];
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              loaded += value.length;
+              const pct = Math.round((loaded / total) * 100);
+              const { getSocket } = require('../lib/socket');
+              const socket = getSocket();
+              const roomId = window.location.pathname.split('/').pop();
+              if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+            }
+            const concat = new Uint8Array(loaded);
+            let offset = 0;
+            for (const chunk of chunks) {
+              concat.set(chunk, offset);
+              offset += chunk.length;
+            }
+            arrayBuffer = concat.buffer;
+          } else {
+            arrayBuffer = await response.arrayBuffer();
+          }
         }
 
         const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
@@ -650,10 +719,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       console.warn("Ignoring deprecated local: track url", url);
       return;
     }
-    const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('magnet:') && !url.startsWith('ws-p2p:') && !url.startsWith('youtube:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
-      ? `${getServerUrl()}/${url}` 
-      : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
-    setTrackUrl(absoluteUrl);
+    stopCurrentSource();
+    setIsPlaying(false);
+    setIsReady(false);
+    setIsBuffering(false);
+    setError(null);
+    audioBufferRef.current = null;
+    
+    setTrackUrl(url);
     setTrackTitle(title);
     setTrackArtist(artist);
   }, []);

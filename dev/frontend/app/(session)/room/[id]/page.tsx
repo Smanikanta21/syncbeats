@@ -211,7 +211,7 @@ export default function RoomPage() {
   const audio  = useAudio();
   const upload = useUpload();
   const [copied, setCopied] = useState(false);
-  const { snapshot, participants, isConnected, joinStatus, pendingRequests, togglePrivate, approveJoin, denyJoin, notifyHost, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack } = useRoom({
+  const { snapshot, participants, isConnected, joinStatus, pendingRequests, togglePrivate, approveJoin, denyJoin, notifyHost, currentSocketId, clockOffset, allReady, setReady, setParticipantVolume, leave, incomingTrack, deviceSyncProgress } = useRoom({
     roomId,
     displayName,
     userId: user?.id,
@@ -595,7 +595,7 @@ export default function RoomPage() {
     if (tab !== activeTab) setActiveTab(tab);
   };
 
-  const PANEL_CLASSES = "w-full h-full flex flex-col md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
+  const PANEL_CLASSES = "w-full h-full flex flex-col overflow-hidden md:bg-background/40 md:backdrop-blur-xl md:rounded-[2.5rem] md:border md:border-foreground/10 md:p-6 p-4 md:shadow-[0_10px_40px_rgba(0,0,0,0.3)]";
 
   const renderInfoPanel = () => (
     <div className="w-full h-full flex flex-col items-center justify-center pb-8 overflow-y-auto custom-scrollbar">
@@ -746,7 +746,7 @@ export default function RoomPage() {
                           </div>
                           <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5 mt-0.5">
                             {p.isBlocked
-                              ? <><VolumeX className="w-3 h-3 text-rose-500 animate-pulse" /><span className="text-rose-500 font-bold">Autoplay Blocked</span></>
+                              ? <><VolumeX className="w-3 h-3 text-rose-500 animate-pulse" /><span className="text-rose-500 font-bold">Disconnected</span></>
                               : p.isReady
                               ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
                               : audio.hasTrack
@@ -772,28 +772,47 @@ export default function RoomPage() {
                     </div>
 
                     <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
-                      <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
-                        <span className="flex items-center gap-1.5 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
-                          {p.volume === 0 ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-foreground/50" />}
-                          {currentSocketId === p.socketId ? "Your Vol" : "Vol"}
-                        </span>
-                        <span className="text-foreground/60">{p.volume}%</span>
-                      </div>
-                      <div className="relative h-6 flex items-center">
-                        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                          <div className="h-full bg-foreground rounded-full" style={{ width: `${p.volume}%` }} />
-                        </div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={p.volume}
-                          onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                          aria-label={`${p.devName} volume`}
-                          className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
-                        />
-                      </div>
+                      {!p.isReady && deviceSyncProgress[p.socketId] !== undefined ? (
+                        <>
+                          <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
+                            <span className="flex items-center gap-1.5 text-foreground/80">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Syncing
+                            </span>
+                            <span className="text-foreground/60">{deviceSyncProgress[p.socketId]}%</span>
+                          </div>
+                          <div className="relative h-6 flex items-center">
+                            <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
+                              <div className="h-full bg-foreground rounded-full" style={{ width: `${deviceSyncProgress[p.socketId]}%` }} />
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
+                            <span className="flex items-center gap-1.5 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
+                              {p.volume === 0 ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-foreground/50" />}
+                              {currentSocketId === p.socketId ? "Your Vol" : "Vol"}
+                            </span>
+                            <span className="text-foreground/60">{p.volume}%</span>
+                          </div>
+                          <div className="relative h-6 flex items-center">
+                            <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
+                              <div className="h-full bg-foreground rounded-full" style={{ width: `${p.volume}%` }} />
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={p.volume}
+                              onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                              aria-label={`${p.devName} volume`}
+                              className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -949,8 +968,14 @@ export default function RoomPage() {
           if (!((audio.isBuffering && audio.isPlaying) || isAnyDeviceBuffering || isSyncing) || audio.error) return null;
 
           let overlayText = "Buffering…";
+          let progressPercent = 0;
+          
           if (isSyncing) {
-            overlayText = `Syncing track: ${activeTransfer.progress}%…`;
+            overlayText = "Syncing track…";
+            progressPercent = activeTransfer.progress;
+          } else if (audio.isBuffering) {
+            overlayText = "Buffering…";
+            progressPercent = 0;
           } else if (isAnyDeviceBuffering) {
             overlayText = "Devices Buffering…";
           }
@@ -963,34 +988,46 @@ export default function RoomPage() {
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
               className="fixed bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
             >
-              <div className="relative flex items-center gap-3 px-5 py-3 rounded-full bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-                {/* Animated gradient ring */}
-                <div className="absolute inset-0 rounded-full overflow-hidden">
-                  <div className="absolute inset-0 rounded-full bg-linear-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
+              <div className="relative flex flex-col items-center gap-1 px-5 py-3 rounded-2xl bg-background/80 backdrop-blur-2xl border border-foreground/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="flex items-center gap-3 relative z-10">
+                  {/* Animated gradient ring */}
+                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                    <div className="absolute inset-0 rounded-full bg-linear-to-r from-foreground/5 via-foreground/10 to-foreground/5 animate-pulse" />
+                  </div>
+                  
+                  {/* Spinner / Error Icon */}
+                  <div className="relative shrink-0 flex items-center justify-center w-5 h-5">
+                    <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
+                    <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                  </div>
+                  
+                  {/* Text */}
+                  <span className="relative text-sm font-semibold tracking-wide whitespace-nowrap text-foreground/80">
+                    {overlayText} {progressPercent > 0 ? `${progressPercent.toFixed(0)}%` : ""}
+                  </span>
+                  
+                  {/* Animated dots */}
+                  <div className="relative flex gap-0.5">
+                    {[0, 1, 2].map(i => (
+                      <motion.div
+                        key={i}
+                        className="w-1 h-1 rounded-full bg-foreground/60"
+                        animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                      />
+                    ))}
+                  </div>
                 </div>
                 
-                {/* Spinner / Error Icon */}
-                <div className="relative shrink-0 flex items-center justify-center w-5 h-5">
-                  <div className="absolute inset-0 bg-background/40 backdrop-blur-3xl rounded-full -z-10" />
-                  <div className="absolute inset-0 bg-linear-to-tr from-foreground/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                </div>
-                
-                {/* Text */}
-                <span className="relative text-sm font-semibold tracking-wide whitespace-nowrap text-foreground/80">
-                  {overlayText}
-                </span>
-                
-                {/* Animated dots */}
-                <div className="relative flex gap-0.5">
-                  {[0, 1, 2].map(i => (
-                    <motion.div
-                      key={i}
-                      className="w-1 h-1 rounded-full bg-foreground/60"
-                      animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                      transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                {/* Progress bar background */}
+                {progressPercent > 0 && (
+                  <div className="absolute bottom-0 left-0 w-full h-1 bg-foreground/10">
+                    <div 
+                      className="h-full bg-blue-500 transition-all duration-300" 
+                      style={{ width: `${progressPercent}%` }} 
                     />
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             </motion.div>
         );
@@ -1101,7 +1138,7 @@ export default function RoomPage() {
             </div>
 
             {/* Devices Panel */}
-            <div className="w-full rounded-3xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full overflow-hidden">
+            <div className="w-full rounded-3xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
             <h2 className="text-sm font-bold tracking-widest uppercase text-foreground/50 text-center shrink-0">
               Connected Devices ({participants.length})
             </h2>
@@ -1150,7 +1187,9 @@ export default function RoomPage() {
                               <h4 className="font-bold text-foreground">{displayDeviceName}</h4>
                             </div>
                             <p className="text-xs font-medium text-foreground/50 flex items-center gap-1.5">
-                              {p.isReady
+                              {p.isBlocked
+                                ? <><VolumeX className="w-3 h-3 text-rose-500 animate-pulse" /><span className="text-rose-500 font-bold">Disconnected</span></>
+                                : p.isReady
                                 ? <><CheckCircle2 className="w-3 h-3 text-green-400" /><span className="text-green-400">Buffered</span></>
                                 : audio.hasTrack
                                 ? <><Loader2 className="w-3 h-3 animate-spin" /> Buffering…</>
@@ -1175,31 +1214,53 @@ export default function RoomPage() {
                       </div>
 
                       <motion.div className="flex flex-col mt-2 w-full">
-                        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
-                          <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
-                            {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
-                            {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
-                          </span>
-                          <span className="text-foreground/60">{p.volume}%</span>
-                        </div>
-                        <div className="relative h-10 flex items-center">
-                          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-foreground"
-                              style={{ width: `${p.volume}%` }}
-                            />
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            step={1}
-                            value={p.volume}
-                            onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
-                            aria-label={`${displayDeviceName} volume`}
-                            className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
-                          />
-                        </div>
+                        {!p.isReady && deviceSyncProgress[p.socketId] !== undefined ? (
+                          <>
+                            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
+                              <span className="flex items-center gap-2 text-foreground/80">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Syncing
+                              </span>
+                              <span className="text-foreground/60">{deviceSyncProgress[p.socketId]}%</span>
+                            </div>
+                            <div className="relative h-10 flex items-center">
+                              <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-foreground"
+                                  style={{ width: `${deviceSyncProgress[p.socketId]}%` }}
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
+                              <span className="flex items-center gap-2 cursor-pointer hover:text-foreground/80 transition-colors" onClick={() => toggleMute(p.socketId)}>
+                                {p.volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-foreground/50" />}
+                                {currentSocketId === p.socketId ? "Your Volume" : "Participant Volume"}
+                              </span>
+                              <span className="text-foreground/60">{p.volume}%</span>
+                            </div>
+                            <div className="relative h-10 flex items-center">
+                              <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-foreground"
+                                  style={{ width: `${p.volume}%` }}
+                                />
+                              </div>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={p.volume}
+                                onChange={(e) => handleVolumeChange(p.socketId, Number(e.target.value))}
+                                aria-label={`${displayDeviceName} volume`}
+                                className="relative z-10 w-full appearance-none bg-transparent cursor-pointer volume-slider"
+                              />
+                            </div>
+                          </>
+                        )}
                       </motion.div>
                     </div>
                   );})}
@@ -1224,8 +1285,8 @@ export default function RoomPage() {
           </div>
 
           {/* Right Column: Queue */}
-          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-2">
-            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 h-full">
+          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full min-h-0 gap-2">
+            <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
               <div className="flex items-center justify-between shrink-0">
                 <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
                   <ListMusic className="w-4 h-4" />

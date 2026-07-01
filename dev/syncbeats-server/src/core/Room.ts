@@ -21,11 +21,12 @@ export class Room extends EventEmitter {
     pauseOffset: 0,
     isPlaying: false
   };
+  private readyTimeout: NodeJS.Timeout | null = null;
 
   constructor(public readonly roomId: string) {
     super();
   }
-
+  
   setParticipantVolume(socketId: string, volume: number): void {
     const participant = this.participants.get(socketId);
     if (!participant) return;
@@ -230,6 +231,25 @@ export class Room extends EventEmitter {
       p.isBlocked = false;
     }
     this.snapshotTime = Date.now();
+    
+    if (this.readyTimeout) clearTimeout(this.readyTimeout);
+    this.readyTimeout = setTimeout(() => {
+      let changed = false;
+      for (const p of this.participants.values()) {
+        if (!p.isReady && !p.isBlocked) {
+          p.isBlocked = true;
+          changed = true;
+          console.log(`[Room ${this.roomId}] Participant ${p.socketId} timed out waiting for ready, marking as blocked.`);
+        }
+      }
+      if (changed) {
+        this.emit('stateChanged', this.snapshot());
+        if (this.pendingPlay && this.allReady()) {
+          this._startPlayback();
+        }
+      }
+    }, 15000);
+
     if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
     this.emit('trackSet', { trackUrl: next.trackUrl, title: next.title });
     this.emit('stateChanged', this.snapshot());
@@ -244,6 +264,10 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
 
     if (this.allReady()) {
+      if (this.readyTimeout) {
+        clearTimeout(this.readyTimeout);
+        this.readyTimeout = null;
+      }
       this.emit('allReady');
       if (this.pendingPlay) {
         this._startPlayback();

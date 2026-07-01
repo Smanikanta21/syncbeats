@@ -2116,15 +2116,15 @@ export function DynamicIsland() {
           <CompactState
             isExpanded={isExpanded}
             effectivePlaying={effectivePlaying}
-            trackTitle={audio.trackTitle}
+            trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
             trackUrl={audio.trackUrl}
             progress={displayProgress}
             hasTrack={hasTrack}
             seekIndicator={seekIndicator}
             isReady={audio.isReady}
             error={audio.error}
-            downloadProgress={0}
-            showDetails={effectivePlaying || forceShowDetails}
+            downloadProgress={incomingTrack ? incomingTrack.progress : 0}
+            showDetails={effectivePlaying || forceShowDetails || !!incomingTrack}
             isRoom={isRoom}
             roomParticipants={roomParticipants}
             pendingRequestsCount={pendingRequests?.length || 0}
@@ -2167,11 +2167,11 @@ export function DynamicIsland() {
                 >
                   <PlayerTab
                     effectivePlaying={effectivePlaying}
-                    trackTitle={audio.trackTitle}
+                    trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
                     trackUrl={audio.trackUrl}
                     isReady={audio.isReady}
                     error={audio.error}
-                    downloadProgress={0}
+                    downloadProgress={incomingTrack ? incomingTrack.progress : 0}
                     progress={displayProgress}
                     displayTime={displayTime}
                     duration={audio.duration}

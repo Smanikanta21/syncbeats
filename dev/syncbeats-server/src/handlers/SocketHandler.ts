@@ -371,6 +371,10 @@ export class SocketHandler {
       socket.to(roomId).emit('room:upload_progress', { title, progress });
     });
 
+    socket.on('room:sync_progress', ({ roomId, progress }: { roomId: string, progress: number }) => {
+      socket.to(roomId).emit('room:sync_progress', { socketId: socket.id, progress });
+    });
+
     // ── NTP sync ─────────────────────────────────────────────────────────
 
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {

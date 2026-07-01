@@ -30,10 +30,13 @@ interface UseRoomReturn {
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
   incomingTrack: { title: string, progress: number } | null;
+  deviceSyncProgress: Record<string, number>;
   togglePrivate: (isPrivate: boolean) => void;
   approveJoin:  (targetSocketId: string, displayName: string) => void;
   denyJoin:     (targetSocketId: string) => void;
   notifyHost:   () => void;
+  syncInFlightRef: React.MutableRefObject<boolean>;
+  hasClockSync: React.MutableRefObject<boolean>;
 }
 
 const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
@@ -57,6 +60,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -77,8 +81,14 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   }, [socket, roomId]);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
+    if (trackUrl) {
+      const match = queue.find((item) => item.trackUrl === trackUrl);
+      if (match?.title) return match.title;
+    }
+    
     const currentQueueItem = queue.find((item) => item.isCurrent);
     if (currentQueueItem?.title) return currentQueueItem.title;
+    
     if (!trackUrl) return "Unknown Track";
     const fileName = trackUrl.split('/').pop() ?? '';
     return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
@@ -373,7 +383,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:participantLeft', handleParticipantLeft);
 
-    const handleUploadProgress = ({ title, progress }: { title: string, progress: number }) => {
+    const handleUploadProgress = ({ title, progress }: { title: string; progress: number }) => {
       if (progress >= 100) {
         setIncomingTrack(null);
       } else {
@@ -381,6 +391,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       }
     };
     socket.on('room:upload_progress', handleUploadProgress);
+
+    const handleSyncProgress = ({ socketId, progress }: { socketId: string; progress: number }) => {
+      setDeviceSyncProgress(prev => ({ ...prev, [socketId]: progress }));
+    };
+    socket.on('room:sync_progress', handleSyncProgress);
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);
@@ -564,7 +579,5 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
-    setParticipantVolume, leave, incomingTrack, togglePrivate, approveJoin, denyJoin, notifyHost
-  };
+  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress };
 }
