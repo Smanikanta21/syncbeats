@@ -261,6 +261,9 @@ export class Room extends EventEmitter {
     const p = this.participants.get(socketId);
     if (!p) return;
     p.isReady = ready;
+    if (ready) {
+      p.isBlocked = false;
+    }
     this.emit('stateChanged', this.snapshot());
 
     if (this.allReady()) {
