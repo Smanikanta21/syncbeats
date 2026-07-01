@@ -9,6 +9,8 @@ import {
 } from '../types';
 
 export class SocketHandler {
+  private nextDebounce = new Map<string, number>();
+
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
@@ -282,6 +284,14 @@ export class SocketHandler {
     });
 
     socket.on('playback:next', async ({ roomId }: { roomId: string }) => {
+      const now = Date.now();
+      const last = this.nextDebounce.get(roomId) || 0;
+      if (now - last < 2000) {
+        console.log(`[WS] Ignoring duplicate playback:next for room ${roomId}`);
+        return;
+      }
+      this.nextDebounce.set(roomId, now);
+
       const room = this.roomManager.get(roomId);
       if (!room) return;
       try {
@@ -295,6 +305,14 @@ export class SocketHandler {
     });
 
     socket.on('playback:prev', async ({ roomId }: { roomId: string }) => {
+      const now = Date.now();
+      const last = this.nextDebounce.get(roomId) || 0;
+      if (now - last < 2000) {
+        console.log(`[WS] Ignoring duplicate playback:prev for room ${roomId}`);
+        return;
+      }
+      this.nextDebounce.set(roomId, now);
+
       const room = this.roomManager.get(roomId);
       if (!room) return;
       try {

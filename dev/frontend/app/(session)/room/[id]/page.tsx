@@ -399,13 +399,27 @@ export default function RoomPage() {
     };
   }, []);
 
+  // ── Leave-room confirmation modal ─────────────────────────────────────────
+  // Detects local (non-YouTube) ws-p2p: tracks in the queue that cannot be
+  // recovered if all seeders leave. Shows a specific warning for those tracks.
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+
+  const localOnlyTracks = (snapshot?.queue ?? []).filter(
+    (t) => t.trackUrl.startsWith('ws-p2p:') && !t.trackUrl.startsWith('ws-p2p:yt:')
+  );
+
   const handleLeave = () => {
-    if (!window.confirm("Do you really want to leave the room?")) return;
+    setLeaveModalOpen(true);
+  };
+
+  const confirmLeave = () => {
+    setLeaveModalOpen(false);
     audio.pause();
     audio.clearTrack();
     leave();
-    router.push("/hub");
+    router.push('/hub');
   };
+
 
   const handleRemoveTrack = async (e: React.MouseEvent, trackId: string) => {
     e.stopPropagation();
@@ -1074,7 +1088,7 @@ export default function RoomPage() {
           className="w-full flex gap-6 items-stretch justify-between flex-1 min-h-0 pb-6"
         >
           {/* Left Column: Room Info & Devices */}
-          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full gap-4 relative z-100">
+          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-4 relative z-100">
             
             {/* Room Info Card */}
             <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
@@ -1285,7 +1299,7 @@ export default function RoomPage() {
           </div>
 
           {/* Right Column: Queue */}
-          <div className="flex flex-col w-75 xl:w-85 shrink-0 h-full min-h-0 gap-2">
+          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-2">
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
               <div className="flex items-center justify-between shrink-0">
                 <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
@@ -1406,7 +1420,81 @@ export default function RoomPage() {
           </motion.div>
         </div>
       )}
+
+      {/* ── Leave Room Confirmation Modal ── */}
+      <AnimatePresence>
+        {leaveModalOpen && (
+          <motion.div
+            key="leave-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-background/70 backdrop-blur-xl flex flex-col items-center justify-center z-[99999] px-6"
+            onClick={() => setLeaveModalOpen(false)}
+          >
+            <motion.div
+              key="leave-modal-panel"
+              initial={{ opacity: 0, scale: 0.93, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.93, y: 16 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-sm w-full bg-background/80 border border-foreground/10 rounded-3xl shadow-[0_24px_64px_rgba(0,0,0,0.4)] p-7 flex flex-col gap-5 backdrop-blur-2xl"
+            >
+              {/* Icon */}
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mx-auto ${localOnlyTracks.length > 0 ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
+                {localOnlyTracks.length > 0 ? '⚠️' : '👋'}
+              </div>
+
+              {/* Heading */}
+              <div className="text-center space-y-1.5">
+                <h2 className="text-lg font-black tracking-tight text-foreground">
+                  {localOnlyTracks.length > 0 ? 'Local songs will be lost' : 'Leave the room?'}
+                </h2>
+                <p className="text-xs text-foreground/50 font-medium leading-relaxed">
+                  {localOnlyTracks.length > 0
+                    ? 'These songs only exist on your device. If you leave and nobody else has them, they cannot be recovered — you\'ll need to re-upload them.'
+                    : 'Are you sure you want to leave? You can always re-join with the same room code.'}
+                </p>
+              </div>
+
+              {/* Local tracks list */}
+              {localOnlyTracks.length > 0 && (
+                <div className="flex flex-col gap-1.5 bg-amber-500/5 border border-amber-500/15 rounded-2xl p-3 max-h-36 overflow-y-auto custom-scrollbar">
+                  {localOnlyTracks.map((t) => (
+                    <div key={t.id} className="flex items-center gap-2.5 py-1">
+                      <div className="w-7 h-7 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                        <Music2 className="w-3.5 h-3.5 text-amber-400" />
+                      </div>
+                      <span className="text-xs font-semibold text-foreground/80 truncate">{t.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2.5 mt-1">
+                <button
+                  onClick={confirmLeave}
+                  className={`w-full py-3.5 rounded-2xl text-sm font-bold tracking-widest uppercase transition-all active:scale-95 ${localOnlyTracks.length > 0 ? 'bg-red-500/90 hover:bg-red-500 text-white' : 'bg-foreground hover:bg-foreground/90 text-background'}`}
+                >
+                  {localOnlyTracks.length > 0 ? 'Leave Anyway' : 'Leave Room'}
+                </button>
+                <button
+                  onClick={() => setLeaveModalOpen(false)}
+                  className="w-full py-3.5 rounded-2xl text-sm font-semibold text-foreground/60 hover:text-foreground hover:bg-foreground/5 transition-all active:scale-95 tracking-wide"
+                >
+                  Stay in Room
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Device Context Menu (Must be outside carousel due to fixed positioning) */}
+
       {deviceMenu && (
         <>
           {/* Mobile Bottom Sheet Menu */}

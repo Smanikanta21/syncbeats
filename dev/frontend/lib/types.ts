@@ -26,6 +26,10 @@ export interface Participant {
   userId?:     string;
   outputDeviceName?: string;
   outputDeviceType?: string;
+  /** Median RTT to server in ms — updated after each NTP burst */
+  latency?:    number;
+  /** IQR-based jitter in ms — updated after each NTP burst */
+  jitter?:     number;
 }
 
 export interface TrackQueueItem {

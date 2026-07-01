@@ -98,6 +98,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
   const unlockTimeoutRef = useRef<number | null>(null);
   const scheduleIdRef = useRef<number>(0);
+  // Holds the AbortController for any in-flight P2P download so we can cancel
+  // it immediately when setTrack/clearTrack is called or the component unmounts.
+  const activeFetchAbortRef = useRef<AbortController | null>(null);
 
   // Initialize AudioContext
   useEffect(() => {
@@ -332,7 +335,34 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             console.log('[WebSocket P2P] Found track locally in IDB!');
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
-            arrayBuffer = await new Promise((resolve, reject) => {
+            // ── Retry-with-backoff P2P download ────────────────────────────
+            // When a user re-joins after a long absence, the original seeders
+            // may have closed their tabs.  We re-broadcast the request up to
+            // MAX_RETRIES times (with RETRY_INTERVAL_MS between each) so that
+            // any peer who reconnects shortly after us can still serve the file.
+            //
+            // An AbortController lets setTrack/clearTrack cancel this cleanly
+            // if the user changes tracks or leaves while waiting.
+            const MAX_RETRIES      = 3;
+            const RETRY_INTERVAL_MS = 8_000;  // Wait 8s per attempt
+            const CHUNK_IDLE_MS    = 15_000;  // Reset timer if no chunk for 15s
+
+            // Cancel any pre-existing download for a different track
+            if (activeFetchAbortRef.current) {
+              activeFetchAbortRef.current.abort();
+            }
+            const abortCtrl = new AbortController();
+            activeFetchAbortRef.current = abortCtrl;
+            const { signal } = abortCtrl;
+
+            arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+              if (signal.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+              signal.addEventListener('abort', () => {
+                socket.off('track:receive_chunk', onChunk);
+                clearAllTimers();
+                reject(new DOMException('Download cancelled — track changed', 'AbortError'));
+              });
+
               const { getSocket } = require('../lib/socket');
               const socket = getSocket();
               const roomId = window.location.pathname.split('/').pop();
@@ -340,20 +370,134 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const chunks: ArrayBuffer[] = [];
               const receivedIndices = new Set<number>();
               let expectedChunks = 0;
-              let timeoutId: any;
-              
-              const resetTimeout = () => {
-                if (timeoutId) clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => {
-                  if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
-                    socket.off('track:receive_chunk', onChunk);
-                    reject(new Error("WebSocket P2P request timed out waiting for chunks"));
+              let retryCount = 0;
+              let idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
+              let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+              const clearAllTimers = () => {
+                if (idleTimeoutId)  clearTimeout(idleTimeoutId);
+                if (retryTimeoutId) clearTimeout(retryTimeoutId);
+                idleTimeoutId = null;
+                retryTimeoutId = null;
+              };
+
+              const fail = (msg: string) => {
+                socket.off('track:receive_chunk', onChunk);
+                clearAllTimers();
+                reject(new Error(msg));
+              };
+
+              // ── YouTube P2P fallback ──────────────────────────────────────
+              // ws-p2p:yt:<videoId>_<timestamp> URLs contain the YouTube video
+              // ID directly in the string.  When all P2P retries are exhausted
+              // we can silently re-download through the existing yt-proxy
+              // (which routes via RapidAPI — NOT the EC2 IP, no ban risk).
+              // The re-downloaded blob is saved to IDB so future loads are instant.
+              const failOrFallback = async (p2pErrMsg: string) => {
+                socket.off('track:receive_chunk', onChunk);
+                clearAllTimers();
+
+                // Extract videoId from ws-p2p:yt:<videoId>_<timestamp>
+                const ytMatch = url.match(/^ws-p2p:yt:([^_]+)_/);
+                if (!ytMatch) {
+                  // Not a YouTube track — no fallback possible
+                  reject(new Error(p2pErrMsg));
+                  return;
+                }
+
+                const videoId = ytMatch[1];
+                const roomId  = window.location.pathname.split('/').pop();
+                console.warn(
+                  `[WebSocket P2P] No seeders found. Falling back to yt-proxy for videoId: ${videoId}`
+                );
+
+                try {
+                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+                  const resp = await fetch(proxyUrl, { signal });
+                  if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
+
+                  // Stream with progress so the user sees something happening
+                  const contentLength = resp.headers.get('content-length');
+                  let ytBuffer: ArrayBuffer;
+
+                  if (contentLength) {
+                    const total = parseInt(contentLength, 10);
+                    let loaded = 0;
+                    const reader = resp.body!.getReader();
+                    const ytChunks: Uint8Array[] = [];
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+                      ytChunks.push(value);
+                      loaded += value.length;
+                      const pct = Math.round((loaded / total) * 100);
+                      const { getSocket: gs } = require('../lib/socket');
+                      gs().emit('room:sync_progress', { roomId, progress: pct });
+                    }
+                    const concat = new Uint8Array(loaded);
+                    let off = 0;
+                    for (const c of ytChunks) { concat.set(c, off); off += c.length; }
+                    ytBuffer = concat.buffer;
+                  } else {
+                    ytBuffer = await resp.arrayBuffer();
                   }
-                }, 30000); // Timeout if no chunks arrive for 30s
+
+                  // Save under the ws-p2p URL so IDB cache serves future loads
+                  const blob = new Blob([ytBuffer], { type: 'audio/mpeg' });
+                  saveTrack(url, blob).catch(() => {});
+                  console.log('[WebSocket P2P] yt-proxy fallback succeeded. Saved to IDB.');
+                  activeFetchAbortRef.current = null;
+                  resolve(ytBuffer);
+                } catch (fallbackErr) {
+                  if (signal.aborted) {
+                    reject(new DOMException('Download cancelled — track changed', 'AbortError'));
+                  } else {
+                    reject(new Error(
+                      `P2P failed and YouTube re-download also failed: ${(fallbackErr as Error).message}`
+                    ));
+                  }
+                }
+              };
+
+              const requestChunks = () => {
+                if (signal.aborted) return;
+                console.log(`[WebSocket P2P] Requesting chunks (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                socket.emit('track:request_file', { roomId, trackUrl: url });
+
+                // If nobody responds within RETRY_INTERVAL_MS, try again (or fall back)
+                retryTimeoutId = setTimeout(() => {
+                  if (signal.aborted) return;
+                  if (receivedIndices.size > 0) return; // Transfer already started — don't retry
+                  retryCount++;
+                  if (retryCount < MAX_RETRIES) {
+                    console.warn(`[WebSocket P2P] No response yet, retrying (${retryCount}/${MAX_RETRIES})...`);
+                    requestChunks();
+                  } else {
+                    // All retries exhausted — try yt-proxy for YouTube tracks
+                    void failOrFallback(
+                      'No other participant has this track cached. ' +
+                      'Ask someone who was in the room originally to re-join so they can share it.'
+                    );
+                  }
+                }, RETRY_INTERVAL_MS);
+              };
+
+
+              const resetIdleTimer = () => {
+                if (idleTimeoutId) clearTimeout(idleTimeoutId);
+                idleTimeoutId = setTimeout(() => {
+                  if (receivedIndices.size < expectedChunks || expectedChunks === 0) {
+                    void failOrFallback('Track transfer stalled — the seeding device may have disconnected.');
+                  }
+                }, CHUNK_IDLE_MS);
               };
               
               const onChunk = async (payload: any) => {
                 if (payload.trackUrl !== url) return;
+                if (signal.aborted) return;
+
+                // First chunk arrived — cancel the retry timer
+                if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
                 
                 if (expectedChunks === 0 && payload.totalChunks) {
                   expectedChunks = payload.totalChunks;
@@ -372,7 +516,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   try {
                     bufferData = new Uint8Array(payload.data).buffer;
                   } catch (e) {
-                    console.error("[WebSocket P2P] Fatal: Cannot parse payload data", payload.data);
+                    console.error('[WebSocket P2P] Fatal: Cannot parse payload data', payload.data);
                     bufferData = new ArrayBuffer(0);
                   }
                 }
@@ -382,8 +526,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 
                 // Show buffering indicator for long downloads
                 if (receivedIndices.size === 1 && typeof document !== 'undefined') {
-                  const event = new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } });
-                  document.dispatchEvent(event);
+                  document.dispatchEvent(new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } }));
                 }
 
                 if (expectedChunks > 0) {
@@ -393,17 +536,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 
                 if (receivedIndices.size === expectedChunks && expectedChunks > 0) {
                   socket.off('track:receive_chunk', onChunk);
-                  clearTimeout(timeoutId);
+                  clearAllTimers();
                   
-                  // Reassemble chunks
+                  // Reassemble chunks in order
                   const totalLength = chunks.reduce((acc, c) => acc + (c?.byteLength || 0), 0);
                   const result = new Uint8Array(totalLength);
-                  let offset = 0;
+                  let off = 0;
                   for (let i = 0; i < expectedChunks; i++) {
-                    if (chunks[i]) {
-                      result.set(new Uint8Array(chunks[i]), offset);
-                      offset += chunks[i].byteLength;
-                    }
+                    if (chunks[i]) { result.set(new Uint8Array(chunks[i]), off); off += chunks[i].byteLength; }
                   }
                   
                   const buffer = result.buffer;
@@ -411,20 +551,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     const blob = new Blob([buffer], { type: 'audio/mpeg' });
                     await saveTrack(url, blob);
                     console.log('[WebSocket P2P] Track downloaded and saved to IDB!');
-                  } catch(e) {
+                  } catch (e) {
                     console.error('[WebSocket P2P] Failed to save track to IDB:', e);
                   }
                   
+                  activeFetchAbortRef.current = null;
                   resolve(buffer);
                 } else {
-                  resetTimeout();
+                  // More chunks coming — reset idle watchdog
+                  resetIdleTimer();
                 }
               };
               
               socket.on('track:receive_chunk', onChunk);
-              socket.emit('track:request_file', { roomId, trackUrl: url });
-              
-              resetTimeout();
+              requestChunks(); // First attempt
             });
           }
         } else if (url.startsWith('youtube:')) {
@@ -520,6 +660,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   useEffect(() => {
     if (!trackUrl) {
+      // Cancel any in-progress P2P download when the track is cleared
+      if (activeFetchAbortRef.current) {
+        activeFetchAbortRef.current.abort();
+        activeFetchAbortRef.current = null;
+      }
       audioBufferRef.current = null;
       fetchPromiseRef.current = null;
       setDuration(0);
@@ -528,8 +673,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       return;
     }
 
+    // Cancel any previous in-progress P2P download for a different track
+    if (activeFetchAbortRef.current) {
+      activeFetchAbortRef.current.abort();
+      activeFetchAbortRef.current = null;
+    }
+    fetchPromiseRef.current = null; // Always start fresh for a new URL
+
     fetchAndDecode(trackUrl);
     pauseAt(0);
+
+    return () => {
+      // On unmount or track change, cancel any pending P2P download
+      if (activeFetchAbortRef.current) {
+        activeFetchAbortRef.current.abort();
+        activeFetchAbortRef.current = null;
+      }
+    };
   }, [trackUrl]); 
 
   useEffect(() => {
