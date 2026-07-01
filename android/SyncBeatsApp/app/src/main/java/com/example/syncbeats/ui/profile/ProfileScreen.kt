@@ -102,26 +102,6 @@ fun ProfileScreen(
                     color = ForegroundMuted,
                     fontSize = 14.sp
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                val isSocketConnected by com.example.syncbeats.network.SocketManager.isConnected.collectAsState()
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (isSocketConnected) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Red)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isSocketConnected) "Server Connected" else "Server Disconnected",
-                        color = if (isSocketConnected) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Red,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(40.dp))
@@ -152,7 +132,7 @@ fun ProfileScreen(
                     items(filteredDevices) { device ->
                         DeviceCard(
                             device = device,
-                            isCurrentDevice = device.isCurrentDevice ?: (device.device_key == viewModel.currentDeviceId),
+                            isCurrentDevice = device.device_key == viewModel.currentDeviceId,
                             onPing = { viewModel.pingDevice(device.device_key) }
                         )
                     }
@@ -171,8 +151,7 @@ fun DeviceCard(
     val isMobile = device.user_agent?.lowercase()?.contains("android") == true || device.user_agent?.lowercase()?.contains("iphone") == true
     val icon = if (isMobile) Icons.Default.PhoneAndroid else Icons.Default.Computer
     
-    val isOnline = device.isOnline ?: formatLastSeen(device.last_seen_at).second
-    val statusText = if (device.isOnline == true) "Online" else formatLastSeen(device.last_seen_at).first
+    val (statusText, isOnline) = formatLastSeen(device.last_seen_at)
 
     Row(
         modifier = Modifier

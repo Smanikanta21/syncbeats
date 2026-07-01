@@ -9,10 +9,8 @@ object DeviceManager {
     private const val KEY_DEVICE_ID = "x_device_id"
 
     private lateinit var prefs: SharedPreferences
-    lateinit var appContext: Context
 
     fun init(context: Context) {
-        appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 

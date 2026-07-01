@@ -29,10 +29,11 @@ struct DevicePickerView: View {
                         }
                     }
                     .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        socketManager.toggleSyncBeatMode()
-                    }
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                        socketManager.emitForceSyncAll()
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.success)
+                    })
                 }
                 
                 // Section 1: Nearby Devices (Real via MultipeerConnectivity)
@@ -80,7 +81,7 @@ struct DevicePickerView: View {
                         Text(error)
                             .foregroundColor(.red)
                     } else if yourDevices.isEmpty {
-                        Text("No devices online.")
+                        Text("No other devices found.")
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(yourDevices, id: \.id) { device in
@@ -97,9 +98,9 @@ struct DevicePickerView: View {
                                     VStack(alignment: .leading) {
                                         Text(getDeviceName(key: device.device_key))
                                             .foregroundColor(.primary)
-                                        Text(device.device_key == SessionManager.shared.deviceId ? "This device" : "Online")
+                                        Text(formatDate(device.last_seen_at))
                                             .font(.caption)
-                                            .foregroundColor(.green)
+                                            .foregroundColor(.secondary)
                                     }
                                     
                                     Spacer()
@@ -109,8 +110,8 @@ struct DevicePickerView: View {
                                             .font(.caption)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 4)
-                                            .background(Color.green.opacity(0.2))
-                                            .foregroundColor(.green)
+                                            .background(Color.blue.opacity(0.2))
+                                            .foregroundColor(.blue)
                                             .cornerRadius(8)
                                     } else {
                                         Image(systemName: "chevron.right")
@@ -130,13 +131,6 @@ struct DevicePickerView: View {
             .navigationTitle("Sync with Device")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        fetchDevices()
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         presentationMode.wrappedValue.dismiss()
@@ -163,11 +157,10 @@ struct DevicePickerView: View {
                 switch result {
                 case .success(let response):
                     self.yourDevices = response.devices.filter {
-                        ($0.device_key.hasPrefix("IOS-") ||
+                        $0.device_key.hasPrefix("IOS-") ||
                         $0.device_key.hasPrefix("MAC-") ||
                         $0.device_key.hasPrefix("ANDROID-") ||
-                        $0.device_key.hasPrefix("WINDOWS-")) &&
-                        $0.isOnline == true
+                        $0.device_key.hasPrefix("WINDOWS-")
                     }
                 case .failure(let error):
                     self.errorMessage = error.localizedDescription

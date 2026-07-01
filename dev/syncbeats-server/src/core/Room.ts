@@ -56,60 +56,20 @@ export class Room extends EventEmitter {
   // ── Playback (no host gate — any participant) ─────────────────────────
 
   private pendingPlay: boolean = false;
-  private pendingPlayTimeout: ReturnType<typeof setTimeout> | null = null;
 
   play(requesterId: string): void {
     if (this.timeline.isPlaying) return;
     
     if (!this.allReady()) {
-      console.log(`[Room ${this.roomId}] Play requested by ${requesterId}, but not all clients are ready. Waiting for all to be ready...`);
       this.pendingPlay = true;
-      this.emit('stateChanged', this.snapshot());
       return;
     }
 
-    console.log(`[Room ${this.roomId}] Play requested by ${requesterId}, all clients ready. Initiating playback.`);
     this._startPlayback();
   }
 
-  /**
-   * Force the room into pendingPlay state without checking allReady().
-   * Used when the server knows more devices are about to join.
-   * Includes a timeout so playback starts even if devices never respond.
-   */
-  forcePendingPlay(timeoutMs: number = 15000): void {
-    if (this.timeline.isPlaying) return;
-    console.log(`[Room ${this.roomId}] forcePendingPlay: waiting up to ${timeoutMs / 1000}s for all devices to join and be ready.`);
-    this.pendingPlay = true;
-    this.emit('stateChanged', this.snapshot());
-
-    // Clear any existing timeout
-    if (this.pendingPlayTimeout) clearTimeout(this.pendingPlayTimeout);
-    this.pendingPlayTimeout = setTimeout(() => {
-      if (this.pendingPlay && !this.timeline.isPlaying) {
-        console.log(`[Room ${this.roomId}] Timeout waiting for devices. Starting playback with available participants.`);
-        if (this.allReady()) {
-          this._startPlayback();
-        } else {
-          // Start anyway — the late devices can catch up via drift correction
-          console.log(`[Room ${this.roomId}] Not all ready at timeout, but starting anyway to avoid infinite wait.`);
-          this._startPlayback();
-        }
-      }
-    }, timeoutMs);
-  }
-
-  isPendingPlayActive(): boolean {
-    return this.pendingPlay;
-  }
-
   private _startPlayback(): void {
-    console.log(`[Room ${this.roomId}] _startPlayback called. All devices are ready, scheduling playback to start in 800ms!`);
     this.pendingPlay = false;
-    if (this.pendingPlayTimeout) {
-      clearTimeout(this.pendingPlayTimeout);
-      this.pendingPlayTimeout = null;
-    }
     const scheduleDelay = 800;
     const atEpoch = Date.now() + scheduleDelay;
     
@@ -119,16 +79,10 @@ export class Room extends EventEmitter {
     this.state = PlaybackState.PLAYING;
 
     this.emit('schedule', {
-      // Web App Keys
       atEpoch,
       fromPosition: this.timeline.pauseOffset,
-      startEpoch: this.timeline.startEpoch,
-      // Mobile App Keys
-      positionMs: this.timeline.pauseOffset * 1000,
-      startTime: atEpoch,
-      senderId: 'server',
-      // Shared
       trackUrl: this.trackUrl,
+      startEpoch: this.timeline.startEpoch,
     });
     this.emit('stateChanged', this.snapshot());
   }
@@ -207,16 +161,10 @@ export class Room extends EventEmitter {
       this.timeline.startEpoch = atEpoch - positionMs;
       
       this.emit('schedule', {
-        // Web App Keys
         atEpoch,
         fromPosition: positionSec,
-        startEpoch: this.timeline.startEpoch,
-        // Mobile App Keys
-        positionMs: positionSec * 1000,
-        startTime: atEpoch,
-        senderId: 'server',
-        // Shared
         trackUrl: this.trackUrl,
+        startEpoch: this.timeline.startEpoch,
       });
     } else {
       this.timeline.pauseOffset = positionSec;

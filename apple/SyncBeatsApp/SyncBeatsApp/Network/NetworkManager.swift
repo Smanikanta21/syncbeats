@@ -48,28 +48,17 @@ class NetworkManager {
     private func performRequest<T: Codable>(request: URLRequest, completion: @escaping (Result<T, Error>) -> Void) {
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("[NetworkManager] Request error: \(error.localizedDescription)")
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
             guard let data = data else {
-                print("[NetworkManager] No data received")
                 DispatchQueue.main.async { completion(.failure(NSError(domain: "", code: -1, userInfo: nil))) }
                 return
             }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("[NetworkManager] HTTP Status: \(httpResponse.statusCode) for \(request.url?.absoluteString ?? "")")
-            }
-            
             do {
                 let decodedData = try JSONDecoder().decode(T.self, from: data)
                 DispatchQueue.main.async { completion(.success(decodedData)) }
             } catch {
-                if let rawString = String(data: data, encoding: .utf8) {
-                    print("[NetworkManager] Decoding failed. Raw response: \(rawString)")
-                }
-                print("[NetworkManager] Error decoding payload: \(error)")
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
         }.resume()

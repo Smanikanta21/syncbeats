@@ -33,7 +33,6 @@ class AudioPlayerManager(private val context: Context) {
     private val _durationMs = MutableStateFlow(0L)
     val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
     
-    var currentTrackId: String? = null
     var isInternalSyncEvent = false
 
     init {
@@ -45,9 +44,6 @@ class AudioPlayerManager(private val context: Context) {
                 if (playbackState == Player.STATE_ENDED) {
                     _isPlaying.value = false
                     _currentTrackName.value = null
-                    currentTrackId = null
-                } else if (playbackState == Player.STATE_READY) {
-                    SocketManager.emitClientReady(context, true)
                 }
             }
         })
@@ -73,17 +69,6 @@ class AudioPlayerManager(private val context: Context) {
     }
     
     private fun setupSyncListeners() {
-        scope.launch {
-            SocketManager.isSyncBeatMode.collect { isSyncMode ->
-                if (isSyncMode) {
-                    kotlinx.coroutines.delay(500)
-                    if (exoPlayer.playbackState == Player.STATE_READY) {
-                        SocketManager.emitClientReady(context, true)
-                    }
-                }
-            }
-        }
-        
         scope.launch {
             SocketManager.playbackScheduleFlow.collect { data ->
                 val senderId = data.optString("senderId")
@@ -131,18 +116,11 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
-    fun playFile(file: File, trackId: String, trackName: String) {
-        SocketManager.emitClientReady(context, false)
-        currentTrackId = trackId
+    fun playFile(file: File, trackName: String) {
         val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        
-        // Only autoplay if we are not in SyncBeats mode, or if we are the ones who initiated
-        if (!SocketManager.isSyncBeatMode.value) {
-            exoPlayer.play()
-        }
-        
+        exoPlayer.play()
         _currentTrackName.value = trackName
     }
 
@@ -154,8 +132,22 @@ class AudioPlayerManager(private val context: Context) {
             }
         } else {
             if (!isInternalSyncEvent && SocketManager.isSyncBeatMode.value) {
-                // Let the server coordinate the synchronized start time based on all devices' readiness
-                SocketManager.emitPlaybackPlay(context)
+                // If in SyncBeat mode, schedule playback in the future for perfect sync
+                val delayMs = 300.0 // 300ms buffer for other devices to receive and seek
+                val serverTime = ClockSyncManager.currentServerTimeMs()
+                val futureStartTime = serverTime + delayMs
+                val position = exoPlayer.currentPosition.toDouble()
+                
+                val trackUrl = "current_track" // You would use the real track URL/ID here
+                SocketManager.emitPlaybackSchedule(context, trackUrl, position, futureStartTime)
+                
+                // Wait for the delay ourselves to stay perfectly in sync
+                scope.launch {
+                    isInternalSyncEvent = true
+                    delay(delayMs.toLong())
+                    exoPlayer.play()
+                    isInternalSyncEvent = false
+                }
             } else {
                 // Not in SyncBeat mode, play instantly
                 exoPlayer.play()
@@ -166,11 +158,5 @@ class AudioPlayerManager(private val context: Context) {
     fun release() {
         scope.cancel()
         exoPlayer.release()
-    }
-    
-    fun pauseLocalForSync() {
-        if (exoPlayer.isPlaying) {
-            exoPlayer.pause()
-        }
     }
 }

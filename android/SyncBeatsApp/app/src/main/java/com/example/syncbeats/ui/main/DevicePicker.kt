@@ -12,7 +12,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.PhoneIphone
 import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,12 +33,9 @@ import com.example.syncbeats.theme.Foreground
 import com.example.syncbeats.theme.ForegroundMuted
 import kotlinx.coroutines.launch
 
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun DevicePickerModal(
+fun DevicePickerSheet(
     onDismissRequest: () -> Unit,
     nearbyDeviceManager: NearbyDeviceManager
 ) {
@@ -69,86 +65,63 @@ fun DevicePickerModal(
         }
     }
 
-    Dialog(
+    ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        containerColor = Background,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = ForegroundMuted) }
     ) {
-        Surface(
+        Column(
             modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.7f)
-                .clip(RoundedCornerShape(24.dp)),
-            color = Background,
-            tonalElevation = 8.dp
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
         ) {
-            Column(
+            Text(
+                text = "Sync Output",
+                color = Foreground,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            // SyncBeat Mode Toggle
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp)
+                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .combinedClickable(
+                        onClick = { com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context) },
+                        onLongClick = {
+                            com.example.syncbeats.network.SocketManager.emitForceSyncAll(context)
+                            android.widget.Toast.makeText(context, "Force syncing all devices...", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Sync Output",
-                        color = Foreground,
-                        fontSize = 22.sp,
+                        text = "SyncBeat Mode",
+                        color = if (isSyncBeatMode) AccentPrimary else Foreground,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = {
-                        coroutineScope.launch {
-                            isLoading = true
-                            try {
-                                yourDevices = RetrofitClient.deviceApi.getMyDevices().devices
-                                isLoading = false
-                            } catch (e: Exception) {
-                                errorMessage = e.message ?: "Failed to load devices"
-                                isLoading = false
-                            }
-                        }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = Foreground
-                        )
-                    }
-                }
-                
-                // SyncBeat Mode Toggle
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp)
-                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context) }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "SyncBeat Mode",
-                            color = if (isSyncBeatMode) AccentPrimary else Foreground,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Automatically sync playback with all your other online devices.",
-                            color = ForegroundMuted,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    Switch(
-                        checked = isSyncBeatMode,
-                        onCheckedChange = { com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = AccentPrimary, checkedTrackColor = AccentPrimary.copy(alpha = 0.5f))
+                    Text(
+                        text = "Automatically sync playback with all your other online devices.",
+                        color = ForegroundMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+                Switch(
+                    checked = isSyncBeatMode,
+                    onCheckedChange = { com.example.syncbeats.network.SocketManager.toggleSyncBeatMode(context) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = AccentPrimary, checkedTrackColor = AccentPrimary.copy(alpha = 0.5f))
+                )
+            }
             
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -218,25 +191,14 @@ fun DevicePickerModal(
                 } else {
                     val appPrefixes = listOf("IOS-", "MAC-", "ANDROID-", "WINDOWS-", "APP-")
                     val filteredDevices = yourDevices.filter { device ->
-                        appPrefixes.any { prefix -> device.device_key.startsWith(prefix) } &&
-                        device.isOnline == true
-                    }
-                    if (filteredDevices.isEmpty()) {
-                        item {
-                            Text(
-                                text = "No devices online.",
-                                color = ForegroundMuted,
-                                fontSize = 14.sp
-                            )
-                        }
+                        appPrefixes.any { prefix -> device.device_key.startsWith(prefix) }
                     }
                     items(filteredDevices) { device ->
-                        val isCurrent = device.device_key == com.example.syncbeats.network.DeviceManager.deviceId
                         DeviceRow(
                             name = getDeviceName(device.device_key),
                             icon = getDeviceIcon(device.device_key),
-                            subtitle = if (isCurrent) "This device" else "Online",
-                            isCurrent = isCurrent,
+                            subtitle = device.last_seen_at,
+                            isCurrent = false, // Add logic to check current device later
                             onClick = {
                                 onDismissRequest()
                             }
@@ -247,8 +209,6 @@ fun DevicePickerModal(
         }
     }
 }
-}
-
 
 @Composable
 private fun DeviceRow(

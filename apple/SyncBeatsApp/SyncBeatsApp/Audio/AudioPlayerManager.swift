@@ -17,7 +17,6 @@ class AudioPlayerManager: ObservableObject {
     @Published var progress: Double = 0
     
     private var isInternalSyncEvent = false
-    private var syncModeCancellable: AnyCancellable?
     
     private init() {
         setupAudioSession()
@@ -37,16 +36,6 @@ class AudioPlayerManager: ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(handleSyncPlaybackSchedule), name: NSNotification.Name("SyncPlaybackSchedule"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleSyncPlaybackPause), name: NSNotification.Name("SyncPlaybackPause"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleSyncTrackSet), name: NSNotification.Name("SyncTrackSet"), object: nil)
-        
-        syncModeCancellable = SocketManager.shared.$isSyncBeatMode.sink { [weak self] isSyncMode in
-            if isSyncMode {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if self?.player?.currentItem?.status == .readyToPlay {
-                        SocketManager.shared.emitClientReady(isReady: true)
-                    }
-                }
-            }
-        }
     }
     
     @objc private func handleSyncPlaybackSchedule(notification: Notification) {
@@ -100,30 +89,15 @@ class AudioPlayerManager: ObservableObject {
     @objc private func handleSyncTrackSet(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let trackDict = userInfo["track"] as? [String: Any],
-              let id = trackDict["id"] as? String ?? trackDict["trackUrl"] as? String,
+              let id = trackDict["id"] as? String,
               let title = trackDict["title"] as? String,
+              let artist = trackDict["artist"] as? String,
+              let thumbnailURL = trackDict["thumbnailURL"] as? String,
+              let duration = trackDict["duration"] as? Double,
+              let urlString = trackDict["url"] as? String,
               let senderId = userInfo["senderId"] as? String else { return }
         
         if senderId == SessionManager.shared.deviceId { return }
-        
-        // Prevent infinite reload loop if we are already playing/loaded this track
-        if let current = currentTrack, current.id == id { return }
-        
-        let artist = trackDict["artist"] as? String ?? "Unknown"
-        let thumbnailURL = trackDict["thumbnailURL"] as? String ?? ""
-        let duration = trackDict["duration"] as? Double ?? Double(trackDict["duration"] as? String ?? "0") ?? 0.0
-        
-        let urlString: String
-        if let explicitUrl = trackDict["url"] as? String, !explicitUrl.isEmpty {
-            urlString = explicitUrl
-        } else {
-            var videoId = id
-            if videoId.hasPrefix("youtube:") {
-                videoId = String(videoId.dropFirst("youtube:".count))
-            }
-            // Construct download URL using video ID
-            urlString = "http://192.168.29.61:4000/search/youtube/download?videoId=\(videoId)"
-        }
         
         let track = TrackInfo(id: id, title: title, artist: artist, thumbnailURL: thumbnailURL, duration: duration, url: urlString)
         if let audioURL = URL(string: urlString) {
@@ -176,27 +150,12 @@ class AudioPlayerManager: ObservableObject {
         }
     }
     
-    private var statusObservation: NSKeyValueObservation?
-    
     private func startPlayback(with url: URL) {
-        SocketManager.shared.emitClientReady(isReady: false)
         if player == nil {
             player = AVPlayer(url: url)
         } else {
             let playerItem = AVPlayerItem(url: url)
             player?.replaceCurrentItem(with: playerItem)
-        }
-        
-        statusObservation?.invalidate()
-        statusObservation = player?.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
-            if item.status == .readyToPlay {
-                SocketManager.shared.emitClientReady(isReady: true)
-                // We only auto-play if we are not in sync beat mode, or if the server schedules it later
-                if !SocketManager.shared.isSyncBeatMode {
-                    self?.player?.play()
-                    self?.isPlaying = true
-                }
-            }
         }
         
         // Observe time
@@ -217,6 +176,9 @@ class AudioPlayerManager: ObservableObject {
             name: .AVPlayerItemDidPlayToEndTime,
             object: player?.currentItem
         )
+        
+        player?.play()
+        isPlaying = true
     }
     
     func pause() {
@@ -248,8 +210,19 @@ class AudioPlayerManager: ObservableObject {
             isPlaying = false
         } else {
             if !isInternalSyncEvent && SocketManager.shared.isSyncBeatMode {
-                // Let the server coordinate the synchronized start time based on all devices' readiness
-                SocketManager.shared.emitPlaybackPlay()
+                let delayMs = 300.0
+                let serverTime = ClockSyncManager.shared.currentServerTimeMs()
+                let futureStartTime = serverTime + delayMs
+                let position = currentTime * 1000.0
+                
+                SocketManager.shared.emitPlaybackSchedule(trackUrl: currentTrack?.id ?? "", positionMs: position, startTime: futureStartTime)
+                
+                isInternalSyncEvent = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + (delayMs / 1000.0)) { [weak self] in
+                    self?.player?.play()
+                    self?.isPlaying = true
+                    self?.isInternalSyncEvent = false
+                }
             } else {
                 player?.play()
                 isPlaying = true
@@ -283,11 +256,5 @@ class AudioPlayerManager: ObservableObject {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return "\(mins):\(String(format: "%02d", secs))"
-    }
-    
-    func pauseLocalForSync() {
-        if isPlaying {
-            player?.pause()
-        }
     }
 }

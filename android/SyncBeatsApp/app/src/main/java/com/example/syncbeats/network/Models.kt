@@ -58,9 +58,7 @@ data class PublicDevice(
     val user_agent: String?,
     val created_at: String,
     val updated_at: String,
-    val last_seen_at: String,
-    val isOnline: Boolean? = null,
-    val isCurrentDevice: Boolean? = null
+    val last_seen_at: String
 )
 
 @Serializable

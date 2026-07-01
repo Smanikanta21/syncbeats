@@ -24,7 +24,6 @@ class AppState: ObservableObject {
         SessionManager.shared.user = user
         self.currentUser = user
         self.isAuthenticated = true
-        SocketManager.shared.registerDevice()
     }
     
     func logout() {
