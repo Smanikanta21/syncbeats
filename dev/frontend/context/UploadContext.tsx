@@ -150,6 +150,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const buffer = await chunk.arrayBuffer();
 
           socket.emit('track:send_chunk', {
+            roomId, // Backward compatibility for older servers
             targetSocketId: requesterSocketId, // Send directly to the requester, NOT the whole room!
             trackUrl,
             chunkIndex: i,

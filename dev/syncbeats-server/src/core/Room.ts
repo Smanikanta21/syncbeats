@@ -180,16 +180,16 @@ export class Room extends EventEmitter {
   addToQueue(item: TrackQueueItem): void {
     const withoutExisting = this.queue.filter((q) => q.id !== item.id);
     this.queue = [...withoutExisting, item].sort((a, b) => a.queueIndex - b.queueIndex);
-    this.emit('queueChanged', this.queueSnapshot());
     if (item.isCurrent) {
       this.setCurrentQueueItem(item.id, true);
     }
+    this.emit('queueChanged', this.queueSnapshot());
   }
 
   syncQueue(queue: TrackQueueItem[], currentItemId: string | null): void {
     this.queue = [...queue].sort((a, b) => a.queueIndex - b.queueIndex);
-    this.emit('queueChanged', this.queueSnapshot());
     this.setCurrentQueueItem(currentItemId, true);
+    this.emit('queueChanged', this.queueSnapshot());
   }
 
   /** Reorder the queue without interrupting current playback. */

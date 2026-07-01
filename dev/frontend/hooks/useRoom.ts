@@ -85,8 +85,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     if (trackUrl) {
+      console.log("[DEBUG] getTrackTitle searching for url:", trackUrl);
+      console.log("[DEBUG] queue urls:", queue.map(i => i.trackUrl));
       const match = queue.find((item) => item.trackUrl === trackUrl);
-      if (match?.title) return match.title;
+      if (match?.title) {
+        console.log("[DEBUG] getTrackTitle found match:", match.title);
+        return match.title;
+      }
     }
     
     const currentQueueItem = queue.find((item) => item.isCurrent);
@@ -605,7 +610,12 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   }, [snapshot?.queue]);
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
-  const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
+  const pause = useCallback(() => {
+    socket.emit('playback:pause', {
+      roomId,
+      positionMs: Math.round(audioRef.current.getTruePosition() * 1000)
+    });
+  }, [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);

@@ -246,7 +246,8 @@ export class SocketHandler {
       try {
         const room = this.roomManager.get(roomId);
         if (!room) return;
-        room.syncPause(positionMs || 0, senderId);
+        const pos = positionMs !== undefined ? positionMs : room.computeCurrentPosition();
+        room.syncPause(pos, senderId);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
