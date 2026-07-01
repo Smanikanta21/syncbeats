@@ -8,6 +8,7 @@ export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
   isBuffering:   boolean;
+  downloadProgress: number;
   hasTrack:      boolean;       
   audioUnlocked: boolean;       
   currentTime:   number;       
@@ -62,6 +63,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -299,6 +301,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   const pct = Math.round(torrent.progress * 100);
                   if (pct !== lastProgress && pct >= 0 && pct <= 100) {
                     lastProgress = pct;
+                    setDownloadProgress(pct);
                     const { getSocket } = require('../lib/socket');
                     const socket = getSocket();
                     const roomId = window.location.pathname.split('/').pop();
@@ -431,6 +434,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                       ytChunks.push(value);
                       loaded += value.length;
                       const pct = Math.round((loaded / total) * 100);
+                      setDownloadProgress(pct);
                       const { getSocket: gs } = require('../lib/socket');
                       gs().emit('room:sync_progress', { roomId, progress: pct });
                     }
@@ -531,6 +535,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
                 if (expectedChunks > 0) {
                   const pct = Math.round((receivedIndices.size / expectedChunks) * 100);
+                  setDownloadProgress(pct);
                   socket.emit('room:sync_progress', { roomId, progress: pct });
                 }
                 
@@ -588,6 +593,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               chunks.push(value);
               loaded += value.length;
               const pct = Math.round((loaded / total) * 100);
+              setDownloadProgress(pct);
               const { getSocket } = require('../lib/socket');
               const socket = getSocket();
               const roomId = window.location.pathname.split('/').pop();
@@ -939,7 +945,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, isBuffering, hasTrack, audioUnlocked,
+    isPlaying, isReady, isBuffering, downloadProgress, hasTrack, audioUnlocked,
     currentTime,
     duration,
     progress: duration > 0 ? (currentTime / duration) * 100 : 0,

@@ -149,24 +149,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           const chunk = file.slice(start, end);
           const buffer = await chunk.arrayBuffer();
 
-          await new Promise<void>((resolve) => {
-            let handled = false;
-            const done = () => { if (!handled) { handled = true; resolve(); } };
-            
-            socket.emit('track:send_chunk', {
-              roomId,
-              trackUrl,
-              chunkIndex: i,
-              totalChunks,
-              data: buffer
-            }, done);
-
-            // Safety timeout: if server doesn't ACK within 5 seconds, move on to prevent deadlocks
-            setTimeout(done, 5000);
+          socket.emit('track:send_chunk', {
+            targetSocketId: requesterSocketId, // Send directly to the requester, NOT the whole room!
+            trackUrl,
+            chunkIndex: i,
+            totalChunks,
+            data: buffer
           });
           
-          // Tiny extra delay to give the event loop a breather
-          await new Promise(resolve => setTimeout(resolve, 5));
+          // Yield to event loop periodically to prevent UI blocking and socket buffer overflow.
+          // By not awaiting a server ACK for every single chunk, transfer speed increases massively.
+          if (i % 5 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+          }
         }
         console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
       } catch (err) {

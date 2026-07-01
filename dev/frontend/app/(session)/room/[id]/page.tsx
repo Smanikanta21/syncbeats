@@ -786,18 +786,18 @@ export default function RoomPage() {
                     </div>
 
                     <div className="flex flex-col gap-2 w-full bg-background/40 p-3 rounded-2xl border border-foreground/5">
-                      {!p.isReady && deviceSyncProgress[p.socketId] !== undefined ? (
+                      {!p.isReady ? (
                         <>
                           <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.2em] font-bold text-foreground/50">
                             <span className="flex items-center gap-1.5 text-foreground/80">
                               <Loader2 className="w-3 h-3 animate-spin" />
-                              Syncing
+                              Buffering
                             </span>
-                            <span className="text-foreground/60">{deviceSyncProgress[p.socketId]}%</span>
+                            <span className="text-foreground/60">{p.socketId === currentSocketId ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0)}%</span>
                           </div>
                           <div className="relative h-6 flex items-center">
                             <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/10 overflow-hidden">
-                              <div className="h-full bg-foreground rounded-full" style={{ width: `${deviceSyncProgress[p.socketId]}%` }} />
+                              <div className="h-full bg-foreground rounded-full transition-all duration-300" style={{ width: `${p.socketId === currentSocketId ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0)}%` }} />
                             </div>
                           </div>
                         </>
@@ -1228,20 +1228,20 @@ export default function RoomPage() {
                       </div>
 
                       <motion.div className="flex flex-col mt-2 w-full">
-                        {!p.isReady && deviceSyncProgress[p.socketId] !== undefined ? (
+                        {!p.isReady ? (
                           <>
                             <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.24em] font-bold text-foreground/50">
                               <span className="flex items-center gap-2 text-foreground/80">
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                Syncing
+                                Buffering
                               </span>
-                              <span className="text-foreground/60">{deviceSyncProgress[p.socketId]}%</span>
+                              <span className="text-foreground/60">{p.socketId === currentSocketId ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0)}%</span>
                             </div>
                             <div className="relative h-10 flex items-center">
                               <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground/5 overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-foreground"
-                                  style={{ width: `${deviceSyncProgress[p.socketId]}%` }}
+                                  className="h-full rounded-full bg-foreground transition-all duration-300"
+                                  style={{ width: `${p.socketId === currentSocketId ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0)}%` }}
                                 />
                               </div>
                             </div>

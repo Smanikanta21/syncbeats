@@ -471,7 +471,7 @@ const CompactState = ({
             <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
               <Loader2 className="w-3 h-3 animate-spin" />{" "}
               {loadingParticipants.length > 0
-                ? "Syncing..."
+                ? "Buffering..."
                 : `${downloadProgress}%`}
             </div>
           ) : effectivePlaying ? (
@@ -636,6 +636,8 @@ const PlayerTab = ({
   isHost,
   isPrivate,
   isVisible = true,
+  audio,
+  deviceSyncProgress,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
@@ -745,17 +747,25 @@ const PlayerTab = ({
                     className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1 pointer-events-auto"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {loadingParticipants.map((p: any) => (
-                      <div
-                        key={p.socketId}
-                        className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1"
-                      >
-                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                        <span className="text-white/80 text-[10px] font-bold uppercase">
-                          {p.displayName}
-                        </span>
-                      </div>
-                    ))}
+                    {loadingParticipants.map((p: any) => {
+                      const { getSocket } = require('../lib/socket');
+                      const progress = p.socketId === getSocket().id ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0);
+                      return (
+                        <div
+                          key={p.socketId}
+                          className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5"
+                        >
+                          <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
+                          <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">
+                            {p.displayName}
+                          </span>
+                          <div className="w-12 h-1.5 bg-black/40 rounded-full overflow-hidden shrink-0">
+                            <div className="h-full bg-white/80 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}
@@ -1568,6 +1578,7 @@ export function DynamicIsland() {
     hostId,
     joinStatus,
     isPrivate,
+    deviceSyncProgress,
   } = useSyncInfo();
 
   const isRoom = pathname.includes("/room/");
@@ -2171,7 +2182,9 @@ export function DynamicIsland() {
                     trackUrl={audio.trackUrl}
                     isReady={audio.isReady}
                     error={audio.error}
-                    downloadProgress={incomingTrack ? incomingTrack.progress : 0}
+                    downloadProgress={incomingTrack ? incomingTrack.progress : audio.downloadProgress}
+                    audio={audio}
+                    deviceSyncProgress={deviceSyncProgress}
                     progress={displayProgress}
                     displayTime={displayTime}
                     duration={audio.duration}

@@ -22,6 +22,8 @@ interface SyncCtx {
   setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting') => void;
   isPrivate: boolean;
   setIsPrivate: (v: boolean) => void;
+  deviceSyncProgress: Record<string, number>;
+  setDeviceSyncProgress: (fn: (prev: Record<string, number>) => Record<string, number>) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -34,6 +36,7 @@ const Ctx = createContext<SyncCtx>({
   hostId: null, setHostId: () => {},
   joinStatus: 'connecting', setJoinStatus: () => {},
   isPrivate: false, setIsPrivate: () => {},
+  deviceSyncProgress: {}, setDeviceSyncProgress: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -46,6 +49,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
 
   return (
     <Ctx.Provider value={{
@@ -58,6 +62,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       hostId, setHostId,
       joinStatus, setJoinStatus,
       isPrivate, setIsPrivate,
+      deviceSyncProgress, setDeviceSyncProgress,
     }}>
       {children}
     </Ctx.Provider>
