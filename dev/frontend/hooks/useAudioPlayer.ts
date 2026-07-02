@@ -103,6 +103,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   // Holds the AbortController for any in-flight P2P download so we can cancel
   // it immediately when setTrack/clearTrack is called or the component unmounts.
   const activeFetchAbortRef = useRef<AbortController | null>(null);
+  // Holds the raw ArrayBuffer when decodeAudioData can't run yet (AudioContext
+  // not created / still suspended before first user gesture). We decode it as
+  // soon as the AudioContext is unlocked.
+  const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Initialize AudioContext
   useEffect(() => {
@@ -646,13 +650,30 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           }
         }
 
-        const decodedData = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
+        // If AudioContext isn't ready yet (no user gesture), stash the raw
+        // buffer and decode it once the context is unlocked.
+        if (!audioCtxRef.current) {
+          console.warn('[AudioPlayer] AudioContext not yet created — deferring decode until user gesture.');
+          pendingArrayBufferRef.current = arrayBuffer;
+          return null;
+        }
+
+        let decodedData: AudioBuffer;
+        try {
+          decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
+        } catch (decodeErr) {
+          // AudioContext may be suspended — stash and retry on unlock
+          console.warn('[AudioPlayer] decodeAudioData failed (AudioContext suspended?), deferring.', decodeErr);
+          pendingArrayBufferRef.current = arrayBuffer;
+          return null;
+        }
         audioBufferRef.current = decodedData;
+        pendingArrayBufferRef.current = null;
         setDuration(decodedData.duration);
         setIsReady(true);
         return decodedData;
       } catch (err) {
-        console.error("Error decoding audio data", err);
+        console.error("Error fetching/decoding audio data", err);
         setError(err instanceof Error ? err.message : "Failed to load audio");
         return null;
       } finally {
@@ -697,6 +718,29 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
     };
   }, [trackUrl]); 
+
+  // ── Retry deferred decode once AudioContext is available/resumed ────────
+  useEffect(() => {
+    if (!audioUnlocked) return;
+    if (!audioCtxRef.current) return;
+    const pending = pendingArrayBufferRef.current;
+    if (!pending) return;
+
+    console.log('[AudioPlayer] AudioContext now unlocked — decoding deferred audio buffer...');
+    pendingArrayBufferRef.current = null;
+
+    audioCtxRef.current.decodeAudioData(pending.slice(0))
+      .then((decodedData) => {
+        audioBufferRef.current = decodedData;
+        setDuration(decodedData.duration);
+        setIsReady(true);
+        console.log('[AudioPlayer] Deferred decode succeeded — track is ready!');
+      })
+      .catch((err) => {
+        console.error('[AudioPlayer] Deferred decode still failed:', err);
+        setError(err instanceof Error ? err.message : 'Failed to decode audio');
+      });
+  }, [audioUnlocked]);
 
   useEffect(() => {
     if (gainNodeRef.current) {
@@ -891,6 +935,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsBuffering(false);
     setError(null);
     audioBufferRef.current = null;
+    pendingArrayBufferRef.current = null; // cancel any deferred decode for old track
     
     setTrackUrl(url);
     setTrackTitle(title);
