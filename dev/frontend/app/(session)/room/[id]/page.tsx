@@ -1088,10 +1088,10 @@ export default function RoomPage() {
           className="w-full flex gap-6 items-stretch justify-between flex-1 min-h-0 pb-6"
         >
           {/* Left Column: Room Info & Devices */}
-          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-4 relative z-100">
+          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-4 relative z-100 overflow-hidden">
             
             {/* Room Info Card */}
-            <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)]">
+            <div className="relative z-50 w-full rounded-3xl border border-foreground/10 bg-background/60 backdrop-blur-xl p-5 flex flex-col gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.05)] shrink-0">
                <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-md bg-foreground/5 text-foreground/70 text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
@@ -1299,7 +1299,7 @@ export default function RoomPage() {
           </div>
 
           {/* Right Column: Queue */}
-          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-2">
+          <div className="flex flex-col w-72 xl:w-80 shrink-0 min-h-0 gap-2 overflow-hidden">
             <div className="w-full rounded-2xl border border-foreground/5 bg-background/60 p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
               <div className="flex items-center justify-between shrink-0">
                 <h3 className="text-xs font-bold tracking-widest uppercase text-foreground/50 flex items-center gap-2">
