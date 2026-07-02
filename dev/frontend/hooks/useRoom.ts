@@ -394,7 +394,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       runNtpBurst();
     };
 
-    const handleDisconnect = () => setIsConnected(false);
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      audioRef.current.pauseAt(audioRef.current.getTruePosition());
+    };
 
     if (socket.connected) handleConnect();
     else socket.connect();

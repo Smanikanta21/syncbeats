@@ -633,6 +633,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               chunks.push(value);
               loaded += value.length;
               const pct = Math.round((loaded / total) * 100);
+              setDownloadProgress(pct);
               const { getSocket } = require('../lib/socket');
               const socket = getSocket();
               const roomId = window.location.pathname.split('/').pop();
