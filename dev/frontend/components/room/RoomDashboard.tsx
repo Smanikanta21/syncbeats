@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity
@@ -49,8 +49,11 @@ interface RoomDashboardProps {
     getVolume?: () => number;
     toggleMute?: () => number;
     unlockAudio: () => void;
-    setListenerPosition?: (x: number, y: number, z: number) => void;
   };
+
+  // Orbit speed
+  orbitSpeed?: number;
+  onOrbitSpeedChange?: (speed: number) => void;
 
   // Actions
   onPlay: () => void;
@@ -85,7 +88,7 @@ function GlassCard({ children, className = "", style }: { children: React.ReactN
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate, spatialDevices,
-  onUpdateSpatialPosition, audio,
+  onUpdateSpatialPosition, audio, orbitSpeed, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -96,16 +99,6 @@ export function RoomDashboard({
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
   const isRoomReady = participants.every(p => p.isReady);
 
-  useEffect(() => {
-    if (!mySocketId || !audio.setListenerPosition) return;
-    const myDevice = spatialDevices.find(d => d.deviceId === mySocketId);
-    if (myDevice) {
-      const { angle, radius } = myDevice.position;
-      const x = radius * Math.sin(angle);
-      const z = -radius * Math.cos(angle);
-      audio.setListenerPosition(x, 0, z);
-    }
-  }, [spatialDevices, mySocketId, audio]);
 
   const handleTrackSelect = useCallback((item: typeof queue[0]) => {
     if (!isHost) return;
@@ -153,6 +146,8 @@ export function RoomDashboard({
               participants={participants}
               isPlaying={isPlaying}
               onUpdatePosition={onUpdateSpatialPosition}
+              orbitSpeed={orbitSpeed}
+              onOrbitSpeedChange={onOrbitSpeedChange}
             />
           </GlassCard>
 
@@ -206,6 +201,8 @@ export function RoomDashboard({
                   participants={participants}
                   isPlaying={isPlaying}
                   onUpdatePosition={onUpdateSpatialPosition}
+                  orbitSpeed={orbitSpeed}
+                  onOrbitSpeedChange={onOrbitSpeedChange}
                 />
               </GlassCard>
             </motion.div>

@@ -49,9 +49,12 @@ interface UseSpatialAudioReturn {
   updatePosition: (deviceId: string, position: SpatialPosition) => void;
   setDeviceGain: (deviceId: string, gain: number) => void;
   setMasterGain: (gain: number) => void;
+  setDeviceSequence: (deviceIds: string[]) => void;
+  setOrbitSpeed: (secondsPerDevice: number) => void;
+  orbitSpeed: number;
   engineState: AudioContextState | 'uninitialised';
   resumeAudio: () => Promise<void>;
-  /** Current list of device spatial states for rendering the OrbitUI */
+  /** Current list of device spatial states for rendering the UI */
   spatialDevices: DeviceSpatialState[];
 }
 
@@ -76,6 +79,7 @@ export function useSpatialAudio({
 
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
   const [spatialDevices, setSpatialDevices] = useState<DeviceSpatialState[]>(initialDevices);
+  const [orbitSpeed, setOrbitSpeedState] = useState(3);
 
   // Track which snapshot we last applied to avoid re-running on unrelated re-renders
   const lastSnapshotRef = useRef<string>("");
@@ -287,5 +291,20 @@ export function useSpatialAudio({
     setEngineState(engine.getContextState());
   }, [engine]);
 
-  return { updatePosition, setDeviceGain, setMasterGain, engineState, resumeAudio, spatialDevices };
+  const setDeviceSequence = useCallback(
+    (deviceIds: string[]) => {
+      engine.setDeviceSequence(deviceIds);
+    },
+    [engine]
+  );
+
+  const setOrbitSpeed = useCallback(
+    (secondsPerDevice: number) => {
+      engine.setOrbitSpeed(secondsPerDevice);
+      setOrbitSpeedState(secondsPerDevice);
+    },
+    [engine]
+  );
+
+  return { updatePosition, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };
 }

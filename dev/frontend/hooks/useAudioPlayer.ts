@@ -52,7 +52,6 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   eqGains: number[];
   setEqBand: (index: number, gain: number) => void;
   prefetchTrack?: (url: string) => void;
-  setListenerPosition: (x: number, y: number, z: number) => void;
 }
 
 export function formatTime(seconds: number): string {
@@ -96,7 +95,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const pannerNodeRef = useRef<PannerNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const eqNodesRef = useRef<BiquadFilterNode[]>([]);
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]); // 60, 230, 910, 3600, 14000 Hz
@@ -121,18 +119,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass && !audioCtxRef.current) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
-        pannerNodeRef.current = audioCtxRef.current.createPanner();
-        pannerNodeRef.current.panningModel = 'HRTF';
-        pannerNodeRef.current.distanceModel = 'inverse';
-        pannerNodeRef.current.refDistance = 1;
-        pannerNodeRef.current.maxDistance = 10;
-        pannerNodeRef.current.rolloffFactor = 1;
-
         analyserNodeRef.current = audioCtxRef.current.createAnalyser();
         analyserNodeRef.current.fftSize = 256;
         
-        gainNodeRef.current.connect(pannerNodeRef.current);
-        pannerNodeRef.current.connect(analyserNodeRef.current);
+        gainNodeRef.current.connect(analyserNodeRef.current);
         analyserNodeRef.current.connect(audioCtxRef.current.destination);
       }
     }
@@ -202,13 +192,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
-        pannerNodeRef.current = audioCtxRef.current.createPanner();
-        pannerNodeRef.current.panningModel = 'HRTF';
-        pannerNodeRef.current.distanceModel = 'inverse';
-        pannerNodeRef.current.refDistance = 1;
-        pannerNodeRef.current.maxDistance = 10;
-        pannerNodeRef.current.rolloffFactor = 1;
-
         analyserNodeRef.current = audioCtxRef.current.createAnalyser();
         analyserNodeRef.current.fftSize = 256;
 
@@ -229,13 +212,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         });
         eqNodesRef.current = eqNodes;
 
-        // Link graph: Source -> Gain -> EQ[0..4] -> Panner -> Analyser -> Destination
+        // Link graph: Source -> Gain -> EQ[0..4] -> Analyser -> Destination
         gainNodeRef.current.connect(eqNodes[0]);
         for (let i = 0; i < eqNodes.length - 1; i++) {
           eqNodes[i].connect(eqNodes[i + 1]);
         }
-        eqNodes[eqNodes.length - 1].connect(pannerNodeRef.current);
-        pannerNodeRef.current.connect(analyserNodeRef.current);
+        eqNodes[eqNodes.length - 1].connect(analyserNodeRef.current);
         analyserNodeRef.current.connect(audioCtxRef.current.destination);
       } else {
         return;
@@ -1020,58 +1002,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
-  const setListenerPosition = useCallback((x: number, y: number, z: number) => {
-    if (!audioCtxRef.current) return;
-    const listener = audioCtxRef.current.listener;
-    
-    // Modern way
-    if (listener.positionX) {
-      listener.positionX.setTargetAtTime(x, audioCtxRef.current.currentTime, 0.1);
-      listener.positionY.setTargetAtTime(y, audioCtxRef.current.currentTime, 0.1);
-      listener.positionZ.setTargetAtTime(z, audioCtxRef.current.currentTime, 0.1);
-      
-      listener.forwardX.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
-      listener.forwardY.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
-      listener.forwardZ.setTargetAtTime(-1, audioCtxRef.current.currentTime, 0.1);
-      
-      listener.upX.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
-      listener.upY.setTargetAtTime(1, audioCtxRef.current.currentTime, 0.1);
-      listener.upZ.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
-    } else {
-      // Legacy way
-      listener.setPosition(x, y, z);
-      listener.setOrientation(0, 0, -1, 0, 1, 0);
-    }
-  }, []);
-
-  // Animation loop to revolve the PannerNode source
-  useEffect(() => {
-    let reqId: number;
-    const updateOrbit = () => {
-      if (audioCtxRef.current && pannerNodeRef.current && isPlaying) {
-        const time = getTruePosition();
-        const speed = 0.5; // rad/sec
-        const sourceAngle = time * speed;
-        const radius = 4; // Source revolves at radius 4
-        
-        const x = radius * Math.sin(sourceAngle);
-        const z = -radius * Math.cos(sourceAngle); // Negative Z is "Front"
-        
-        const panner = pannerNodeRef.current;
-        if (panner.positionX) {
-          panner.positionX.setTargetAtTime(x, audioCtxRef.current.currentTime, 0.1);
-          panner.positionY.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
-          panner.positionZ.setTargetAtTime(z, audioCtxRef.current.currentTime, 0.1);
-        } else {
-          panner.setPosition(x, 0, z);
-        }
-      }
-      reqId = requestAnimationFrame(updateOrbit);
-    };
-    
-    reqId = requestAnimationFrame(updateOrbit);
-    return () => cancelAnimationFrame(reqId);
-  }, [isPlaying, getTruePosition]);
 
   const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
@@ -1111,7 +1041,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     getRawAudioData,
     setEqBand,
     prefetchTrack,
-    setListenerPosition,
     getVolume,
     toggleMute
   };

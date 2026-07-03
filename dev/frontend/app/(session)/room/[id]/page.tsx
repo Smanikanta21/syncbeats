@@ -105,7 +105,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   ]);
 
   // Spatial audio
-  const { spatialDevices, updatePosition } = useSpatialAudio({
+  const { spatialDevices, updatePosition, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
     gainNode: audio.gainNode,
@@ -116,6 +116,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     participants,
     isPlaying: snapshot?.isPlaying ?? false,
   });
+
+  // Build device sequence from all participants
+  useEffect(() => {
+    if (participants.length > 0) {
+      setDeviceSequence(participants.map(p => p.socketId));
+    }
+  }, [participants, setDeviceSequence]);
 
   // Playback actions (wired to socket via useRoom)
   const handlePlay = useCallback(() => play(), [play]);
@@ -194,8 +201,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             getVolume: audio.getVolume,
             toggleMute: audio.toggleMute,
             unlockAudio: audio.unlockAudio,
-            setListenerPosition: audio.setListenerPosition,
           }}
+          orbitSpeed={orbitSpeed}
+          onOrbitSpeedChange={setOrbitSpeed}
           onPlay={handlePlay}
           onPause={handlePause}
           onNext={handleNext}
