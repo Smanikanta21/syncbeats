@@ -32,7 +32,9 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   toggle:      () => void;
   seek:        (time: number) => void;
   seekPct:     (pct: number) => void;
-  setVolume:   (volume: number) => void;
+  setVolume:   (volume: number | ((prev: number) => number)) => void;
+  getVolume:   () => number;
+  toggleMute:  () => number;
   setTrack:    (url: string, title?: string, artist?: string) => void;
   clearTrack:  () => void;
   unlockAudio: () => void;
@@ -47,7 +49,10 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   gainNode?:   GainNode | null;
   getAudioData: () => number;
   getRawAudioData: () => Uint8Array | null;
+  eqGains: number[];
+  setEqBand: (index: number, gain: number) => void;
   prefetchTrack?: (url: string) => void;
+  setListenerPosition: (x: number, y: number, z: number) => void;
 }
 
 export function formatTime(seconds: number): string {
@@ -67,6 +72,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
+  const volumeRef = useRef(100);
+  const previousVolumeRef = useRef(100);
   const [trackUrl,    setTrackUrl]    = useState<string | null>(null);
   const [trackTitle,  setTrackTitle]  = useState("");
   const [trackArtist, setTrackArtist] = useState("");
@@ -89,7 +96,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const pannerNodeRef = useRef<PannerNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
+  const eqNodesRef = useRef<BiquadFilterNode[]>([]);
+  const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]); // 60, 230, 910, 3600, 14000 Hz
+
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
@@ -100,12 +111,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
   const unlockTimeoutRef = useRef<number | null>(null);
   const scheduleIdRef = useRef<number>(0);
-  // Holds the AbortController for any in-flight P2P download so we can cancel
-  // it immediately when setTrack/clearTrack is called or the component unmounts.
   const activeFetchAbortRef = useRef<AbortController | null>(null);
-  // Holds the raw ArrayBuffer when decodeAudioData can't run yet (AudioContext
-  // not created / still suspended before first user gesture). We decode it as
-  // soon as the AudioContext is unlocked.
   const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Initialize AudioContext
@@ -115,10 +121,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass && !audioCtxRef.current) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
+        pannerNodeRef.current = audioCtxRef.current.createPanner();
+        pannerNodeRef.current.panningModel = 'HRTF';
+        pannerNodeRef.current.distanceModel = 'inverse';
+        pannerNodeRef.current.refDistance = 1;
+        pannerNodeRef.current.maxDistance = 10;
+        pannerNodeRef.current.rolloffFactor = 1;
+
         analyserNodeRef.current = audioCtxRef.current.createAnalyser();
         analyserNodeRef.current.fftSize = 256;
         
-        gainNodeRef.current.connect(analyserNodeRef.current);
+        gainNodeRef.current.connect(pannerNodeRef.current);
+        pannerNodeRef.current.connect(analyserNodeRef.current);
         analyserNodeRef.current.connect(audioCtxRef.current.destination);
       }
     }
@@ -146,6 +160,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
   }, [isPlaying]);
+
+  const setEqBand = useCallback((index: number, gain: number) => {
+    if (eqNodesRef.current[index]) {
+      // Clamp between -12 and +12 dB
+      const clamped = Math.max(-12, Math.min(12, gain));
+      eqNodesRef.current[index].gain.value = clamped;
+      setEqGains(prev => {
+        const next = [...prev];
+        next[index] = clamped;
+        return next;
+      });
+    }
+  }, []);
 
   const getAudioData = useCallback(() => {
     if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return 0;
@@ -175,9 +202,40 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (AudioContextClass) {
         audioCtxRef.current = new AudioContextClass();
         gainNodeRef.current = audioCtxRef.current.createGain();
+        pannerNodeRef.current = audioCtxRef.current.createPanner();
+        pannerNodeRef.current.panningModel = 'HRTF';
+        pannerNodeRef.current.distanceModel = 'inverse';
+        pannerNodeRef.current.refDistance = 1;
+        pannerNodeRef.current.maxDistance = 10;
+        pannerNodeRef.current.rolloffFactor = 1;
+
         analyserNodeRef.current = audioCtxRef.current.createAnalyser();
         analyserNodeRef.current.fftSize = 256;
-        gainNodeRef.current.connect(analyserNodeRef.current);
+
+        // Create EQ bands
+        const freqs = [60, 230, 910, 3600, 14000];
+        const eqNodes = freqs.map(freq => {
+          const filter = audioCtxRef.current!.createBiquadFilter();
+          // The first and last nodes are shelf filters for better low/high end control,
+          // the middle ones are peaking filters.
+          if (freq === 60) filter.type = "lowshelf";
+          else if (freq === 14000) filter.type = "highshelf";
+          else filter.type = "peaking";
+          
+          filter.frequency.value = freq;
+          filter.Q.value = 1;
+          filter.gain.value = 0;
+          return filter;
+        });
+        eqNodesRef.current = eqNodes;
+
+        // Link graph: Source -> Gain -> EQ[0..4] -> Panner -> Analyser -> Destination
+        gainNodeRef.current.connect(eqNodes[0]);
+        for (let i = 0; i < eqNodes.length - 1; i++) {
+          eqNodes[i].connect(eqNodes[i + 1]);
+        }
+        eqNodes[eqNodes.length - 1].connect(pannerNodeRef.current);
+        pannerNodeRef.current.connect(analyserNodeRef.current);
         analyserNodeRef.current.connect(audioCtxRef.current.destination);
       } else {
         return;
@@ -342,19 +400,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             console.log('[WebSocket P2P] Found track locally in IDB!');
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
-            // ── Retry-with-backoff P2P download ────────────────────────────
-            // When a user re-joins after a long absence, the original seeders
-            // may have closed their tabs.  We re-broadcast the request up to
-            // MAX_RETRIES times (with RETRY_INTERVAL_MS between each) so that
-            // any peer who reconnects shortly after us can still serve the file.
-            //
-            // An AbortController lets setTrack/clearTrack cancel this cleanly
-            // if the user changes tracks or leaves while waiting.
             const MAX_RETRIES      = 3;
             const RETRY_INTERVAL_MS = 8_000;  // Wait 8s per attempt
             const CHUNK_IDLE_MS    = 15_000;  // Reset timer if no chunk for 15s
 
-            // Cancel any pre-existing download for a different track
             if (activeFetchAbortRef.current) {
               activeFetchAbortRef.current.abort();
             }
@@ -388,26 +437,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 retryTimeoutId = null;
               };
 
-              const fail = (msg: string) => {
-                socket.off('track:receive_chunk', onChunk);
-                clearAllTimers();
-                reject(new Error(msg));
-              };
-
-              // ── YouTube P2P fallback ──────────────────────────────────────
-              // ws-p2p:yt:<videoId>_<timestamp> URLs contain the YouTube video
-              // ID directly in the string.  When all P2P retries are exhausted
-              // we can silently re-download through the existing yt-proxy
-              // (which routes via RapidAPI — NOT the EC2 IP, no ban risk).
-              // The re-downloaded blob is saved to IDB so future loads are instant.
               const failOrFallback = async (p2pErrMsg: string) => {
                 socket.off('track:receive_chunk', onChunk);
                 clearAllTimers();
 
-                // Extract videoId from ws-p2p:yt:<videoId>_<timestamp>
                 const ytMatch = url.match(/^ws-p2p:yt:([^_]+)_/);
                 if (!ytMatch) {
-                  // Not a YouTube track — no fallback possible
                   reject(new Error(p2pErrMsg));
                   return;
                 }
@@ -423,7 +458,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   const resp = await fetch(proxyUrl, { signal });
                   if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
 
-                  // Stream with progress so the user sees something happening
                   const contentLength = resp.headers.get('content-length');
                   let ytBuffer: ArrayBuffer;
 
@@ -440,6 +474,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                       const pct = Math.round((loaded / total) * 100);
                       setDownloadProgress(pct);
                       const { getSocket: gs } = require('../lib/socket');
+                      
                       gs().emit('room:sync_progress', { roomId, progress: pct });
                     }
                     const concat = new Uint8Array(loaded);
@@ -450,7 +485,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     ytBuffer = await resp.arrayBuffer();
                   }
 
-                  // Save under the ws-p2p URL so IDB cache serves future loads
                   const blob = new Blob([ytBuffer], { type: 'audio/mpeg' });
                   saveTrack(url, blob).catch(() => {});
                   console.log('[WebSocket P2P] yt-proxy fallback succeeded. Saved to IDB.');
@@ -472,16 +506,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 console.log(`[WebSocket P2P] Requesting chunks (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
                 socket.emit('track:request_file', { roomId, trackUrl: url });
 
-                // If nobody responds within RETRY_INTERVAL_MS, try again (or fall back)
                 retryTimeoutId = setTimeout(() => {
                   if (signal.aborted) return;
-                  if (receivedIndices.size > 0) return; // Transfer already started — don't retry
+                  if (receivedIndices.size > 0) return; 
                   retryCount++;
                   if (retryCount < MAX_RETRIES) {
                     console.warn(`[WebSocket P2P] No response yet, retrying (${retryCount}/${MAX_RETRIES})...`);
                     requestChunks();
                   } else {
-                    // All retries exhausted — try yt-proxy for YouTube tracks
                     void failOrFallback(
                       'No other participant has this track cached. ' +
                       'Ask someone who was in the room originally to re-join so they can share it.'
@@ -504,7 +536,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 if (payload.trackUrl !== url) return;
                 if (signal.aborted) return;
 
-                // First chunk arrived — cancel the retry timer
                 if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
                 
                 if (expectedChunks === 0 && payload.totalChunks) {
@@ -530,9 +561,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }
                 
                 chunks[payload.chunkIndex] = bufferData;
-                console.log(`[WebSocket P2P] Received chunk ${payload.chunkIndex + 1}/${expectedChunks}`);
                 
-                // Show buffering indicator for long downloads
                 if (receivedIndices.size === 1 && typeof document !== 'undefined') {
                   document.dispatchEvent(new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } }));
                 }
@@ -547,7 +576,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   socket.off('track:receive_chunk', onChunk);
                   clearAllTimers();
                   
-                  // Reassemble chunks in order
                   const totalLength = chunks.reduce((acc, c) => acc + (c?.byteLength || 0), 0);
                   const result = new Uint8Array(totalLength);
                   let off = 0;
@@ -567,20 +595,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   activeFetchAbortRef.current = null;
                   resolve(buffer);
                 } else {
-                  // More chunks coming — reset idle watchdog
                   resetIdleTimer();
                 }
               };
               
               socket.on('track:receive_chunk', onChunk);
-              requestChunks(); // First attempt
+              requestChunks(); 
             });
           }
         } else if (url.startsWith('youtube:')) {
           const videoId = url.split(':')[1];
           const roomId = window.location.pathname.split('/').pop();
           const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
-          console.log('[DEBUG] Fetching YouTube audio from proxy:', fetchUrl);
           const response = await fetch(fetchUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
@@ -614,9 +640,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             arrayBuffer = await response.arrayBuffer();
           }
         } else {
-          // Ensure we hit the backend if the URL is relative
           const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
-          console.error('[DEBUG] Fetching audio from:', fetchUrl, 'Original url:', url);
           const response = await fetch(fetchUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
@@ -651,10 +675,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           }
         }
 
-        // If AudioContext isn't ready yet (no user gesture), stash the raw
-        // buffer and decode it once the context is unlocked.
         if (!audioCtxRef.current) {
-          console.warn('[AudioPlayer] AudioContext not yet created — deferring decode until user gesture.');
           pendingArrayBufferRef.current = arrayBuffer;
           return null;
         }
@@ -663,9 +684,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         try {
           decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
         } catch (decodeErr) {
-          // AudioContext may be suspended — stash and retry on unlock
-          console.warn('[AudioPlayer] decodeAudioData failed (AudioContext suspended?), deferring.', decodeErr);
+          console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
           pendingArrayBufferRef.current = arrayBuffer;
+          
+          if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {
+            const { removeTrack } = await import('../lib/idb');
+            await removeTrack(url).catch(console.error);
+          }
+          
           return null;
         }
         audioBufferRef.current = decodedData;
@@ -688,7 +714,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   useEffect(() => {
     if (!trackUrl) {
-      // Cancel any in-progress P2P download when the track is cleared
       if (activeFetchAbortRef.current) {
         activeFetchAbortRef.current.abort();
         activeFetchAbortRef.current = null;
@@ -701,18 +726,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       return;
     }
 
-    // Cancel any previous in-progress P2P download for a different track
     if (activeFetchAbortRef.current) {
       activeFetchAbortRef.current.abort();
       activeFetchAbortRef.current = null;
     }
-    fetchPromiseRef.current = null; // Always start fresh for a new URL
+    fetchPromiseRef.current = null;
 
     fetchAndDecode(trackUrl);
     pauseAt(0);
 
     return () => {
-      // On unmount or track change, cancel any pending P2P download
       if (activeFetchAbortRef.current) {
         activeFetchAbortRef.current.abort();
         activeFetchAbortRef.current = null;
@@ -720,14 +743,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
   }, [trackUrl]); 
 
-  // ── Retry deferred decode once AudioContext is available/resumed ────────
   useEffect(() => {
     if (!audioUnlocked) return;
     if (!audioCtxRef.current) return;
     const pending = pendingArrayBufferRef.current;
     if (!pending) return;
 
-    console.log('[AudioPlayer] AudioContext now unlocked — decoding deferred audio buffer...');
     pendingArrayBufferRef.current = null;
 
     audioCtxRef.current.decodeAudioData(pending.slice(0))
@@ -735,7 +756,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
         setIsReady(true);
-        console.log('[AudioPlayer] Deferred decode succeeded — track is ready!');
       })
       .catch((err) => {
         console.error('[AudioPlayer] Deferred decode still failed:', err);
@@ -777,13 +797,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     let buffer = audioBufferRef.current;
     if (!buffer && payload.trackUrl) {
-      // Always check if a decode is already in-flight first (e.g. from the blob URL
-      // that loadAndSetTrack created). This is the common fast path.
       if (fetchPromiseRef.current) {
         buffer = await fetchPromiseRef.current;
       }
       
-      // For remote tracks, resolve the URL and fetch+decode
       if (!buffer) {
         const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
           ? `${getServerUrl()}/${payload.trackUrl}` 
@@ -792,7 +809,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
     }
 
-    // Abort if the user paused or started a new track while we were awaiting the download
     if (scheduleIdRef.current !== currentScheduleId) return;
 
     if (!buffer) return;
@@ -807,6 +823,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     const source = audioCtxRef.current.createBufferSource();
     source.buffer = buffer;
+    
+    // Connect through EQ chain
+    const firstNode = eqNodesRef.current.length > 0 ? eqNodesRef.current[0] : analyserNodeRef.current!;
     source.connect(gainNodeRef.current!);
     
     source.onended = () => {
@@ -818,17 +837,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
     const totalLatency = hardwareLatency + manualLatencyRef.current;
     
-    // time until the global start epoch
     const idealAudioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000 - totalLatency;
 
     if (idealAudioCtxStartTime >= audioCtxRef.current.currentTime) {
-      // We have enough time to schedule it in the future
       source.start(idealAudioCtxStartTime, payload.fromPosition);
       sourceNodeRef.current = source;
       startTimeRef.current = idealAudioCtxStartTime;
       pauseOffsetRef.current = payload.fromPosition;
     } else {
-      // We are late! We must start immediately and seek into the buffer
       const lateBySeconds = audioCtxRef.current.currentTime - idealAudioCtxStartTime;
       const correctPosition = payload.fromPosition + lateBySeconds;
       const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
@@ -906,24 +922,40 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [seek, duration]);
 
   const setPlaybackRate = useCallback((rate: number) => {
-    const currentTruePosition = getTruePosition();
-    
-    if (sourceNodeRef.current && sourceNodeRef.current.playbackRate) {
+    playbackRateRef.current = rate;
+    if (sourceNodeRef.current) {
       sourceNodeRef.current.playbackRate.value = rate;
-      pauseOffsetRef.current = currentTruePosition;
-      if (audioCtxRef.current) {
-        startTimeRef.current = audioCtxRef.current.currentTime;
-      } else {
-        startTimeRef.current = Date.now();
-      }
-      playbackRateRef.current = rate;
     }
-  }, [getTruePosition]);
-
-  const setVolume = useCallback((nextVolume: number) => {
-    const clamped = Math.max(0, Math.min(100, Math.round(nextVolume)));
-    setVolumeState(clamped);
   }, []);
+
+
+  const setVolume = useCallback((nextVolume: number | ((prev: number) => number)) => {
+    setVolumeState(prev => {
+      const vol = typeof nextVolume === "function" ? nextVolume(prev) : nextVolume;
+      const clamped = Math.max(0, Math.min(100, Math.round(vol)));
+      volumeRef.current = clamped;
+      return clamped;
+    });
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    let newVol = 0;
+    setVolumeState(prev => {
+      if (prev > 0) {
+        previousVolumeRef.current = prev;
+        volumeRef.current = 0;
+        newVol = 0;
+        return 0;
+      } else {
+        volumeRef.current = previousVolumeRef.current;
+        newVol = previousVolumeRef.current;
+        return previousVolumeRef.current;
+      }
+    });
+    return newVol;
+  }, []);
+
+  const getVolume = useCallback(() => volumeRef.current, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
     if (url.startsWith('local:')) {
@@ -936,7 +968,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsBuffering(false);
     setError(null);
     audioBufferRef.current = null;
-    pendingArrayBufferRef.current = null; // cancel any deferred decode for old track
+    pendingArrayBufferRef.current = null; 
     
     setTrackUrl(url);
     setTrackTitle(title);
@@ -958,12 +990,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const prefetchTrack = useCallback((url: string) => {
     if (!url) return;
-    if (!url.startsWith('magnet:') && !url.startsWith('ws-p2p:')) {
-      const fetchUrl = (!url.startsWith('/') && !url.startsWith('http')) 
-        ? `${getServerUrl()}/${url}` 
-        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
-      fetch(fetchUrl).catch(() => {});
-    } else if (url.startsWith('magnet:')) {
+    
+    if (url.startsWith('magnet:')) {
       getWebTorrentClient().then(async client => {
         if (!client) return;
         const { getTrack } = await import('../lib/idb');
@@ -984,8 +1012,66 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           });
         }
       }).catch(() => {});
+    } else {
+      const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
+        ? `${getServerUrl()}/${url}` 
+        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+      fetchPromiseRef.current = fetchAndDecode(absoluteUrl);
     }
   }, []);
+
+  const setListenerPosition = useCallback((x: number, y: number, z: number) => {
+    if (!audioCtxRef.current) return;
+    const listener = audioCtxRef.current.listener;
+    
+    // Modern way
+    if (listener.positionX) {
+      listener.positionX.setTargetAtTime(x, audioCtxRef.current.currentTime, 0.1);
+      listener.positionY.setTargetAtTime(y, audioCtxRef.current.currentTime, 0.1);
+      listener.positionZ.setTargetAtTime(z, audioCtxRef.current.currentTime, 0.1);
+      
+      listener.forwardX.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
+      listener.forwardY.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
+      listener.forwardZ.setTargetAtTime(-1, audioCtxRef.current.currentTime, 0.1);
+      
+      listener.upX.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
+      listener.upY.setTargetAtTime(1, audioCtxRef.current.currentTime, 0.1);
+      listener.upZ.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
+    } else {
+      // Legacy way
+      listener.setPosition(x, y, z);
+      listener.setOrientation(0, 0, -1, 0, 1, 0);
+    }
+  }, []);
+
+  // Animation loop to revolve the PannerNode source
+  useEffect(() => {
+    let reqId: number;
+    const updateOrbit = () => {
+      if (audioCtxRef.current && pannerNodeRef.current && isPlaying) {
+        const time = getTruePosition();
+        const speed = 0.5; // rad/sec
+        const sourceAngle = time * speed;
+        const radius = 4; // Source revolves at radius 4
+        
+        const x = radius * Math.sin(sourceAngle);
+        const z = -radius * Math.cos(sourceAngle); // Negative Z is "Front"
+        
+        const panner = pannerNodeRef.current;
+        if (panner.positionX) {
+          panner.positionX.setTargetAtTime(x, audioCtxRef.current.currentTime, 0.1);
+          panner.positionY.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.1);
+          panner.positionZ.setTargetAtTime(z, audioCtxRef.current.currentTime, 0.1);
+        } else {
+          panner.setPosition(x, 0, z);
+        }
+      }
+      reqId = requestAnimationFrame(updateOrbit);
+    };
+    
+    reqId = requestAnimationFrame(updateOrbit);
+    return () => cancelAnimationFrame(reqId);
+  }, [isPlaying, getTruePosition]);
 
   const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
@@ -1005,6 +1091,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isLatencyAutoDetected,
     outputDeviceName,
     outputDeviceType,
+    eqGains,
     play,
     pause,
     toggle,
@@ -1022,6 +1109,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     gainNode: gainNodeRef.current,
     getAudioData,
     getRawAudioData,
-    prefetchTrack
+    setEqBand,
+    prefetchTrack,
+    setListenerPosition,
+    getVolume,
+    toggleMute
   };
 }

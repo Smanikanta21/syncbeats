@@ -1,33 +1,18 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
-  Disc,
-  Pause,
-  Play,
-  SkipForward,
-  SkipBack,
-  Upload,
-  Music2,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Play as Youtube,
-  Activity,
-  ChevronLeft,
-  Search,
-  Plus,
-  FastForward,
-  Rewind,
-  LogOut,
-  Users,
+  Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
+  Loader2, CheckCircle2, AlertCircle, Play as Youtube, Activity,
+  ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
+  Wifi, Radio, Volume2, VolumeX,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { SpatialAudioEngine } from "../audio/SpatialAudioEngine";
 import { useAuth } from "../context/AuthContext";
 import { useAudio } from "../context/AudioContext";
+import { useVisualizer } from "../context/VisualizerContext";
 import { useUpload } from "../context/UploadContext";
 import { JoinRequest } from "../lib/types";
 import { getSocket } from "../lib/socket";
@@ -48,17 +33,19 @@ const SPRING = {
   mass: 0.9,
 };
 
-// Faster spring for size changes (width/height) — iOS snaps shape quickly
 const SHAPE_SPRING = {
   type: "spring" as const,
   stiffness: 340,
   damping: 34,
   mass: 0.85,
 };
+
 const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
 const EXPANDED_HEIGHT = 350;
 
+// Room island states
+type IslandState = "pill" | "extended" | "expanded";
 type IslandTab = "player" | "network" | "youtube" | "requests" | "deviceInfo";
 
 // ─────────────────────────────────────────────────────────
@@ -69,10 +56,7 @@ const cleanTrackTitle = (title: string | undefined): string => {
   if (!title) return "Unknown Track";
   return (
     title
-      .replace(
-        /\s*[\[\(].*?(official|music|video|audio|lyric|lyrics|hd|hq|4k|live).*?[\)\]]/gi,
-        "",
-      )
+      .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|lyrics|hd|hq|4k|live).*?[\)\]]/gi, "")
       .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
       .replace(/\s*[\[\(](official|lyric|lyrics|video)[\)\]]/gi, "")
       .trim() || "Unknown Track"
@@ -93,6 +77,7 @@ const AudioBars = ({
   isVisible?: boolean;
 }) => {
   const audio = useAudio();
+  const { dataRef } = useVisualizer();
   const barsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,85 +94,59 @@ const AudioBars = ({
     }
 
     let rafId: number;
-    // 4 bars like iOS: [outer-left, inner-left, inner-right, outer-right]
     const displayHeights = [15, 15, 15, 15];
     const beatHistory: number[] = [];
     const HISTORY_SIZE = 6;
 
     const tick = () => {
-      const data = audio.getRawAudioData();
-
-      let bass = 0;
-      let sub = 0;
-      let mids = 0;
-      let highs = 0;
+      const data = dataRef.current.rawAudioData;
+      let bass = 0, sub = 0, mids = 0, highs = 0;
 
       if (data && data.length > 40) {
-        // Bass/kick band (bins 1-5, ~86-430 Hz)
         let bassSum = 0;
         for (let i = 1; i <= 5; i++) bassSum += data[i];
         bass = bassSum / 5;
-
-        // Sub-bass (bins 0-2, ~0-172 Hz)
         let subSum = 0;
         for (let i = 0; i <= 2; i++) subSum += data[i];
         sub = subSum / 3;
-
-        // Mid-range (bins 6-14, ~516-1200 Hz)
         let midSum = 0;
         for (let i = 6; i <= 14; i++) midSum += data[i];
         mids = midSum / 9;
-
-        // Highs (bins 15-30, ~1200-2600 Hz)
         let highSum = 0;
         for (let i = 15; i <= 30; i++) highSum += data[i];
         highs = highSum / 16;
       }
 
-      // Use exponential scaling to reduce sensitivity to noise and make peaks pop
       const expScale = (val: number) => Math.pow(val / 255, 2.5) * 100;
-
-      // iOS-style: inner bars (bass-driven, tallest), outer bars (mids/highs, shorter)
       const innerIntensity = expScale(bass * 0.7 + sub * 0.3);
       const outerIntensity = expScale(mids * 0.6 + highs * 0.4);
-
       const innerTarget = Math.max(15, Math.min(15 + innerIntensity, 100));
 
-      // Push to history for trailing
       beatHistory.push(innerTarget);
       if (beatHistory.length > HISTORY_SIZE) beatHistory.shift();
 
       const outerTarget = Math.max(15, Math.min(15 + outerIntensity, 88));
-
-      // Trailing outer uses history for smooth wave feel
       const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.5)));
       const trailedOuter = trailSlice.reduce((a, b) => a + b, 0) / trailSlice.length * 0.7;
 
-      // Targets: symmetric — outer mirrors, inner mirrors
       const targets = [
-        Math.max(outerTarget, trailedOuter * 0.6),  // outer-left
-        innerTarget,                                   // inner-left
-        innerTarget * 0.92,                            // inner-right (slight asymmetry for organic feel)
-        Math.max(outerTarget * 0.9, trailedOuter * 0.5), // outer-right
+        Math.max(outerTarget, trailedOuter * 0.6),
+        innerTarget,
+        innerTarget * 0.92,
+        Math.max(outerTarget * 0.9, trailedOuter * 0.5),
       ];
 
-      // iOS-style interpolation: snappy attack, buttery decay
       for (let i = 0; i < 4; i++) {
         const target = targets[i];
         const current = displayHeights[i];
-
         if (target > current) {
-          // Fast attack — iOS bars snap up on beat
           const attackSpeed = (i === 1 || i === 2) ? 0.55 : 0.40;
           displayHeights[i] += (target - current) * attackSpeed;
         } else {
-          // Smooth decay — iOS bars glide down gracefully
           const decaySpeed = (i === 1 || i === 2) ? 0.10 : 0.07;
           displayHeights[i] += (target - current) * decaySpeed;
         }
-
         displayHeights[i] = Math.max(15, Math.min(100, displayHeights[i]));
-
         if (barsRef.current) {
           const el = barsRef.current.children[i] as HTMLElement;
           if (el) {
@@ -197,7 +156,6 @@ const AudioBars = ({
           }
         }
       }
-
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -210,22 +168,10 @@ const AudioBars = ({
 
   return (
     <div ref={barsRef} className={`flex items-center ${gapClass} ${hClass}`}>
-      <div
-        className={`${barW} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
-      />
-      <div
-        className={`${barW} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
-      />
-      <div
-        className={`${barW} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
-      />
-      <div
-        className={`${barW} bg-white rounded-full`}
-        style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }}
-      />
+      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
+      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
+      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
+      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
     </div>
   );
 };
@@ -234,13 +180,7 @@ const AudioBars = ({
 // CompactProgressBar
 // ─────────────────────────────────────────────────────────
 
-const CompactProgressBar = ({
-  isPlaying,
-  isVisible = true,
-}: {
-  isPlaying: boolean;
-  isVisible?: boolean;
-}) => {
+const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolean; isVisible?: boolean }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const audio = useAudio();
 
@@ -250,247 +190,84 @@ const CompactProgressBar = ({
       const pos = audio.getTruePosition();
       const dur = Math.max(1, audio.duration);
       const progress = Math.min(1, pos / dur);
-
       if (barRef.current) barRef.current.style.width = `${progress * 100}%`;
-
-      if (isPlaying && isVisible) {
-        rafId = requestAnimationFrame(tick);
-      }
+      if (isPlaying && isVisible) rafId = requestAnimationFrame(tick);
     };
-
     tick();
-
-    if (isPlaying && isVisible) {
-      rafId = requestAnimationFrame(tick);
-    }
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-    };
+    if (isPlaying && isVisible) rafId = requestAnimationFrame(tick);
+    return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [isPlaying, audio, isVisible]);
 
   return (
     <div className="w-[80%] mx-auto mt-0.5 h-0.75 bg-white/20 rounded-full overflow-hidden shrink-0">
-      <div
-        ref={barRef}
-        className="h-full bg-white/80 rounded-full"
-        style={{
-          width: "0%",
-          transition: isPlaying ? "none" : "width 200ms ease",
-        }}
-      />
+      <div ref={barRef} className="h-full bg-white/80 rounded-full"
+        style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────
-// CompactState
+// SyncProgressBar — for Extended state
+// Shows combined buffering / seeding / syncing progress
 // ─────────────────────────────────────────────────────────
 
-interface CompactStateProps {
-  isExpanded: boolean;
-  effectivePlaying: boolean;
-  trackTitle: string;
-  trackUrl: string | null;
-  progress: number;
-  hasTrack: boolean;
-  seekIndicator: { amount: number; text: string } | null;
-  isReady: boolean;
-  error: string | null;
-  downloadProgress: number;
-  showDetails: boolean;
-  isRoom?: boolean;
-  roomParticipants?: any[];
-  pendingRequestsCount?: number;
-  isHost?: boolean;
-  isPrivate?: boolean;
-  onRequestsClick?: () => void;
-}
-
-const CompactState = ({
-  isExpanded,
-  effectivePlaying,
-  hasTrack,
-  trackUrl,
-  trackTitle,
-  seekIndicator,
-  isReady,
-  error,
+const SyncProgressBar = ({
   downloadProgress,
-  showDetails,
-  isRoom,
-  roomParticipants,
-  pendingRequestsCount,
-  isHost,
-  isPrivate,
-  onRequestsClick,
-}: CompactStateProps) => {
-  const isYt = !!trackUrl?.startsWith("youtube:");
-  const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
-  const videoId = ytMatch ? ytMatch[1] : null;
-  const thumbnailUrl = videoId
-    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-    : null;
-  const trackInitials = cleanTrackTitle(trackTitle)
-    .substring(0, 2)
-    .toUpperCase();
+  deviceSyncProgress,
+  participants,
+  incomingTrack,
+  isReady,
+}: {
+  downloadProgress: number;
+  deviceSyncProgress: Record<string, number>;
+  participants: any[];
+  incomingTrack: { title: string; progress: number } | null;
+  isReady: boolean;
+}) => {
+  const barRef = useRef<HTMLDivElement>(null);
 
-  const isRoomReady =
-    isRoom && roomParticipants
-      ? roomParticipants.every((p) => p.isReady)
-      : true;
-  const isFullyReady = isReady && isRoomReady;
-  const loadingParticipants =
-    isRoom && roomParticipants
-      ? roomParticipants.filter((p) => !p.isReady)
-      : [];
+  // Compute overall sync progress
+  const progresses = Object.values(deviceSyncProgress);
+  const hasSync = progresses.length > 0;
+  const avgSync = hasSync
+    ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length)
+    : 0;
 
-  if (!hasTrack) {
-    return (
-      <motion.div
-        className="absolute inset-0 flex items-center pointer-events-none"
-        animate={{ opacity: isExpanded ? 0 : 1 }}
-        transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-      >
-        <div className="w-full h-full p-0.5 pointer-events-auto">
-          <div className="w-full h-full bg-white/10 rounded-full flex items-center justify-between px-4 text-white/50 text-sm gap-2">
-            <div className="flex items-center gap-2 pointer-events-none">
-              <Search className="w-4 h-4" />
-              <span>Search YouTube or upload...</span>
-            </div>
-            {isRoom &&
-            isHost &&
-            isPrivate &&
-            pendingRequestsCount &&
-            pendingRequestsCount > 0 ? (
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerUp={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRequestsClick?.();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors pointer-events-auto active:scale-95"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-black">
-                  {pendingRequestsCount}
-                </span>
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </motion.div>
-    );
-  }
+  const progress = incomingTrack
+    ? incomingTrack.progress
+    : !isReady
+    ? downloadProgress
+    : hasSync
+    ? avgSync
+    : 100;
+
+  const label = incomingTrack
+    ? "Receiving"
+    : !isReady
+    ? "Buffering"
+    : hasSync && avgSync < 100
+    ? "Syncing"
+    : "Synced";
+
+  const color =
+    progress < 50 ? "from-amber-500 to-amber-400"
+    : progress < 90 ? "from-sky-500 to-sky-400"
+    : "from-emerald-500 to-emerald-400";
 
   return (
-    <motion.div
-      className="absolute inset-0 flex items-center pointer-events-none"
-      animate={{
-        opacity: isExpanded ? 0 : 1,
-        scale: isExpanded ? 0.97 : 1,
-        filter: isExpanded ? "blur(6px)" : "blur(0px)",
-      }}
-      transition={{
-        opacity: { duration: 0.2, delay: isExpanded ? 0 : 0.15, ease: [0.32, 0.72, 0, 1] },
-        filter: { duration: 0.2, delay: isExpanded ? 0 : 0.15, ease: [0.32, 0.72, 0, 1] },
-        scale: { type: "spring", stiffness: 260, damping: 28, mass: 0.9 },
-      }}
-      style={{ zIndex: isExpanded ? 0 : 1 }}
-    >
-      <div className="flex items-center px-3 w-full h-full gap-3">
-        <div
-          className={`flex items-center justify-center shrink-0 border overflow-hidden w-7 h-7 rounded-lg ${
-            thumbnailUrl
-              ? "border-white/20"
-              : isYt
-                ? "bg-[#FF0000]/10 border-[#FF0000]/20"
-                : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
-          }`}
-        >
-          {thumbnailUrl ? (
-            <img src={thumbnailUrl} className="w-full h-full object-cover" />
-          ) : isYt ? (
-            <Youtube className="w-4 h-4 text-[#FF0000]" />
-          ) : (
-            <Disc
-              className={`w-4 h-4 text-white/40 ${effectivePlaying && !thumbnailUrl ? "animate-[spin_4s_linear_infinite]" : ""}`}
-            />
-          )}
-        </div>
-
-        <AnimatePresence>
-          {showDetails && (
-            <motion.div
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: "auto" }}
-              exit={{ opacity: 0, width: 0 }}
-              className="flex-1 min-w-0 overflow-hidden whitespace-nowrap"
-            >
-              <div className="flex flex-col justify-center min-w-0 pr-2">
-                <div className="text-center text-white text-[11px] sm:text-xs font-semibold truncate leading-tight">
-                  {cleanTrackTitle(trackTitle)
-                    .split(/\s+/)
-                    .slice(0, 6)
-                    .join(" ")}
-                </div>
-                <CompactProgressBar
-                  isPlaying={effectivePlaying}
-                  isVisible={!isExpanded}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="flex items-center pr-1 shrink-0 ml-auto pointer-events-auto">
-          {seekIndicator ? (
-            <div className="flex items-center gap-1 text-white/80 text-[11px] font-bold bg-white/10 px-2 py-1 rounded-full">
-              {seekIndicator.amount > 0 ? (
-                <FastForward className="w-3 h-3" />
-              ) : (
-                <Rewind className="w-3 h-3" />
-              )}
-              {seekIndicator.text}
-            </div>
-          ) : error ? (
-            <div className="flex items-center gap-1 text-[#FF0000]/80 text-[10px] font-bold uppercase tracking-wider pr-1 group relative cursor-help">
-              <AlertCircle className="w-3 h-3" /> Failed
-              <div className="absolute bottom-full right-0 mb-2 w-48 bg-black/90 text-white text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-center border border-white/10 pointer-events-none normal-case tracking-normal">
-                Tap the island to view error details.
-              </div>
-            </div>
-          ) : !hasTrack ? (
-            <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
-              Waiting for others
-              {pendingRequestsCount && pendingRequestsCount > 0 ? (
-                <div className="ml-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              ) : null}
-            </div>
-          ) : !isFullyReady ? (
-            <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
-              <Loader2 className="w-3 h-3 animate-spin" />{" "}
-              {loadingParticipants.length > 0
-                ? "Buffering..."
-                : `${downloadProgress}%`}
-            </div>
-          ) : effectivePlaying ? (
-            <AudioBars
-              isPlaying={effectivePlaying}
-              isSmall
-              isVisible={!isExpanded}
-            />
-          ) : (
-            <div className="flex items-center gap-1 text-white/50 text-[10px] font-bold uppercase tracking-wider pr-1">
-              <Pause className="w-3 h-3" /> Paused
-            </div>
-          )}
-          {pendingRequestsCount && pendingRequestsCount > 0 ? (
-            <div className="ml-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          ) : null}
-        </div>
+    <div className="flex flex-col justify-center gap-1 w-full">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{label}</span>
+        <span className="text-[10px] font-black text-white/60">{progress}%</span>
       </div>
-    </motion.div>
+      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div
+          ref={barRef}
+          className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
   );
 };
 
@@ -499,10 +276,7 @@ const CompactState = ({
 // ─────────────────────────────────────────────────────────
 
 const RealtimeProgressBar = ({
-  duration,
-  onSeek,
-  isPlaying,
-  isVisible = true,
+  duration, onSeek, isPlaying, isVisible = true,
 }: {
   duration: number;
   onSeek: (pos: number) => void;
@@ -521,376 +295,174 @@ const RealtimeProgressBar = ({
       const pos = audio.getTruePosition();
       const dur = Math.max(1, duration || audio.duration);
       const progress = Math.min(1, pos / dur);
-
       if (barRef.current) barRef.current.style.width = `${progress * 100}%`;
-      if (handleRef.current)
-        handleRef.current.style.left = `calc(${progress * 100}% - 6px)`;
-      if (leftTimeRef.current)
-        leftTimeRef.current.textContent = formatTime(pos);
-      if (rightTimeRef.current)
-        rightTimeRef.current.textContent =
-          "-" + formatTime(Math.max(0, dur - pos));
-
-      if (isPlaying && isVisible) {
-        rafId = requestAnimationFrame(tick);
-      }
+      if (handleRef.current) handleRef.current.style.left = `calc(${progress * 100}% - 6px)`;
+      if (leftTimeRef.current) leftTimeRef.current.textContent = formatTime(pos);
+      if (rightTimeRef.current) rightTimeRef.current.textContent = "-" + formatTime(Math.max(0, dur - pos));
+      if (isPlaying && isVisible) rafId = requestAnimationFrame(tick);
     };
-
     tick();
-
-    if (isPlaying && isVisible) {
-      rafId = requestAnimationFrame(tick);
-    }
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-    };
+    if (isPlaying && isVisible) rafId = requestAnimationFrame(tick);
+    return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [isPlaying, duration, audio, isVisible]);
 
   return (
     <div className="flex items-center gap-3 w-full mt-2">
-      <span
-        ref={leftTimeRef}
-        className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none"
-      >
-        0:00
-      </span>
-      <div
-        className="relative flex-1 h-8 flex items-center cursor-pointer group"
-        onClick={(e) => {
+      <span ref={leftTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
+      <div className="relative flex-1 h-8 flex items-center cursor-pointer group"
+        onClick={e => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
-          const p = Math.max(
-            0,
-            Math.min(1, (e.clientX - rect.left) / rect.width),
-          );
+          const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(p * duration);
-        }}
-      >
+        }}>
         <div className="absolute w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <div
-            ref={barRef}
-            className="h-full bg-white/80 rounded-full"
-            style={{
-              width: "0%",
-              transition: isPlaying ? "none" : "width 200ms ease",
-            }}
-          />
+          <div ref={barRef} className="h-full bg-white/80 rounded-full" style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
         </div>
-        <div
-          ref={handleRef}
-          className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ left: "-6px" }}
-        />
+        <div ref={handleRef} className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: "-6px" }} />
       </div>
-      <span
-        ref={rightTimeRef}
-        className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none"
-      >
-        -0:00
-      </span>
+      <span ref={rightTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────
-// Expanded Tabs
+// tabVariants
 // ─────────────────────────────────────────────────────────
 
 const tabVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? "100%" : "-100%",
-    opacity: 0,
-    filter: "blur(4px)",
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    filter: "blur(0px)",
-  },
-  exit: (direction: number) => ({
-    x: direction < 0 ? "100%" : "-100%",
-    opacity: 0,
-    filter: "blur(4px)",
-  }),
+  enter: (direction: number) => ({ x: direction > 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
+  center: { x: 0, opacity: 1, filter: "blur(0px)" },
+  exit: (direction: number) => ({ x: direction < 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
 };
 
+// ─────────────────────────────────────────────────────────
+// PlayerTab (expanded state)
+// ─────────────────────────────────────────────────────────
+
 const PlayerTab = ({
-  effectivePlaying,
-  trackTitle,
-  trackUrl,
-  isReady,
-  error,
-  downloadProgress,
-  progress,
-  displayTime,
-  duration,
-  hasTrack,
-  onToggle,
-  onNext,
-  onPrev,
-  onSeek,
-  onTabChange,
-  isRoom,
-  roomParticipants,
-  pendingRequestsCount,
-  isHost,
-  isPrivate,
-  isVisible = true,
-  audio,
-  deviceSyncProgress,
+  effectivePlaying, trackTitle, trackUrl, isReady, error, downloadProgress,
+  progress, displayTime, duration, hasTrack, onToggle, onNext, onPrev, onSeek,
+  onTabChange, isRoom, roomParticipants, pendingRequestsCount, isHost, isPrivate,
+  isVisible = true, audio, deviceSyncProgress,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:");
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
   const videoId = ytMatch ? ytMatch[1] : null;
-  const thumbnailUrl = videoId
-    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-    : null;
-  const trackInitials = cleanTrackTitle(trackTitle)
-    .substring(0, 2)
-    .toUpperCase();
-
+  const thumbnailUrl = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
+  const trackInitials = cleanTrackTitle(trackTitle).substring(0, 2).toUpperCase();
   const [showErrorDetails, setShowErrorDetails] = useState(false);
-  const isRoomReady =
-    isRoom && roomParticipants
-      ? roomParticipants.every((p: any) => p.isReady)
-      : true;
-  const loadingParticipants =
-    isRoom && roomParticipants
-      ? roomParticipants.filter((p: any) => !p.isReady)
-      : [];
+
+  const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
+  const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
     <div className="absolute inset-0 flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10">
+      {/* Track header */}
       <div className="flex items-start gap-3 sm:gap-4 w-full">
-        <div
-          className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
-            thumbnailUrl
-              ? "border-white/20"
-              : isYt
-                ? "bg-[#FF0000]/10 border-[#FF0000]/20"
-                : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
-          }`}
-        >
-          {thumbnailUrl ? (
-            <img src={thumbnailUrl} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xl font-black text-white/80">
-              {trackInitials}
-            </span>
-          )}
+        <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
+          thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
+        }`}>
+          {thumbnailUrl
+            ? <img src={thumbnailUrl} className="w-full h-full object-cover" />
+            : <span className="text-xl font-black text-white/80">{trackInitials}</span>}
         </div>
+
         <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
           <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
-
           <div
             className={`text-[13px] sm:text-[15px] truncate mt-0.5 transition-colors ${
-              error
-                ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]"
-                : "text-white/50"
+              error ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]" : "text-white/50"
             }`}
-            onClick={(e) => {
-              if (error) {
-                e.stopPropagation();
-                setShowErrorDetails((prev) => !prev);
-              }
-            }}
+            onClick={e => { if (error) { e.stopPropagation(); setShowErrorDetails(p => !p); } }}
           >
             {error ? (
-              <span className="flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> Failed to pull • Tap for
-                info
-              </span>
-            ) : isReady && !isRoomReady ? (
-              "Syncing to peers..."
-            ) : isReady ? (
-              "Ready to play"
-            ) : (
-              `Buffering... ${downloadProgress}%`
-            )}
+              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed • Tap for info</span>
+            ) : isReady && !isRoomReady ? "Syncing to peers…"
+              : isReady ? "Ready to play"
+              : `Buffering… ${downloadProgress}%`}
           </div>
 
           <AnimatePresence>
             {error && showErrorDetails && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: "auto", marginTop: 8 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                className="overflow-hidden"
-              >
-                <div
-                  className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] sm:text-xs text-[#FF0000]/90 leading-relaxed whitespace-normal cursor-text pointer-events-auto"
-                  onClick={(e) => e.stopPropagation()}
-                >
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] text-[#FF0000]/90 mt-2">
                   <p className="font-bold mb-1">Track Transfer Failed</p>
-                  <p className="opacity-80 wrap-break-word">{error}</p>
-                  <p className="mt-1.5 opacity-80">
-                    If this persists, ask the host to re-select the track.
-                  </p>
+                  <p className="opacity-80">{error}</p>
                 </div>
               </motion.div>
             )}
-
-            {hasTrack &&
-              isRoom &&
-              loadingParticipants.length > 0 &&
-              !error &&
-              !showErrorDetails && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                  animate={{ opacity: 1, height: "auto", marginTop: 8 }}
-                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div
-                    className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1 pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {loadingParticipants.map((p: any) => {
-                      const { getSocket } = require('../lib/socket');
-                      const progress = p.socketId === getSocket().id ? audio.downloadProgress : (deviceSyncProgress[p.socketId] || 0);
-                      return (
-                        <div
-                          key={p.socketId}
-                          className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5"
-                        >
-                          <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                          <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">
-                            {p.displayName}
-                          </span>
-                          <div className="w-12 h-1.5 bg-black/40 rounded-full overflow-hidden shrink-0">
-                            <div className="h-full bg-white/80 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
-                          </div>
-                          <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
+            {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-2">
+                <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1" data-lenis-prevent="true">
+                  {loadingParticipants.map((p: any) => {
+                    const progress = deviceSyncProgress[p.socketId] || 0;
+                    return (
+                      <div key={p.socketId} className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5">
+                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
+                        <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">{p.displayName}</span>
+                        <div className="w-12 h-1.5 bg-black/40 rounded-full overflow-hidden shrink-0">
+                          <div className="h-full bg-white/80 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
                         </div>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
+                        <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
-        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
-          {error ? (
-            <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
-          ) : !isReady || !isRoomReady ? (
-            <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
-          ) : (
-            <AudioBars
-              isPlaying={effectivePlaying}
-              isSmall={false}
-              isVisible={isVisible}
-            />
-          )}
 
+        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
+          {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
+            : !isReady || !isRoomReady ? <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
+            : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
           {isRoom && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = "/hub";
-              }}
-              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-[#FF0000]/20 group"
-            >
+            <button onClick={e => { e.stopPropagation(); window.location.href = "/hub"; }}
+              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-[#FF0000]/20 group">
               <LogOut className="w-4 h-4 text-[#FF0000]/80 group-hover:text-[#FF0000] transition-colors" />
             </button>
           )}
         </div>
       </div>
 
-      <RealtimeProgressBar
-        duration={duration}
-        onSeek={onSeek}
-        isPlaying={effectivePlaying}
-        isVisible={isVisible}
-      />
+      <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
+      {/* Controls */}
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTabChange("network");
-            }}
-            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative"
-          >
+          <button onClick={e => { e.stopPropagation(); onTabChange("network"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
-
           {isRoom && isHost && isPrivate && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onTabChange("requests");
-              }}
-              className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative"
-            >
+            <button onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative">
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
-              {pendingRequestsCount && pendingRequestsCount > 0 ? (
-                <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background animate-pulse flex items-center justify-center">
-                  <span className="text-[7px] text-white font-black leading-none">
-                    {pendingRequestsCount}
-                  </span>
-                </div>
-              ) : null}
+              {pendingRequestsCount > 0 && (
+                <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background animate-pulse" />
+              )}
             </button>
           )}
         </div>
 
         <div className="flex items-center justify-center gap-6 sm:gap-10">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onPrev(e);
-            }}
-            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-          >
-            <SkipBack
-              className="w-7 h-7 sm:w-8 sm:h-8 text-white"
-              fill="currentColor"
-            />
+          <button onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipBack className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle(e);
-            }}
-            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-          >
-            {effectivePlaying ? (
-              <Pause
-                className="w-9 h-9 sm:w-10 sm:h-10 text-white"
-                fill="currentColor"
-              />
-            ) : (
-              <Play
-                className="w-9 h-9 sm:w-10 sm:h-10 ml-1 text-white"
-                fill="currentColor"
-              />
-            )}
+          <button onClick={e => { e.stopPropagation(); onToggle(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            {effectivePlaying
+              ? <Pause className="w-9 h-9 sm:w-10 sm:h-10 text-white" fill="currentColor" />
+              : <Play className="w-9 h-9 sm:w-10 sm:h-10 ml-1 text-white" fill="currentColor" />}
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onNext(e);
-            }}
-            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-          >
-            <SkipForward
-              className="w-7 h-7 sm:w-8 sm:h-8 text-white"
-              fill="currentColor"
-            />
+          <button onClick={e => { e.stopPropagation(); onNext(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipForward className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
           </button>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTabChange("youtube");
-            }}
-            className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95"
-          >
+          <button onClick={e => { e.stopPropagation(); onTabChange("youtube"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             <Youtube className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
         </div>
@@ -899,105 +471,53 @@ const PlayerTab = ({
   );
 };
 
-const NetworkTab = ({
-  onBack,
-  netStats,
-  audio,
-}: {
-  onBack: () => void;
-  netStats: any;
-  audio: any;
-}) => {
+// ─────────────────────────────────────────────────────────
+// NetworkTab
+// ─────────────────────────────────────────────────────────
+
+const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats: any; audio: any }) => {
   const history = netStats.history || [];
   const maxLat = Math.max(...history.map((h: any) => h.latency), 100);
 
   return (
     <div className="absolute inset-0 flex flex-col px-5 sm:px-8 py-8 sm:py-10">
       <div className="flex items-center gap-3 mb-6 shrink-0">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onBack();
-          }}
-          className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
-        >
+        <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors">
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h3 className="text-white font-bold tracking-widest uppercase">
-          Network Health
-        </h3>
+        <h3 className="text-white font-bold tracking-widest uppercase">Network Health</h3>
       </div>
-
       <div className="flex-1 flex flex-col gap-4">
         <div className="flex justify-between items-end">
           <div className="flex flex-col">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">
-              Latency
-            </span>
-            <span
-              className="text-white font-black text-3xl"
-              style={{ color: qualityColor(netStats.quality) }}
-            >
-              {Math.round(netStats.latency || 0)}
-              <span className="text-lg text-white/50 ml-1">ms</span>
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Latency</span>
+            <span className="text-white font-black text-3xl" style={{ color: qualityColor(netStats.quality) }}>
+              {Math.round(netStats.latency || 0)}<span className="text-lg text-white/50 ml-1">ms</span>
             </span>
           </div>
           <div className="flex flex-col items-end gap-0.5">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">
-              Jitter
-            </span>
-            <span className="text-white font-bold text-xl">
-              {Math.round(netStats.jitter || 0)}ms
-            </span>
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Jitter</span>
+            <span className="text-white font-bold text-xl">{Math.round(netStats.jitter || 0)}ms</span>
           </div>
         </div>
-
         <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-0.5">
           {history.slice(-40).map((s: any, i: number) => {
             const hPct = Math.max(5, (s.latency / maxLat) * 100);
-            return (
-              <div
-                key={i}
-                className="flex-1 bg-white/40 rounded-sm transition-all duration-300"
-                style={{ height: `${hPct}%` }}
-              />
-            );
+            return <div key={i} className="flex-1 bg-white/40 rounded-sm transition-all duration-300" style={{ height: `${hPct}%` }} />;
           })}
         </div>
-
-        {/* Audio Sync Slider */}
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-              Sync Correction
-            </span>
-            <span className="text-white font-bold text-sm">
-              {audio.manualLatency > 0 ? "+" : ""}
-              {Math.round(audio.manualLatency * 1000)}ms
-            </span>
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Sync Correction</span>
+            <span className="text-white font-bold text-sm">{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
-          <input
-            type="range"
-            min={-0.5}
-            max={0.5}
-            step={0.01}
-            value={audio.manualLatency}
-            onChange={(e) => audio.setManualLatency(Number(e.target.value))}
+          <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
+            onChange={e => audio.setManualLatency(Number(e.target.value))}
             className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer"
-            style={{
-              background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)`,
-            }}
-          />
+            style={{ background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)` }} />
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[10px] text-white/40">
-              Reported: {Math.round(audio.outputLatency * 1000)}ms.
-            </p>
-            <button
-              onClick={() => audio.setManualLatency(0)}
-              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors"
-            >
-              Auto Sync
-            </button>
+            <p className="text-[10px] text-white/40">Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
+            <button onClick={() => audio.setManualLatency(0)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors">Auto Sync</button>
           </div>
         </div>
       </div>
@@ -1005,14 +525,11 @@ const NetworkTab = ({
   );
 };
 
-const YouTubeTab = ({
-  roomId,
-  onBack,
-  onResultsCountChange,
-  query,
-  setQuery,
-  isSearchOnly,
-}: any) => {
+// ─────────────────────────────────────────────────────────
+// YouTubeTab
+// ─────────────────────────────────────────────────────────
+
+const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isSearchOnly }: any) => {
   const upload = useUpload();
   const [results, setResults] = useState<any[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -1023,83 +540,35 @@ const YouTubeTab = ({
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setSuggestions([]);
-      return;
-    }
+    if (!query.trim()) { setSuggestions([]); return; }
     const timer = setTimeout(async () => {
-      try {
-        const sugs = await roomsApi.suggestYoutube(query);
-        setSuggestions(sugs);
-      } catch (err) {}
+      try { const sugs = await roomsApi.suggestYoutube(query); setSuggestions(sugs); } catch (err) {}
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
-    if (isSearching) {
-      onResultsCountChange(1); // Force expand while searching
-    } else {
-      onResultsCountChange(
-        showSuggestions && suggestions.length > 0
-          ? suggestions.length
-          : results.length,
-      );
-    }
-  }, [
-    isSearching,
-    showSuggestions,
-    suggestions.length,
-    results.length,
-    onResultsCountChange,
-  ]);
+    if (isSearching) { onResultsCountChange(1); return; }
+    onResultsCountChange(showSuggestions && suggestions.length > 0 ? suggestions.length : results.length);
+  }, [isSearching, showSuggestions, suggestions.length, results.length, onResultsCountChange]);
 
   const performSearch = async (q: string) => {
     if (!q.trim()) return;
-    setIsSearching(true);
-    setShowSuggestions(false);
-    setDownloadError(null);
-    try {
-      const res = await roomsApi.searchYoutube(roomId, q);
-      setResults(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    performSearch(query);
+    setIsSearching(true); setShowSuggestions(false); setDownloadError(null);
+    try { const res = await roomsApi.searchYoutube(roomId, q); setResults(res); }
+    catch (err) { console.error(err); } finally { setIsSearching(false); }
   };
 
   const handlePlay = async (result: any) => {
-    setEnqueuing(result.url);
-    setDownloadError(null);
+    setEnqueuing(result.url); setDownloadError(null);
     try {
-      const videoId =
-        result.url.split("v=")[1]?.split("&")[0] ||
-        result.url.split("youtu.be/")[1]?.split("?")[0];
+      const videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
       await upload.downloadYoutubeToP2P(roomId, videoId, result.title);
-      setAddedSongs((prev) => new Set(prev).add(result.url));
+      setAddedSongs(prev => new Set(prev).add(result.url));
     } catch (err: any) {
-      console.error(err);
-      if (
-        err.message?.includes(
-          "RapidAPI did not return a valid download link",
-        ) ||
-        err.message?.includes("FATAL: YouTube download returned")
-      ) {
-        setDownloadError(
-          "This track is age-restricted or blocked by YouTube. Please try another search result.",
-        );
-      } else {
-        setDownloadError(err.message || "Failed to load this track.");
-      }
-    } finally {
-      setEnqueuing(null);
-    }
+      setDownloadError(err.message?.includes("RapidAPI") || err.message?.includes("FATAL")
+        ? "This track is age-restricted or blocked by YouTube. Try another." : err.message || "Failed to load.");
+    } finally { setEnqueuing(null); }
   };
 
   const isCentered = !query.trim() && !isSearching && results.length === 0;
@@ -1107,77 +576,37 @@ const YouTubeTab = ({
 
   return (
     <div className={`absolute inset-0 flex flex-col ${containerPadding}`}>
-      <motion.div
-        layout
-        transition={SPRING}
-        className={`flex items-start gap-3 shrink-0 relative z-50 ${isCentered && !isSearchOnly ? "my-auto" : isSearchOnly ? "m-0 h-full" : "mb-4"}`}
-      >
+      <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isCentered && !isSearchOnly ? "my-auto" : isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onBack();
-            }}
-            className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors shrink-0 mt-0.5"
-          >
+          <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors shrink-0 mt-0.5">
             <ChevronLeft className="w-6 h-6" />
           </button>
         )}
         <div className="flex-1 relative h-full">
           <input
             value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setShowSuggestions(true);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                performSearch(query);
-              }
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowSuggestions(true);
-            }}
+            onChange={e => { setQuery(e.target.value); setShowSuggestions(true); }}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); performSearch(query); } }}
+            onClick={e => { e.stopPropagation(); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setShowSuggestions(false)}
-            placeholder="Search YouTube or upload..."
+            placeholder="Search YouTube or upload…"
             className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query ? "pr-4" : "pr-10"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
-            autoFocus={true}
+            autoFocus
           />
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
           <AnimatePresence>
             {!query && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2"
-              >
-                <label
-                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 cursor-pointer text-white/50 hover:text-white transition-colors"
-                  title="Upload Local File"
-                >
-                  {upload.isUploading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5" />
-                  )}
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    onChange={async (e) => {
+              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                <label className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 cursor-pointer text-white/50 hover:text-white transition-colors" title="Upload Local File">
+                  {upload.isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  <input type="file" accept="audio/*" className="hidden"
+                    onChange={async e => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      try {
-                        await upload.uploadFile(file, roomId);
-                      } catch (err) {
-                        console.error(err);
-                      }
-                    }}
-                  />
+                      try { await upload.uploadFile(file, roomId); } catch (err) { console.error(err); }
+                    }} />
                 </label>
               </motion.div>
             )}
@@ -1186,89 +615,47 @@ const YouTubeTab = ({
       </motion.div>
 
       {downloadError && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="bg-red-500/20 border border-red-500/30 text-red-200 text-xs px-3 py-2 rounded-xl mb-3 shrink-0"
-        >
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+          className="bg-red-500/20 border border-red-500/30 text-red-200 text-xs px-3 py-2 rounded-xl mb-3 shrink-0">
           {downloadError}
         </motion.div>
       )}
 
       <AnimatePresence>
         {!isCentered && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 15 }}
+          <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 15 }}
             transition={{ ...SPRING, opacity: { duration: 0.2 } }}
-            className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 -mx-2 px-2 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
+            className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 space-y-2 -mx-2 px-2 flex flex-col pointer-events-auto"
+            data-lenis-prevent="true"
+            onClick={e => e.stopPropagation()}>
             {isSearching ? (
-              <div className="flex-1 flex items-center justify-center min-h-37.5">
-                <Loader2 className="w-8 h-8 text-white/50 animate-spin" />
-              </div>
+              <div className="flex-1 flex items-center justify-center min-h-37.5"><Loader2 className="w-8 h-8 text-white/50 animate-spin" /></div>
             ) : showSuggestions && suggestions.length > 0 ? (
               suggestions.map((s, idx) => (
-                <div
-                  key={idx}
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // Keep input focused/avoid blur
-                    setQuery(s);
-                    performSearch(s);
-                  }}
-                  className="px-4 py-3 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-xl cursor-pointer flex items-center gap-3 transition-colors"
-                >
-                  <Search className="w-3.5 h-3.5 text-white/40" />
-                  {s}
+                <div key={idx} onMouseDown={e => { e.preventDefault(); setQuery(s); performSearch(s); }}
+                  className="px-4 py-3 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-xl cursor-pointer flex items-center gap-3 transition-colors">
+                  <Search className="w-3.5 h-3.5 text-white/40" />{s}
                 </div>
               ))
             ) : results.length > 0 ? (
-              results.map((r) => {
+              results.map(r => {
                 const isAdded = addedSongs.has(r.url);
                 return (
-                  <div
-                    key={r.url}
-                    className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}
-                  >
-                    <img
-                      src={r.thumbnail}
-                      className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0"
-                    />
+                  <div key={r.url} className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
+                    <img src={r.thumbnail} className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
                     <div className="space-y-1 min-w-0 flex-1">
-                      <div className="text-white text-sm font-bold truncate">
-                        {r.title}
-                      </div>
-                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">
-                        {r.uploaderName}
-                      </div>
+                      <div className="text-white text-sm font-bold truncate">{r.title}</div>
+                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.uploaderName}</div>
                     </div>
-                    <button
-                      onClick={() => !isAdded && handlePlay(r)}
-                      disabled={enqueuing === r.url || isAdded}
-                      className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${
-                        isAdded
-                          ? "bg-green-500 text-white"
-                          : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"
-                      }`}
-                    >
-                      {enqueuing === r.url ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : isAdded ? (
-                        <CheckCircle2 className="w-5 h-5" />
-                      ) : (
-                        <Plus className="w-5 h-5" />
-                      )}
+                    <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
+                      className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
+                      {enqueuing === r.url ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : isAdded ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                     </button>
                   </div>
                 );
               })
-            ) : query ? (
-              <div className="text-center text-white/40 text-sm mt-10">
-                Press Enter to search
-              </div>
-            ) : null}
+            ) : query ? <div className="text-center text-white/40 text-sm mt-10">Press Enter to search</div> : null}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1280,71 +667,103 @@ const YouTubeTab = ({
 // RequestsTab
 // ─────────────────────────────────────────────────────────
 
-const RequestsTab = ({
-  requests,
-  onApprove,
-  onDeny,
-  onBack,
-}: {
+const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
   requests: JoinRequest[];
   onApprove: (id: string, name: string) => void;
   onDeny: (id: string) => void;
   onBack: () => void;
-}) => {
-  return (
-    <div className="flex flex-col h-full text-white pt-2 pb-4">
-      <div className="flex items-center justify-between px-6 mb-4">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onBack();
-          }}
-          className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto"
-        >
-          <ChevronLeft className="w-5 h-5 text-white/50" />
-        </button>
-        <span className="text-sm font-bold uppercase tracking-widest text-white/50">
-          Join Requests ({requests.length})
-        </span>
-        <div className="w-9" />
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto">
-        {requests.length === 0 ? (
-          <div className="text-center text-white/40 text-xs mt-10">
-            No pending requests
+}) => (
+  <div className="flex flex-col h-full text-white pt-2 pb-4">
+    <div className="flex items-center justify-between px-6 mb-4">
+      <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
+        <ChevronLeft className="w-5 h-5 text-white/50" />
+      </button>
+      <span className="text-sm font-bold uppercase tracking-widest text-white/50">Join Requests ({requests.length})</span>
+      <div className="w-9" />
+    </div>
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto" data-lenis-prevent="true">
+      {requests.length === 0 ? (
+        <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
+      ) : requests.map(req => (
+        <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
+          <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30 transition-colors">Deny</button>
+            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className="px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors">Approve</button>
           </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────
+// Room Pill — the minimal 44px "pill" state
+// ─────────────────────────────────────────────────────────
+
+const RoomPill = ({
+  effectivePlaying, trackTitle, trackUrl, isRoom, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback
+}: {
+  effectivePlaying: boolean;
+  trackTitle: string;
+  trackUrl: string | null;
+  isRoom: boolean;
+  isSyncing: boolean;
+  hasTrack: boolean;
+  seekIndicator: { amount: number; text: string } | null;
+  volIndicator: { amount: number; text: string } | null;
+  onTogglePlayback: () => void;
+}) => {
+  const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
+  const videoId = ytMatch ? ytMatch[1] : null;
+  const thumbUrl = videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : null;
+
+  if (isSyncing) {
+    // While buffering just show a subtle spinner — pill is in transit to extended anyway
+    return (
+      <div className="absolute inset-0 flex items-center justify-center gap-2">
+        <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!hasTrack) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center gap-2 px-3 group">
+        <Search className="w-3.5 h-3.5 text-white/50 group-hover:text-white transition-colors" />
+        <span className="text-[11px] font-bold text-white/50 group-hover:text-white transition-colors">Search</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 flex items-center px-2 gap-2">
+      {/* Tiny thumbnail or disc */}
+      <div className="w-7 h-7 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-white/10">
+        {thumbUrl
+          ? <img src={thumbUrl} className="w-full h-full object-cover" />
+          : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
+      </div>
+      {/* Dynamic Right Side: Seek | EQ | Pause */}
+      <div 
+        className="flex items-center gap-1 flex-1 justify-center pr-1 cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
+        onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {volIndicator ? (
+          <>
+            {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5 text-white" /> : <VolumeX className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white">{volIndicator.text}</span>
+          </>
+        ) : seekIndicator ? (
+          <>
+            {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5 text-white" /> : <Rewind className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white">{seekIndicator.text}</span>
+          </>
+        ) : effectivePlaying ? (
+          <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
-          requests.map((req) => (
-            <div
-              key={req.socketId}
-              className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10"
-            >
-              <span className="font-semibold text-sm truncate pr-2">
-                {req.displayName}
-              </span>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeny(req.socketId);
-                  }}
-                  className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30 transition-colors"
-                >
-                  Deny
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onApprove(req.socketId, req.displayName);
-                  }}
-                  className="px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors"
-                >
-                  Approve
-                </button>
-              </div>
-            </div>
-          ))
+          <Play className="w-4 h-4 text-white/80 fill-white/80" />
         )}
       </div>
     </div>
@@ -1352,306 +771,177 @@ const RequestsTab = ({
 };
 
 // ─────────────────────────────────────────────────────────
-// DeviceInfoTab
+// Room Extended Pill — iOS live-activity style
+// Left side: track + progress. Right side: sync bar
 // ─────────────────────────────────────────────────────────
 
-const DeviceInfoTab = ({
-  targetSocketId,
-  roomParticipants,
-  localStats,
-  onBack,
+const RoomExtendedPill = ({
+  effectivePlaying, trackTitle, trackUrl, isReady,
+  downloadProgress, deviceSyncProgress, participants, incomingTrack,
+  pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback
 }: {
-  targetSocketId: string | null;
-  roomParticipants: any[];
-  localStats: any;
-  onBack: () => void;
+  effectivePlaying: boolean;
+  trackTitle: string;
+  trackUrl: string | null;
+  isReady: boolean;
+  downloadProgress: number;
+  deviceSyncProgress: Record<string, number>;
+  participants: any[];
+  incomingTrack: { title: string; progress: number } | null;
+  pendingRequestsCount: number;
+  isHost: boolean;
+  isPrivate: boolean;
+  onRequestsClick: () => void;
+  seekIndicator: { amount: number; text: string } | null;
+  volIndicator: { amount: number; text: string } | null;
+  onTogglePlayback: () => void;
 }) => {
-  const [remoteStats, setRemoteStats] = useState<any[]>([]);
+  const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
+  const videoId = ytMatch ? ytMatch[1] : null;
+  const thumbUrl = videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : null;
+  const title = cleanTrackTitle(trackTitle);
 
-  useEffect(() => {
-    if (!targetSocketId) return;
-    const socket = getSocket();
+  // Determine if syncing is happening
+  const progresses = Object.values(deviceSyncProgress);
+  const isSyncing = !isReady || incomingTrack != null || progresses.some(p => p < 100);
 
-    const handleStats = (data: any) => {
-      if (data.socketId === targetSocketId) {
-        setRemoteStats((prev) => {
-          const newStats = [
-            ...prev.slice(-120),
-            { ts: Date.now(), latency: data.latency },
-          ];
-          return newStats;
-        });
-      }
-    };
-
-    socket.on("room:participantStats", handleStats);
-    return () => {
-      socket.off("room:participantStats", handleStats);
-    };
-  }, [targetSocketId]);
-
-  const targetParticipant = roomParticipants.find(
-    (p) => p.socketId === targetSocketId,
-  );
-  const targetName = targetParticipant?.displayName || "Unknown Device";
-
-  // Build SVG paths for local and remote stats
-  const width = 280;
-  const height = 80;
-  const maxLatency = 200; // Cap visual scale at 200ms
-
-  const localHistory = localStats.history || [];
-
-  // Find the absolute latest timestamp in both datasets to anchor the right edge
-  const newestLocal =
-    localHistory.length > 0 ? localHistory[localHistory.length - 1].ts : 0;
-  const newestRemote =
-    remoteStats.length > 0 ? remoteStats[remoteStats.length - 1].ts : 0;
-  const latestTs =
-    Math.max(newestLocal, newestRemote) > 0
-      ? Math.max(newestLocal, newestRemote)
-      : Date.now();
-
-  // Calculate oldest timestamp available in either dataset to anchor graph to the left
-  const oldestLocal = localHistory.length > 0 ? localHistory[0].ts : latestTs;
-  const oldestRemote = remoteStats.length > 0 ? remoteStats[0].ts : latestTs;
-  const oldestAvailable = Math.min(oldestLocal, oldestRemote);
-
-  // Dynamic time window: stretch to fill exactly from oldest to newest, capped at 30 seconds
-  const timeWindow = Math.min(
-    30000,
-    Math.max(1000, latestTs - oldestAvailable),
-  );
-
-  const buildPath = (data: any[], color: string) => {
-    const visibleData = data.filter((d) => latestTs - d.ts <= timeWindow);
-    if (visibleData.length < 2) return null;
-
-    const points = visibleData.map((d) => {
-      const timeDiff = latestTs - d.ts;
-      // Map x from 0 (timeWindow ago) to width (latestTs)
-      const x = width - (timeDiff / timeWindow) * width;
-      const y = height - Math.min(height, (d.latency / maxLatency) * height);
-      return `${x},${y}`;
-    });
+  if (isSyncing) {
+    // ── Syncing / buffering: full-width progress bar, no track info, no player
     return (
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+      <div className="absolute inset-0 flex items-center px-4 gap-3">
+        {/* Spinner icon */}
+        <Loader2 className="w-4 h-4 text-white/50 animate-spin shrink-0" />
+        {/* Full-width progress */}
+        <div className="flex-1 min-w-0">
+          <SyncProgressBar
+            downloadProgress={downloadProgress}
+            deviceSyncProgress={deviceSyncProgress}
+            participants={participants}
+            incomingTrack={incomingTrack}
+            isReady={isReady}
+          />
+        </div>
+      </div>
     );
-  };
-
-  const currentLocalLatency = Math.round(localStats.latency || 0);
-  const currentRemoteLatency =
-    remoteStats.length > 0
-      ? Math.round(remoteStats[remoteStats.length - 1].latency)
-      : null;
+  }
 
   return (
-    <div className="flex flex-col h-full text-white pt-2 pb-4 pointer-events-auto">
-      <div className="flex items-center justify-between px-6 mb-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onBack();
-          }}
-          className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2"
+    <div className="absolute inset-0 flex items-stretch px-2 gap-2">
+      {/* LEFT half: track info + playback progress */}
+      <div className="flex items-center gap-2 flex-1 min-w-0 py-1.5">
+        {/* Thumbnail */}
+        <div className="w-7 h-7 rounded-lg shrink-0 overflow-hidden bg-white/10 flex items-center justify-center">
+          {thumbUrl
+            ? <img src={thumbUrl} className="w-full h-full object-cover" />
+            : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
+        </div>
+
+        {/* Title + progress line */}
+        <div className="flex flex-col justify-center flex-1 min-w-0">
+          <div className="text-white text-[11px] font-semibold truncate leading-tight">
+            {title.split(/\s+/).slice(0, 5).join(" ")}
+          </div>
+          <CompactProgressBar isPlaying={effectivePlaying} isVisible />
+        </div>
+
+        {/* Dynamic Right Side: Seek | EQ | Pause */}
+        <div 
+          className="flex items-center gap-1 shrink-0 px-2 rounded-full py-0.5 mr-1 cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
+          onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          <ChevronLeft className="w-5 h-5 text-white/50" />
-        </button>
-        <span className="text-sm font-bold uppercase tracking-widest text-white/50 truncate max-w-50">
-          {targetName}
-        </span>
-        <div className="w-9" />
-      </div>
-
-      <div className="flex-1 px-6 flex flex-col gap-4">
-        {/* Real-time Graph */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col relative overflow-hidden">
-          <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2 flex justify-between">
-            <span className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
-              You:{" "}
-              <span className="text-blue-400 font-extrabold">
-                {currentLocalLatency}ms
-              </span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500" />
-              Remote:{" "}
-              <span className="text-emerald-400 font-extrabold">
-                {currentRemoteLatency !== null
-                  ? `${currentRemoteLatency}ms`
-                  : "--"}
-              </span>
-            </span>
-          </div>
-
-          <svg
-            width="100%"
-            height={height}
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="none"
-            className="overflow-visible mt-2"
-          >
-            {/* Grid lines */}
-            <line
-              x1="0"
-              y1={height}
-              x2={width}
-              y2={height}
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-            />
-            <line
-              x1="0"
-              y1={height / 2}
-              x2={width}
-              y2={height / 2}
-              stroke="rgba(255,255,255,0.05)"
-              strokeWidth="1"
-              strokeDasharray="4 4"
-              vectorEffect="non-scaling-stroke"
-            />
-
-            {buildPath(localStats.history || [], "#3b82f6")}
-            {buildPath(remoteStats, "#10b981")}
-          </svg>
-
-          <div className="flex justify-between mt-3 text-[9px] uppercase tracking-widest text-white/30 font-bold">
-            <span>-30s</span>
-            <span>Now</span>
-          </div>
-        </div>
-
-        {/* Metadata */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-white/5 rounded-xl p-3">
-            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">
-              Output Device
+          {volIndicator ? (
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{volIndicator.text}</span>
             </div>
-            <div className="font-semibold truncate">
-              {targetParticipant?.outputDeviceName || "System Default"}
+          ) : seekIndicator ? (
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5" /> : <Rewind className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{seekIndicator.text}</span>
             </div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3">
-            <div className="text-white/40 uppercase tracking-widest text-[9px] mb-1">
-              Status
-            </div>
-            <div className="font-semibold truncate">
-              {targetParticipant?.isBlocked
-                ? "Blocked"
-                : targetParticipant?.isReady
-                  ? "Ready & Syncing"
-                  : "Buffering"}
-            </div>
-          </div>
+          ) : effectivePlaying ? (
+            <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
+          ) : (
+            <Play className="w-4 h-4 text-white/80 fill-white/80 shrink-0 mx-1" />
+          )}
         </div>
       </div>
+
+      {/* RIGHT half: join requests (if any) */}
+      {isHost && isPrivate && pendingRequestsCount > 0 && (
+        <>
+          {/* Divider */}
+          <div className="w-px bg-white/10 self-stretch my-1.5 shrink-0" />
+          <div className="flex items-center py-1.5 px-1 shrink-0">
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); onRequestsClick(); }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-[10px] font-black pointer-events-auto whitespace-nowrap"
+            >
+              <Users className="w-3 h-3" />
+              {pendingRequestsCount} pending
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
 
 // ─────────────────────────────────────────────────────────
-// DynamicIsland
+// DynamicIsland — main export
 // ─────────────────────────────────────────────────────────
 
 export function DynamicIsland() {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, token } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
   const {
-    clockOffset,
-    isRoomPlaying,
-    participants: roomParticipants,
-    pendingPlay,
-    incomingTrack,
-    pendingRequests,
-    hostId,
-    joinStatus,
-    isPrivate,
-    deviceSyncProgress,
+    clockOffset, isRoomPlaying, participants: roomParticipants, pendingPlay,
+    incomingTrack, pendingRequests, hostId, joinStatus, isPrivate, deviceSyncProgress,
+    play, pause, seek, nextTrack, prevTrack,
   } = useSyncInfo();
-
   const isRoom = pathname.includes("/room/");
   const isHost = hostId === user?.id;
-  const [isExpanded, setIsExpanded] = useState(false);
+  const hasTrack = audio.hasTrack;
+  const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
+  const [isHoverLocked, setIsHoverLocked] = useState(false);
+
+  // ── Island state machine
+  // In room: pill / extended / expanded
+  // Outside room: just compact / expanded (legacy)
+  const [islandState, setIslandState] = useState<IslandState>("pill");
+  const [isExpanded, setIsExpanded] = useState(false); // non-room
+  const islandRef = useRef<HTMLDivElement>(null);
+  const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevReqCountRef = useRef(0);
+
+  const [activeTab, setActiveTab] = useState<IslandTab>("player");
+  const [slideDir, setSlideDir] = useState(1);
+  const [ytResultsCount, setYtResultsCount] = useState(0);
+  const [ytQuery, setYtQuery] = useState("");
+  const [seekIndicator, setSeekIndicator] = useState<{ amount: number; text: string } | null>(null);
+  const seekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [volIndicator, setVolIndicator] = useState<{ amount: number; text: string } | null>(null);
+  const volTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [forceShowDetails, setForceShowDetails] = useState(false);
+  const [isPressing, setIsPressing] = useState(false);
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isHoveringRef = useRef(false);
+  const [windowWidth, setWindowWidth] = useState(0);
   const localProgressRef = useRef(0);
   const lastTapRef = useRef<number>(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
-  useEffect(() => {
-    scrubTimeRef.current = scrubTime;
-  }, [scrubTime]);
+  useEffect(() => { scrubTimeRef.current = scrubTime; }, [scrubTime]);
 
-  const roomId = isRoom
-    ? (pathname.split("/room/")[1]?.split("/")[0] ?? "")
-    : "";
-  const [activeTab, setActiveTab] = useState<IslandTab>("player");
-  const netStats = useNetworkStats(
-    isRoom,
-    activeTab === "deviceInfo",
-    roomId || undefined,
-  );
-  const islandRef = useRef<HTMLDivElement>(null);
-
+  const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
+  const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
   const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const handleShowDeviceInfo = (e: any) => {
-      setDeviceInfoTarget(e.detail.socketId);
-      setActiveTab("deviceInfo");
-      setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-    };
-    window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
-    return () =>
-      window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
-  }, []);
-  const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevReqCountRef = useRef(0);
-
-  useEffect(() => {
-    const currentCount = pendingRequests?.length || 0;
-    const prevCount = prevReqCountRef.current;
-
-    if (currentCount > prevCount) {
-      // New request arrived
-      setIsExpanded(true);
-      setActiveTab("requests");
-
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = setTimeout(() => {
-        setIsExpanded(false);
-      }, 10000);
-    }
-
-    prevReqCountRef.current = currentCount;
-  }, [pendingRequests?.length]);
-  const [slideDir, setSlideDir] = useState(1);
-  const [ytResultsCount, setYtResultsCount] = useState(0);
-  const [ytQuery, setYtQuery] = useState("");
-
-  const [seekIndicator, setSeekIndicator] = useState<{
-    amount: number;
-    text: string;
-  } | null>(null);
-  const seekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [forceShowDetails, setForceShowDetails] = useState(false);
-  const [isPressing, setIsPressing] = useState(false);
-  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [isHoverLocked, setIsHoverLocked] = useState(false);
-
-  const [windowWidth, setWindowWidth] = useState(0);
   useEffect(() => {
     setWindowWidth(window.innerWidth);
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -1659,93 +949,154 @@ export function DynamicIsland() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // ── Auto-trigger extended when syncing/buffering, stay extended until done
+  useEffect(() => {
+    if (!isRoom) return;
+    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100)));
+    if (isSyncing) {
+      // Force extended and cancel any pending shrink — stay here until done
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+      shrinkTimerRef.current = null;
+      if (islandState !== "extended") setIslandState("extended");
+    } else if (islandState === "extended" && !isHoveringRef.current) {
+      // Syncing just finished — brief pause then snap back to appropriate state
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+      shrinkTimerRef.current = setTimeout(() => setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill"), 1200);
+    }
+  }, [audio.isReady, incomingTrack, deviceSyncProgress, isRoom, islandState, effectivePlaying, hasTrack]);
 
+  // ── Playing state changes
+  useEffect(() => {
+    if (!isRoom || isHoveringRef.current || islandState === "expanded") return;
+    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100)));
+    if (isSyncing) return; // let the syncing effect handle it
+
+    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+    if (effectivePlaying && hasTrack) {
+      if (islandState === "pill") setIslandState("extended");
+    } else {
+      if (islandState === "extended") setIslandState("pill");
+    }
+  }, [effectivePlaying, hasTrack, isRoom, islandState, incomingTrack, audio.isReady, deviceSyncProgress]);
+
+  // ── Default to search tab if manually expanded with no track
+  useEffect(() => {
+    if (isRoom && !hasTrack && islandState === "expanded" && activeTab !== "youtube") {
+      setActiveTab("youtube");
+    }
+  }, [isRoom, hasTrack, islandState, activeTab]);
+
+  // ── Auto-trigger extended for join requests
+  useEffect(() => {
+    if (!isRoom) return;
+    const currentCount = pendingRequests?.length || 0;
+    const prevCount = prevReqCountRef.current;
+    if (currentCount > prevCount) {
+      setIslandState("extended");
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+      shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), 10000);
+    }
+    prevReqCountRef.current = currentCount;
+  }, [pendingRequests?.length, isRoom]);
+
+
+
+  const showVolIndicator = useCallback((deltaOrAbs: number, isAbsolute = false) => {
+    setVolIndicator({ amount: deltaOrAbs, text: isAbsolute ? `${deltaOrAbs}%` : `${deltaOrAbs > 0 ? "+" : ""}${deltaOrAbs}%` });
+    if (volTimeoutRef.current) clearTimeout(volTimeoutRef.current);
+    volTimeoutRef.current = setTimeout(() => setVolIndicator(null), 800);
+  }, []);
+
+  useEffect(() => {
+    const handleShowDeviceInfo = (e: any) => {
+      setDeviceInfoTarget(e.detail.socketId);
+      setActiveTab("deviceInfo");
+      if (isRoom) setIslandState("expanded");
+      else setIsExpanded(true);
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+    };
+    window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
+    return () => window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
+  }, [isRoom]);
+
+  useEffect(() => {
+    const handleExpandAdd = () => {
+      setActiveTab("youtube");
+      if (isRoom) setIslandState("expanded");
+      else { setIsExpanded(true); setIsHoverLocked(true); }
+    };
+    document.addEventListener("island:expand-add", handleExpandAdd);
+    return () => document.removeEventListener("island:expand-add", handleExpandAdd);
+  }, [isRoom]);
+
+  // ── Reset tab when closing
+  useEffect(() => {
+    if (isRoom) {
+      if (islandState === "pill") {
+        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        return () => clearTimeout(t);
+      }
+    } else {
+      if (!isExpanded) {
+        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [islandState, isExpanded, isRoom]);
+
+  // ── Click outside to close
+  useEffect(() => {
+    const expanded = isRoom ? islandState === "expanded" : isExpanded;
+    if (!expanded) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!document.contains(e.target as Node)) return;
+      if (islandRef.current && !islandRef.current.contains(e.target as Node)) {
+        if (isRoom) setIslandState("pill");
+        else setIsExpanded(false);
+      }
+    };
+    const id = requestAnimationFrame(() => document.addEventListener("mousedown", handleClickOutside));
+    return () => { cancelAnimationFrame(id); document.removeEventListener("mousedown", handleClickOutside); };
+  }, [islandState, isExpanded, isRoom, hasTrack]);
+
+  // ── Inactivity timer (mobile)
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    if (isExpanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "youtube") {
+    const expanded = isRoom ? islandState === "expanded" : isExpanded;
+    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "youtube") {
       inactivityTimerRef.current = setTimeout(() => {
-        setIsExpanded(false);
-      }, 3000); // 3 seconds timeout
+        if (isRoom) setIslandState("pill");
+        else setIsExpanded(false);
+      }, 3000);
     }
-  }, [isExpanded, windowWidth, activeTab]);
+  }, [islandState, isExpanded, windowWidth, activeTab, isRoom]);
 
   useEffect(() => {
     resetInactivityTimer();
-    return () => {
-      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    };
-  }, [isExpanded, windowWidth, resetInactivityTimer]);
+    return () => { if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current); };
+  }, [islandState, isExpanded, windowWidth, resetInactivityTimer]);
 
   const showSeekIndicator = useCallback((amount: number) => {
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-    const text = amount > 0 ? `+${amount}s` : `${Math.abs(amount)}s`;
-    setSeekIndicator({ amount, text });
-    seekTimeoutRef.current = setTimeout(() => {
-      setSeekIndicator(null);
-    }, 1500);
+    setSeekIndicator({ amount, text: amount > 0 ? `+${amount}s` : `${Math.abs(amount)}s` });
+    seekTimeoutRef.current = setTimeout(() => setSeekIndicator(null), 1500);
   }, []);
 
-  const handleTabChange = useCallback(
-    (newTab: IslandTab) => {
-      if (activeTab === newTab) return;
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      const order: Record<IslandTab, number> = {
-        network: -1,
-        player: 0,
-        youtube: 1,
-        requests: 2,
-        deviceInfo: 3,
-      };
-      setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
-      setActiveTab(newTab);
-    },
-    [activeTab],
-  );
+  const handleTabChange = useCallback((newTab: IslandTab) => {
+    if (activeTab === newTab) return;
+    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+    const order: Record<IslandTab, number> = { network: -1, player: 0, youtube: 1, requests: 2, deviceInfo: 3 };
+    setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
+    setActiveTab(newTab);
+  }, [activeTab]);
 
-  // If we close the island, eventually reset to player (optional, doing it instantly ruins exit animation)
-  useEffect(() => {
-    if (!isExpanded) {
-      const t = setTimeout(() => {
-        setActiveTab("player");
-        setYtResultsCount(0);
-      }, 500);
-      return () => clearTimeout(t);
-    }
-  }, [isExpanded]);
+  // ── Dimensions
+  const displayName = user?.name ?? "Guest";
+  const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+  const isProfile = pathname.includes("/profile");
 
-  const dynamicExpandedWidth =
-    windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
-
-  const hasTrack = audio.hasTrack;
-  const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
-
-  const dynamicCompactWidth = !hasTrack
-    ? dynamicExpandedWidth
-    : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) +
-      (effectivePlaying || forceShowDetails ? 80 : 0);
-
-  const isYoutubeSearchOnly =
-    !hasTrack && ytQuery.trim() === "" && ytResultsCount === 0;
-
-  // Dynamic height
-  let currentExpandedHeight = EXPANDED_HEIGHT;
-  if (activeTab === "youtube") {
-    if (isYoutubeSearchOnly) {
-      currentExpandedHeight = COMPACT_HEIGHT;
-    } else if (ytResultsCount > 0) {
-      currentExpandedHeight = Math.min(550, 120 + ytResultsCount * 75);
-    } else if (ytQuery.trim() !== "") {
-      currentExpandedHeight = 160;
-    } else {
-      currentExpandedHeight = 120;
-    }
-  } else if (activeTab === "requests") {
-    const reqCount = pendingRequests?.length || 0;
-    currentExpandedHeight = Math.max(150, Math.min(450, 80 + reqCount * 70));
-  } else if (activeTab === "deviceInfo") {
-    currentExpandedHeight = 240;
-  }
+  const displayTime = scrubTime !== null ? scrubTime : audio.currentTime || 0;
+  const displayProgress = scrubTime !== null ? scrubTime / Math.max(audio.duration, 1) : localProgressRef.current;
 
   const _isPlayingRef = useRef(false);
   const _getTruePosRef = useRef(audio.getTruePosition);
@@ -1760,10 +1111,7 @@ export function DynamicIsland() {
       if (_isPlayingRef.current && scrubTimeRef.current === null) {
         const pos = _getTruePosRef.current();
         const dur = _durationRef.current;
-        if (dur > 0) {
-          const pct = Math.min(1, pos / dur);
-          localProgressRef.current = pct;
-        }
+        if (dur > 0) localProgressRef.current = Math.min(1, pos / dur);
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -1771,170 +1119,120 @@ export function DynamicIsland() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  const displayName = user?.name ?? "Guest";
-  const initials = displayName
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-  const isProfile = pathname.includes("/profile");
+  const handleToggle = useCallback((e?: React.MouseEvent | KeyboardEvent) => {
+    e?.stopPropagation();
+    audio.unlockAudio();
+    if (isRoom && roomId) {
+      if (effectivePlaying || pendingPlay) pause();
+      else play();
+    } else {
+      audio.toggle();
+    }
+  }, [audio, isRoom, roomId, effectivePlaying, pendingPlay, play, pause]);
 
-  const displayTime = scrubTime !== null ? scrubTime : audio.currentTime || 0;
-  const displayProgress =
-    scrubTime !== null
-      ? scrubTime / Math.max(audio.duration, 1)
-      : localProgressRef.current;
+  const handleNext = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    audio.unlockAudio();
+    if (isRoom && roomId) nextTrack();
+  }, [audio, isRoom, roomId, nextTrack]);
 
-  const handleToggle = useCallback(
-    (e?: React.MouseEvent | KeyboardEvent) => {
-      e?.stopPropagation();
-      audio.unlockAudio();
-      if (isRoom && roomId) {
-        if (effectivePlaying || pendingPlay) {
-          getSocket().emit("playback:pause", { roomId });
-        } else {
-          getSocket().emit("playback:play", { roomId });
-        }
-      } else {
-        audio.toggle();
-      }
-    },
-    [audio, isRoom, roomId, effectivePlaying, pendingPlay],
-  );
+  const handlePrev = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    audio.unlockAudio();
+    if (isRoom && roomId) prevTrack();
+  }, [audio, isRoom, roomId, prevTrack]);
 
-  const handleNext = useCallback(
-    (e?: React.MouseEvent) => {
-      e?.stopPropagation();
-      audio.unlockAudio();
-      if (isRoom && roomId) getSocket().emit("playback:next", { roomId });
-    },
-    [audio, isRoom, roomId],
-  );
+  const handleSeek = useCallback((posSecs: number) => {
+    if (isRoom && roomId) seek(posSecs * 1000);
+    else audio.seek(posSecs);
+  }, [audio, isRoom, roomId, seek]);
 
-  const handlePrev = useCallback(
-    (e?: React.MouseEvent) => {
-      e?.stopPropagation();
-      audio.unlockAudio();
-      if (isRoom && roomId) getSocket().emit("playback:prev", { roomId });
-    },
-    [audio, isRoom, roomId],
-  );
-
-  const handleSeek = useCallback(
-    (posSecs: number) => {
-      if (isRoom && roomId) {
-        getSocket().emit("playback:seek", { roomId, position: posSecs * 1000 });
-      } else {
-        audio.seek(posSecs);
-      }
-    },
-    [audio, isRoom, roomId],
-  );
-
-  const _keyboardStateRef = useRef({
-    isRoom,
-    roomId,
-    effectivePlaying,
-    pendingPlay,
-  });
-  useEffect(() => {
-    _keyboardStateRef.current = {
-      isRoom,
-      roomId,
-      effectivePlaying,
-      pendingPlay,
-    };
-  }, [isRoom, roomId, effectivePlaying, pendingPlay]);
+  // ── Keyboard shortcuts
+  const _keyboardStateRef = useRef({ isRoom, roomId, effectivePlaying, pendingPlay });
+  useEffect(() => { _keyboardStateRef.current = { isRoom, roomId, effectivePlaying, pendingPlay }; }, [isRoom, roomId, effectivePlaying, pendingPlay]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA" ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      )
-        return;
-
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable) return;
       const state = _keyboardStateRef.current;
-
       if (e.code === "Space") {
         e.preventDefault();
         audio.unlockAudio();
         if (state.isRoom && state.roomId) {
-          if (state.effectivePlaying || state.pendingPlay) {
-            getSocket().emit("playback:pause", { roomId: state.roomId });
-          } else {
-            getSocket().emit("playback:play", { roomId: state.roomId });
-          }
-        } else {
-          audio.toggle();
-        }
+          if (state.effectivePlaying || state.pendingPlay) pause();
+          else play();
+        } else audio.toggle();
       } else if (e.code === "ArrowLeft") {
         e.preventDefault();
         const newTime = Math.max(0, audio.getTruePosition() - 5);
         showSeekIndicator(-5);
-        if (state.isRoom && state.roomId) {
-          getSocket().emit("playback:seek", {
-            roomId: state.roomId,
-            position: newTime * 1000,
-          });
-        } else {
-          audio.seek(newTime);
-        }
+        if (state.isRoom && state.roomId) seek(newTime * 1000);
+        else audio.seek(newTime);
       } else if (e.code === "ArrowRight") {
         e.preventDefault();
-        const newTime = Math.min(audio.duration, audio.getTruePosition() + 5);
+        const newTime = Math.min(audio.duration || 0, audio.getTruePosition() + 5);
         showSeekIndicator(5);
-        if (state.isRoom && state.roomId) {
-          getSocket().emit("playback:seek", {
-            roomId: state.roomId,
-            position: newTime * 1000,
-          });
-        } else {
-          audio.seek(newTime);
+        if (state.isRoom && state.roomId) seek(newTime * 1000);
+        else audio.seek(newTime);
+      } else if (e.code === "ArrowUp") {
+        e.preventDefault();
+        const cur = audio.getVolume ? audio.getVolume() : audio.volume;
+        const newVol = Math.min(100, cur + 10);
+        if (newVol !== cur) {
+          audio.setVolume(newVol);
+          showVolIndicator(newVol - cur);
+          if (state.isRoom && state.roomId) {
+            getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
+          }
+        }
+      } else if (e.code === "ArrowDown") {
+        e.preventDefault();
+        const cur = audio.getVolume ? audio.getVolume() : audio.volume;
+        const newVol = Math.max(0, cur - 10);
+        if (newVol !== cur) {
+          audio.setVolume(newVol);
+          showVolIndicator(newVol - cur);
+          if (state.isRoom && state.roomId) {
+            getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
+          }
+        }
+      } else if (e.code === "KeyM") {
+        e.preventDefault();
+        if (audio.toggleMute) {
+          const newVol = audio.toggleMute();
+          showVolIndicator(newVol, true);
+          if (state.isRoom && state.roomId) {
+            getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [audio]);
+  }, [audio, play, pause, seek]);
 
-  useEffect(() => {
-    if (!isExpanded) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (!document.contains(e.target as Node)) return;
-      if (islandRef.current && !islandRef.current.contains(e.target as Node)) {
-        setIsExpanded(false);
-      }
-    };
-    const id = requestAnimationFrame(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    });
-    return () => {
-      cancelAnimationFrame(id);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isExpanded]);
+  // ── Render guard
+  if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) return null;
 
-  useEffect(() => {
-    const handleExpandAdd = () => {
-      setActiveTab("youtube");
-      setIsExpanded(true);
-    };
-    document.addEventListener("island:expand-add", handleExpandAdd);
-    return () => {
-      document.removeEventListener("island:expand-add", handleExpandAdd);
-    };
-  }, []);
-
-  // Do not render dynamic island in waiting room
-  if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) {
-    return null;
-  }
-
+  // ── Non-room layout (nav bar)
   if (!isRoom) {
+    // Legacy compact/expanded for non-room pages
+    let currentExpandedHeight = EXPANDED_HEIGHT;
+    if (activeTab === "youtube") {
+      if (ytResultsCount > 0) currentExpandedHeight = Math.min(550, 120 + ytResultsCount * 75);
+      else if (ytQuery.trim() !== "") currentExpandedHeight = 160;
+      else currentExpandedHeight = 120;
+    } else if (activeTab === "requests") {
+      currentExpandedHeight = Math.max(150, Math.min(450, 80 + (pendingRequests?.length || 0) * 70));
+    } else if (activeTab === "deviceInfo") {
+      currentExpandedHeight = 240;
+    }
+
+    const dynamicExpandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
+    const dynamicCompactWidth = !hasTrack ? dynamicExpandedWidth
+      : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
+
     return (
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
         <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
@@ -1950,29 +1248,15 @@ export function DynamicIsland() {
             <ThemeToggle />
             <div className="w-px h-6 bg-foreground/10 hidden sm:block" />
             {isProfile ? (
-              <Link
-                href="/hub"
-                className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all"
-              >
-                Done
-              </Link>
+              <Link href="/hub" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
             ) : (
-              <Link
-                href="/profile"
-                className="flex items-center gap-3 cursor-pointer group outline-none"
-              >
+              <Link href="/profile" className="flex items-center gap-3 cursor-pointer group outline-none">
                 <div className="text-right hidden sm:block">
-                  <div className="text-sm font-bold text-foreground">
-                    {displayName}
-                  </div>
-                  <div className="text-xs font-semibold text-foreground/40">
-                    {user?.email ?? ""}
-                  </div>
+                  <div className="text-sm font-bold text-foreground">{displayName}</div>
+                  <div className="text-xs font-semibold text-foreground/40">{user?.email ?? ""}</div>
                 </div>
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border-2 border-transparent glass-panel group-active:scale-95 transition-all shadow-md">
-                  <span className="text-xs sm:text-sm font-black text-foreground">
-                    {initials}
-                  </span>
+                  <span className="text-xs sm:text-sm font-black text-foreground">{initials}</span>
                 </div>
               </Link>
             )}
@@ -1982,52 +1266,84 @@ export function DynamicIsland() {
     );
   }
 
-  const handlePointerDown = () => {
-    resetInactivityTimer();
-    // On desktop, hover handles expansion, so ignore long press
-    if (windowWidth >= 768) return;
+  // ── Room island layout
+  // Three states: pill / extended / expanded
+  const isExpanded_room = islandState === "expanded";
+  const isExtended_room = islandState === "extended";
 
-    if (isExpanded) return;
+  // Compute syncing flag first — used both for dimensions and handlers
+  const isSyncingNow = isRoom && (incomingTrack != null || (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100))));
+
+  // Pill dimensions
+  const pillWidth = hasTrack ? 120 : 86;
+  const pillHeight = COMPACT_HEIGHT;
+  // Extended dimensions (iOS live-activity style)
+  const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
+  const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
+  // Expanded dimensions
+  let expandedHeight = EXPANDED_HEIGHT;
+  if (activeTab === "youtube") {
+    if (ytResultsCount > 0) expandedHeight = Math.min(550, 120 + ytResultsCount * 75);
+    else if (ytQuery.trim() !== "") expandedHeight = 160;
+    else expandedHeight = 120;
+  } else if (activeTab === "requests") {
+    expandedHeight = Math.max(150, Math.min(450, 80 + (pendingRequests?.length || 0) * 70));
+  } else if (activeTab === "deviceInfo") {
+    expandedHeight = 240;
+  }
+  const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
+
+  // Current animated dimensions
+  // When syncing: use a compact width (spinner + progress bar only, no track info)
+  const syncingExtendedWidth = Math.min(280, (windowWidth > 0 ? windowWidth : 320) - 32);
+  const currentWidth = isExpanded_room
+    ? expandedWidth
+    : isExtended_room
+    ? (isSyncingNow ? syncingExtendedWidth : extendedWidth)
+    : pillWidth;
+  const currentHeight = isExpanded_room ? expandedHeight : pillHeight;
+  const currentRadius = isExpanded_room ? 44 : pillHeight / 2;
+
+  const handlePointerDown_room = () => {
+    resetInactivityTimer();
+    if (windowWidth >= 768) return;
+    if (islandState === "expanded") return;
+    // Block long-press-to-expand while syncing
+    if (isSyncingNow) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
-      if (!hasTrack) {
-        setActiveTab("youtube");
-        setIsHoverLocked(true);
-      }
-      setIsExpanded(true);
+      setIslandState("expanded");
       setForceShowDetails(false);
       setIsPressing(false);
       pressTimerRef.current = null;
-
-      // Haptic feedback for expanding
-      if (typeof navigator !== "undefined" && navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-    }, 300); // 300ms hold
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(50);
+    }, 300);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp_room = () => {
     resetInactivityTimer();
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
       setIsPressing(false);
-
+      // Block all expansion while syncing
+      if (isSyncingNow) return;
       const nowTime = Date.now();
-      const DOUBLE_TAP_DELAY = 500;
-      if (nowTime - lastTapRef.current < DOUBLE_TAP_DELAY) {
-        // Double tap: toggle play/pause
+      if (nowTime - lastTapRef.current < 500) {
         handleToggle();
         lastTapRef.current = 0;
       } else {
         lastTapRef.current = nowTime;
-        // Short tap (Mobile)
-        if (!isExpanded && hasTrack) {
-          setForceShowDetails(true);
-          setTimeout(() => setForceShowDetails(false), 3000);
-        } else if (!isExpanded && !hasTrack) {
-          setActiveTab("youtube");
-          setIsExpanded(true);
+        if (islandState === "pill") {
+          if (!hasTrack) {
+            setIslandState("expanded");
+          } else {
+            setIslandState("extended");
+            if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+            shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), 6000);
+          }
+        } else if (islandState === "extended") {
+          setIslandState("pill");
         }
       }
     }
@@ -2035,147 +1351,145 @@ export function DynamicIsland() {
 
   return (
     <>
+      {/* Backdrop */}
       <motion.div
         className="fixed inset-0 z-40 pointer-events-none"
-        animate={{
-          opacity: isExpanded ? 1 : 0,
-          backgroundColor: isExpanded ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0)",
-        }}
+        animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
         transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-        style={{
-          pointerEvents: isExpanded ? "auto" : "none",
-          backdropFilter: isExpanded ? "blur(2px)" : "blur(0px)",
-          WebkitBackdropFilter: isExpanded ? "blur(2px)" : "blur(0px)",
-        }}
-        onClick={() => {
-          setIsExpanded(false);
-          setIsHoverLocked(false);
-        }}
+        style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
+        onClick={() => setIslandState("pill")}
       />
 
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-100 flex flex-col items-center pointer-events-none">
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none">
         <motion.div
           ref={islandRef}
-          onPointerDown={(e) => {
-            if (windowWidth >= 768) setIsHoverLocked(true);
-            handlePointerDown();
-            resetInactivityTimer();
-          }}
-          onPointerUp={(e) => {
-            handlePointerUp();
-            resetInactivityTimer();
-          }}
+          onPointerDown={e => { handlePointerDown_room(); resetInactivityTimer(); }}
+          onPointerUp={e => { handlePointerUp_room(); resetInactivityTimer(); }}
           onMouseEnter={() => {
             if (windowWidth >= 768) {
-              if (!hasTrack) return;
-              setIsExpanded(true);
-              setForceShowDetails(false);
-            }
-          }}
-          onClick={(e) => {
-            if (windowWidth >= 768) {
-              if (hasTrack) {
-                setIsHoverLocked(false);
-                setIsExpanded(false);
-                setForceShowDetails(true);
-                setTimeout(() => setForceShowDetails(false), 3000);
-              } else {
-                setActiveTab("youtube");
-                setIsExpanded(true);
-                setIsHoverLocked(true);
+              isHoveringRef.current = true;
+              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+              if (islandState === "pill" && hasTrack) {
+                setIslandState("extended");
               }
             }
           }}
-          onPointerLeave={(e) => {
-            handlePointerUp();
-            resetInactivityTimer();
-          }}
-          onMouseLeave={(e) => {
-            if (windowWidth >= 768 && !isHoverLocked) {
-              setIsExpanded(false);
+          onMouseLeave={() => {
+            if (windowWidth >= 768) {
+              isHoveringRef.current = false;
+              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+              shrinkTimerRef.current = setTimeout(() => {
+                if (islandState === "expanded" || islandState === "extended") {
+                  setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
+                }
+              }, 1200);
             }
-            handlePointerUp();
+            handlePointerUp_room();
           }}
+          onClick={e => {
+            if (windowWidth >= 768) {
+              if (isSyncingNow) return;
+              if (islandState === "pill" || islandState === "extended") {
+                setIslandState("expanded");
+              } else if (islandState === "expanded") {
+                setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
+              }
+            }
+          }}
+          onPointerLeave={() => { handlePointerUp_room(); resetInactivityTimer(); }}
           onPointerMove={resetInactivityTimer}
-          onDoubleClick={(e) => {
-            e.preventDefault();
-            handleToggle();
-          }}
+          onDoubleClick={e => { e.preventDefault(); handleToggle(); }}
           initial={false}
           transition={{
-            width: SHAPE_SPRING,
-            height: SHAPE_SPRING,
+            width: { ...SHAPE_SPRING },
+            height: { ...SHAPE_SPRING },
             borderRadius: { ...SPRING, stiffness: 200 },
             scale: { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
           }}
           animate={{
-            width: isExpanded ? dynamicExpandedWidth : dynamicCompactWidth,
-            height: isExpanded ? currentExpandedHeight : COMPACT_HEIGHT,
-            borderRadius: isExpanded ? 44 : COMPACT_HEIGHT / 2,
-            scale: isPressing && !isExpanded ? 0.94 : 1,
+            width: currentWidth,
+            height: currentHeight,
+            borderRadius: currentRadius,
+            scale: isPressing && islandState === "pill" ? 0.94 : 1,
           }}
           style={{
             backgroundColor: "#000000",
-            cursor: isExpanded ? "default" : "pointer",
+            cursor: isExpanded_room ? "default" : "pointer",
             position: "relative",
             overflow: "hidden",
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
           }}
-          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.5)] border border-white/8 select-none"
+          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-white/[0.08] select-none"
         >
-          <CompactState
-            isExpanded={isExpanded}
-            effectivePlaying={effectivePlaying}
-            trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
-            trackUrl={audio.trackUrl}
-            progress={displayProgress}
-            hasTrack={hasTrack}
-            seekIndicator={seekIndicator}
-            isReady={audio.isReady}
-            error={audio.error}
-            downloadProgress={incomingTrack ? incomingTrack.progress : 0}
-            showDetails={effectivePlaying || forceShowDetails || !!incomingTrack}
-            isRoom={isRoom}
-            roomParticipants={roomParticipants}
-            pendingRequestsCount={pendingRequests?.length || 0}
-            isHost={isHost}
-            isPrivate={isPrivate}
-            onRequestsClick={() => {
-              setActiveTab("requests");
-              setIsExpanded(true);
-            }}
-          />
+          {/* Pill content */}
+          <AnimatePresence>
+            {islandState === "pill" && (
+              <motion.div
+                key="pill-content"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0"
+              >
+                <RoomPill
+                  effectivePlaying={effectivePlaying}
+                  trackTitle={audio.trackTitle}
+                  trackUrl={audio.trackUrl}
+                  isRoom={isRoom}
+                  isSyncing={isSyncingNow}
+                  hasTrack={hasTrack}
+                  seekIndicator={seekIndicator}
+                  volIndicator={volIndicator}
+                  onTogglePlayback={handleToggle}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
+          {/* Extended content */}
+          <AnimatePresence>
+            {islandState === "extended" && (
+              <motion.div
+                key="extended-content"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, delay: 0.05 }}
+                className="absolute inset-0"
+              >
+                <RoomExtendedPill
+                  effectivePlaying={effectivePlaying}
+                  trackTitle={audio.trackTitle}
+                  trackUrl={audio.trackUrl}
+                  isReady={audio.isReady}
+                  downloadProgress={audio.downloadProgress}
+                  deviceSyncProgress={deviceSyncProgress}
+                  participants={roomParticipants}
+                  incomingTrack={incomingTrack}
+                  pendingRequestsCount={pendingRequests?.length || 0}
+                  isHost={isHost}
+                  isPrivate={isPrivate}
+                  onRequestsClick={() => { setActiveTab("requests"); setIslandState("expanded"); }}
+                  seekIndicator={seekIndicator}
+                  volIndicator={volIndicator}
+                  onTogglePlayback={handleToggle}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Expanded content */}
           <motion.div
             className="absolute inset-0 pointer-events-none"
-            animate={{
-              opacity: isExpanded ? 1 : 0,
-              scale: isExpanded ? 1 : 0.97,
-              filter: isExpanded ? "blur(0px)" : "blur(6px)",
-            }}
-            transition={{
-              opacity: { duration: 0.25, delay: isExpanded ? 0.08 : 0, ease: [0.32, 0.72, 0, 1] },
-              filter: { duration: 0.25, delay: isExpanded ? 0.08 : 0, ease: [0.32, 0.72, 0, 1] },
-              scale: { ...SPRING, stiffness: 200 },
-            }}
-            style={{
-              zIndex: isExpanded ? 1 : 0,
-              pointerEvents: isExpanded ? "auto" : "none",
-            }}
+            animate={{ opacity: isExpanded_room ? 1 : 0, scale: isExpanded_room ? 1 : 0.97, filter: isExpanded_room ? "blur(0px)" : "blur(6px)" }}
+            transition={{ opacity: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, filter: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, scale: { ...SPRING, stiffness: 200 } }}
+            style={{ zIndex: isExpanded_room ? 1 : 0, pointerEvents: isExpanded_room ? "auto" : "none" }}
           >
             <AnimatePresence custom={slideDir} initial={false}>
               {activeTab === "player" && (
-                <motion.div
-                  key="player"
-                  custom={slideDir}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={SPRING}
-                  className="absolute inset-0"
-                >
+                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="absolute inset-0">
                   <PlayerTab
                     effectivePlaying={effectivePlaying}
                     trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
@@ -2199,114 +1513,42 @@ export function DynamicIsland() {
                     pendingRequestsCount={pendingRequests?.length || 0}
                     isHost={isHost}
                     isPrivate={isPrivate}
-                    isVisible={isExpanded}
+                    isVisible={isExpanded_room}
                   />
                 </motion.div>
               )}
               {activeTab === "network" && (
-                <motion.div
-                  key="network"
-                  custom={slideDir}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={SPRING}
-                  className="absolute inset-0"
-                >
-                  <NetworkTab
-                    onBack={() => handleTabChange("player")}
-                    netStats={netStats}
-                    audio={audio}
-                  />
+                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="absolute inset-0">
+                  <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                 </motion.div>
               )}
               {activeTab === "youtube" && (
-                <motion.div
-                  key="youtube"
-                  custom={slideDir}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={SPRING}
-                  className="absolute inset-0"
-                >
-                  <YouTubeTab
-                    roomId={roomId}
-                    onBack={() => setActiveTab("player")}
-                    onResultsCountChange={setYtResultsCount}
-                    query={ytQuery}
-                    setQuery={setYtQuery}
-                    isSearchOnly={isYoutubeSearchOnly}
-                  />
+                <motion.div key="youtube" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="absolute inset-0">
+                  <YouTubeTab roomId={roomId} onBack={() => setActiveTab("player")} onResultsCountChange={setYtResultsCount} query={ytQuery} setQuery={setYtQuery} isSearchOnly={false} />
                 </motion.div>
               )}
               {activeTab === "requests" && (
-                <motion.div
-                  key="requests"
-                  custom={slideDir}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={SPRING}
-                  className="absolute inset-0"
-                >
+                <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="absolute inset-0">
                   <RequestsTab
                     requests={pendingRequests || []}
                     onApprove={(id, name) => {
-                      document.dispatchEvent(
-                        new CustomEvent("room:action-approve", {
-                          detail: { socketId: id, displayName: name },
-                        }),
-                      );
-                      if (pendingRequests.length <= 1) setActiveTab("player");
+                      document.dispatchEvent(new CustomEvent("room:action-approve", { detail: { socketId: id, displayName: name } }));
+                      if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
                     }}
-                    onDeny={(id) => {
-                      document.dispatchEvent(
-                        new CustomEvent("room:action-deny", {
-                          detail: { socketId: id },
-                        }),
-                      );
-                      if (pendingRequests.length <= 1) setActiveTab("player");
+                    onDeny={id => {
+                      document.dispatchEvent(new CustomEvent("room:action-deny", { detail: { socketId: id } }));
+                      if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
                     }}
-                    onBack={() => setActiveTab("player")}
-                  />
-                </motion.div>
-              )}
-              {activeTab === "deviceInfo" && (
-                <motion.div
-                  key="deviceInfo"
-                  custom={slideDir}
-                  variants={tabVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={SPRING}
-                  className="absolute inset-0"
-                >
-                  <DeviceInfoTab
-                    targetSocketId={deviceInfoTarget}
-                    roomParticipants={roomParticipants}
-                    localStats={netStats}
-                    onBack={() => {
-                      setActiveTab("player");
-                      setDeviceInfoTarget(null);
-                    }}
+                    onBack={() => setIslandState("pill")}
                   />
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
 
-          <div
-            className="absolute inset-0 rounded-[inherit] pointer-events-none"
-            style={{
-              background:
-                "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%)",
-            }}
-          />
+          {/* Gloss overlay */}
+          <div className="absolute inset-0 rounded-[inherit] pointer-events-none"
+            style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%)" }} />
         </motion.div>
       </div>
     </>

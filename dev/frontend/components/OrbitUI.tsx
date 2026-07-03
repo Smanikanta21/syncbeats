@@ -285,7 +285,7 @@ export function OrbitUI({
   const otherListeners = Array.from(otherListenersMap.values());
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center pt-6 md:pt-28">
+    <div className="w-full h-full flex flex-col items-center justify-center p-4">
       <div className="text-center mb-6 space-y-1.5 shrink-0 z-10 relative">
         <h3 className="text-xs font-black uppercase tracking-widest text-foreground/50 flex items-center justify-center gap-2">
           Spatial Audio Hub
@@ -296,11 +296,12 @@ export function OrbitUI({
         </p>
       </div>
 
-      {/* Orbit ring — STATIC */}
-      <div
-        ref={containerRef}
-        className="relative aspect-square w-full max-w-[85vh] max-h-[85vh] rounded-full border border-foreground/5 bg-foreground/[0.02] shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none mb-6"
-      >
+      <div className="flex-1 min-h-0 w-full flex items-center justify-center relative">
+        {/* Orbit ring — STATIC */}
+        <div
+          ref={containerRef}
+          className="relative aspect-square h-full max-w-full rounded-full border border-foreground/5 bg-foreground/[0.02] shadow-[inset_0_0_60px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_0_60px_rgba(255,255,255,0.02)] overflow-visible touch-none"
+        >
         {/* Concentric rings — dynamically sized to match exact device orbit positions */}
         {(() => {
           return (
@@ -346,6 +347,8 @@ export function OrbitUI({
             onUnregister={handleUnregister}
           />
         ))}
+      </div>
+
       </div>
 
       {/* Other Listeners Dock */}

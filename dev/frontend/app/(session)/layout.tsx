@@ -204,7 +204,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
       <AmbientBackground syncWithAudio={true} />
-      <div className={isRoom ? "h-[100dvh] overflow-hidden md:h-auto md:min-h-[100dvh] md:overflow-visible flex justify-center" : "pt-32"}>
+      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : "pt-32"}>
         {(!loading && user) ? children : null}
       </div>
     </SyncProvider>

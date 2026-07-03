@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
@@ -600,17 +600,18 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   }, [snapshot, currentSocketId]);
 
   // Pre-seed the next track in the queue
-  useEffect(() => {
-    if (!snapshot || !snapshot.queue || snapshot.queue.length === 0) return;
-    
+  const nextTrackUrl = useMemo(() => {
+    if (!snapshot?.queue || snapshot.queue.length === 0) return null;
     const currentIndex = snapshot.queue.findIndex(q => q.isCurrent);
-    if (currentIndex === -1 || currentIndex >= snapshot.queue.length - 1) return;
-    
-    const nextTrack = snapshot.queue[currentIndex + 1];
-    if (nextTrack && nextTrack.trackUrl && audioRef.current.prefetchTrack) {
-      audioRef.current.prefetchTrack(nextTrack.trackUrl);
-    }
+    if (currentIndex === -1 || currentIndex >= snapshot.queue.length - 1) return null;
+    return snapshot.queue[currentIndex + 1]?.trackUrl || null;
   }, [snapshot?.queue]);
+
+  useEffect(() => {
+    if (nextTrackUrl && audioRef.current.prefetchTrack) {
+      audioRef.current.prefetchTrack(nextTrackUrl);
+    }
+  }, [nextTrackUrl]);
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => {

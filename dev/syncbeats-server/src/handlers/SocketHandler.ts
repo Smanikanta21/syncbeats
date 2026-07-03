@@ -406,7 +406,29 @@ export class SocketHandler {
     });
 
     socket.on('room:sync_progress', ({ roomId, progress }: { roomId: string, progress: number }) => {
-      socket.to(roomId).emit('room:sync_progress', { socketId: socket.id, progress });
+      // Forward to other participants
+      socket.to(roomId).emit('room:deviceSyncProgress', { socketId: socket.id, progress });
+    });
+
+    // Chat & Reactions
+    socket.on('room:chat', ({ roomId, message }: { roomId: string, message: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      const p = room.snapshot().participants.find(p => p.socketId === socket.id);
+      if (!p) return;
+      
+      this.io.to(roomId).emit('room:chat', {
+        id: crypto.randomUUID(),
+        socketId: socket.id,
+        displayName: p.displayName,
+        message,
+        timestamp: Date.now()
+      });
+    });
+
+    socket.on('room:reaction', ({ roomId, emoji }: { roomId: string, emoji: string }) => {
+      // Broadcast to everyone else in the room (sender already spawns it locally)
+      socket.to(roomId).emit('room:reaction', { socketId: socket.id, emoji });
     });
 
     // ── NTP sync ─────────────────────────────────────────────────────────

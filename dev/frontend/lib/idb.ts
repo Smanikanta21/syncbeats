@@ -49,3 +49,18 @@ export const getTrack = async (magnetUri: string): Promise<Blob | null> => {
     return null;
   }
 };
+
+export const removeTrack = async (magnetUri: string): Promise<void> => {
+  try {
+    const db = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("tracks", "readwrite");
+      const store = tx.objectStore("tracks");
+      const req = store.delete(magnetUri);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.error("Failed to remove track from IndexedDB", err);
+  }
+};

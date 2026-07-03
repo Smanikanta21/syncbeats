@@ -282,6 +282,11 @@ export const roomsApi = {
       body: JSON.stringify({ magnetUri, title }),
     }, true),
 
+  removeFromQueue: (roomId: string, itemId: string) =>
+    request<any>(`/rooms/${roomId}/queue/${itemId}`, {
+      method: 'DELETE',
+    }, true),
+
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
 
