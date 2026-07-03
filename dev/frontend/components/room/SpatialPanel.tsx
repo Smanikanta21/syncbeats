@@ -111,7 +111,8 @@ export function SpatialPanel({
       const userId = p.userId ?? p.socketId;
       const parts = p.displayName.split("::");
       const baseName = parts[0];
-      const devName = parts.length > 1 ? parts[1] : parts[0];
+      const fallbackName = parts.length > 1 ? parts[1] : parts[0];
+      const friendlyDevName = getFriendlyDeviceName(p.outputDeviceName || "", p.outputDeviceType, fallbackName);
       const isMe = userId === myUserId;
 
       if (!map.has(userId)) {
@@ -125,7 +126,7 @@ export function SpatialPanel({
       }
       map.get(userId)!.devices.push({
         deviceId: p.socketId,
-        deviceName: devName,
+        deviceName: friendlyDevName,
         isMe: p.socketId === myDeviceId,
         deviceType: p.outputDeviceType,
       });
@@ -133,6 +134,22 @@ export function SpatialPanel({
 
     return Array.from(map.values());
   }, [participants, myDeviceId, myUserId]);
+
+  function getFriendlyDeviceName(name: string, type?: string, fallback?: string) {
+    const n = (name || "").toLowerCase();
+    const f = (fallback || "").toLowerCase();
+    
+    if (n.includes("iphone") || f.includes("iphone")) return "iPhone";
+    if (n.includes("ipad") || f.includes("ipad")) return "iPad";
+    if (n.includes("mac") || f.includes("mac") || f.includes("macos")) return "Mac";
+    if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows";
+    if (n.includes("android") || f.includes("android")) return "Android";
+    if (n.includes("linux") || f.includes("linux")) return "Linux";
+    
+    if (type === "mobile") return "Mobile";
+    if (type === "speakers") return "Desktop";
+    return "Device";
+  }
 
   function getDeviceIcon(name: string, type?: string) {
     const n = name.toLowerCase();

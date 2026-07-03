@@ -17,7 +17,7 @@ import { useSyncInfo } from "../../../../context/SyncContext";
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const audio = useAudio();
-  const { user, loading: authLoading } = useAuth();
+  const { user, device, loading: authLoading } = useAuth();
   const resolvedParams = use(params);
 
   const {
@@ -41,7 +41,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setReady,
   } = useRoom({
     roomId: resolvedParams.id,
-    displayName: user?.name || "Guest",
+    displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
     userId: user?.id,
   });
 

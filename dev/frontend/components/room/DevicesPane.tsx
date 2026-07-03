@@ -33,6 +33,22 @@ function getDeviceIcon(type?: string) {
   }
 }
 
+function getFriendlyDeviceName(name: string, type?: string, fallback?: string) {
+  const n = (name || "").toLowerCase();
+  const f = (fallback || "").toLowerCase();
+  
+  if (n.includes("iphone") || f.includes("iphone")) return "iPhone";
+  if (n.includes("ipad") || f.includes("ipad")) return "iPad";
+  if (n.includes("mac") || f.includes("mac") || f.includes("macos")) return "Mac";
+  if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows";
+  if (n.includes("android") || f.includes("android")) return "Android";
+  if (n.includes("linux") || f.includes("linux")) return "Linux";
+  
+  if (type === "mobile") return "Mobile";
+  if (type === "speakers") return "Desktop";
+  return "Device";
+}
+
 function DeviceCard({
   p, isMe, isHost, isMySelf, syncProgress, onVolumeChange,
 }: {
@@ -73,7 +89,9 @@ function DeviceCard({
 
   const nameParts = p.displayName.split("::");
   const displayName = nameParts[0] ?? p.displayName;
-  const deviceLabel = nameParts[1] ?? p.outputDeviceName ?? "Unknown device";
+  const fallbackName = nameParts.length > 1 ? nameParts[1] : undefined;
+  const deviceLabel = getFriendlyDeviceName(p.outputDeviceName || "", p.outputDeviceType, fallbackName);
+  
   const initials = displayName.slice(0, 2).toUpperCase();
   const lat = Math.round(p.latency ?? 0);
 
