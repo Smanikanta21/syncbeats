@@ -11,6 +11,7 @@ import { RoomVisualizer } from "./RoomVisualizer";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { EmojiReactions } from "./EmojiReactions";
+import { FullscreenPrompt } from "./FullscreenPrompt";
 import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
@@ -30,6 +31,7 @@ interface RoomDashboardProps {
   // Spatial
   spatialDevices: DeviceSpatialState[];
   onUpdateSpatialPosition: (deviceId: string, pos: { angle: number; radius: number; elevation: number }) => void;
+  syncUIState?: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => void;
 
   // Playback
   audio: {
@@ -89,7 +91,7 @@ function GlassCard({ children, className = "", style }: { children: React.ReactN
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate, spatialDevices,
-  onUpdateSpatialPosition, audio, orbitSpeed, orbitData, onOrbitSpeedChange,
+  onUpdateSpatialPosition, syncUIState, audio, orbitSpeed, orbitData, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -121,6 +123,7 @@ export function RoomDashboard({
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <FullscreenPrompt />
       {/* ── Desktop Layout (md+) ───────────────────────────────────────────── */}
       <div className="hidden md:flex flex-col flex-1 min-h-0 p-4 pt-20 gap-3">
         {/* Top 3-column row */}
@@ -145,8 +148,11 @@ export function RoomDashboard({
               myDeviceId={mySocketId ?? ""}
               spatialDevices={spatialDevices}
               participants={participants}
+              myUserId={myUserId ?? mySocketId ?? ""}
               isPlaying={isPlaying}
               onUpdatePosition={onUpdateSpatialPosition}
+              syncUIState={syncUIState}
+              roomId={roomId}
               orbitSpeed={orbitSpeed}
               orbitData={orbitData}
               onOrbitSpeedChange={onOrbitSpeedChange}
@@ -201,8 +207,11 @@ export function RoomDashboard({
                   myDeviceId={mySocketId ?? ""}
                   spatialDevices={spatialDevices}
                   participants={participants}
+                  myUserId={myUserId ?? mySocketId ?? ""}
                   isPlaying={isPlaying}
                   onUpdatePosition={onUpdateSpatialPosition}
+                  syncUIState={syncUIState}
+                  roomId={roomId}
                   orbitSpeed={orbitSpeed}
                   orbitData={orbitData}
                   onOrbitSpeedChange={onOrbitSpeedChange}

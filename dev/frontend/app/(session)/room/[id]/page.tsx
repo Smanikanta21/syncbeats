@@ -107,7 +107,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   ]);
 
   // Spatial audio
-  const { spatialDevices, updatePosition, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
+  const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
     gainNode: audio.gainNode,
@@ -189,6 +189,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           isPrivate={isPrivate}
           spatialDevices={spatialDevices}
           onUpdateSpatialPosition={updatePosition}
+          syncUIState={syncUIState}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,

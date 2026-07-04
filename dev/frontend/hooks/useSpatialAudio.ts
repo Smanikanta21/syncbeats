@@ -48,6 +48,7 @@ interface UseSpatialAudioOptions {
 
 interface UseSpatialAudioReturn {
   updatePosition: (deviceId: string, position: SpatialPosition) => void;
+  syncUIState: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => void;
   setDeviceGain: (deviceId: string, gain: number) => void;
   setMasterGain: (gain: number) => void;
   setDeviceSequence: (deviceIds: string[]) => void;
@@ -126,22 +127,41 @@ export function useSpatialAudio({
       let changed = false;
       const newDevices = [...prev];
       
-      // Add missing participants — place them on actual orbit rings
-      // Orbit radii: 1 (inner), 2 (middle), 3 (outer) — matching MAX_RADIUS / 3 increments
+      // Add missing participants
       const ORBIT_RINGS = [1, 2, 3] as const;
       participants.forEach(p => {
         if (!newDevices.some(d => d.deviceId === p.socketId)) {
-          const idx = newDevices.length;
-          // Assign to a ring based on device index (round-robin through rings)
-          const ring = ORBIT_RINGS[idx % ORBIT_RINGS.length];
-          // Count how many devices are already on this ring to space them evenly
-          const devicesOnRing = newDevices.filter(d => d.position.radius === ring).length;
-          // Spread devices on the same ring evenly by expected count on that ring
-          const totalOnRing = Math.ceil(participants.length / ORBIT_RINGS.length);
-          const angle = devicesOnRing > 0
-            ? (devicesOnRing / Math.max(totalOnRing, 1)) * 2 * Math.PI
-            : (idx / Math.max(participants.length, 1)) * 2 * Math.PI;
-          const defaultPos = { angle, radius: ring, elevation: 0 };
+          const userId = p.userId ?? p.socketId;
+          const existingDeviceForUser = newDevices.find(d => {
+            const existingP = participants.find(ep => ep.socketId === d.deviceId);
+            const existingUserId = existingP ? (existingP.userId ?? existingP.socketId) : d.deviceId;
+            return existingUserId === userId;
+          });
+
+          let defaultPos;
+          if (existingDeviceForUser) {
+            defaultPos = { ...existingDeviceForUser.position };
+          } else {
+            const checkCollision = (r: number, a: number) => {
+              return newDevices.some(d => d.position.radius === r && d.position.angle === a);
+            };
+
+            let ring = 1;
+            let posOnRing = 0;
+            while (true) {
+              const angle = posOnRing * (Math.PI / 2);
+              if (!checkCollision(ring, angle)) {
+                defaultPos = { angle, radius: ring, elevation: 0 };
+                break;
+              }
+              posOnRing++;
+              if (posOnRing >= 4) {
+                posOnRing = 0;
+                ring++;
+              }
+            }
+          }
+          
           newDevices.push({ deviceId: p.socketId, position: defaultPos });
           engine.addDevice(p.socketId, defaultPos);
           changed = true;
@@ -225,7 +245,6 @@ export function useSpatialAudio({
     };
 
     const onUpdate = ({ deviceId, position }: SpatialUpdatePayload) => {
-      if (deviceId === myDeviceId) return;
       engine.updatePosition(deviceId, position);
       setSpatialDevices(prev =>
         prev.map(d => (d.deviceId === deviceId ? { ...d, position } : d))
@@ -313,6 +332,9 @@ export function useSpatialAudio({
     },
     [engine]
   );
+  const syncUIState = useCallback((listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => {
+    engine.setUIState(listenerCart, offsets);
+  }, [engine]);
 
-  return { updatePosition, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };
+  return { updatePosition, syncUIState, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };
 }

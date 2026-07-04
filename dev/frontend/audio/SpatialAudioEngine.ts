@@ -59,6 +59,10 @@ export class SpatialAudioEngine {
   /** All device positions (keyed by deviceId) */
   private devicePositions = new Map<string, SpatialPosition>();
 
+  /** UI offsets to sync audio panning with visual layout (fanX, fanY) */
+  private uiOffsets = new Map<string, { fanX: number; fanY: number }>();
+  private uiListenerCart: { x: number; y: number; z: number } | null = null;
+
   /** Ordered list of device IDs the audio visits in sequence */
   private deviceSequence: string[] = [];
 
@@ -176,10 +180,7 @@ export class SpatialAudioEngine {
     } else if (!this.devicePositions.has(deviceId)) {
       this.devicePositions.set(deviceId, { angle: 0, radius: 1, elevation: 0 });
     }
-    // Rebuild sequence if not already set
-    if (this.deviceSequence.length === 0) {
-      this.rebuildSequence();
-    }
+    this.rebuildSequence();
   }
 
   removeDevice(deviceId: string): void {
@@ -191,6 +192,7 @@ export class SpatialAudioEngine {
 
   updatePosition(deviceId: string, pos: SpatialPosition): void {
     this.devicePositions.set(deviceId, pos);
+    this.rebuildSequence();
   }
 
   applySnapshot(devices: DeviceSpatialState[]): void {
@@ -200,22 +202,42 @@ export class SpatialAudioEngine {
     this.rebuildSequence();
   }
 
+  // --- UI Sync ---
+
+  setUIState(listenerCart: { x: number; y: number; z: number }, offsets: Map<string, { fanX: number; fanY: number }>): void {
+    this.uiListenerCart = listenerCart;
+    this.uiOffsets = offsets;
+  }
+
   // --- Device Sequence Orbit ---
 
   /**
-   * Set the ordered list of device IDs the audio visits.
-   * The audio source will smoothly move from one device position to the next.
+   * We ignore external sequence suggestions and strictly sort by physical angle
+   * to guarantee the orbit goes Front -> Right -> Back -> Left continuously.
    */
   setDeviceSequence(deviceIds: string[]): void {
-    this.deviceSequence = deviceIds;
+    this.rebuildSequence();
   }
 
-  /** Rebuild sequence from all known device IDs */
+  /** Rebuild sequence strictly based on angular position */
   private rebuildSequence(): void {
-    // Only rebuild if sequence was never manually set or is empty
-    if (this.deviceSequence.length === 0) {
-      this.deviceSequence = Array.from(this.devicePositions.keys());
-    }
+    const ids = Array.from(this.devicePositions.keys());
+    
+    ids.sort((a, b) => {
+       const posA = this.devicePositions.get(a)!;
+       const posB = this.devicePositions.get(b)!;
+       
+       // Normalize angle to [0, 2PI)
+       let angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+       let angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+       
+       if (Math.abs(angA - angB) < 0.001) {
+          return posA.radius - posB.radius;
+       }
+       return angA - angB;
+    });
+    
+    this.deviceSequence = ids;
   }
 
   /** Seconds per device — adjustable via speed slider */
@@ -281,6 +303,26 @@ export class SpatialAudioEngine {
       // Only one device — park the panner at its position
       const pos = this.devicePositions.get(seq[0])!;
       const cart = this.orbitToCartesian(pos);
+
+      // Apply visual offset (1 screen unit = 100 web audio units)
+      const offset = this.uiOffsets.get(seq[0]);
+      if (offset) {
+        cart.x += offset.fanX * 100;
+        cart.z -= offset.fanY * 100;
+      }
+
+      if (this.uiListenerCart) {
+        cart.x -= this.uiListenerCart.x;
+        cart.y -= this.uiListenerCart.y;
+        cart.z -= this.uiListenerCart.z;
+      } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
+        const myPos = this.devicePositions.get(this.myDeviceId)!;
+        const myCart = this.orbitToCartesian(myPos);
+        cart.x -= myCart.x;
+        cart.y -= myCart.y;
+        cart.z -= myCart.z;
+      }
+
       this.setPannerPosition(cart.x, cart.y, cart.z);
       return;
     }
@@ -302,19 +344,53 @@ export class SpatialAudioEngine {
       this.onOrbitUpdate(fromId, toId, frac);
     }
 
-    const fromCart = this.orbitToCartesian(fromPos);
-    const toCart = this.orbitToCartesian(toPos);
-
     // Smooth easing (ease-in-out)
     const easedFrac = frac < 0.5
       ? 2 * frac * frac
       : 1 - Math.pow(-2 * frac + 2, 2) / 2;
 
-    const x = fromCart.x + (toCart.x - fromCart.x) * easedFrac;
-    const y = fromCart.y + (toCart.y - fromCart.y) * easedFrac;
-    const z = fromCart.z + (toCart.z - fromCart.z) * easedFrac;
+    // Interpolate in Polar space to ensure circular sweeping between devices
+    let angA = fromPos.angle;
+    let angB = toPos.angle;
+    
+    // Since sequence is sorted clockwise, angB should be >= angA.
+    // If it's smaller, it means we wrapped around the circle (e.g. from Left to Front).
+    // However, if the difference is extremely small (stacked devices), don't wrap around!
+    if (angB < angA && (angA - angB) > 0.1) {
+      angB += Math.PI * 2;
+    }
 
-    this.setPannerPosition(x, y, z);
+    const curAngle = angA + (angB - angA) * easedFrac;
+    const curRadius = fromPos.radius + (toPos.radius - fromPos.radius) * easedFrac;
+    const curElevation = fromPos.elevation + (toPos.elevation - fromPos.elevation) * easedFrac;
+
+    const curPos = { angle: curAngle, radius: curRadius, elevation: curElevation };
+    const cart = this.orbitToCartesian(curPos);
+
+    // Interpolate visual offsets
+    const fromOffset = this.uiOffsets.get(fromId) ?? { fanX: 0, fanY: 0 };
+    const toOffset = this.uiOffsets.get(toId) ?? { fanX: 0, fanY: 0 };
+    
+    const curFanX = fromOffset.fanX + (toOffset.fanX - fromOffset.fanX) * easedFrac;
+    const curFanY = fromOffset.fanY + (toOffset.fanY - fromOffset.fanY) * easedFrac;
+    
+    cart.x += curFanX * 100;
+    cart.z -= curFanY * 100;
+
+    // Make relative to listener
+    if (this.uiListenerCart) {
+      cart.x -= this.uiListenerCart.x;
+      cart.y -= this.uiListenerCart.y;
+      cart.z -= this.uiListenerCart.z;
+    } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
+      const myPos = this.devicePositions.get(this.myDeviceId)!;
+      const myCart = this.orbitToCartesian(myPos);
+      cart.x -= myCart.x;
+      cart.y -= myCart.y;
+      cart.z -= myCart.z;
+    }
+
+    this.setPannerPosition(cart.x, cart.y, cart.z);
   }
 
   private setPannerPosition(x: number, y: number, z: number): void {

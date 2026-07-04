@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Wifi, Volume2, Crown, Loader2, CheckCircle2, Activity,
-  ChevronDown, Headphones, Monitor, Smartphone
+  ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
 
@@ -24,11 +24,18 @@ function latencyColor(ms: number): string {
   return "#ef4444";
 }
 
-function getDeviceIcon(type?: string) {
+function getDeviceIcon(name: string, type?: string) {
+  const n = (name || "").toLowerCase();
+  
+  // Explicit OS match
+  if (n.includes("iphone") || n.includes("android") || n.includes("ipad")) return Smartphone;
+  if (n.includes("mac") || n.includes("windows") || n.includes("linux")) return Laptop;
+  
+  // Type fallback
   switch (type) {
-    case "headphones": return Headphones;
-    case "speakers":   return Monitor;
     case "mobile":     return Smartphone;
+    case "speakers":   return Monitor;
+    case "headphones": return Headphones;
     default:           return Headphones;
   }
 }
@@ -85,12 +92,12 @@ function DeviceCard({
     }, 500); // 500ms delay before closing
   };
 
-  const DevIcon = getDeviceIcon(p.outputDeviceType ?? undefined);
-
   const nameParts = p.displayName.split("::");
   const displayName = nameParts[0] ?? p.displayName;
   const fallbackName = nameParts.length > 1 ? nameParts[1] : undefined;
   const deviceLabel = getFriendlyDeviceName(p.outputDeviceName || "", p.outputDeviceType, fallbackName);
+  
+  const DevIcon = getDeviceIcon(deviceLabel, p.outputDeviceType ?? undefined);
   
   const initials = displayName.slice(0, 2).toUpperCase();
   const lat = Math.round(p.latency ?? 0);
