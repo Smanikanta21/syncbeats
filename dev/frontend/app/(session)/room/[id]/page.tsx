@@ -9,6 +9,7 @@ import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
 import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
+import { useAmbientLight } from "../../../../hooks/useAmbientLight";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
@@ -19,6 +20,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
   const resolvedParams = use(params);
+
+  // Drive the global ambient background blobs reactively with music frequency data
+  useAmbientLight();
 
   const {
     isConnected,

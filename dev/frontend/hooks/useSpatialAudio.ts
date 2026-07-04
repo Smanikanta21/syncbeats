@@ -48,7 +48,7 @@ interface UseSpatialAudioOptions {
 
 interface UseSpatialAudioReturn {
   updatePosition: (deviceId: string, position: SpatialPosition) => void;
-  syncUIState: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => void;
+  syncUIState: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => void;
   setDeviceGain: (deviceId: string, gain: number) => void;
   setMasterGain: (gain: number) => void;
   setDeviceSequence: (deviceIds: string[]) => void;
@@ -332,8 +332,11 @@ export function useSpatialAudio({
     },
     [engine]
   );
-  const syncUIState = useCallback((listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => {
+  const syncUIState = useCallback((listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => {
     engine.setUIState(listenerCart, offsets);
+    if (myPos) {
+      engine.orientListenerTowardCenter(myPos);
+    }
   }, [engine]);
 
   return { updatePosition, syncUIState, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };

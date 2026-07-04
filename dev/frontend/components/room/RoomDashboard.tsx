@@ -73,10 +73,10 @@ interface RoomDashboardProps {
 type MobileTab = "spatial" | "playing" | "devices" | "queue";
 
 // Glass card wrapper
-function GlassCard({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+function GlassCard({ children, className = "", style, isPlaying }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
   return (
     <div
-      className={`rounded-3xl border border-white/[0.07] backdrop-blur-2xl ${className}`}
+      className={`rounded-3xl border border-white/[0.07] backdrop-blur-2xl transition-opacity duration-700 ${isPlaying ? "opacity-60 hover:opacity-100" : "opacity-100"} ${className}`}
       style={{
         background: "rgba(255,255,255,0.025)",
         boxShadow: "0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
@@ -130,7 +130,7 @@ export function RoomDashboard({
         <div className="flex-1 min-h-0 flex gap-3">
 
           {/* Left: Devices */}
-          <GlassCard className="w-72 shrink-0 p-4 flex flex-col min-h-0">
+          <GlassCard className="w-72 shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
             <DevicesPane
               participants={participants}
               mySocketId={mySocketId}
@@ -143,7 +143,7 @@ export function RoomDashboard({
           </GlassCard>
 
           {/* Center: Spatial Audio */}
-          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0">
+          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
             <SpatialPanel
               myDeviceId={mySocketId ?? ""}
               spatialDevices={spatialDevices}
@@ -160,7 +160,7 @@ export function RoomDashboard({
           </GlassCard>
 
           {/* Right: EQ + Visualizer */}
-          <GlassCard className="w-80 shrink-0 flex flex-col min-h-0 p-4 gap-4">
+          <GlassCard className="w-80 shrink-0 flex flex-col min-h-0 p-4 gap-4" isPlaying={isPlaying}>
             <div className="flex-[3] min-h-0 flex flex-col">
               <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} />
             </div>
@@ -176,7 +176,7 @@ export function RoomDashboard({
 
         {/* Bottom: Queue + Reactions */}
         <div className="flex gap-3 shrink-0">
-          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0" style={{ height: "320px" } as any}>
+          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0" style={{ height: "320px" } as any} isPlaying={isPlaying}>
             <RoomQueue
               queue={queue}
               isHost={isHost}
@@ -187,7 +187,7 @@ export function RoomDashboard({
               onRemoveTrack={id => roomsApi.removeFromQueue(roomId, id).catch(console.error)}
             />
           </GlassCard>
-          <GlassCard className="w-80 shrink-0 p-4 flex flex-col" style={{ height: "320px" } as any}>
+          <GlassCard className="w-80 shrink-0 p-4 flex flex-col" style={{ height: "320px" } as any} isPlaying={isPlaying}>
             <div className="mb-2 shrink-0 flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-widest font-black text-white/25">Chat & React</span>
             </div>
@@ -202,7 +202,7 @@ export function RoomDashboard({
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4">
+              <GlassCard className="h-full p-4" isPlaying={isPlaying}>
                 <SpatialPanel
                   myDeviceId={mySocketId ?? ""}
                   spatialDevices={spatialDevices}
@@ -223,10 +223,10 @@ export function RoomDashboard({
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3">
               <div className="h-full flex flex-col gap-3">
-                <GlassCard className="flex-[3] p-5 flex flex-col min-h-0">
+                <GlassCard className="flex-[3] p-5 flex flex-col min-h-0" isPlaying={isPlaying}>
                   <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} />
                 </GlassCard>
-                <GlassCard className="flex-[2] p-4 flex flex-col min-h-0">
+                <GlassCard className="flex-[2] p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                   <RoomVisualizer
                     isPlaying={audio.isPlaying}
                     hasTrack={!!currentQueueItem}
@@ -238,7 +238,7 @@ export function RoomDashboard({
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4">
+              <GlassCard className="h-full p-4" isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
                   mySocketId={mySocketId}
@@ -254,7 +254,7 @@ export function RoomDashboard({
           {mobileTab === "queue" && (
             <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3 flex flex-col gap-3">
-              <GlassCard className="h-full p-4 flex flex-col min-h-0">
+              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <RoomQueue
                   queue={queue}
                   isHost={isHost}

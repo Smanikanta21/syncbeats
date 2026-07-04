@@ -86,40 +86,49 @@ export function AudioEQ({ eqGains, setEqBand }: AudioEQProps) {
                 {gain > 0 ? `+${gain}` : gain}
               </div>
               
-              <div className="flex-1 min-h-0 relative w-full flex justify-center py-2">
-                <input
-                  type="range"
-                  min="-12"
-                  max="12"
-                  step="1"
-                  value={gain}
-                  onChange={(e) => setEqBand(i, parseFloat(e.target.value))}
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[120px] h-4 appearance-none bg-transparent cursor-pointer z-10 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:opacity-0 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:opacity-0"
-                  style={{
-                    transform: "translate(-50%, -50%) rotate(-90deg)",
-                  }}
-                />
+              <div className="flex-1 min-h-0 relative w-full flex justify-center items-center py-2">
                 
-                {/* Visual track background (aesthetic) */}
-                <div className="absolute inset-y-2 left-1/2 -translate-x-1/2 w-1.5 rounded-full bg-foreground/5 pointer-events-none" />
-                
-                {/* Fill track (aesthetic) */}
+                {/* 1. VISUALS (drawn beneath the input, so shadows aren't clipped) */}
+                <div className="absolute w-6 h-[160px] pointer-events-none">
+                  {/* Track background */}
+                  <div className="absolute top-2 bottom-2 left-1/2 -translate-x-1/2 w-1.5 rounded-full bg-foreground/5" />
+                  
+                  {/* Fill track */}
+                  <div 
+                    className="absolute left-1/2 -translate-x-1/2 w-1.5 rounded-full bg-foreground transition-all duration-75"
+                    style={{
+                      bottom: gain >= 0 ? "80px" : `calc(80px - ${(-gain / 12) * 72}px)`,
+                      height: `${(Math.abs(gain) / 12) * 72}px`,
+                    }}
+                  />
+                  
+                  {/* Thumb overlay */}
+                  <div 
+                    className="absolute left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md shadow-black/20 transition-all duration-75"
+                    style={{
+                      bottom: `calc(80px + ${(gain / 12) * 72}px - 7px)`,
+                    }}
+                  />
+                </div>
+
+                {/* 2. INVISIBLE INPUT (rotated but strictly clipped to fix hitbox overlap) */}
                 <div 
-                  className="absolute left-1/2 -translate-x-1/2 w-1.5 rounded-full bg-foreground text-background pointer-events-none transition-all duration-75"
-                  style={{
-                    bottom: "8px",
-                    height: `calc(${((gain + 12) / 24) * 100}% - 8px)`,
-                    maxHeight: "calc(100% - 16px)"
-                  }}
-                />
-                
-                {/* Thumb overlay (aesthetic) */}
-                <div 
-                  className="absolute left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md shadow-black/20 pointer-events-none transition-all duration-75"
-                  style={{
-                    bottom: `calc(${((gain + 12) / 24) * 100}% - 7px)`,
-                  }}
-                />
+                  className="relative w-6 h-[160px] z-10"
+                  style={{ clipPath: "inset(0)" }}
+                >
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="1"
+                    value={gain}
+                    onChange={(e) => setEqBand(i, parseFloat(e.target.value))}
+                    className="absolute left-1/2 top-1/2 w-[160px] h-6 appearance-none bg-transparent cursor-pointer opacity-0"
+                    style={{
+                      transform: "translate(-50%, -50%) rotate(-90deg)",
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="text-[9px] font-black uppercase tracking-tighter text-foreground/30 mt-3 text-center">

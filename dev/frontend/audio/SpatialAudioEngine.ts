@@ -4,22 +4,23 @@
  * Owns the entire Web Audio graph for SyncBeats spatial audio.
  * One singleton instance per client, created on first user gesture.
  *
- * New design:
- *   - Listener is ALWAYS at (0, 0, 0) — the center of the room.
- *   - Each device in the room gets a PannerNode at its position relative to the listener.
- *   - The audio source "visits" each device in sequence, smoothly interpolating
- *     its position between devices. This creates the effect of audio traveling
- *     through the room from device to device.
+ * Design:
+ *   - Listener is ALWAYS at (0, 0, 0).
+ *   - A single PannerNode (HRTF) orbits through device positions for 3D feel.
+ *   - A StereoPannerNode runs in parallel for crisp, reliably audible L/R pan.
+ *   - The devices define the orbit — each device's angle/radius drives the pan.
  *
  * Graph topology:
  *
- *   inputNode (from useAudioPlayer's gain → EQ → analyser chain)
+ *   inputNode
  *        │
  *   masterGain
  *        │
- *   pannerNode  (single panner that orbits through device positions)
+ *   pannerNode  (HRTF — 3D positioning)
  *        │
- *   AudioDestinationNode
+ *   stereoPanner  (simple L/R stereo pan — always audible)
+ *        │
+ *   analyser → AudioDestinationNode
  */
 
 export interface SpatialPosition {
@@ -42,10 +43,13 @@ export class SpatialAudioEngine {
   private ctx: AudioContext | null = null;
   private source: AudioNode | null = null;
 
-  /** Single PannerNode that orbits through device positions */
+  /** HRTF panner for full 3-D positioning */
   private panner: PannerNode | null = null;
 
-  /** Master gain — lets you fade everything at once */
+  /** Simple stereo panner — always audible, crisp L/R */
+  private stereoPanner: StereoPannerNode | null = null;
+
+  /** Master gain */
   private masterGain: GainNode | null = null;
 
   private analyser: AnalyserNode | null = null;
@@ -53,23 +57,19 @@ export class SpatialAudioEngine {
   private lastPollTime: number = 0;
   private lastVolume: number = 0;
 
+  /** Current stereo pan value -1..+1 (for UI meter) */
+  private currentPan: number = 0;
+
   private myDeviceId: string | null = null;
   private isInitialised = false;
 
-  /** All device positions (keyed by deviceId) */
   private devicePositions = new Map<string, SpatialPosition>();
-
-  /** UI offsets to sync audio panning with visual layout (fanX, fanY) */
   private uiOffsets = new Map<string, { fanX: number; fanY: number }>();
   private uiListenerCart: { x: number; y: number; z: number } | null = null;
 
-  /** Ordered list of device IDs the audio visits in sequence */
   private deviceSequence: string[] = [];
-
-  /** Seconds spent visiting each device before moving to the next */
   private secondsPerDevice: number = 3;
 
-  /** Whether orbit is running */
   private orbitEnabled: boolean = false;
   private animationFrameId: number | null = null;
 
@@ -86,7 +86,7 @@ export class SpatialAudioEngine {
 
   private constructor() {}
 
-  // --- Initialisation (must be called from a user gesture handler) ---
+  // --- Initialisation ---
 
   init(ctx: AudioContext, inputNode: AudioNode, myDeviceId: string): void {
     if (this.isInitialised) return;
@@ -98,13 +98,13 @@ export class SpatialAudioEngine {
     this.masterGain.gain.value = 1;
 
     this.panner = this.createPanner();
+    this.stereoPanner = this.ctx.createStereoPanner();
+    this.stereoPanner.pan.value = 0;
 
-    // Setup Analyser for beat detection
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
-    // Wire: inputNode → masterGain → panner → analyser → destination
     this.source = inputNode;
 
     // Disconnect source from raw destination so we don't hear unpanned audio
@@ -112,12 +112,13 @@ export class SpatialAudioEngine {
       this.source.disconnect(this.ctx.destination);
     } catch (e) {}
 
+    // Chain: source → masterGain → panner → stereoPanner → analyser → destination
     this.source.connect(this.masterGain);
     this.masterGain.connect(this.panner);
-    this.panner.connect(this.analyser);
+    this.panner.connect(this.stereoPanner);
+    this.stereoPanner.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
 
-    // Ensure listener is at origin
     this.resetListenerToOrigin();
 
     this.isInitialised = true;
@@ -154,6 +155,11 @@ export class SpatialAudioEngine {
     }
 
     return this.dataArray;
+  }
+
+  /** Returns current stereo pan value -1 (full left) to +1 (full right) */
+  getPanValue(): number {
+    return this.currentPan;
   }
 
   async resume(): Promise<void> {
@@ -211,36 +217,30 @@ export class SpatialAudioEngine {
 
   // --- Device Sequence Orbit ---
 
-  /**
-   * We ignore external sequence suggestions and strictly sort by physical angle
-   * to guarantee the orbit goes Front -> Right -> Back -> Left continuously.
-   */
-  setDeviceSequence(deviceIds: string[]): void {
+  setDeviceSequence(_deviceIds: string[]): void {
     this.rebuildSequence();
   }
 
-  /** Rebuild sequence strictly based on angular position */
+  /** Rebuild sequence strictly by clockwise angular position */
   private rebuildSequence(): void {
     const ids = Array.from(this.devicePositions.keys());
-    
+
     ids.sort((a, b) => {
-       const posA = this.devicePositions.get(a)!;
-       const posB = this.devicePositions.get(b)!;
-       
-       // Normalize angle to [0, 2PI)
-       let angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-       let angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-       
-       if (Math.abs(angA - angB) < 0.001) {
-          return posA.radius - posB.radius;
-       }
-       return angA - angB;
+      const posA = this.devicePositions.get(a)!;
+      const posB = this.devicePositions.get(b)!;
+
+      let angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      let angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+
+      if (Math.abs(angA - angB) < 0.001) {
+        return posA.radius - posB.radius;
+      }
+      return angA - angB;
     });
-    
+
     this.deviceSequence = ids;
   }
 
-  /** Seconds per device — adjustable via speed slider */
   setOrbitSpeed(secondsPerDevice: number): void {
     this.secondsPerDevice = Math.max(0.5, Math.min(10, secondsPerDevice));
   }
@@ -266,12 +266,10 @@ export class SpatialAudioEngine {
 
   private startOrbit(): void {
     let lastTime = performance.now();
-
-    // Accumulated time in seconds for orbit progress
     let accumulatedTime = 0;
 
     const animate = (time: number) => {
-      const dt = (time - lastTime) / 1000; // seconds
+      const dt = (time - lastTime) / 1000;
       lastTime = time;
       accumulatedTime += dt;
 
@@ -289,10 +287,6 @@ export class SpatialAudioEngine {
     }
   }
 
-  /**
-   * Given accumulated time, compute which two devices we're between
-   * and interpolate the panner position.
-   */
   private updateOrbitPosition(time: number): void {
     if (!this.ctx || !this.panner) return;
 
@@ -300,11 +294,9 @@ export class SpatialAudioEngine {
     if (seq.length === 0) return;
 
     if (seq.length === 1) {
-      // Only one device — park the panner at its position
       const pos = this.devicePositions.get(seq[0])!;
       const cart = this.orbitToCartesian(pos);
 
-      // Apply visual offset (1 screen unit = 100 web audio units)
       const offset = this.uiOffsets.get(seq[0]);
       if (offset) {
         cart.x += offset.fanX * 100;
@@ -327,12 +319,11 @@ export class SpatialAudioEngine {
       return;
     }
 
-    // Total cycle time = number of devices * secondsPerDevice
     const cycleTime = seq.length * this.secondsPerDevice;
-    const t = (time % cycleTime) / this.secondsPerDevice; // fractional device index
+    const t = (time % cycleTime) / this.secondsPerDevice;
 
     const idx = Math.floor(t);
-    const frac = t - idx; // 0..1 interpolation between device[idx] and device[idx+1]
+    const frac = t - idx;
 
     const fromId = seq[idx % seq.length];
     const toId = seq[(idx + 1) % seq.length];
@@ -344,18 +335,15 @@ export class SpatialAudioEngine {
       this.onOrbitUpdate(fromId, toId, frac);
     }
 
-    // Smooth easing (ease-in-out)
+    // Ease in-out
     const easedFrac = frac < 0.5
       ? 2 * frac * frac
       : 1 - Math.pow(-2 * frac + 2, 2) / 2;
 
-    // Interpolate in Polar space to ensure circular sweeping between devices
+    // Polar interpolation — audio sweeps along the circle, not through the center
     let angA = fromPos.angle;
     let angB = toPos.angle;
-    
-    // Since sequence is sorted clockwise, angB should be >= angA.
-    // If it's smaller, it means we wrapped around the circle (e.g. from Left to Front).
-    // However, if the difference is extremely small (stacked devices), don't wrap around!
+
     if (angB < angA && (angA - angB) > 0.1) {
       angB += Math.PI * 2;
     }
@@ -370,14 +358,14 @@ export class SpatialAudioEngine {
     // Interpolate visual offsets
     const fromOffset = this.uiOffsets.get(fromId) ?? { fanX: 0, fanY: 0 };
     const toOffset = this.uiOffsets.get(toId) ?? { fanX: 0, fanY: 0 };
-    
+
     const curFanX = fromOffset.fanX + (toOffset.fanX - fromOffset.fanX) * easedFrac;
     const curFanY = fromOffset.fanY + (toOffset.fanY - fromOffset.fanY) * easedFrac;
-    
+
     cart.x += curFanX * 100;
     cart.z -= curFanY * 100;
 
-    // Make relative to listener
+    // Subtract listener position
     if (this.uiListenerCart) {
       cart.x -= this.uiListenerCart.x;
       cart.y -= this.uiListenerCart.y;
@@ -394,18 +382,24 @@ export class SpatialAudioEngine {
   }
 
   private setPannerPosition(x: number, y: number, z: number): void {
-    if (!this.panner || !this.ctx) return;
+    if (!this.panner || !this.ctx || !this.stereoPanner) return;
     const t = this.ctx.currentTime + 0.05;
+
     this.panner.positionX.linearRampToValueAtTime(x, t);
     this.panner.positionY.linearRampToValueAtTime(y, t);
     this.panner.positionZ.linearRampToValueAtTime(z, t);
+
+    // Map X position to stereo pan [-1, +1]
+    // SPATIAL_MULTIPLIER = 40, max useful range is ±40
+    const STEREO_RANGE = 40;
+    const panValue = Math.max(-1, Math.min(1, x / STEREO_RANGE));
+    this.currentPan = panValue;
+    this.stereoPanner.pan.linearRampToValueAtTime(panValue, t);
   }
 
   // --- Volume ---
 
-  setDeviceGain(_deviceId: string, _value: number): void {
-    // No longer per-device gains — single panner model
-  }
+  setDeviceGain(_deviceId: string, _value: number): void {}
 
   setMasterGain(value: number): void {
     if (!this.masterGain || !this.ctx) return;
@@ -436,10 +430,37 @@ export class SpatialAudioEngine {
     listener.upZ.linearRampToValueAtTime(0, t);
   }
 
-  /** @deprecated No longer rotating listener orientation */
+  /**
+   * Orient the listener to face toward the room center so audio feels face-to-face.
+   * If user A is at my Front, from A's POV I'm also at their Front.
+   */
+  orientListenerTowardCenter(myPos: SpatialPosition): void {
+    if (!this.ctx) return;
+    const listener = this.ctx.listener;
+    const t = this.ctx.currentTime + 0.05;
+
+    const cart = this.orbitToCartesian(myPos);
+    const len = Math.sqrt(cart.x * cart.x + cart.z * cart.z);
+
+    if (len < 0.001) {
+      listener.forwardX.linearRampToValueAtTime(0, t);
+      listener.forwardY.linearRampToValueAtTime(0, t);
+      listener.forwardZ.linearRampToValueAtTime(-1, t);
+    } else {
+      listener.forwardX.linearRampToValueAtTime(-cart.x / len, t);
+      listener.forwardY.linearRampToValueAtTime(0, t);
+      listener.forwardZ.linearRampToValueAtTime(-cart.z / len, t);
+    }
+
+    listener.upX.linearRampToValueAtTime(0, t);
+    listener.upY.linearRampToValueAtTime(1, t);
+    listener.upZ.linearRampToValueAtTime(0, t);
+  }
+
+  /** @deprecated */
   setListenerOrientation(_yawDeg: number): void {}
 
-  // --- Geometry ---
+  // --- State ---
 
   getContextState(): AudioContextState | 'uninitialised' {
     return this.ctx?.state ?? 'uninitialised';
@@ -456,9 +477,10 @@ export class SpatialAudioEngine {
 
     panner.panningModel = 'HRTF';
     panner.distanceModel = 'inverse';
-    panner.refDistance = 5;
-    panner.maxDistance = 100;
-    panner.rolloffFactor = 0.8;
+    // Smaller refDistance + higher rolloff = stronger distance effect
+    panner.refDistance = 1;
+    panner.maxDistance = 200;
+    panner.rolloffFactor = 1.5;
 
     panner.coneInnerAngle = 360;
     panner.coneOuterAngle = 360;
@@ -475,7 +497,8 @@ export class SpatialAudioEngine {
     const { angle, radius, elevation } = pos;
     const elevRad = (elevation * Math.PI) / 180;
 
-    const SPATIAL_MULTIPLIER = 15;
+    // Boosted multiplier: 40 instead of 15 — gives much clearer spatial separation
+    const SPATIAL_MULTIPLIER = 40;
     const scaledRadius = radius * SPATIAL_MULTIPLIER;
 
     const horizRadius = scaledRadius * Math.cos(elevRad);

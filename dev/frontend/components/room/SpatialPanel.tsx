@@ -26,7 +26,7 @@ interface SpatialPanelProps {
   participants: Participant[];
   isPlaying: boolean;
   onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
-  syncUIState?: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>) => void;
+  syncUIState?: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => void;
   orbitSpeed?: number;
   orbitData?: { fromId: string; toId: string; frac: number } | null;
   onOrbitSpeedChange?: (speed: number) => void;
@@ -262,7 +262,7 @@ export function SpatialPanel({
       });
     });
 
-    syncUIState(myListenerCart, offsets);
+    syncUIState(myListenerCart, offsets, myPolar);
   }, [userGroups, getMyGlobal, syncUIState, deviceOffsets]);
 
 
@@ -407,6 +407,21 @@ export function SpatialPanel({
   const bgOffsetX = myGlobal.x * 100 * (1 / 0.15);
   const bgOffsetY = myGlobal.y * 100 * (1 / 0.15);
 
+  // Compute live stereo pan value from current orbit position (-1 left .. +1 right)
+  const panValue = useMemo(() => {
+    if (!orbitData) return 0;
+    const { fromId, toId, frac } = orbitData;
+    const fromDev = spatialDevices.find(d => d.deviceId === fromId);
+    const toDev = spatialDevices.find(d => d.deviceId === toId);
+    if (!fromDev || !toDev) return 0;
+    // Ease frac
+    const ef = frac < 0.5 ? 2 * frac * frac : 1 - Math.pow(-2 * frac + 2, 2) / 2;
+    // Pan is driven by sin(angle) — right = positive
+    const panA = Math.sin(fromDev.position.angle) * fromDev.position.radius;
+    const panB = Math.sin(toDev.position.angle) * toDev.position.radius;
+    return Math.max(-1, Math.min(1, panA + (panB - panA) * ef));
+  }, [orbitData, spatialDevices]);
+
   return (
     <div className="flex-1 w-full flex flex-col min-h-0 min-w-0">
       <div className="flex items-center justify-between mb-4">
@@ -414,13 +429,13 @@ export function SpatialPanel({
           <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
             Spatial Room
           </h2>
-          <p className="text-sm text-white/50">Drag users or devices to position them</p>
+          <p className="text-sm text-foreground/50">Drag users or devices to position them</p>
         </div>
       </div>
 
       <div className="flex-1 w-full flex flex-col lg:flex-row gap-4 min-h-0">
         <div
-          className="flex-1 w-full relative overflow-hidden bg-[#0A0F1C] touch-none rounded-3xl border border-white/5 mx-2 my-2"
+          className="flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#0A0F1C] touch-none rounded-3xl border border-foreground/5 mx-2 my-2"
           ref={containerRef}
           onMouseMove={handleMouseMove}
           onTouchMove={handleTouchMove}
@@ -456,7 +471,7 @@ export function SpatialPanel({
             Right
           </div>
 
-          <div className="absolute inset-4 border border-white/10 rounded-xl pointer-events-none" />
+          <div className="absolute inset-4 border border-foreground/10 rounded-xl pointer-events-none" />
 
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
             {userGroups.map(user => {
@@ -540,12 +555,57 @@ export function SpatialPanel({
               })}
             </AnimatePresence>
           </div>
+
+          {/* Live Pan Meter */}
+          {orbitData && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-40 flex flex-col items-center gap-1 pointer-events-none select-none">
+              <div className="text-[8px] font-black tracking-[0.2em] text-white/20 uppercase">
+                PAN
+              </div>
+              <div className="relative w-full h-1 bg-white/10 rounded-full overflow-visible">
+                {/* Left label */}
+                <span className="absolute -left-4 -top-0.5 text-[7px] text-white/20 font-bold">L</span>
+                {/* Right label */}
+                <span className="absolute -right-4 -top-0.5 text-[7px] text-white/20 font-bold">R</span>
+                {/* Center tick */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-0 w-px h-full bg-white/20" />
+                {/* Color fill from center */}
+                <div
+                  className="absolute top-0 h-full rounded-full transition-all duration-100"
+                  style={{
+                    left: panValue < 0 ? `${(0.5 + panValue / 2) * 100}%` : '50%',
+                    width: `${Math.abs(panValue) / 2 * 100}%`,
+                    background: panValue < 0
+                      ? 'linear-gradient(to left, rgba(96,165,250,0.8), rgba(59,130,246,0.4))'
+                      : 'linear-gradient(to right, rgba(167,139,250,0.8), rgba(139,92,246,0.4))',
+                  }}
+                />
+                {/* Thumb */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-lg transition-all duration-100"
+                  style={{
+                    left: `calc(${((panValue + 1) / 2) * 100}% - 5px)`,
+                    background: panValue < -0.05
+                      ? 'rgba(96,165,250,1)'
+                      : panValue > 0.05
+                      ? 'rgba(167,139,250,1)'
+                      : 'rgba(255,255,255,0.9)',
+                    boxShadow: panValue < -0.05
+                      ? '0 0 6px rgba(96,165,250,0.8)'
+                      : panValue > 0.05
+                      ? '0 0 6px rgba(167,139,250,0.8)'
+                      : '0 0 4px rgba(255,255,255,0.4)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right side orbit controls */}
         {onOrbitSpeedChange && (
-          <div className="lg:w-48 bg-white/5 rounded-2xl p-4 flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-white/90">Orbit Speed</h3>
+          <div className="lg:w-48 bg-foreground/5 rounded-2xl p-4 flex flex-col gap-4">
+            <h3 className="text-sm font-semibold text-foreground/90">Orbit Speed</h3>
             <div className="flex-1 flex flex-col">
               <input
                 type="range"
@@ -556,7 +616,7 @@ export function SpatialPanel({
                 onChange={(e) => onOrbitSpeedChange(parseFloat(e.target.value))}
                 className="w-full accent-blue-500"
               />
-              <div className="flex justify-between text-[10px] text-white/50 mt-2">
+              <div className="flex justify-between text-[10px] text-foreground/50 mt-2">
                 <span>Fast</span>
                 <span>Slow</span>
               </div>

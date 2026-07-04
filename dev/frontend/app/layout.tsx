@@ -172,9 +172,9 @@ export default function RootLayout({
           
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
           <div className="hidden md:block absolute inset-0">
-            <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-violet-600/10 dark:bg-violet-900/20 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-[8000ms]" />
-            <div className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] bg-emerald-500/10 dark:bg-emerald-900/20 blur-[150px] rounded-full mix-blend-screen animate-pulse duration-[12000ms] delay-1000" />
-            <div className="absolute bottom-[-20%] left-[20%] w-[70vw] h-[70vw] bg-blue-500/10 dark:bg-blue-900/20 blur-[130px] rounded-full mix-blend-screen animate-pulse duration-[10000ms] delay-500" />
+            <div id="ambient-bass"   className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-violet-600/10 dark:bg-violet-900/20 blur-[120px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+            <div id="ambient-mid"    className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] bg-emerald-500/10 dark:bg-emerald-900/20 blur-[150px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+            <div id="ambient-treble" className="absolute bottom-[-20%] left-[20%] w-[70vw] h-[70vw] bg-blue-500/10 dark:bg-blue-900/20 blur-[130px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
             <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 

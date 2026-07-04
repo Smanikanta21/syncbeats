@@ -112,21 +112,49 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const activeFetchAbortRef = useRef<AbortController | null>(null);
   const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
 
-  // Initialize AudioContext
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass && !audioCtxRef.current) {
-        audioCtxRef.current = new AudioContextClass();
-        gainNodeRef.current = audioCtxRef.current.createGain();
-        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
-        analyserNodeRef.current.fftSize = 256;
-        
-        gainNodeRef.current.connect(analyserNodeRef.current);
-        analyserNodeRef.current.connect(audioCtxRef.current.destination);
-      }
+  // ── Audio Graph Setup ─────────────────────────────────────────────────────
+  // setupAudioGraph creates the FULL chain: Gain → EQ[5] → Analyser → Destination.
+  // It is called BOTH on initial mount AND in unlockAudio, so EQ is always wired.
+  const setupAudioGraph = useCallback(() => {
+    if (audioCtxRef.current) return; // already set up
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    audioCtxRef.current = new AudioContextClass();
+    gainNodeRef.current = audioCtxRef.current.createGain();
+    analyserNodeRef.current = audioCtxRef.current.createAnalyser();
+    analyserNodeRef.current.fftSize = 256;
+
+    // Create 5-band EQ with proper shelf/peak types
+    const freqs = [60, 230, 910, 3600, 14000];
+    const eqNodes = freqs.map((freq, i) => {
+      const filter = audioCtxRef.current!.createBiquadFilter();
+      if (freq === 60) filter.type = 'lowshelf';
+      else if (freq === 14000) filter.type = 'highshelf';
+      else filter.type = 'peaking';
+      filter.frequency.value = freq;
+      // Higher Q (1.4) on mid bands for more audible effect
+      filter.Q.value = (i > 0 && i < 4) ? 1.4 : 1.0;
+      filter.gain.value = 0;
+      return filter;
+    });
+    eqNodesRef.current = eqNodes;
+
+    // Wire: Gain → EQ[0..4] → Analyser → Destination
+    gainNodeRef.current.connect(eqNodes[0]);
+    for (let i = 0; i < eqNodes.length - 1; i++) {
+      eqNodes[i].connect(eqNodes[i + 1]);
     }
+    eqNodes[eqNodes.length - 1].connect(analyserNodeRef.current);
+    analyserNodeRef.current.connect(audioCtxRef.current.destination);
   }, []);
+
+  // Initialize AudioContext on mount with the full EQ graph
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setupAudioGraph();
+    }
+  }, [setupAudioGraph]);
 
   const stopCurrentSource = useCallback(() => {
     if (sourceNodeRef.current) {
@@ -187,47 +215,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const unlockAudio = useCallback(() => {
-    if (!audioCtxRef.current) {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        audioCtxRef.current = new AudioContextClass();
-        gainNodeRef.current = audioCtxRef.current.createGain();
-        analyserNodeRef.current = audioCtxRef.current.createAnalyser();
-        analyserNodeRef.current.fftSize = 256;
-
-        // Create EQ bands
-        const freqs = [60, 230, 910, 3600, 14000];
-        const eqNodes = freqs.map(freq => {
-          const filter = audioCtxRef.current!.createBiquadFilter();
-          // The first and last nodes are shelf filters for better low/high end control,
-          // the middle ones are peaking filters.
-          if (freq === 60) filter.type = "lowshelf";
-          else if (freq === 14000) filter.type = "highshelf";
-          else filter.type = "peaking";
-          
-          filter.frequency.value = freq;
-          filter.Q.value = 1;
-          filter.gain.value = 0;
-          return filter;
-        });
-        eqNodesRef.current = eqNodes;
-
-        // Link graph: Source -> Gain -> EQ[0..4] -> Analyser -> Destination
-        gainNodeRef.current.connect(eqNodes[0]);
-        for (let i = 0; i < eqNodes.length - 1; i++) {
-          eqNodes[i].connect(eqNodes[i + 1]);
-        }
-        eqNodes[eqNodes.length - 1].connect(analyserNodeRef.current);
-        analyserNodeRef.current.connect(audioCtxRef.current.destination);
-      } else {
-        return;
-      }
-    }
+    // setupAudioGraph is a no-op if already set up
+    setupAudioGraph();
 
     // Always optimistically unlock in the UI so the user isn't stuck forever.
     setAudioUnlocked(true);
 
-    if (audioCtxRef.current.state === 'suspended') {
+    if (audioCtxRef.current?.state === 'suspended') {
       audioCtxRef.current.resume().catch((err) => {
         console.warn("Failed to resume AudioContext", err);
       });
