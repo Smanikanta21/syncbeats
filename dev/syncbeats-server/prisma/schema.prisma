@@ -18,9 +18,9 @@ model User {
   emailVerificationExpiresAt DateTime?         @map("email_verification_expires_at") @db.Timestamptz(6)
   passwordResetTokenHash     String?           @map("password_reset_token_hash")
   passwordResetExpiresAt     DateTime?         @map("password_reset_expires_at") @db.Timestamptz(6)
-  lastLoginAt                DateTime?         @map("last_login_at") @db.Timestamptz(6)
   createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt                DateTime?         @map("last_login_at") @db.Timestamptz(6)
   devices                    Device[]
   roomParticipants           RoomParticipant[]
   roomQueueItems             RoomQueueItem[]
@@ -51,10 +51,13 @@ model Room {
   trackUrl         String?           @map("track_url")
   playbackState    String            @default("IDLE") @map("playback_state")
   positionMs       BigInt            @default(0) @map("position_ms")
+  shuffle          Boolean           @default(false)
+  repeatMode       String            @default("off") @map("repeat_mode")
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   endedAt          DateTime?         @map("ended_at") @db.Timestamptz(6)
-  queueItems       RoomQueueItem[]
+  lastAccessedAt   DateTime          @default(now()) @map("last_accessed_at") @db.Timestamptz(6)
   roomParticipants RoomParticipant[]
+  queueItems       RoomQueueItem[]
   host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
 
   @@index([hostId])
@@ -77,9 +80,9 @@ model RoomQueueItem {
   room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   uploader       User     @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
 
+  @@unique([roomId, queueIndex])
   @@index([roomId, queueIndex])
   @@index([uploaderUserId])
-  @@unique([roomId, queueIndex])
   @@map("room_queue_items")
 }
 
@@ -95,4 +98,15 @@ model RoomParticipant {
 
   @@id([roomId, userId])
   @@map("room_participants")
+}
+
+model cached_tracks {
+  id           String   @id
+  youtube_id   String   @unique
+  title        String
+  s3_url       String
+  requested_by String?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([youtube_id], map: "idx_cached_tracks_youtube_id")
 }

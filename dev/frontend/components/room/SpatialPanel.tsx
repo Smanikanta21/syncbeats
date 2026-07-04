@@ -668,7 +668,7 @@ export function SpatialPanel({
 
         {/* Right side orbit controls (Responsive) */}
         {onOrbitSpeedChange && (
-          <div className="lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-2 lg:gap-4">
+          <div className="order-first lg:order-last lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-2 lg:gap-4">
             <div className="flex flex-row lg:flex-col justify-between items-center lg:items-start gap-2">
               <h3 className="text-sm font-semibold text-foreground/90">Orbit Speed</h3>
               <div className="text-[10px] lg:text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-1 lg:py-1.5 rounded-lg border border-blue-500/20">

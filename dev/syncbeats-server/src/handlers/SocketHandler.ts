@@ -158,6 +158,30 @@ export class SocketHandler {
       room.setIsPrivate(isPrivate);
     });
 
+    socket.on('room:toggleShuffle', async ({ roomId, shuffle }: { roomId: string, shuffle: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        await this.roomRepo.updatePlaybackSettings(roomId, { shuffle });
+        room.updatePlaybackSettings(shuffle, undefined);
+        const newQueue = await this.roomRepo.getQueue(roomId);
+        room.updateQueueOrder(newQueue);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to update shuffle mode' });
+      }
+    });
+
+    socket.on('room:toggleRepeat', async ({ roomId, repeatMode }: { roomId: string, repeatMode: "off" | "track" | "all" }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        await this.roomRepo.updatePlaybackSettings(roomId, { repeatMode });
+        room.updatePlaybackSettings(undefined, repeatMode);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to update repeat mode' });
+      }
+    });
+
     socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room || room.snapshot().hostId !== socket.data.userId) return;

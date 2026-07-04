@@ -104,7 +104,7 @@ export function AudioEQ({ eqGains, setEqBand }: AudioEQProps) {
                   
                   {/* Thumb overlay */}
                   <div 
-                    className="absolute left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md shadow-black/20 transition-all duration-75"
+                    className="absolute left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border border-black/10 dark:border-white/10 shadow-md shadow-black/20 transition-all duration-75"
                     style={{
                       bottom: `calc(80px + ${(gain / 12) * 72}px - 7px)`,
                     }}

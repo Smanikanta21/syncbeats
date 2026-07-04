@@ -18,6 +18,10 @@ interface RoomQueueProps {
   onAddSong?: () => void;
   onRemoveTrack?: (id: string) => void;
   isPlaying?: boolean;
+  shuffle: boolean;
+  repeatMode: RepeatMode;
+  onToggleShuffle: () => void;
+  onToggleRepeat: () => void;
 }
 
 function cleanTitle(t: string) {
@@ -37,15 +41,10 @@ function ytThumb(trackUrl: string | null | undefined) {
 
 export function RoomQueue({
   queue, isHost, roomId, onTrackSelect, onAddSong, onRemoveTrack, isPlaying = false,
+  shuffle, repeatMode, onToggleShuffle, onToggleRepeat
 }: RoomQueueProps) {
-  const [shuffle, setShuffle] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-
-  const cycleRepeat = () => {
-    setRepeatMode(m => (m === "off" ? "all" : m === "all" ? "track" : "off"));
-  };
 
   const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
 
@@ -64,7 +63,7 @@ export function RoomQueue({
         <div className="flex items-center gap-1">
           {/* Shuffle */}
           <button
-            onClick={() => setShuffle(v => !v)}
+            onClick={onToggleShuffle}
             className={`p-2 rounded-xl transition-all duration-200 ${
               shuffle
                 ? "bg-foreground/20 text-foreground dark:text-foreground"
@@ -77,7 +76,7 @@ export function RoomQueue({
 
           {/* Repeat */}
           <button
-            onClick={cycleRepeat}
+            onClick={onToggleRepeat}
             className={`p-2 rounded-xl transition-all duration-200 relative ${
               repeatMode !== "off"
                 ? "bg-foreground/20 text-foreground dark:text-foreground"

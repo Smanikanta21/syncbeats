@@ -54,7 +54,7 @@ export function FullscreenPrompt() {
           exit={{ opacity: 0, scale: 0.95 }}
           className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm pointer-events-auto"
         >
-          <div className="bg-background/80 backdrop-blur-xl border border-white/10 p-5 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.5)] overflow-hidden relative">
+          <div className="bg-background/80 backdrop-blur-xl border border-foreground/10 p-5 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.5)] overflow-hidden relative">
             <div
               className="absolute inset-0 opacity-20 pointer-events-none"
               style={{
@@ -65,7 +65,7 @@ export function FullscreenPrompt() {
             
             <button 
               onClick={() => setIsVisible(false)}
-              className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+              className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -74,8 +74,8 @@ export function FullscreenPrompt() {
               <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center mb-4 border border-blue-500/30">
                 <Maximize className="w-6 h-6 text-blue-400" />
               </div>
-              <h3 className="text-sm font-bold text-white mb-2">Switch to Fullscreen</h3>
-              <p className="text-xs text-white/60 mb-6 leading-relaxed">
+              <h3 className="text-sm font-bold text-foreground mb-2">Switch to Fullscreen</h3>
+              <p className="text-xs text-foreground/60 mb-6 leading-relaxed">
                 For the best spatial audio experience on this device, we recommend switching to fullscreen mode so the room layout fits perfectly.
               </p>
               <button

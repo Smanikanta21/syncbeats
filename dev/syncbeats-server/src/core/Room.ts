@@ -16,6 +16,8 @@ export class Room extends EventEmitter {
   private spatial:      Map<string, SpatialPosition> = new Map();
   private snapshotTime: number                 = Date.now();
   private isPrivate:    boolean                = false;
+  private shuffle:      boolean                = false;
+  private repeatMode:   "off" | "track" | "all" = "off";
   private timeline = {
     startEpoch: null as number | null,
     pauseOffset: 0,
@@ -42,11 +44,15 @@ export class Room extends EventEmitter {
     playbackState: string;
     positionMs: number;
     queue: TrackQueueItem[];
+    shuffle?: boolean;
+    repeatMode?: string;
   }): void {
     this.hostId   = data.hostId;
     this.queue    = [...data.queue].sort((a, b) => a.queueIndex - b.queueIndex);
     const current = this.queue.find((item) => item.isCurrent) ?? null;
     this.trackUrl = current?.trackUrl ?? data.trackUrl;
+    this.shuffle  = data.shuffle ?? false;
+    this.repeatMode = (data.repeatMode as "off" | "track" | "all") ?? "off";
     this.state    = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING
                   : data.playbackState === 'PAUSED'  ? PlaybackState.PAUSED
                   : PlaybackState.IDLE;
@@ -198,6 +204,12 @@ export class Room extends EventEmitter {
     this.emit('queueChanged', this.queueSnapshot());
     // Emit a fresh snapshot so all clients see the new order,
     // but do NOT touch trackUrl / position / state.
+    this.emit('stateChanged', this.snapshot());
+  }
+
+  updatePlaybackSettings(shuffle?: boolean, repeatMode?: "off" | "track" | "all"): void {
+    if (shuffle !== undefined) this.shuffle = shuffle;
+    if (repeatMode !== undefined) this.repeatMode = repeatMode;
     this.emit('stateChanged', this.snapshot());
   }
 
@@ -370,6 +382,8 @@ export class Room extends EventEmitter {
       isPlaying:    this.timeline.isPlaying,
       pendingPlay:  this.pendingPlay,
       isPrivate:    this.isPrivate,
+      shuffle:      this.shuffle,
+      repeatMode:   this.repeatMode
     };
   }
 

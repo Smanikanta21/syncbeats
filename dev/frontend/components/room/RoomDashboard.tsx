@@ -76,10 +76,9 @@ type MobileTab = "spatial" | "playing" | "devices" | "queue";
 function GlassCard({ children, className = "", style, isPlaying }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
   return (
     <div
-      className={`rounded-3xl border border-white/[0.07] backdrop-blur-2xl transition-opacity duration-700 ${isPlaying ? "opacity-60 hover:opacity-100" : "opacity-100"} ${className}`}
+      className={`rounded-3xl border border-foreground/[0.07] backdrop-blur-2xl transition-opacity duration-700 bg-foreground/5 ${className}`}
       style={{
-        background: "rgba(255,255,255,0.025)",
-        boxShadow: "0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)",
+        boxShadow: "0 4px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(128,128,128,0.06)",
         ...style,
       }}
     >
@@ -113,6 +112,17 @@ export function RoomDashboard({
     getSocket().emit("room:setPrivate", { roomId, isPrivate: !isPrivate });
     onTogglePrivate?.();
   }, [snapshot, roomId, isPrivate, onTogglePrivate]);
+
+  const toggleShuffle = useCallback(() => {
+    // Always reshuffle instead of toggling off
+    getSocket().emit("room:toggleShuffle", { roomId, shuffle: true });
+  }, [roomId]);
+
+  const toggleRepeat = useCallback(() => {
+    const current = snapshot?.repeatMode ?? "off";
+    const next = current === "off" ? "all" : current === "all" ? "track" : "off";
+    getSocket().emit("room:toggleRepeat", { roomId, repeatMode: next });
+  }, [roomId, snapshot?.repeatMode]);
 
   const mobileTabs: { id: MobileTab; icon: React.ComponentType<any>; label: string }[] = [
     { id: "spatial", icon: Radio, label: "Spatial" },
@@ -185,6 +195,10 @@ export function RoomDashboard({
               onTrackSelect={handleTrackSelect}
               onAddSong={onAddSong}
               onRemoveTrack={id => roomsApi.removeFromQueue(roomId, id).catch(console.error)}
+              shuffle={snapshot?.shuffle ?? false}
+              repeatMode={snapshot?.repeatMode ?? "off"}
+              onToggleShuffle={toggleShuffle}
+              onToggleRepeat={toggleRepeat}
             />
           </GlassCard>
           <GlassCard className="w-80 shrink-0 p-4 flex flex-col" style={{ height: "320px" } as any} isPlaying={isPlaying}>
@@ -263,6 +277,10 @@ export function RoomDashboard({
                   onTrackSelect={handleTrackSelect}
                   onAddSong={onAddSong}
                   onRemoveTrack={id => roomsApi.removeFromQueue(roomId, id).catch(console.error)}
+                  shuffle={snapshot?.shuffle ?? false}
+                  repeatMode={snapshot?.repeatMode ?? "off"}
+                  onToggleShuffle={toggleShuffle}
+                  onToggleRepeat={toggleRepeat}
                 />
               </GlassCard>
               <GlassCard className="p-3 shrink-0">

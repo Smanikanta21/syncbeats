@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Participant, JoinRequest } from "../lib/types";
+import type { PrefetchState } from "../hooks/useTrackPrefetcher";
 
 interface SyncCtx {
   clockOffset: number;
@@ -34,6 +35,8 @@ interface SyncCtx {
   setSeek: (fn: (ms: number) => void) => void;
   setNextTrack: (fn: () => void) => void;
   setPrevTrack: (fn: () => void) => void;
+  prefetch: PrefetchState;
+  setPrefetch: (v: PrefetchState) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -49,6 +52,8 @@ const Ctx = createContext<SyncCtx>({
   deviceSyncProgress: {}, setDeviceSyncProgress: () => {},
   play: () => {}, pause: () => {}, seek: () => {}, nextTrack: () => {}, prevTrack: () => {},
   setPlay: () => {}, setPause: () => {}, setSeek: () => {}, setNextTrack: () => {}, setPrevTrack: () => {},
+  prefetch: { nextTrackProgress: 0, nextTrackTitle: null, isPrefetching: false },
+  setPrefetch: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -67,6 +72,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [seek, setSeek] = useState<(ms: number) => void>(() => () => {});
   const [nextTrack, setNextTrack] = useState<() => void>(() => () => {});
   const [prevTrack, setPrevTrack] = useState<() => void>(() => () => {});
+  const [prefetch, setPrefetch] = useState<PrefetchState>({ nextTrackProgress: 0, nextTrackTitle: null, isPrefetching: false });
 
   return (
     <Ctx.Provider value={{
@@ -81,6 +87,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       isPrivate, setIsPrivate,
       deviceSyncProgress, setDeviceSyncProgress,
       play, setPlay, pause, setPause, seek, setSeek, nextTrack, setNextTrack, prevTrack, setPrevTrack,
+      prefetch, setPrefetch,
     }}>
       {children}
     </Ctx.Provider>

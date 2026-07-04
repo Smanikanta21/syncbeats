@@ -43,6 +43,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     leave,
     togglePrivate,
     setReady,
+    prefetch,
   } = useRoom({
     roomId: resolvedParams.id,
     displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
@@ -98,6 +99,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     syncCtx.setIsPrivate(isPrivate);
     syncCtx.setDeviceSyncProgress(() => deviceSyncProgress);
     syncCtx.setIncomingTrack(incomingTrack || null);
+    syncCtx.setPrefetch(prefetch);
 
     syncCtx.setPlay(() => play);
     syncCtx.setPause(() => pause);
@@ -107,7 +109,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   }, [
     isPlaying, participants, clockOffset, pendingRequests, hostId,
     joinStatus, isPrivate, deviceSyncProgress, incomingTrack, syncCtx,
-    play, pause, seek, nextTrack, prevTrack
+    play, pause, seek, nextTrack, prevTrack, prefetch
   ]);
 
   // Spatial audio

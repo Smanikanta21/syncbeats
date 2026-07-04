@@ -6,6 +6,7 @@ import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
+import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -40,6 +41,8 @@ interface UseRoomReturn {
   hasClockSync: React.MutableRefObject<boolean>;
   /** Current network quality tier for this device — updates reactively */
   networkQuality: NetworkQuality;
+  /** Smart next-track prefetch state */
+  prefetch: PrefetchState;
 }
 
 // NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
@@ -130,6 +133,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         queue:        details.live.queue as TrackQueueItem[],
         spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
         isPrivate:    details.live.isPrivate,
+        shuffle:      details.live.shuffle ?? false,
+        repeatMode:   details.live.repeatMode ?? 'off',
       };
       parts = details.live.participants as Participant[];
     } else if (details.db) {
@@ -148,6 +153,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         queue:        details.queue as TrackQueueItem[],
         spatial:      [],
         isPrivate:    details.db.is_private,
+        shuffle:      details.db.shuffle ?? false,
+        repeatMode:   (details.db.repeat_mode as "off" | "track" | "all") ?? 'off',
       };
       parts = details.participants.map(p => ({ ...p, isReady: false }));
     }
@@ -593,25 +600,31 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     return () => clearInterval(checkInterval);
   }, [roomId, socket]);
 
+  // Sync local ready state with server if they differ (e.g. on repeat track)
+  useEffect(() => {
+    if (!isConnected || !currentSocketId) return;
+    const me = participants.find(p => p.socketId === currentSocketId);
+    if (!me) return;
+
+    const localReady = audioRef.current?.isReady && !audioRef.current?.isBuffering;
+    if (me.isReady === false && localReady) {
+      setReady(true);
+    }
+  }, [participants, isConnected, currentSocketId, setReady]);
+
   useEffect(() => {
     if (!currentSocketId || !snapshot) return;
     const me = snapshot.participants.find(p => p.socketId === currentSocketId);
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
 
-  // Pre-seed the next track in the queue
-  const nextTrackUrl = useMemo(() => {
-    if (!snapshot?.queue || snapshot.queue.length === 0) return null;
-    const currentIndex = snapshot.queue.findIndex(q => q.isCurrent);
-    if (currentIndex === -1 || currentIndex >= snapshot.queue.length - 1) return null;
-    return snapshot.queue[currentIndex + 1]?.trackUrl || null;
-  }, [snapshot?.queue]);
-
-  useEffect(() => {
-    if (nextTrackUrl && audioRef.current.prefetchTrack) {
-      audioRef.current.prefetchTrack(nextTrackUrl);
-    }
-  }, [nextTrackUrl]);
+  // ── Smart track prefetcher ──────────────────────────────────────────────────
+  const prefetch = useTrackPrefetcher({
+    snapshot,
+    currentTime: audio.currentTime,
+    duration: audio.duration,
+    roomId,
+  });
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => {
@@ -642,5 +655,5 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality };
+  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }

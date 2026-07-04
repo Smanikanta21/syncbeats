@@ -229,6 +229,8 @@ export interface RoomRecord {
   position_ms:    number;
   created_at:     string;
   ended_at:       string | null;
+  shuffle:        boolean;
+  repeat_mode:    string;
   is_private?:    boolean;
   participant_count?: number;
 }

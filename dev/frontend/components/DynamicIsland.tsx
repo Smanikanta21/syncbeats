@@ -778,7 +778,8 @@ const RoomPill = ({
 const RoomExtendedPill = ({
   effectivePlaying, trackTitle, trackUrl, isReady,
   downloadProgress, deviceSyncProgress, participants, incomingTrack,
-  pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback
+  pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback,
+  prefetchProgress, prefetchTitle, isPrefetching,
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -795,6 +796,9 @@ const RoomExtendedPill = ({
   seekIndicator: { amount: number; text: string } | null;
   volIndicator: { amount: number; text: string } | null;
   onTogglePlayback: () => void;
+  prefetchProgress: number;
+  prefetchTitle: string | null;
+  isPrefetching: boolean;
 }) => {
   const ytMatch = trackUrl?.match(/^ws-p2p:yt:([^_]+)_/);
   const videoId = ytMatch ? ytMatch[1] : null;
@@ -826,7 +830,8 @@ const RoomExtendedPill = ({
   }
 
   return (
-    <div className="absolute inset-0 flex items-stretch px-2 gap-2">
+    <>
+      <div className="absolute inset-0 flex items-stretch px-2 gap-2">
       {/* LEFT half: track info + playback progress */}
       <div className="flex items-center gap-2 flex-1 min-w-0 py-1.5">
         {/* Thumbnail */}
@@ -885,7 +890,17 @@ const RoomExtendedPill = ({
           </div>
         </>
       )}
-    </div>
+      </div>
+      {/* Prefetch progress bar — thin strip at very bottom */}
+      {isPrefetching && prefetchTitle && (
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-full overflow-hidden bg-white/5 pointer-events-none">
+          <div
+            className="h-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500"
+            style={{ width: `${prefetchProgress}%` }}
+          />
+        </div>
+      )}
+    </>
   );
 };
 
@@ -901,7 +916,7 @@ export function DynamicIsland() {
   const {
     clockOffset, isRoomPlaying, participants: roomParticipants, pendingPlay,
     incomingTrack, pendingRequests, hostId, joinStatus, isPrivate, deviceSyncProgress,
-    play, pause, seek, nextTrack, prevTrack,
+    play, pause, seek, nextTrack, prevTrack, prefetch,
   } = useSyncInfo();
   const isRoom = pathname.includes("/room/");
   const isHost = hostId === user?.id;
@@ -1475,6 +1490,9 @@ export function DynamicIsland() {
                   seekIndicator={seekIndicator}
                   volIndicator={volIndicator}
                   onTogglePlayback={handleToggle}
+                  prefetchProgress={prefetch.nextTrackProgress}
+                  prefetchTitle={prefetch.nextTrackTitle}
+                  isPrefetching={prefetch.isPrefetching}
                 />
               </motion.div>
             )}
@@ -1550,6 +1568,41 @@ export function DynamicIsland() {
           <div className="absolute inset-0 rounded-[inherit] pointer-events-none"
             style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%)" }} />
         </motion.div>
+
+        {/* ── Prefetch notification pill (below island, fades in/out) ── */}
+        <AnimatePresence>
+          {isRoom && prefetch.isPrefetching && prefetch.nextTrackTitle && !isExpanded_room && (
+            <motion.div
+              key="prefetch-pill"
+              initial={{ opacity: 0, y: -6, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="mt-2 pointer-events-none"
+            >
+              <div className="flex items-center gap-2 bg-black/80 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 shadow-xl">
+                {/* Spinning download icon */}
+                <div className="relative w-3.5 h-3.5 shrink-0">
+                  <svg viewBox="0 0 14 14" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                    <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
+                    <circle
+                      cx="7" cy="7" r="5.5" fill="none"
+                      stroke="rgba(139,92,246,0.9)" strokeWidth="1.5"
+                      strokeDasharray={`${2 * Math.PI * 5.5}`}
+                      strokeDashoffset={`${2 * Math.PI * 5.5 * (1 - prefetch.nextTrackProgress / 100)}`}
+                      strokeLinecap="round"
+                      style={{ transition: "stroke-dashoffset 0.4s ease" }}
+                    />
+                  </svg>
+                </div>
+                <span className="text-[10px] font-semibold text-white/60 truncate max-w-[140px]">
+                  Loading <span className="text-white/90">{prefetch.nextTrackTitle.split(/\s+/).slice(0, 4).join(" ")}</span>
+                </span>
+                <span className="text-[9px] font-black text-violet-400 shrink-0">{prefetch.nextTrackProgress}%</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </>
   );
