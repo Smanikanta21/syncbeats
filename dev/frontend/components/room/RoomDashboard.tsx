@@ -202,7 +202,7 @@ export function RoomDashboard({
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4" isPlaying={isPlaying}>
+              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <SpatialPanel
                   myDeviceId={mySocketId ?? ""}
                   spatialDevices={spatialDevices}
@@ -238,7 +238,7 @@ export function RoomDashboard({
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4" isPlaying={isPlaying}>
+              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
                   mySocketId={mySocketId}

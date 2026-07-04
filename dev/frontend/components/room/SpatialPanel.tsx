@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Headphones, User, Smartphone, Monitor, ChevronRight, Laptop } from "lucide-react";
+import { Headphones, User, Smartphone, Monitor, ChevronRight, Laptop, Maximize2, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { DeviceSpatialState, Participant } from "../../lib/types";
 import type { SpatialPosition } from "../../audio/SpatialAudioEngine";
 
@@ -68,6 +69,9 @@ export function SpatialPanel({
   roomId,
 }: SpatialPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const draggingRef = useRef<{ id: string; isUser: boolean } | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -424,23 +428,21 @@ export function SpatialPanel({
 
   return (
     <div className="flex-1 w-full flex flex-col min-h-0 min-w-0">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2 lg:mb-4 shrink-0">
         <div>
-          <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
+          <h2 className="text-lg lg:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
             Spatial Room
           </h2>
-          <p className="text-sm text-foreground/50">Drag users or devices to position them</p>
+          <p className="text-[10px] lg:text-sm text-foreground/50">Drag users or devices to position them</p>
         </div>
       </div>
 
-      <div className="flex-1 w-full flex flex-col lg:flex-row gap-4 min-h-0">
-        <div
-          className="flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#0A0F1C] touch-none rounded-3xl border border-foreground/5 mx-2 my-2"
-          ref={containerRef}
-          onMouseMove={handleMouseMove}
-          onTouchMove={handleTouchMove}
-        >
-          <div
+      <div className="flex-1 w-full flex flex-col-reverse lg:flex-row gap-4 min-h-0">
+          {/* Map Content abstracted for reuse */}
+          {(() => {
+            const content = (
+              <>
+                <div
             className="absolute inset-0 opacity-[0.15]"
             style={{
               backgroundImage:
@@ -600,13 +602,80 @@ export function SpatialPanel({
               </div>
             </div>
           )}
-        </div>
+              </>
+            );
 
-        {/* Right side orbit controls */}
+            return (
+              <>
+                {/* INLINE VIEW (Blurred on mobile if not expanded) */}
+                <div
+                  className={`flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#0A0F1C] touch-none rounded-3xl border border-foreground/5 ${!isMobileModalOpen ? "cursor-pointer lg:cursor-auto" : "hidden lg:block"}`}
+                  ref={!isMobileModalOpen ? containerRef : undefined}
+                  onMouseMove={!isMobileModalOpen ? handleMouseMove : undefined}
+                  onTouchMove={!isMobileModalOpen ? handleTouchMove : undefined}
+                  onClick={() => {
+                    if (window.innerWidth < 1024 && !isMobileModalOpen) {
+                      setIsMobileModalOpen(true);
+                    }
+                  }}
+                >
+                  <div className={!isMobileModalOpen ? "absolute inset-0 lg:opacity-100 opacity-60 lg:blur-none blur-[3px] pointer-events-none lg:pointer-events-auto transition-all w-full h-full" : "absolute inset-0 w-full h-full"}>
+                    {content}
+                  </div>
+                  
+                  {!isMobileModalOpen && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center lg:hidden pointer-events-none bg-background/10">
+                      <div className="bg-foreground text-background px-5 py-2.5 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 tracking-wide">
+                        <Maximize2 className="w-4 h-4" />
+                        <span>TAP TO EXPAND</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* MODAL VIEW (Mobile only) */}
+                {mounted && isMobileModalOpen && createPortal(
+                  <div className="fixed inset-0 z-[100] flex flex-col p-4 bg-background/90 backdrop-blur-3xl animate-in fade-in duration-200 lg:hidden">
+                    <div className="flex items-center justify-between mb-4 pt-12">
+                      <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
+                        Spatial Room
+                      </h2>
+                      <button 
+                        className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center text-foreground hover:bg-foreground/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsMobileModalOpen(false);
+                        }}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div 
+                      className="flex-1 w-full relative overflow-hidden bg-black/10 dark:bg-[#0A0F1C]/50 touch-none rounded-3xl border border-foreground/10 shadow-2xl"
+                      ref={containerRef}
+                      onMouseMove={handleMouseMove}
+                      onTouchMove={handleTouchMove}
+                    >
+                      {content}
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </>
+            );
+          })()}
+
+
+        {/* Right side orbit controls (Responsive) */}
         {onOrbitSpeedChange && (
-          <div className="lg:w-48 bg-foreground/5 rounded-2xl p-4 flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-foreground/90">Orbit Speed</h3>
-            <div className="flex-1 flex flex-col">
+          <div className="lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-2 lg:gap-4">
+            <div className="flex flex-row lg:flex-col justify-between items-center lg:items-start gap-2">
+              <h3 className="text-sm font-semibold text-foreground/90">Orbit Speed</h3>
+              <div className="text-[10px] lg:text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-1 lg:py-1.5 rounded-lg border border-blue-500/20">
+                {orbitSpeed.toFixed(1)}s / device
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col justify-center">
               <input
                 type="range"
                 min="0.5"
@@ -616,12 +685,9 @@ export function SpatialPanel({
                 onChange={(e) => onOrbitSpeedChange(parseFloat(e.target.value))}
                 className="w-full accent-blue-500"
               />
-              <div className="flex justify-between text-[10px] text-foreground/50 mt-2">
+              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 lg:mt-2">
                 <span>Fast</span>
                 <span>Slow</span>
-              </div>
-              <div className="mt-auto text-center text-xs font-mono text-blue-400 bg-blue-500/10 py-1.5 rounded-lg border border-blue-500/20">
-                {orbitSpeed.toFixed(1)}s / device
               </div>
             </div>
           </div>
