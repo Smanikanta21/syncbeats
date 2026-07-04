@@ -1,105 +1,161 @@
-import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Music2, Trash2, GripVertical } from "lucide-react";
-import { TrackQueueItem } from "../lib/types";
+import { TrackQueueItem } from "../lib/api";
+import { Play, Disc, Trash2, GripVertical } from "lucide-react";
+import { motion } from "framer-motion";
+
+function cleanTitle(t: string) {
+  return (
+    t
+      .replace(/\s*\[.*?\]/g, "")
+      .replace(/\s*\(.*?\)/g, "")
+      .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
+      .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
+      .trim() || t
+  );
+}
+
+function ytThumb(trackUrl: string | null | undefined) {
+  if (!trackUrl) return null;
+  const m = trackUrl.match(/^ws-p2p:yt:([^_]+)_/);
+  return m ? `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg` : null;
+}
 
 interface SortableTrackItemProps {
   item: TrackQueueItem;
-  onRemove: (e: React.MouseEvent, id: string) => void;
-  onPlay?: (e: React.MouseEvent, id: string) => void;
-  addedByName?: string;
+  idx: number;
+  isCurrent: boolean;
+  isPlaying: boolean;
+  isHovered: boolean;
+  isHost: boolean;
+  onHoverStart: () => void;
+  onHoverEnd: () => void;
+  onTrackSelect: (item: TrackQueueItem) => void;
+  onRemoveTrack: (id: string) => void;
+  disableDrag?: boolean;
 }
 
-export function SortableTrackItem({ item, onRemove, onPlay, addedByName }: SortableTrackItemProps) {
+export function SortableTrackItem({
+  item, idx, isCurrent, isPlaying, isHovered, isHost,
+  onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag
+}: SortableTrackItemProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({ id: item.id, disabled: disableDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    // Add z-index and box-shadow when dragging for the "pop out" effect
-    zIndex: isDragging ? 50 : "auto",
-    opacity: isDragging ? 0.9 : 1,
-    boxShadow: isDragging ? "0 10px 30px rgba(0,0,0,0.5)" : "none",
-    scale: isDragging ? "1.02" : "1",
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.8 : 1,
   };
+
+  const thumb = ytThumb(item.trackUrl);
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      // On mobile we attach listeners to the whole row
-      // On desktop we rely on the specific handle (the grip icon)
-      // Since dnd-kit can just use listeners on the Grip handle, we'll assign the activator ref to the handle
-      {...(typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches
-        ? listeners
-        : {})}
-      className={`rounded-2xl px-3 py-2 text-sm border flex items-center gap-3 relative transition-colors ${
-        item.isCurrent
-          ? "border-green-500/40 bg-green-500/10 text-green-600 font-medium dark:text-green-300"
-          : "border-foreground/5 bg-foreground/5 text-foreground/70"
-      }`}
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+      className={`relative flex items-center gap-2 p-2 rounded-xl cursor-pointer group transition-colors duration-150 ${
+        isCurrent
+          ? "bg-foreground/20 border border-foreground/20"
+          : "border border-transparent hover:bg-foreground/[0.04]"
+      } ${isDragging ? "shadow-lg bg-foreground/10" : ""}`}
+      onClick={() => onTrackSelect(item)}
     >
-      <div
-        // Attach activator ref for the drag handle
-        ref={setActivatorNodeRef}
-        {...(typeof window !== "undefined" && !window.matchMedia("(max-width: 768px)").matches
-          ? listeners
-          : {})}
-        {...attributes}
-        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-foreground/30 hover:text-foreground/60 transition-colors hidden md:flex items-center justify-center shrink-0"
-      >
-        <GripVertical className="w-4 h-4" />
-      </div>
-
-      <div className="w-8 h-8 rounded-xl bg-foreground/10 flex items-center justify-center shrink-0 md:ml-0 ml-1">
-        <Music2 className="w-3.5 h-3.5 text-foreground/50" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold truncate text-green-600 dark:text-green-300">{item.title}</div>
-        <div className="text-[11px] uppercase tracking-widest flex flex-col gap-1 mt-0.5 text-green-600/90 dark:text-green-300/80">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span>{item.queueIndex + 1} {item.isCurrent ? "• now playing" : "• queued"}</span>
-          </div>
-          <span className="text-[9px] normal-case font-bold">Added by: {addedByName}</span>
-        </div>
-      </div>
-
-      {onPlay && (
-        <button
-          type="button"
-          onClick={(e) => onPlay(e, item.id)}
-          title="Play this track now"
-          className="w-8 h-8 rounded-full hover:bg-green-500/10 text-foreground/20 hover:text-green-600 dark:hover:text-green-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer"
+      {/* Drag Handle */}
+      {isHost && !disableDrag && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="p-1 cursor-grab active:cursor-grabbing text-foreground/30 hover:text-foreground/80 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+          onClick={(e) => e.stopPropagation()}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-        </button>
+          <GripVertical className="w-4 h-4" />
+        </div>
       )}
 
-      <button
-        type="button"
-        onClick={async (e) => {
-          e.stopPropagation();
-          const btn = e.currentTarget;
-          btn.disabled = true;
-          try {
-            await onRemove(e, item.id);
-          } finally {
-            btn.disabled = false;
-          }
-        }}
-        className="w-8 h-8 rounded-full hover:bg-red-500/10 text-foreground/20 hover:text-red-600 dark:hover:text-red-500 flex items-center justify-center transition-colors shrink-0 z-10 relative cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      {/* Track number / playing indicator */}
+      <div className={`w-5 shrink-0 flex items-center justify-center ${(!isHost || disableDrag) ? "ml-1" : ""}`}>
+        {isCurrent ? (
+          <div className="flex gap-[2px] h-4 items-end">
+            {isPlaying ? (
+              <>
+                <motion.div
+                  className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
+                  animate={{ height: ["30%", "100%", "60%", "100%", "30%"] }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                />
+                <motion.div
+                  className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
+                  animate={{ height: ["100%", "30%", "100%", "50%", "100%"] }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear", delay: 0.2 }}
+                />
+                <motion.div
+                  className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
+                  animate={{ height: ["60%", "100%", "30%", "80%", "60%"] }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear", delay: 0.4 }}
+                />
+              </>
+            ) : (
+              <>
+                <div className="w-[3px] h-[30%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
+                <div className="w-[3px] h-[60%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
+                <div className="w-[3px] h-[40%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <span className="text-[11px] font-bold text-foreground/20 group-hover:opacity-0 transition-opacity">
+              {idx + 1}
+            </span>
+            {isHovered && !isDragging && (
+              <Play className="absolute w-3.5 h-3.5 text-foreground/60 fill-foreground/60" />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Thumbnail */}
+      <div className={`w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center ${thumb ? "" : "bg-foreground/10"}`}>
+        {thumb ? (
+          <img src={thumb} alt="" className="w-full h-full object-cover pointer-events-none" />
+        ) : (
+          <Disc className={`w-5 h-5 ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/30"}`} />
+        )}
+      </div>
+
+      {/* Title + Added by */}
+      <div className="flex-1 min-w-0 pointer-events-none">
+        <div className={`text-sm font-semibold truncate ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/80"}`}>
+          {cleanTitle(item.title)}
+        </div>
+        {item.addedByName && (
+          <div className="text-[10px] text-foreground/25 truncate mt-0.5">
+            Added by {item.addedByName}
+          </div>
+        )}
+      </div>
+
+      {/* Remove button (host only) */}
+      {isHost && isHovered && !isDragging && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          onClick={e => { e.stopPropagation(); onRemoveTrack(item.id); }}
+          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+        >
+          <Trash2 className="w-3 h-3" />
+        </motion.button>
+      )}
     </div>
   );
 }

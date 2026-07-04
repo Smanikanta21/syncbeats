@@ -1,12 +1,28 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Music2, Shuffle, Repeat, Repeat1, Plus, Disc,
-  Trash2, Play
-} from "lucide-react";
+import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
+import { SortableTrackItem } from "../SortableTrackItem";
+import { 
+  DndContext, 
+  closestCenter, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragEndEvent,
+  DragStartEvent
+} from "@dnd-kit/core";
+import { 
+  SortableContext, 
+  verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates
+} from "@dnd-kit/sortable";
+import { roomsApi } from "../../lib/api";
+import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 
 type RepeatMode = "off" | "track" | "all";
 
@@ -45,6 +61,46 @@ export function RoomQueue({
 }: RoomQueueProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [optimisticQueue, setOptimisticQueue] = useState(queue);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // Keep optimistic queue synced with server updates, UNLESS we are dragging
+  useEffect(() => {
+    if (!activeDragId) {
+      setOptimisticQueue(queue);
+    }
+  }, [queue, activeDragId]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = optimisticQueue.findIndex(q => q.id === active.id);
+    const newIndex = optimisticQueue.findIndex(q => q.id === over.id);
+    
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reordered = arrayMove(optimisticQueue, oldIndex, newIndex);
+      setOptimisticQueue(reordered);
+      
+      try {
+        await roomsApi.reorderQueue(roomId, active.id as string, newIndex);
+      } catch (err) {
+        console.error("Failed to reorder queue", err);
+        // Revert on error
+        setOptimisticQueue(queue);
+      }
+    }
+  };
 
   const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
 
@@ -117,111 +173,39 @@ export function RoomQueue({
           </button>
         </div>
       ) : (
-        <div
-          ref={listRef}
-          data-lenis-prevent="true"
-          className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 min-h-0"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
         >
-          {queue.map((item, idx) => {
-            const thumb = ytThumb(item.trackUrl);
-            const isCurrent = item.isCurrent;
-            const isHovered = hoveredId === item.id;
-
-            return (
-              <motion.div
-                key={item.id}
-                layout
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 8 }}
-                onHoverStart={() => setHoveredId(item.id)}
-                onHoverEnd={() => setHoveredId(null)}
-                className={`relative flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer group transition-all duration-150 ${
-                  isCurrent
-                    ? "bg-foreground/20 border border-foreground/20"
-                    : "border border-transparent hover:bg-foreground/[0.04]"
-                }`}
-                onClick={() => onTrackSelect?.(item)}
-              >
-                {/* Track number / playing indicator */}
-                <div className="w-5 shrink-0 flex items-center justify-center">
-                  {isCurrent ? (
-                    <div className="flex gap-[2px] h-4 items-end">
-                      {isPlaying ? (
-                        <>
-                          <motion.div
-                            className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
-                            animate={{ height: ["30%", "100%", "60%", "100%", "30%"] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-                          />
-                          <motion.div
-                            className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
-                            animate={{ height: ["100%", "30%", "100%", "50%", "100%"] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: "linear", delay: 0.2 }}
-                          />
-                          <motion.div
-                            className="w-[3px] rounded-full bg-foreground text-background dark:bg-foreground"
-                            animate={{ height: ["60%", "100%", "30%", "80%", "60%"] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: "linear", delay: 0.4 }}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-[3px] h-[30%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
-                          <div className="w-[3px] h-[60%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
-                          <div className="w-[3px] h-[40%] rounded-full bg-foreground text-background dark:bg-foreground opacity-50" />
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <span className="text-[11px] font-bold text-foreground/20 group-hover:opacity-0 transition-opacity">
-                        {idx + 1}
-                      </span>
-                      {isHovered && (
-                        <Play className="absolute w-3.5 h-3.5 text-foreground/60 fill-foreground/60" />
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Thumbnail */}
-                <div className={`w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center ${thumb ? "" : "bg-foreground/10"}`}>
-                  {thumb ? (
-                    <img src={thumb} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Disc className={`w-5 h-5 ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/30"}`} />
-                  )}
-                </div>
-
-                {/* Title + Added by */}
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-semibold truncate ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/80"}`}>
-                    {cleanTitle(item.title)}
-                  </div>
-                  {item.addedByName && (
-                    <div className="text-[10px] text-foreground/25 truncate mt-0.5">
-                      Added by {item.addedByName}
-                    </div>
-                  )}
-                </div>
-
-                {/* Remove button (host only) */}
-                {isHost && isHovered && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    onClick={e => { e.stopPropagation(); onRemoveTrack?.(item.id); }}
-                    className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </motion.button>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
+          <div
+            ref={listRef}
+            data-lenis-prevent="true"
+            className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 min-h-0"
+            style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
+          >
+            <SortableContext items={optimisticQueue.map(q => q.id)} strategy={verticalListSortingStrategy}>
+              {optimisticQueue.map((item, idx) => (
+                <SortableTrackItem
+                  key={item.id}
+                  item={item}
+                  idx={idx}
+                  isCurrent={item.isCurrent}
+                  isPlaying={isPlaying}
+                  isHovered={hoveredId === item.id}
+                  isHost={isHost}
+                  onHoverStart={() => setHoveredId(item.id)}
+                  onHoverEnd={() => setHoveredId(null)}
+                  onTrackSelect={onTrackSelect!}
+                  onRemoveTrack={onRemoveTrack!}
+                  disableDrag={!isHost}
+                />
+              ))}
+            </SortableContext>
+          </div>
+        </DndContext>
       )}
     </div>
   );

@@ -284,6 +284,12 @@ export const roomsApi = {
       body: JSON.stringify({ magnetUri, title }),
     }, true),
 
+  reorderQueue: (roomId: string, itemId: string, newIndex: number) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/queue/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ itemId, newIndex }),
+    }, true),
+
   removeFromQueue: (roomId: string, itemId: string) =>
     request<any>(`/rooms/${roomId}/queue/${itemId}`, {
       method: 'DELETE',
