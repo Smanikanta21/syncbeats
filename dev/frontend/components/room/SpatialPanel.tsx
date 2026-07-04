@@ -30,6 +30,7 @@ interface SpatialPanelProps {
     pos: { angle: number; radius: number; elevation: number }
   ) => void;
   orbitSpeed?: number;
+  orbitData?: {fromId: string, toId: string, frac: number} | null;
   onOrbitSpeedChange?: (speed: number) => void;
 }
 
@@ -73,6 +74,7 @@ export function SpatialPanel({
   isPlaying,
   onUpdatePosition,
   orbitSpeed = 3,
+  orbitData,
   onOrbitSpeedChange,
 }: SpatialPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -172,6 +174,27 @@ export function SpatialPanel({
     },
     [positions]
   );
+
+  const getDevicePos = useCallback((deviceId: string) => {
+    if (positions[deviceId]) return positions[deviceId];
+    
+    // Find which user owns this device
+    for (let i = 0; i < userGroups.length; i++) {
+      const g = userGroups[i];
+      const dIdx = g.devices.findIndex(d => d.deviceId === deviceId);
+      if (dIdx !== -1) {
+        const userPos = g.isMe ? { x: 0.5, y: 0.5 } : getPos(g.userId, i, userGroups.length);
+        const fallbackAngle = (dIdx / Math.max(g.devices.length, 1)) * Math.PI * 2;
+        const fanRadius = 0.12;
+        return {
+          x: userPos.x + fanRadius * Math.cos(fallbackAngle),
+          y: userPos.y + fanRadius * Math.sin(fallbackAngle),
+        };
+      }
+    }
+    // fallback if not found
+    return { x: 0.5, y: 0.5 };
+  }, [positions, userGroups, getPos]);
 
   // ── Drag handlers ──────────────────────────────────────────────────────
 
@@ -460,6 +483,32 @@ export function SpatialPanel({
                 );
               })}
             </AnimatePresence>
+
+            {/* Orbit Visualizer */}
+            {isPlaying && orbitData && (
+              <div
+                className="absolute w-4 h-4 -ml-2 -mt-2 rounded-full pointer-events-none z-50 flex items-center justify-center"
+                style={{
+                  left: `${(() => {
+                    const fromPos = getDevicePos(orbitData.fromId);
+                    const toPos = getDevicePos(orbitData.toId);
+                    const frac = orbitData.frac;
+                    const easedFrac = frac < 0.5 ? 2 * frac * frac : 1 - Math.pow(-2 * frac + 2, 2) / 2;
+                    return (fromPos.x + (toPos.x - fromPos.x) * easedFrac) * 100;
+                  })()}%`,
+                  top: `${(() => {
+                    const fromPos = getDevicePos(orbitData.fromId);
+                    const toPos = getDevicePos(orbitData.toId);
+                    const frac = orbitData.frac;
+                    const easedFrac = frac < 0.5 ? 2 * frac * frac : 1 - Math.pow(-2 * frac + 2, 2) / 2;
+                    return (fromPos.y + (toPos.y - fromPos.y) * easedFrac) * 100;
+                  })()}%`,
+                }}
+              >
+                <div className="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-75" />
+                <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
+              </div>
+            )}
 
             {/* Axis labels */}
             <div className="absolute bottom-2 left-3 text-[9px] text-foreground/15 font-black tracking-widest uppercase pointer-events-none">

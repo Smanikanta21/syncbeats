@@ -69,6 +69,8 @@ export class SpatialAudioEngine {
   private orbitEnabled: boolean = false;
   private animationFrameId: number | null = null;
 
+  private onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
+
   // --- Singleton ---
 
   static getInstance(): SpatialAudioEngine {
@@ -225,6 +227,10 @@ export class SpatialAudioEngine {
     return this.secondsPerDevice;
   }
 
+  setOrbitUpdateCallback(cb: (fromId: string, toId: string, frac: number) => void): void {
+    this.onOrbitUpdate = cb;
+  }
+
   setAutoRotate(enabled: boolean): void {
     if (this.orbitEnabled === enabled) return;
     this.orbitEnabled = enabled;
@@ -291,6 +297,10 @@ export class SpatialAudioEngine {
 
     const fromPos = this.devicePositions.get(fromId)!;
     const toPos = this.devicePositions.get(toId)!;
+
+    if (this.onOrbitUpdate) {
+      this.onOrbitUpdate(fromId, toId, frac);
+    }
 
     const fromCart = this.orbitToCartesian(fromPos);
     const toCart = this.orbitToCartesian(toPos);

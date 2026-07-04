@@ -53,6 +53,7 @@ interface RoomDashboardProps {
 
   // Orbit speed
   orbitSpeed?: number;
+  orbitData?: {fromId: string, toId: string, frac: number} | null;
   onOrbitSpeedChange?: (speed: number) => void;
 
   // Actions
@@ -88,7 +89,7 @@ function GlassCard({ children, className = "", style }: { children: React.ReactN
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate, spatialDevices,
-  onUpdateSpatialPosition, audio, orbitSpeed, onOrbitSpeedChange,
+  onUpdateSpatialPosition, audio, orbitSpeed, orbitData, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -147,6 +148,7 @@ export function RoomDashboard({
               isPlaying={isPlaying}
               onUpdatePosition={onUpdateSpatialPosition}
               orbitSpeed={orbitSpeed}
+              orbitData={orbitData}
               onOrbitSpeedChange={onOrbitSpeedChange}
             />
           </GlassCard>
@@ -202,6 +204,7 @@ export function RoomDashboard({
                   isPlaying={isPlaying}
                   onUpdatePosition={onUpdateSpatialPosition}
                   orbitSpeed={orbitSpeed}
+                  orbitData={orbitData}
                   onOrbitSpeedChange={onOrbitSpeedChange}
                 />
               </GlassCard>

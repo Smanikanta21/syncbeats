@@ -43,6 +43,7 @@ interface UseSpatialAudioOptions {
   initialDevices?: DeviceSpatialState[];
   participants?: any[];
   isPlaying?: boolean;
+  onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
 }
 
 interface UseSpatialAudioReturn {
@@ -68,6 +69,7 @@ export function useSpatialAudio({
   initialDevices = [],
   participants = [],
   isPlaying = false,
+  onOrbitUpdate,
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
   const initialisedRef = useRef(false);
@@ -76,6 +78,12 @@ export function useSpatialAudio({
   useEffect(() => {
     engine.setAutoRotate(isPlaying);
   }, [isPlaying, engine]);
+
+  useEffect(() => {
+    if (onOrbitUpdate) {
+      engine.setOrbitUpdateCallback(onOrbitUpdate);
+    }
+  }, [onOrbitUpdate, engine]);
 
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
   const [spatialDevices, setSpatialDevices] = useState<DeviceSpatialState[]>(initialDevices);

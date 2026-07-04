@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { use } from "react";
 import { FullscreenLoader } from "../../../../components/FullscreenLoader";
 import { useRoom } from "../../../../hooks/useRoom";
@@ -50,6 +50,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   // Keep screen awake
   useWakeLock(true);
+
+  const [orbitData, setOrbitData] = useState<{fromId: string, toId: string, frac: number} | null>(null);
 
   // Auto-redirect if not logged in
   useEffect(() => {
@@ -115,6 +117,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     initialDevices: snapshot?.spatial ?? [],
     participants,
     isPlaying: snapshot?.isPlaying ?? false,
+    onOrbitUpdate: useCallback((fromId: string, toId: string, frac: number) => {
+      setOrbitData({ fromId, toId, frac });
+    }, []),
   });
 
   // Build device sequence from all participants
@@ -203,6 +208,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             unlockAudio: audio.unlockAudio,
           }}
           orbitSpeed={orbitSpeed}
+          orbitData={orbitData}
           onOrbitSpeedChange={setOrbitSpeed}
           onPlay={handlePlay}
           onPause={handlePause}
