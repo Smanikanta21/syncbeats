@@ -72,8 +72,8 @@ export class SpatialAudioEngine {
 
   private orbitEnabled: boolean = false;
   private animationFrameId: number | null = null;
-
   private onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
+  private is8DSoloMode: boolean = false;
 
   // --- Singleton ---
 
@@ -264,6 +264,16 @@ export class SpatialAudioEngine {
     }
   }
 
+  set8DSoloMode(enabled: boolean): void {
+    if (this.is8DSoloMode === enabled) return;
+    this.is8DSoloMode = enabled;
+    // Restart orbit if already running so the right physics path kicks in immediately
+    if (this.orbitEnabled) {
+      this.stopOrbit();
+      this.startOrbit();
+    }
+  }
+
   private startOrbit(): void {
     let lastTime = performance.now();
     let accumulatedTime = 0;
@@ -289,6 +299,36 @@ export class SpatialAudioEngine {
 
   private updateOrbitPosition(time: number): void {
     if (!this.ctx || !this.panner) return;
+
+    if (this.is8DSoloMode) {
+      // 8D Audio: Continuous circular orbit around the LISTENER
+      const totalTime = this.secondsPerDevice * 4; // Full circle = 4× device speed
+      const progress = (time % totalTime) / totalTime;
+      const angle = progress * Math.PI * 2;
+      const radius = 1.5;
+
+      const cart = this.orbitToCartesian({ angle, radius, elevation: 0 });
+
+      // Subtract the listener's own position so audio orbits around THEM, not the origin
+      if (this.uiListenerCart) {
+        cart.x -= this.uiListenerCart.x;
+        cart.y -= this.uiListenerCart.y;
+        cart.z -= this.uiListenerCart.z;
+      } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
+        const myPos = this.devicePositions.get(this.myDeviceId)!;
+        const myCart = this.orbitToCartesian(myPos);
+        cart.x -= myCart.x;
+        cart.y -= myCart.y;
+        cart.z -= myCart.z;
+      }
+
+      this.setPannerPosition(cart.x, cart.y, cart.z);
+
+      if (this.onOrbitUpdate) {
+        this.onOrbitUpdate("8D_MODE", "8D_MODE", angle);
+      }
+      return;
+    }
 
     const seq = this.deviceSequence.filter(id => this.devicePositions.has(id));
     if (seq.length === 0) return;

@@ -55,7 +55,6 @@ interface RoomDashboardProps {
 
   // Orbit speed
   orbitSpeed?: number;
-  orbitData?: {fromId: string, toId: string, frac: number} | null;
   onOrbitSpeedChange?: (speed: number) => void;
 
   // Actions
@@ -68,6 +67,9 @@ interface RoomDashboardProps {
   onLeave: () => void;
   onSetParticipantVolume?: (socketId: string, vol: number) => void;
   onAddSong?: () => void;
+  spatialParticipants?: any[];
+  spatialMode?: 'multiplayer' | '8d-solo';
+  onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
 }
 
 type MobileTab = "spatial" | "playing" | "devices" | "queue";
@@ -88,9 +90,9 @@ function GlassCard({ children, className = "", style, isPlaying }: { children: R
 }
 
 export function RoomDashboard({
-  roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
+  roomId, snapshot, participants, spatialParticipants, spatialMode, onSpatialModeChange, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate, spatialDevices,
-  onUpdateSpatialPosition, syncUIState, audio, orbitSpeed, orbitData, onOrbitSpeedChange,
+  onUpdateSpatialPosition, syncUIState, audio, orbitSpeed, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -157,15 +159,17 @@ export function RoomDashboard({
             <SpatialPanel
               myDeviceId={mySocketId ?? ""}
               spatialDevices={spatialDevices}
-              participants={participants}
+              participants={spatialParticipants ?? participants}
               myUserId={myUserId ?? mySocketId ?? ""}
               isPlaying={isPlaying}
               onUpdatePosition={onUpdateSpatialPosition}
               syncUIState={syncUIState}
               roomId={roomId}
               orbitSpeed={orbitSpeed}
-              orbitData={orbitData}
               onOrbitSpeedChange={onOrbitSpeedChange}
+              spatialMode={spatialMode}
+              onSpatialModeChange={onSpatialModeChange}
+              actualParticipantCount={participants.length}
             />
           </GlassCard>
 
@@ -227,8 +231,10 @@ export function RoomDashboard({
                   syncUIState={syncUIState}
                   roomId={roomId}
                   orbitSpeed={orbitSpeed}
-                  orbitData={orbitData}
                   onOrbitSpeedChange={onOrbitSpeedChange}
+                  spatialMode={spatialMode}
+                  onSpatialModeChange={onSpatialModeChange}
+                  actualParticipantCount={participants.length}
                 />
               </GlassCard>
             </motion.div>
@@ -293,13 +299,10 @@ export function RoomDashboard({
 
       {/* ── Mobile Tab Bar ─────────────────────────────────────────────────── */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around px-2"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around px-2 bg-background/85 backdrop-blur-[20px] border-t border-foreground/10"
         style={{
           paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-          background: "rgba(9,9,11,0.85)",
-          backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          borderTop: "1px solid rgba(255,255,255,0.07)",
         }}
       >
         {mobileTabs.map(tab => {
@@ -311,9 +314,9 @@ export function RoomDashboard({
               onClick={() => setMobileTab(tab.id)}
               className="flex flex-col items-center gap-1 pt-3 px-4 transition-all"
             >
-              <Icon className={`w-5 h-5 transition-colors ${active ? "text-foreground" : "text-white/30"}`} />
+              <Icon className={`w-5 h-5 transition-colors ${active ? "text-foreground" : "text-foreground/30"}`} />
               <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${
-                active ? "text-foreground" : "text-white/20"
+                active ? "text-foreground" : "text-foreground/20"
               }`}>
                 {tab.label}
               </span>

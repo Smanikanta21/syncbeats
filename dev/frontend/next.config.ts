@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  allowedDevOrigins: ['10.227.125.150'],
+  allowedDevOrigins: ['192.168.29.61'],
   images: {
     remotePatterns: [
       {

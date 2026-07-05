@@ -16,6 +16,8 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const router = useRouter();
   const pathname = usePathname();
   const isRoom = pathname?.includes("/room/");
+  const isProfile = pathname?.includes("/profile");
+  const isFullscreen = isRoom || isProfile;
   const [deviceName, setDeviceName] = useState("");
   const [saving, setSaving] = useState(false);
   const [showExistingFlow, setShowExistingFlow] = useState(false);
@@ -204,7 +206,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
       <AmbientBackground syncWithAudio={true} />
-      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : "pt-32"}>
+      <div className={isFullscreen ? "h-[100dvh] overflow-hidden flex justify-center w-full" : "pt-32"}>
         {(!loading && user) ? children : null}
       </div>
     </SyncProvider>

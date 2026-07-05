@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getServerUrl } from "../lib/api";
 import type { TrackQueueItem } from "../lib/types";
 
@@ -189,5 +189,5 @@ export function useTrackPrefetcher({
     };
   }, []);
 
-  return { nextTrackProgress, nextTrackTitle, isPrefetching };
+  return useMemo(() => ({ nextTrackProgress, nextTrackTitle, isPrefetching }), [nextTrackProgress, nextTrackTitle, isPrefetching]);
 }

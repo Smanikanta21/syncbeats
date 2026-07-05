@@ -208,9 +208,9 @@ function DeviceCard({
                       setLocalVol(v);
                       onVolumeChange?.(p.socketId, v);
                     }}
-                    className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                    className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-white"
                     style={{
-                      background: `linear-gradient(to right, #a78bfa ${localVol}%, rgba(128,128,128,0.2) ${localVol}%)`,
+                      background: `linear-gradient(to right, rgba(255,255,255,0.8) ${localVol}%, rgba(255,255,255,0.2) ${localVol}%)`,
                     }}
                   />
                   <span className="text-[10px] font-black text-foreground/40 w-7 text-right">{localVol}%</span>

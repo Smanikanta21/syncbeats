@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useMemo } from "react";
 import { use } from "react";
 import { FullscreenLoader } from "../../../../components/FullscreenLoader";
 import { useRoom } from "../../../../hooks/useRoom";
@@ -53,10 +53,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const isConnecting = joinStatus === "connecting" || joinStatus === "pending";
   const connectionError = joinStatus === "denied";
 
-  // Keep screen awake
-  useWakeLock(true);
-
-  const [orbitData, setOrbitData] = useState<{fromId: string, toId: string, frac: number} | null>(null);
+  // State for UI pan meter / orbit trail
+  // orbitData is now managed locally in SpatialPanel
 
   // Auto-redirect if not logged in
   useEffect(() => {
@@ -88,29 +86,40 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const isPrivate = snapshot?.isPrivate ?? false;
   const hostId = snapshot?.hostId ?? null;
 
-  const syncCtx = useSyncInfo();
-  useEffect(() => {
-    syncCtx.setIsRoomPlaying(isPlaying);
-    syncCtx.setParticipants(participants);
-    syncCtx.setClockOffset(clockOffset);
-    syncCtx.setPendingRequests(pendingRequests);
-    syncCtx.setHostId(hostId);
-    syncCtx.setJoinStatus(joinStatus);
-    syncCtx.setIsPrivate(isPrivate);
-    syncCtx.setDeviceSyncProgress(() => deviceSyncProgress);
-    syncCtx.setIncomingTrack(incomingTrack || null);
-    syncCtx.setPrefetch(prefetch);
+  const {
+    setIsRoomPlaying, setParticipants, setClockOffset, setPendingRequests,
+    setHostId, setJoinStatus, setIsPrivate, setDeviceSyncProgress, setIncomingTrack,
+    setPrefetch, setPlay, setPause, setSeek, setNextTrack, setPrevTrack
+  } = useSyncInfo();
 
-    syncCtx.setPlay(() => play);
-    syncCtx.setPause(() => pause);
-    syncCtx.setSeek(() => seek);
-    syncCtx.setNextTrack(() => nextTrack);
-    syncCtx.setPrevTrack(() => prevTrack);
+  useEffect(() => {
+    setIsRoomPlaying(isPlaying);
+    setParticipants(participants);
+    setClockOffset(clockOffset);
+    setPendingRequests(pendingRequests);
+    setHostId(hostId);
+    setJoinStatus(joinStatus);
+    setIsPrivate(isPrivate);
+    setDeviceSyncProgress(() => deviceSyncProgress);
+    setIncomingTrack(incomingTrack || null);
+    setPrefetch(prefetch);
+
+    setPlay(() => play);
+    setPause(() => pause);
+    setSeek(() => seek);
+    setNextTrack(() => nextTrack);
+    setPrevTrack(() => prevTrack);
   }, [
     isPlaying, participants, clockOffset, pendingRequests, hostId,
-    joinStatus, isPrivate, deviceSyncProgress, incomingTrack, syncCtx,
-    play, pause, seek, nextTrack, prevTrack, prefetch
+    joinStatus, isPrivate, deviceSyncProgress, incomingTrack, prefetch,
+    play, pause, seek, nextTrack, prevTrack,
+    setIsRoomPlaying, setParticipants, setClockOffset, setPendingRequests,
+    setHostId, setJoinStatus, setIsPrivate, setDeviceSyncProgress, setIncomingTrack,
+    setPrefetch, setPlay, setPause, setSeek, setNextTrack, setPrevTrack
   ]);
+
+  // ── Spatial Mode State ────────────────────────────────────────────────────────
+  const [spatialMode, setSpatialMode] = useState<'multiplayer' | '8d-solo'>('multiplayer');
 
   // Spatial audio
   const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
@@ -121,11 +130,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     roomId: resolvedParams.id,
     enabled: isConnected,
     initialDevices: snapshot?.spatial ?? [],
-    participants,
+    participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
-    onOrbitUpdate: useCallback((fromId: string, toId: string, frac: number) => {
-      setOrbitData({ fromId, toId, frac });
-    }, []),
+    is8DSoloMode: spatialMode === '8d-solo' && participants.length === 1,
   });
 
   // Build device sequence from all participants
@@ -189,13 +196,15 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           mySocketId={currentSocketId}
           isHost={isHost}
           hostId={snapshot?.hostId ?? null}
-          myUserId={user?.id}
+          myUserId={user?.id ?? null}
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
           spatialDevices={spatialDevices}
           onUpdateSpatialPosition={updatePosition}
           syncUIState={syncUIState}
+          spatialMode={spatialMode}
+          onSpatialModeChange={setSpatialMode}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,
@@ -215,7 +224,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             unlockAudio: audio.unlockAudio,
           }}
           orbitSpeed={orbitSpeed}
-          orbitData={orbitData}
           onOrbitSpeedChange={setOrbitSpeed}
           onPlay={handlePlay}
           onPause={handlePause}

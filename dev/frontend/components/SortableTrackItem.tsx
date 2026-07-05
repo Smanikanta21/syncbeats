@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TrackQueueItem } from "../lib/api";
+import { TrackQueueItem } from "../lib/types";
 import { Play, Disc, Trash2, GripVertical } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -75,7 +75,7 @@ export function SortableTrackItem({
         <div
           {...attributes}
           {...listeners}
-          className="p-1 cursor-grab active:cursor-grabbing text-foreground/30 hover:text-foreground/80 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+          className="hidden md:block p-1 cursor-grab active:cursor-grabbing text-foreground/30 hover:text-foreground/80 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
           onClick={(e) => e.stopPropagation()}
         >
           <GripVertical className="w-4 h-4" />

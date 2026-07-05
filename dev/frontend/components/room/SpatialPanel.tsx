@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Headphones, User, Smartphone, Monitor, ChevronRight, Laptop, Maximize2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { DeviceSpatialState, Participant } from "../../lib/types";
-import type { SpatialPosition } from "../../audio/SpatialAudioEngine";
+import { SpatialAudioEngine, type SpatialPosition } from "../../audio/SpatialAudioEngine";
 
 interface UserGroup {
   userId: string;
@@ -32,6 +32,9 @@ interface SpatialPanelProps {
   orbitData?: { fromId: string; toId: string; frac: number } | null;
   onOrbitSpeedChange?: (speed: number) => void;
   roomId: string;
+  spatialMode?: 'multiplayer' | '8d-solo';
+  onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
+  actualParticipantCount?: number;
 }
 
 // ── Coordinate Conversion ─────────────────────────────────────────────────
@@ -64,10 +67,24 @@ export function SpatialPanel({
   onUpdatePosition,
   syncUIState,
   orbitSpeed = 3,
-  orbitData,
   onOrbitSpeedChange,
   roomId,
+  spatialMode,
+  onSpatialModeChange,
+  actualParticipantCount,
 }: SpatialPanelProps) {
+  const [orbitData, setOrbitData] = useState<{fromId: string, toId: string, frac: number} | null>(null);
+
+  // Subscribe directly to the audio engine to avoid re-rendering the whole page
+  useEffect(() => {
+    const engine = SpatialAudioEngine.getInstance();
+    engine.setOrbitUpdateCallback((fromId: string, toId: string, frac: number) => {
+      setOrbitData({ fromId, toId, frac });
+    });
+    return () => {
+      engine.setOrbitUpdateCallback(undefined as any);
+    };
+  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -414,6 +431,11 @@ export function SpatialPanel({
   // Compute live stereo pan value from current orbit position (-1 left .. +1 right)
   const panValue = useMemo(() => {
     if (!orbitData) return 0;
+    if (orbitData.fromId === '8D_MODE') {
+      // In 8D mode, frac is actually the direct angle. Radius is fixed at 1.5.
+      return Math.max(-1, Math.min(1, Math.sin(orbitData.frac) * 1.5));
+    }
+
     const { fromId, toId, frac } = orbitData;
     const fromDev = spatialDevices.find(d => d.deviceId === fromId);
     const toDev = spatialDevices.find(d => d.deviceId === toId);
@@ -430,11 +452,28 @@ export function SpatialPanel({
     <div className="flex-1 w-full flex flex-col min-h-0 min-w-0">
       <div className="flex items-center justify-between mb-2 lg:mb-4 shrink-0">
         <div>
-          <h2 className="text-lg lg:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
+          <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
             Spatial Room
           </h2>
-          <p className="text-[10px] lg:text-sm text-foreground/50">Drag users or devices to position them</p>
+          <p className="text-[10px] lg:text-xs text-foreground/40 mt-0.5">Drag users or devices to position them</p>
         </div>
+
+        {actualParticipantCount === 1 && (
+          <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
+            <button 
+              onClick={() => onSpatialModeChange?.('multiplayer')}
+              className={`px-3 py-1 lg:px-4 lg:py-1.5 text-[10px] lg:text-xs rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              Multiplayer
+            </button>
+            <button 
+              onClick={() => onSpatialModeChange?.('8d-solo')}
+              className={`px-3 py-1 lg:px-4 lg:py-1.5 text-[10px] lg:text-xs rounded-full font-semibold transition-colors flex items-center gap-1.5 ${spatialMode === '8d-solo' ? 'bg-violet-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
+            >
+              8D Solo
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 w-full flex flex-col-reverse lg:flex-row gap-4 min-h-0">
@@ -474,6 +513,90 @@ export function SpatialPanel({
           </div>
 
           <div className="absolute inset-4 border border-foreground/10 rounded-xl pointer-events-none" />
+
+          {spatialMode === '8d-solo' && actualParticipantCount === 1 && (() => {
+            // Visual orbit radius as a fraction of the container (35% of half-width)
+            const VIS_RADIUS = 35; // in percentage units from center
+            const angle = orbitData?.fromId === '8D_MODE' ? orbitData.frac : 0;
+            const orbX = 50 + VIS_RADIUS * Math.sin(angle);
+            const orbY = 50 - VIS_RADIUS * Math.cos(angle);
+
+            // Trail: 8 ghost dots fading behind the orb
+            const TRAIL_COUNT = 8;
+            const TRAIL_STEP = (Math.PI * 2) / 24;
+
+            return (
+              <>
+                {/* Orbit ring */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                  <ellipse
+                    cx="50%"
+                    cy="50%"
+                    rx={`${VIS_RADIUS}%`}
+                    ry={`${VIS_RADIUS}%`}
+                    fill="none"
+                    stroke="rgba(139,92,246,0.2)"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                  />
+                </svg>
+
+                {/* Glowing trail */}
+                {Array.from({ length: TRAIL_COUNT }).map((_, i) => {
+                  const trailAngle = angle - TRAIL_STEP * (i + 1);
+                  const tx = 50 + VIS_RADIUS * Math.sin(trailAngle);
+                  const ty = 50 - VIS_RADIUS * Math.cos(trailAngle);
+                  const size = 12 - i * 1.2;
+                  const opacity = (1 - i / TRAIL_COUNT) * 0.5;
+                  return (
+                    <div
+                      key={`trail-${i}`}
+                      className="absolute rounded-full bg-violet-400 pointer-events-none z-10"
+                      style={{
+                        width: `${size}px`,
+                        height: `${size}px`,
+                        left: `${tx}%`,
+                        top: `${ty}%`,
+                        transform: 'translate(-50%, -50%)',
+                        opacity,
+                        filter: `blur(${i * 0.5}px)`,
+                      }}
+                    />
+                  );
+                })}
+
+                {/* Outer pulse ring */}
+                <div
+                  className="absolute rounded-full border border-violet-400/40 pointer-events-none z-10 animate-ping"
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    left: `${orbX}%`,
+                    top: `${orbY}%`,
+                    transform: 'translate(-50%, -50%)',
+                    animationDuration: '1.5s',
+                  }}
+                />
+
+                {/* Main orb */}
+                <div
+                  className="absolute rounded-full font-bold text-[10px] text-white flex items-center justify-center pointer-events-none z-20"
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    left: `${orbX}%`,
+                    top: `${orbY}%`,
+                    transform: 'translate(-50%, -50%)',
+                    background: 'radial-gradient(circle at 35% 35%, #a78bfa, #7c3aed)',
+                    boxShadow: '0 0 20px 6px rgba(139,92,246,0.5), 0 0 40px 10px rgba(139,92,246,0.25)',
+                    border: '2px solid rgba(255,255,255,0.25)',
+                  }}
+                >
+                  8D
+                </div>
+              </>
+            );
+          })()}
 
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
             {userGroups.map(user => {
@@ -558,50 +681,7 @@ export function SpatialPanel({
             </AnimatePresence>
           </div>
 
-          {/* Live Pan Meter */}
-          {orbitData && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-40 flex flex-col items-center gap-1 pointer-events-none select-none">
-              <div className="text-[8px] font-black tracking-[0.2em] text-white/20 uppercase">
-                PAN
-              </div>
-              <div className="relative w-full h-1 bg-white/10 rounded-full overflow-visible">
-                {/* Left label */}
-                <span className="absolute -left-4 -top-0.5 text-[7px] text-white/20 font-bold">L</span>
-                {/* Right label */}
-                <span className="absolute -right-4 -top-0.5 text-[7px] text-white/20 font-bold">R</span>
-                {/* Center tick */}
-                <div className="absolute left-1/2 -translate-x-1/2 top-0 w-px h-full bg-white/20" />
-                {/* Color fill from center */}
-                <div
-                  className="absolute top-0 h-full rounded-full transition-all duration-100"
-                  style={{
-                    left: panValue < 0 ? `${(0.5 + panValue / 2) * 100}%` : '50%',
-                    width: `${Math.abs(panValue) / 2 * 100}%`,
-                    background: panValue < 0
-                      ? 'linear-gradient(to left, rgba(96,165,250,0.8), rgba(59,130,246,0.4))'
-                      : 'linear-gradient(to right, rgba(167,139,250,0.8), rgba(139,92,246,0.4))',
-                  }}
-                />
-                {/* Thumb */}
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-lg transition-all duration-100"
-                  style={{
-                    left: `calc(${((panValue + 1) / 2) * 100}% - 5px)`,
-                    background: panValue < -0.05
-                      ? 'rgba(96,165,250,1)'
-                      : panValue > 0.05
-                      ? 'rgba(167,139,250,1)'
-                      : 'rgba(255,255,255,0.9)',
-                    boxShadow: panValue < -0.05
-                      ? '0 0 6px rgba(96,165,250,0.8)'
-                      : panValue > 0.05
-                      ? '0 0 6px rgba(167,139,250,0.8)'
-                      : '0 0 4px rgba(255,255,255,0.4)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
+
               </>
             );
 
@@ -637,9 +717,27 @@ export function SpatialPanel({
                 {mounted && isMobileModalOpen && createPortal(
                   <div className="fixed inset-0 z-[100] flex flex-col p-4 bg-background/90 backdrop-blur-3xl animate-in fade-in duration-200 lg:hidden">
                     <div className="flex items-center justify-between mb-4 pt-12">
-                      <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-violet-400">
-                        Spatial Room
-                      </h2>
+                      <div className="flex items-center gap-4">
+                        <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+                          Spatial Room
+                        </h2>
+                        {actualParticipantCount === 1 && (
+                          <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('multiplayer'); }}
+                              className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
+                            >
+                              Multiplayer
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('8d-solo'); }}
+                              className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === '8d-solo' ? 'bg-violet-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
+                            >
+                              8D Solo
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button 
                         className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center text-foreground hover:bg-foreground/20"
                         onClick={(e) => {
@@ -668,14 +766,15 @@ export function SpatialPanel({
 
         {/* Right side orbit controls (Responsive) */}
         {onOrbitSpeedChange && (
-          <div className="order-first lg:order-last lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-2 lg:gap-4">
+          <div className="order-first lg:order-last lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-3 lg:gap-4">
             <div className="flex flex-row lg:flex-col justify-between items-center lg:items-start gap-2">
-              <h3 className="text-sm font-semibold text-foreground/90">Orbit Speed</h3>
+              <h3 className="text-sm font-semibold text-foreground/90">Spatial Controller</h3>
               <div className="text-[10px] lg:text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-1 lg:py-1.5 rounded-lg border border-blue-500/20">
                 {orbitSpeed.toFixed(1)}s / device
               </div>
             </div>
             <div className="flex-1 flex flex-col justify-center">
+              <div className="text-[10px] text-foreground/50 font-bold mb-1">ORBIT SPEED</div>
               <input
                 type="range"
                 min="0.5"
@@ -683,11 +782,29 @@ export function SpatialPanel({
                 step="0.5"
                 value={orbitSpeed}
                 onChange={(e) => onOrbitSpeedChange(parseFloat(e.target.value))}
-                className="w-full accent-blue-500"
+                className="w-full accent-white"
               />
-              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 lg:mt-2">
+              <div className="flex justify-between text-[10px] text-foreground/50 mt-1">
                 <span>Fast</span>
                 <span>Slow</span>
+              </div>
+            </div>
+
+            {/* Live Pan Meter */}
+            <div className="flex-1 flex flex-col justify-center border-t border-foreground/10 pt-3 lg:pt-4">
+              <div className="text-[10px] text-foreground/50 font-bold mb-1">LIVE PAN</div>
+              <input
+                type="range"
+                min="-1"
+                max="1"
+                step="0.01"
+                value={panValue}
+                readOnly
+                className="w-full accent-white pointer-events-none"
+              />
+              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 font-bold">
+                <span>L</span>
+                <span>R</span>
               </div>
             </div>
           </div>

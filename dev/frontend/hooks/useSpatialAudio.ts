@@ -43,6 +43,7 @@ interface UseSpatialAudioOptions {
   initialDevices?: DeviceSpatialState[];
   participants?: any[];
   isPlaying?: boolean;
+  is8DSoloMode?: boolean;
   onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
 }
 
@@ -70,15 +71,17 @@ export function useSpatialAudio({
   initialDevices = [],
   participants = [],
   isPlaying = false,
+  is8DSoloMode = false,
   onOrbitUpdate,
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
   const initialisedRef = useRef(false);
 
-  // Sync auto-rotate state
+  // Sync auto-rotate state — set mode FIRST, then start/stop orbit
   useEffect(() => {
+    engine.set8DSoloMode(is8DSoloMode);
     engine.setAutoRotate(isPlaying);
-  }, [isPlaying, engine]);
+  }, [isPlaying, is8DSoloMode, engine]);
 
   useEffect(() => {
     if (onOrbitUpdate) {
