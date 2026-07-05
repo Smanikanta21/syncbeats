@@ -271,7 +271,7 @@ export default function ProfilePage() {
             >
               <div className="flex items-center justify-between px-2 pb-2 shrink-0">
                 <h2 className="text-2xl font-black text-foreground">Your Devices</h2>
-                <button onClick={() => setShowDeviceManager(false)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+                <button onClick={() => setActivePanel(null)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
