@@ -196,7 +196,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           mySocketId={currentSocketId}
           isHost={isHost}
           hostId={snapshot?.hostId ?? null}
-          myUserId={user?.id ?? null}
+          myUserId={user?.id ?? undefined}
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
