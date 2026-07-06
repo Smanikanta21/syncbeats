@@ -482,8 +482,9 @@ export function SpatialPanel({
             const content = (
               <>
                 <div
-            className="absolute inset-0 opacity-[0.15] transition-transform duration-1000" style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }}
-            style={{
+            className="absolute inset-0 opacity-[0.15] transition-transform duration-1000" 
+            style={{ 
+              transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center",
               backgroundImage:
                 "linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)",
               backgroundSize: "10% 10%",
@@ -666,9 +667,9 @@ export function SpatialPanel({
                               left: `${devPos.x * 100}%`,
                               top: `${devPos.y * 100}%`,
                             
-                              transform: `scale(${1 + ((device.position?.elevation || 0) / 45) * 0.3})`,
-                              boxShadow: `0 ${((device.position?.elevation || 0) + 45) / 4}px ${((device.position?.elevation || 0) + 45) / 2}px rgba(0,0,0,0.3)`,
-                              zIndex: 40 + Math.floor(device.position?.elevation || 0),
+                              transform: `scale(${1 + (((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) / 45) * 0.3})`,
+                              boxShadow: `0 ${(((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) + 45) / 4}px ${(((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) + 45) / 2}px rgba(0,0,0,0.3)`,
+                              zIndex: 40 + Math.floor((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0),
                             }}
                             onMouseDown={(e) => handleMouseDown(device.deviceId, false, e)}
                             onTouchStart={(e) => handleMouseDown(device.deviceId, false, e)}
