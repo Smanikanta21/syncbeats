@@ -5,7 +5,8 @@ import { PrismaClient } from '@prisma/client';
 const prismaClientSingleton = () => {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not set');
+    console.warn('DATABASE_URL environment variable is not set');
+    return new PrismaClient();
   }
 
   const pool = new Pool({ connectionString });

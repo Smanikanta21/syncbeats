@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const binPath = path.join(process.cwd(), 'data', 'deleted_records.json');

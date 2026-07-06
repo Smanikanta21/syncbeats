@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import fs from 'fs/promises';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 function getPrismaModel(tableParam: string) {
   let model = Prisma.dmmf.datamodel.models.find(
     m => m.name.toLowerCase() === tableParam.toLowerCase()
