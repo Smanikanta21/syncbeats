@@ -42,7 +42,10 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
-  title: "SyncBeats | One track. Every phone. Zero lag.",
+  title: {
+    template: "%s | SyncBeats",
+    default: "SyncBeats | One track. Every phone. Zero lag.",
+  },
   description:
     "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.",
   keywords: [
