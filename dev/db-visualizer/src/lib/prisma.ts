@@ -6,7 +6,9 @@ const prismaClientSingleton = () => {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.warn('DATABASE_URL environment variable is not set');
-    return new PrismaClient();
+    const pool = new Pool({ connectionString: "postgresql://dummy:dummy@localhost:5432/dummy" });
+    const adapter = new PrismaPg(pool);
+    return new PrismaClient({ adapter });
   }
 
   const pool = new Pool({ connectionString });
