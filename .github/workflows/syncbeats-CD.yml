@@ -332,7 +332,7 @@ jobs:
           # Source .env for PORT
           set -a; source .env; set +a
 
-          docker compose --project-directory "$APP" up -d --force-recreate server visualizer
+          docker compose --project-directory "$APP" up -d --force-recreate --remove-orphans server visualizer
 
           echo "Waiting for backend on port $PORT..."
           BACKEND_OK=false
