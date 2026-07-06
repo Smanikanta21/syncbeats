@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                         String            @id @default(cuid())
+  name                       String
+  email                      String            @unique
+  passwordHash               String?           @map("password_hash")
+  authProvider               String            @default("LOCAL") @map("auth_provider")
+  googleId                   String?           @unique @map("google_id")
+  emailVerifiedAt            DateTime?         @map("email_verified_at") @db.Timestamptz(6)
+  emailVerificationTokenHash String?           @map("email_verification_token_hash")
+  emailVerificationExpiresAt DateTime?         @map("email_verification_expires_at") @db.Timestamptz(6)
+  passwordResetTokenHash     String?           @map("password_reset_token_hash")
+  passwordResetExpiresAt     DateTime?         @map("password_reset_expires_at") @db.Timestamptz(6)
+  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt                DateTime?         @map("last_login_at") @db.Timestamptz(6)
+  devices                    Device[]
+  roomParticipants           RoomParticipant[]
+  roomQueueItems             RoomQueueItem[]
+  rooms                      Room[]
+
+  @@map("users")
+}
+
+model Device {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  deviceKey  String   @map("device_key")
+  name       String
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceKey])
+  @@index([userId])
+  @@map("devices")
+}
+
+model Room {
+  id               String            @id
+  hostId           String            @map("host_id")
+  trackUrl         String?           @map("track_url")
+  playbackState    String            @default("IDLE") @map("playback_state")
+  positionMs       BigInt            @default(0) @map("position_ms")
+  shuffle          Boolean           @default(false)
+  repeatMode       String            @default("off") @map("repeat_mode")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  endedAt          DateTime?         @map("ended_at") @db.Timestamptz(6)
+  lastAccessedAt   DateTime          @default(now()) @map("last_accessed_at") @db.Timestamptz(6)
+  roomParticipants RoomParticipant[]
+  queueItems       RoomQueueItem[]
+  host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@index([hostId])
+  @@index([endedAt], map: "idx_rooms_active")
+  @@map("rooms")
+}
+
+model RoomQueueItem {
+  id             String   @id @default(cuid())
+  roomId         String   @map("room_id")
+  uploaderUserId String   @map("uploader_user_id")
+  trackUrl       String   @map("track_url")
+  title          String
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  sizeBytes      BigInt   @map("size_bytes")
+  queueIndex     Int      @map("queue_index")
+  isCurrent      Boolean  @default(false) @map("is_current")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploader       User     @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, queueIndex])
+  @@index([roomId, queueIndex])
+  @@index([uploaderUserId])
+  @@map("room_queue_items")
+}
+
+model RoomParticipant {
+  roomId      String    @map("room_id")
+  userId      String    @map("user_id")
+  socketId    String    @map("socket_id")
+  displayName String    @map("display_name")
+  joinedAt    DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt      DateTime? @map("left_at") @db.Timestamptz(6)
+  room        Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@map("room_participants")
+}
+
+model cached_tracks {
+  id           String   @id
+  youtube_id   String   @unique
+  title        String
+  s3_url       String
+  requested_by String?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([youtube_id], map: "idx_cached_tracks_youtube_id")
+}

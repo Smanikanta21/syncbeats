@@ -34,3 +34,4 @@ context.md
 NATIVE_CLIENTS_ARCHITECTURE.md
 .git_backup
 dev/syncbeats-server/scripts/sendUpdateEmail.ts
+dev/db-visualizer/data/

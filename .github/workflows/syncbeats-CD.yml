@@ -13,6 +13,7 @@ env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: smanikanta21/syncbeats-server
   FRONTEND_IMAGE: smanikanta21/syncbeats-frontend
+  VISUALIZER_IMAGE: smanikanta21/syncbeats-db-visualizer
 
 jobs:
 
@@ -54,6 +55,43 @@ jobs:
           cache-to: type=gha,mode=max
 
 
+
+  build-visualizer:
+    name: Build DB Visualizer Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ github.ref_name }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.VISUALIZER_IMAGE }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=${{ github.ref_name }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./dev/db-visualizer
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   provision-env:
     name: Provision .env on EC2
@@ -131,9 +169,9 @@ jobs:
             yq -i '
               del(.services.postgres) |
               del(.services.server.depends_on) |
-              del(.services.studio.depends_on) |
+              del(.services.visualizer.depends_on) |
               .services.server.networks = ["default", "prod_network"] |
-              .services.studio.networks = ["default", "prod_network"] |
+              .services.visualizer.networks = ["default", "prod_network"] |
               .networks.prod_network.external = true |
               .networks.prod_network.name = "sync-beats_default"
             ' docker-compose.yml
@@ -183,7 +221,7 @@ jobs:
     name: Deploy Backend
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [build-backend, provision-env]
+    needs: [build-backend, build-visualizer, provision-env]
     environment: ${{ github.ref_name }}
 
     steps:
@@ -214,8 +252,9 @@ jobs:
           echo "$PREV" > /tmp/syncbeats-prev-image.txt
           echo "Previous image saved: $PREV"
 
-          # Pull the new image FIRST — if this fails, the old image is still intact
+          # Pull the new images FIRST — if this fails, the old image is still intact
           docker pull "$IMAGE"
+          docker pull "ghcr.io/${{ env.VISUALIZER_IMAGE }}:${{ github.ref_name }}"
 
           # Only prune dangling images (not all images, never volumes — that would wipe the DB!)
           docker image prune -f || true
@@ -293,7 +332,7 @@ jobs:
           # Source .env for PORT
           set -a; source .env; set +a
 
-          docker compose --project-directory "$APP" up -d --force-recreate server studio
+          docker compose --project-directory "$APP" up -d --force-recreate server visualizer
 
           echo "Waiting for backend on port $PORT..."
           BACKEND_OK=false
@@ -400,6 +439,6 @@ jobs:
             sleep 5
           fi
           docker compose --project-directory "$APP" run --rm server npx prisma migrate deploy || true
-          docker compose --project-directory "$APP" up -d server studio
+          docker compose --project-directory "$APP" up -d server visualizer
           echo "=== Rollback complete ==="
           ENDSSH

@@ -27,6 +27,7 @@ interface RoomDashboardProps {
   isPlaying: boolean;
   deviceSyncProgress: Record<string, number>;
   isPrivate: boolean;
+  allow8DSolo: boolean;
 
   // Spatial
   spatialDevices: DeviceSpatialState[];
@@ -91,7 +92,7 @@ function GlassCard({ children, className = "", style, isPlaying }: { children: R
 
 export function RoomDashboard({
   roomId, snapshot, participants, spatialParticipants, spatialMode, onSpatialModeChange, mySocketId, isHost, hostId, myUserId,
-  isPlaying, deviceSyncProgress, isPrivate, spatialDevices,
+  isPlaying, deviceSyncProgress, isPrivate, allow8DSolo, spatialDevices,
   onUpdateSpatialPosition, syncUIState, audio, orbitSpeed, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
@@ -169,7 +170,7 @@ export function RoomDashboard({
               onOrbitSpeedChange={onOrbitSpeedChange}
               spatialMode={spatialMode}
               onSpatialModeChange={onSpatialModeChange}
-              actualParticipantCount={participants.length}
+              allow8DSolo={allow8DSolo}
             />
           </GlassCard>
 
@@ -234,7 +235,7 @@ export function RoomDashboard({
                   onOrbitSpeedChange={onOrbitSpeedChange}
                   spatialMode={spatialMode}
                   onSpatialModeChange={onSpatialModeChange}
-                  actualParticipantCount={participants.length}
+                  allow8DSolo={allow8DSolo}
                 />
               </GlassCard>
             </motion.div>

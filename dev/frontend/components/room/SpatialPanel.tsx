@@ -34,7 +34,7 @@ interface SpatialPanelProps {
   roomId: string;
   spatialMode?: 'multiplayer' | '8d-solo';
   onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
-  actualParticipantCount?: number;
+  allow8DSolo?: boolean;
 }
 
 // ── Coordinate Conversion ─────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export function SpatialPanel({
   roomId,
   spatialMode,
   onSpatialModeChange,
-  actualParticipantCount,
+  allow8DSolo,
 }: SpatialPanelProps) {
   const [orbitData, setOrbitData] = useState<{fromId: string, toId: string, frac: number} | null>(null);
 
@@ -458,7 +458,7 @@ export function SpatialPanel({
           <p className="text-[10px] lg:text-xs text-foreground/40 mt-0.5">Drag users or devices to position them</p>
         </div>
 
-        {actualParticipantCount === 1 && (
+        {allow8DSolo && (
           <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
             <button 
               onClick={() => onSpatialModeChange?.('multiplayer')}
@@ -514,7 +514,8 @@ export function SpatialPanel({
 
           <div className="absolute inset-4 border border-foreground/10 rounded-xl pointer-events-none" />
 
-          {spatialMode === '8d-solo' && actualParticipantCount === 1 && (() => {
+          {/* Virtual Orb for 8D Solo Mode */}
+          {spatialMode === '8d-solo' && allow8DSolo && (() => {
             // Visual orbit radius as a fraction of the container (35% of half-width)
             const VIS_RADIUS = 35; // in percentage units from center
             const angle = orbitData?.fromId === '8D_MODE' ? orbitData.frac : 0;
@@ -721,7 +722,7 @@ export function SpatialPanel({
                         <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
                           Spatial Room
                         </h2>
-                        {actualParticipantCount === 1 && (
+                        {allow8DSolo && (
                           <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
                             <button 
                               onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('multiplayer'); }}

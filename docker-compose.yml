@@ -61,17 +61,16 @@ services:
       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
 
-  studio:
-    image: ghcr.io/smanikanta21/syncbeats-server:${IMAGE_TAG:-latest}
+  visualizer:
+    image: ghcr.io/smanikanta21/syncbeats-db-visualizer:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${STUDIO_PORT:-5555}:${STUDIO_PORT:-5555}"
+      - "${STUDIO_PORT:-5555}:5555"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
-    command: npx prisma studio --port ${STUDIO_PORT:-5555} --browser none
 
 volumes:
   pgdata:

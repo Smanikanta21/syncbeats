@@ -121,6 +121,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   // ── Spatial Mode State ────────────────────────────────────────────────────────
   const [spatialMode, setSpatialMode] = useState<'multiplayer' | '8d-solo'>('multiplayer');
 
+  const allow8DSolo = participants.length === 1 || (participants.length > 0 && !!user?.id && participants.every(p => p.userId === user.id));
+
   // Spatial audio
   const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
@@ -132,7 +134,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     initialDevices: snapshot?.spatial ?? [],
     participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
-    is8DSoloMode: spatialMode === '8d-solo' && participants.length === 1,
+    is8DSoloMode: spatialMode === '8d-solo' && allow8DSolo,
   });
 
   // Build device sequence from all participants
@@ -200,6 +202,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
+          allow8DSolo={allow8DSolo}
           spatialDevices={spatialDevices}
           onUpdateSpatialPosition={updatePosition}
           syncUIState={syncUIState}
