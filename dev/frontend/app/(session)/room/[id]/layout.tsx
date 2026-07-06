@@ -1,9 +1,15 @@
 import { Metadata } from 'next';
 
-export const metadata: Metadata = {
-  title: 'Room',
+type Props = {
+  params: Promise<{ id: string }>;
 };
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const resolvedParams = await params;
+  return {
+    title: `Room ${resolvedParams.id}`,
+  };
+}
 export default function Layout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
