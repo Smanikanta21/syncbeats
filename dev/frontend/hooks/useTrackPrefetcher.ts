@@ -40,7 +40,7 @@ export interface PrefetchState {
 }
 
 interface UseTrackPrefetcherOptions {
-  snapshot: { queue: TrackQueueItem[] } | null;
+  snapshot: { queue: TrackQueueItem[], repeatMode?: "off" | "track" | "all", shuffle?: boolean } | null;
   currentTime: number;
   duration: number;
   roomId: string;
@@ -62,9 +62,20 @@ export function useTrackPrefetcher({
 
   // Derive the next track in the queue
   const nextTrack = (() => {
-    if (!snapshot?.queue) return null;
+    if (!snapshot?.queue || snapshot.queue.length === 0) return null;
     const idx = snapshot.queue.findIndex(q => q.isCurrent);
-    if (idx === -1 || idx >= snapshot.queue.length - 1) return null;
+    if (idx === -1) return null;
+    
+    if (snapshot.repeatMode === "track") {
+      return snapshot.queue[idx]; // Prefetch the same track! (though usually already cached)
+    }
+
+    if (idx >= snapshot.queue.length - 1) {
+      if (snapshot.repeatMode === "all") {
+        return snapshot.queue[0]; // Loop back to start
+      }
+      return null;
+    }
     return snapshot.queue[idx + 1] ?? null;
   })();
 

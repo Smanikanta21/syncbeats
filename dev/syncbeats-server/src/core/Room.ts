@@ -231,6 +231,8 @@ export class Room extends EventEmitter {
     const next = this.queue.find((item) => item.id === itemId);
     if (!next) return;
 
+    const isSameTrack = this.trackUrl === next.trackUrl;
+
     this.queue = this.queue.map((item) => ({ ...item, isCurrent: item.id === itemId }));
     this.trackUrl  = next.trackUrl;
     this.position  = 0;
@@ -238,9 +240,12 @@ export class Room extends EventEmitter {
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
     this.timeline.pauseOffset = 0;
-    for (const p of this.participants.values()) {
-      p.isReady = false;
-      p.isBlocked = false;
+    
+    if (!isSameTrack) {
+      for (const p of this.participants.values()) {
+        p.isReady = false;
+        p.isBlocked = false;
+      }
     }
     this.snapshotTime = Date.now();
     

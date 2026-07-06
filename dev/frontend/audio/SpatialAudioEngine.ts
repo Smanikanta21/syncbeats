@@ -51,6 +51,11 @@ export class SpatialAudioEngine {
 
   /** Master gain */
   private masterGain: GainNode | null = null;
+  
+  /** Acoustics Simulation */
+  private distanceFilter: BiquadFilterNode | null = null;
+  private reverbDelay: DelayNode | null = null;
+  private reverbGain: GainNode | null = null;
 
   private analyser: AnalyserNode | null = null;
   private dataArray: Uint8Array | null = null;
@@ -112,10 +117,28 @@ export class SpatialAudioEngine {
       this.source.disconnect(this.ctx.destination);
     } catch (e) {}
 
-    // Chain: source → masterGain → panner → stereoPanner → analyser → destination
+    // Acoustics nodes
+    this.distanceFilter = this.ctx.createBiquadFilter();
+    this.distanceFilter.type = 'lowpass';
+    this.distanceFilter.frequency.value = 22050; // default fully open
+
+    this.reverbDelay = this.ctx.createDelay(1.0);
+    this.reverbDelay.delayTime.value = 0.05; // 50ms early reflection
+    
+    this.reverbGain = this.ctx.createGain();
+    this.reverbGain.gain.value = 0; // default no reverb
+
+    // Chain: source → masterGain → distanceFilter → panner → stereoPanner → analyser → destination
     this.source.connect(this.masterGain);
-    this.masterGain.connect(this.panner);
+    this.masterGain.connect(this.distanceFilter);
+    this.distanceFilter.connect(this.panner);
     this.panner.connect(this.stereoPanner);
+    
+    // Reverb loop
+    this.panner.connect(this.reverbDelay);
+    this.reverbDelay.connect(this.reverbGain);
+    this.reverbGain.connect(this.stereoPanner); // mix back in
+    
     this.stereoPanner.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
 
@@ -428,6 +451,23 @@ export class SpatialAudioEngine {
     this.panner.positionX.linearRampToValueAtTime(x, t);
     this.panner.positionY.linearRampToValueAtTime(y, t);
     this.panner.positionZ.linearRampToValueAtTime(z, t);
+
+    // Realistic Spatial Acoustics simulation
+    const distance = Math.sqrt(x*x + y*y + z*z);
+    
+    // Air Absorption (Low-pass filter): 
+    // Closer than 10 units = fully open (22050Hz). Distant drops down to muffle sound.
+    if (this.distanceFilter) {
+      const freq = Math.max(400, 22050 - (distance * 400));
+      this.distanceFilter.frequency.linearRampToValueAtTime(freq, t);
+    }
+
+    // Distance Reverb (Early reflections):
+    // Near = dry, Far = wet (max 50% mix)
+    if (this.reverbGain) {
+      const reverbAmount = Math.min(0.5, Math.max(0, (distance - 15) / 100));
+      this.reverbGain.gain.linearRampToValueAtTime(reverbAmount, t);
+    }
 
     // Map X position to stereo pan [-1, +1]
     // SPATIAL_MULTIPLIER = 40, max useful range is ±40
