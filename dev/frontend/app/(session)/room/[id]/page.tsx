@@ -42,6 +42,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setParticipantVolume,
     leave,
     togglePrivate,
+    approveJoin,
+    denyJoin,
     setReady,
     prefetch,
   } = useRoom({
@@ -171,8 +173,20 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* Loading state */}
       <FullscreenLoader
         isVisible={authLoading || (!isConnected && !connectionError)}
-        message={isConnecting ? "Connecting to peers…" : "Loading…"}
+        message={joinStatus === "pending" ? "Waiting for host to let you in..." : isConnecting ? "Connecting to peers…" : "Loading…"}
       />
+
+      {/* Denied state */}
+      {connectionError && (
+        <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-[99999]">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </div>
+          <h2 className="text-xl font-bold mb-2">Join Request Denied</h2>
+          <p className="text-foreground/50 text-sm mb-6">The host declined your request to join this private room.</p>
+          <button onClick={() => router.push('/hub')} className="px-6 py-2 bg-foreground/10 rounded-full font-bold text-sm hover:bg-foreground/20 transition-colors">Return to Hub</button>
+        </div>
+      )}
 
       {/* Tap to enable audio (mobile / iOS AudioContext unlock) */}
       {isLocalPlayBlocked && (
@@ -241,6 +255,39 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             document.dispatchEvent(new CustomEvent("island:expand-add"));
           }}
         />
+      )}
+
+      {/* Host Join Requests UI */}
+      {isHost && pendingRequests.length > 0 && (
+        <div className="fixed top-4 right-4 z-[99999] flex flex-col gap-2 w-80">
+          {pendingRequests.map(req => (
+            <div key={req.socketId} className="bg-background/90 backdrop-blur-xl border border-foreground/10 p-4 rounded-2xl shadow-2xl flex flex-col gap-3 animate-in slide-in-from-right-8">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                  {req.displayName?.charAt(0).toUpperCase() || '?'}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-foreground">{req.displayName}</h4>
+                  <p className="text-[10px] text-foreground/50">Wants to join the room</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => denyJoin(req.socketId)}
+                  className="flex-1 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 font-bold text-xs hover:bg-red-500/20 transition-colors"
+                >
+                  Deny
+                </button>
+                <button 
+                  onClick={() => approveJoin(req.socketId, req.displayName)}
+                  className="flex-1 px-3 py-1.5 rounded-xl bg-blue-500 text-white font-bold text-xs hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </main>
   );

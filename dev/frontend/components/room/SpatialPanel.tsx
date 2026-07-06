@@ -482,7 +482,7 @@ export function SpatialPanel({
             const content = (
               <>
                 <div
-            className="absolute inset-0 opacity-[0.15]"
+            className="absolute inset-0 opacity-[0.15] transition-transform duration-1000" style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }}
             style={{
               backgroundImage:
                 "linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)",
@@ -491,7 +491,7 @@ export function SpatialPanel({
             }}
           />
 
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+          <svg className="absolute inset-0 w-full h-full pointer-events-none transition-transform duration-1000" style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }} xmlns="http://www.w3.org/2000/svg">
             <defs><pattern id="room-grid-ego" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" className="text-foreground/[0.04]" strokeWidth="1"/></pattern></defs>
             <rect width="100%" height="100%" fill="url(#room-grid-ego)" />
             <line x1="50%" y1="0" x2="50%" y2="100%" stroke="currentColor" className="text-foreground/[0.06]" strokeWidth="1"/>
@@ -660,10 +660,15 @@ export function SpatialPanel({
                             initial={{ opacity: 0, scale: 0 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0 }}
-                            className="absolute w-8 h-8 -ml-4 -mt-4 cursor-grab active:cursor-grabbing z-40 flex flex-col items-center justify-center bg-background/80 border border-foreground/15 rounded-lg shadow-lg backdrop-blur-sm group select-none touch-none"
+                            className="absolute w-8 h-8 -ml-4 -mt-4 cursor-grab active:cursor-grabbing z-40 flex flex-col items-center justify-center bg-background/80 border border-foreground/15 rounded-lg backdrop-blur-sm group select-none touch-none transition-all duration-300"
                             style={{
+
                               left: `${devPos.x * 100}%`,
                               top: `${devPos.y * 100}%`,
+                            
+                              transform: `scale(${1 + ((device.position?.elevation || 0) / 45) * 0.3})`,
+                              boxShadow: `0 ${((device.position?.elevation || 0) + 45) / 4}px ${((device.position?.elevation || 0) + 45) / 2}px rgba(0,0,0,0.3)`,
+                              zIndex: 40 + Math.floor(device.position?.elevation || 0),
                             }}
                             onMouseDown={(e) => handleMouseDown(device.deviceId, false, e)}
                             onTouchStart={(e) => handleMouseDown(device.deviceId, false, e)}
@@ -788,6 +793,31 @@ export function SpatialPanel({
               <div className="flex justify-between text-[10px] text-foreground/50 mt-1">
                 <span>Fast</span>
                 <span>Slow</span>
+              </div>
+            </div>
+
+            
+            {/* My Elevation Slider */}
+            <div className="flex-1 flex flex-col justify-center border-t border-foreground/10 pt-3 lg:pt-4">
+              <div className="text-[10px] text-foreground/50 font-bold mb-1">MY ELEVATION</div>
+              <input
+                type="range"
+                min="-45"
+                max="45"
+                step="1"
+                value={spatialDevices.find(d => d.deviceId === myDeviceId)?.position.elevation ?? 0}
+                onChange={(e) => {
+                  const myDev = spatialDevices.find(d => d.deviceId === myDeviceId);
+                  if (myDev) {
+                    onUpdatePosition(myDeviceId, { ...myDev.position, elevation: parseFloat(e.target.value) });
+                  }
+                }}
+                className="w-full accent-white"
+              />
+              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 font-bold">
+                <span>Floor</span>
+                <span>Ear</span>
+                <span>Ceil</span>
               </div>
             </div>
 
