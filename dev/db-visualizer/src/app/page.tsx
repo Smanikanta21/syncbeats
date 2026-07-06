@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { cn } from "../../../frontend/lib/utils";
+import { cn } from "@/lib/utils";
 
 type Field = { name: string; type: string; kind: string; isId: boolean; isRequired: boolean };
 type TableInfo = { name: string; dbName: string; fields: Field[]; count: number };
