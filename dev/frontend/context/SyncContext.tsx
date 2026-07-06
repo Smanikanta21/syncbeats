@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Participant, JoinRequest } from "../lib/types";
+import type { PrefetchState } from "../hooks/useTrackPrefetcher";
 
 interface SyncCtx {
   clockOffset: number;
@@ -22,6 +23,20 @@ interface SyncCtx {
   setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting') => void;
   isPrivate: boolean;
   setIsPrivate: (v: boolean) => void;
+  deviceSyncProgress: Record<string, number>;
+  setDeviceSyncProgress: (fn: (prev: Record<string, number>) => Record<string, number>) => void;
+  play: () => void;
+  pause: () => void;
+  seek: (ms: number) => void;
+  nextTrack: () => void;
+  prevTrack: () => void;
+  setPlay: (fn: () => void) => void;
+  setPause: (fn: () => void) => void;
+  setSeek: (fn: (ms: number) => void) => void;
+  setNextTrack: (fn: () => void) => void;
+  setPrevTrack: (fn: () => void) => void;
+  prefetch: PrefetchState;
+  setPrefetch: (v: PrefetchState) => void;
 }
 
 const Ctx = createContext<SyncCtx>({
@@ -34,6 +49,11 @@ const Ctx = createContext<SyncCtx>({
   hostId: null, setHostId: () => {},
   joinStatus: 'connecting', setJoinStatus: () => {},
   isPrivate: false, setIsPrivate: () => {},
+  deviceSyncProgress: {}, setDeviceSyncProgress: () => {},
+  play: () => {}, pause: () => {}, seek: () => {}, nextTrack: () => {}, prevTrack: () => {},
+  setPlay: () => {}, setPause: () => {}, setSeek: () => {}, setNextTrack: () => {}, setPrevTrack: () => {},
+  prefetch: { nextTrackProgress: 0, nextTrackTitle: null, isPrefetching: false },
+  setPrefetch: () => {},
 });
 
 export function SyncProvider({ children }: { children: ReactNode }) {
@@ -46,6 +66,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
+  const [play, setPlay] = useState<() => void>(() => () => {});
+  const [pause, setPause] = useState<() => void>(() => () => {});
+  const [seek, setSeek] = useState<(ms: number) => void>(() => () => {});
+  const [nextTrack, setNextTrack] = useState<() => void>(() => () => {});
+  const [prevTrack, setPrevTrack] = useState<() => void>(() => () => {});
+  const [prefetch, setPrefetch] = useState<PrefetchState>({ nextTrackProgress: 0, nextTrackTitle: null, isPrefetching: false });
 
   return (
     <Ctx.Provider value={{
@@ -58,6 +85,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       hostId, setHostId,
       joinStatus, setJoinStatus,
       isPrivate, setIsPrivate,
+      deviceSyncProgress, setDeviceSyncProgress,
+      play, setPlay, pause, setPause, seek, setSeek, nextTrack, setNextTrack, prevTrack, setPrevTrack,
+      prefetch, setPrefetch,
     }}>
       {children}
     </Ctx.Provider>

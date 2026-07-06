@@ -19,20 +19,19 @@ services:
       - pgdata:/var/lib/postgresql/data
 
 
-  studio:
-    container_name: studio-1
+  visualizer:
+    container_name: visualizer-1
     build:
-      context: ./dev/syncbeats-server
+      context: ./dev/db-visualizer
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${STUDIO_PORT:-5555}:${STUDIO_PORT:-5555}"
+      - "${STUDIO_PORT:-5555}:5555"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-syncbeats}
-    command: npx prisma studio --port ${STUDIO_PORT:-5555} --browser none
 
 volumes:
   pgdata:

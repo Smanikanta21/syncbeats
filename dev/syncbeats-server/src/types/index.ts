@@ -7,7 +7,7 @@ export interface Participant {
   displayName: string;
   joinedAt:    number; // epoch ms
   isReady:     boolean;
-  volume:      number; // 0-100
+  volume:      number;
   isBlocked?:  boolean;
   userId?:     string;
   outputDeviceName?: string;
@@ -26,6 +26,7 @@ export interface TrackQueueItem {
   addedBy:    string;
   addedByName?: string;
   createdAt:  number;
+  sizeBytes?: number;
 }
 
 export interface RoomSnapshot {
@@ -43,6 +44,8 @@ export interface RoomSnapshot {
   isPlaying?:   boolean;
   pendingPlay?: boolean;
   isPrivate?:   boolean;
+  shuffle:      boolean;
+  repeatMode:   "off" | "track" | "all";
 }
 
 export interface SpatialPosition {

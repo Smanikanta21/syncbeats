@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
+import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { getSocket } from '../lib/socket';
 import { roomsApi, RoomDetailsResponse } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
+import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -30,22 +32,29 @@ interface UseRoomReturn {
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
   incomingTrack: { title: string, progress: number } | null;
+  deviceSyncProgress: Record<string, number>;
   togglePrivate: (isPrivate: boolean) => void;
   approveJoin:  (targetSocketId: string, displayName: string) => void;
   denyJoin:     (targetSocketId: string) => void;
   notifyHost:   () => void;
+  syncInFlightRef: React.MutableRefObject<boolean>;
+  hasClockSync: React.MutableRefObject<boolean>;
+  /** Current network quality tier for this device — updates reactively */
+  networkQuality: NetworkQuality;
+  /** Smart next-track prefetch state */
+  prefetch: PrefetchState;
 }
 
-const NTP_SAMPLE_COUNT         = 30;    // High sample count for extreme precision
-const NTP_RTT_GATE_MS          = 300;   // Reject noisy pings (>300ms round-trip)
-const NTP_PING_GAP_MS          = 20;    // Faster ping burst for accuracy
-const NTP_RESYNC_INTERVAL_MS   = 5_000; // Re-sync every 5s to combat clock drift
-const DRIFT_CHECK_INTERVAL_MS  = 200;   // Check drift 5 times per second
-const DRIFT_HARD_SEEK_MS       = 150;   // Crossfade seek if off by >150ms
-const DRIFT_SOFT_SEEK_MS       = 10;    // Soft correction via playback rate if off by >10ms
+// NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
+// See hooks/useAdaptiveSync.ts for the tier table and EWMA blending logic.
 
 export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoomReturn {
+  // ── Adaptive network-quality engine ──────────────────────────────────────
+  // paramsRef holds all 7 NTP/drift constants and updates after every burst.
+  // networkQuality is a reactive string tier for UI display.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is module-singleton
   const socket = getSocket();
+  const { paramsRef, networkQuality, reportBurst } = useAdaptiveSync(socket);
   const audio  = useAudio();
 
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
@@ -57,6 +66,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -77,8 +87,19 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   }, [socket, roomId]);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
+    if (trackUrl) {
+      console.log("[DEBUG] getTrackTitle searching for url:", trackUrl);
+      console.log("[DEBUG] queue urls:", queue.map(i => i.trackUrl));
+      const match = queue.find((item) => item.trackUrl === trackUrl);
+      if (match?.title) {
+        console.log("[DEBUG] getTrackTitle found match:", match.title);
+        return match.title;
+      }
+    }
+    
     const currentQueueItem = queue.find((item) => item.isCurrent);
     if (currentQueueItem?.title) return currentQueueItem.title;
+    
     if (!trackUrl) return "Unknown Track";
     const fileName = trackUrl.split('/').pop() ?? '';
     return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
@@ -112,6 +133,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         queue:        details.live.queue as TrackQueueItem[],
         spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
         isPrivate:    details.live.isPrivate,
+        shuffle:      details.live.shuffle ?? false,
+        repeatMode:   details.live.repeatMode ?? 'off',
       };
       parts = details.live.participants as Participant[];
     } else if (details.db) {
@@ -130,6 +153,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         queue:        details.queue as TrackQueueItem[],
         spatial:      [],
         isPrivate:    details.db.is_private,
+        shuffle:      details.db.shuffle ?? false,
+        repeatMode:   (details.db.repeat_mode as "off" | "track" | "all") ?? 'off',
       };
       parts = details.participants.map(p => ({ ...p, isReady: false }));
     }
@@ -168,21 +193,25 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     if (syncInFlightRef.current) return;
     syncInFlightRef.current = true;
 
-    const samples: number[] = [];
+    // Read adaptive params snapshot for this burst
+    const p = paramsRef.current; // paramsRef is a stable ref — no dep needed
+    const offsetSamples: number[] = [];
+    const rttSamples:    number[] = []; // ALL rtts (including rejected) for quality classification
 
-    for (let i = 0; i < NTP_SAMPLE_COUNT; i++) {
+    for (let i = 0; i < p.NTP_SAMPLE_COUNT; i++) {
       const seq = ++seqRef.current;
       const { t0, t1, t3 } = await pingOnce(seq);
       const rtt = t3 - t0;
-      if (rtt <= NTP_RTT_GATE_MS) {
+      rttSamples.push(rtt); // always collect, even noisy ones
+      if (rtt <= p.NTP_RTT_GATE_MS) {
         const offset = t1 - (t0 + t3) / 2;
-        samples.push(offset);
+        offsetSamples.push(offset);
       }
-      await new Promise(r => setTimeout(r, NTP_PING_GAP_MS));
+      await new Promise(r => setTimeout(r, p.NTP_PING_GAP_MS));
     }
 
-    if (samples.length > 0) {
-      const sorted = [...samples].sort((a, b) => a - b);
+    if (offsetSamples.length > 0) {
+      const sorted = [...offsetSamples].sort((a, b) => a - b);
       const q1 = sorted[Math.floor(sorted.length * 0.25)];
       const q3 = sorted[Math.floor(sorted.length * 0.75)];
       const filtered = sorted.filter(o => o >= q1 && o <= q3);
@@ -193,14 +222,36 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       hasClockSync.current = true;
     }
 
-    syncInFlightRef.current = false;
-  }, [pingOnce]);
+    // Feed raw RTTs into the adaptive engine — updates params and reports stats to server
+    reportBurst(rttSamples, roomId);
 
+    syncInFlightRef.current = false;
+  }, [pingOnce, reportBurst, roomId]); // paramsRef is a stable ref, not listed
+
+  // NTP resync — self-scheduling so the interval dynamically follows paramsRef.
+  // Each burst schedules the next one after it finishes, reading the current
+  // adaptive resync delay at that point in time.
   useEffect(() => {
-    // Run NTP resync continuously
-    const interval = setInterval(runNtpBurst, NTP_RESYNC_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [runNtpBurst]);
+    let cancelled = false;
+    let timer: number;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      // Read delay fresh from adaptive params at scheduling time
+      timer = window.setTimeout(async () => {
+        if (!cancelled) {
+          await runNtpBurst();
+          scheduleNext();
+        }
+      }, paramsRef.current.NTP_RESYNC_INTERVAL_MS);
+    };
+
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [runNtpBurst]); // paramsRef is a stable ref, safe to omit
 
   // Handle drift correction with performance.now() for sub-ms precision
   useEffect(() => {
@@ -233,6 +284,9 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       const driftMs = Math.abs(drift) * 1000;
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
+      // Read adaptive tolerances — poor-network devices get wider windows
+      // to prefer rate-correction over hard seeks, reducing audio glitches
+      const { DRIFT_HARD_SEEK_MS, DRIFT_SOFT_SEEK_MS } = paramsRef.current;
       const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
       const softSeekTolerance = isYoutube ? 100 : DRIFT_SOFT_SEEK_MS;
 
@@ -307,7 +361,18 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       }
     };
 
-    const driftInterval = setInterval(correctDrift, DRIFT_CHECK_INTERVAL_MS);
+    // Drift check — 50 ms base tick with an accumulator so the effective
+    // check frequency adapts to paramsRef.DRIFT_CHECK_INTERVAL_MS without
+    // needing to restart the interval.
+    const BASE_TICK_MS = 50;
+    let accumulated = 0;
+    const driftInterval = setInterval(() => {
+      accumulated += BASE_TICK_MS;
+      if (accumulated >= paramsRef.current.DRIFT_CHECK_INTERVAL_MS) {
+        accumulated = 0;
+        correctDrift();
+      }
+    }, BASE_TICK_MS);
 
     const handleYtBufferEnd = () => {
       setTimeout(correctDrift, 200);
@@ -318,7 +383,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       clearInterval(driftInterval);
       document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
     };
-  }, []);
+  }, []); // paramsRef is a stable ref, correctDrift is a closure — intentional empty dep
 
   useEffect(() => {
     let cancelled = false;
@@ -336,7 +401,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       runNtpBurst();
     };
 
-    const handleDisconnect = () => setIsConnected(false);
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      audioRef.current.pauseAt(audioRef.current.getTruePosition());
+    };
 
     if (socket.connected) handleConnect();
     else socket.connect();
@@ -373,7 +441,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:participantLeft', handleParticipantLeft);
 
-    const handleUploadProgress = ({ title, progress }: { title: string, progress: number }) => {
+    const handleUploadProgress = ({ title, progress }: { title: string; progress: number }) => {
       if (progress >= 100) {
         setIncomingTrack(null);
       } else {
@@ -381,6 +449,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       }
     };
     socket.on('room:upload_progress', handleUploadProgress);
+
+    const handleSyncProgress = ({ socketId, progress }: { socketId: string; progress: number }) => {
+      setDeviceSyncProgress(prev => ({ ...prev, [socketId]: progress }));
+    };
+    socket.on('room:sync_progress', handleSyncProgress);
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);
@@ -441,6 +514,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:hostJoinRequest', handleHostJoinRequest);
 
+    const handleJoinRequestResolved = ({ targetSocketId }: { targetSocketId: string }) => {
+      setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
+    };
+    socket.on('room:joinRequestResolved', handleJoinRequestResolved);
+
     const handleHostChanged = (newHostId: string | null) => {
       setSnapshot(prev => prev ? { ...prev, hostId: newHostId } : prev);
     };
@@ -458,11 +536,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       if (!cancelled && !snapshotRef.current) applyRoomDetails(details);
     }).catch(() => {});
 
-    const ntpInterval = setInterval(runNtpBurst, NTP_RESYNC_INTERVAL_MS);
+    // Note: NTP resync is owned by the dedicated self-scheduling useEffect above.
+    // No duplicate interval here.
 
     return () => {
       cancelled = true;
-      clearInterval(ntpInterval);
       socket.emit('room:leave', { roomId });
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -478,6 +556,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:joinApproved', handleJoinApproved);
       socket.off('room:joinDenied', handleJoinDenied);
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
+      socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);
       socket.off('device:ping', handleDevicePing);
       socket.off('error', handleError);
@@ -521,27 +600,39 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     return () => clearInterval(checkInterval);
   }, [roomId, socket]);
 
+  // Sync local ready state with server if they differ (e.g. on repeat track)
+  useEffect(() => {
+    if (!isConnected || !currentSocketId) return;
+    const me = participants.find(p => p.socketId === currentSocketId);
+    if (!me) return;
+
+    const localReady = audioRef.current?.isReady && !audioRef.current?.isBuffering;
+    if (me.isReady === false && localReady) {
+      setReady(true);
+    }
+  }, [participants, isConnected, currentSocketId, setReady]);
+
   useEffect(() => {
     if (!currentSocketId || !snapshot) return;
     const me = snapshot.participants.find(p => p.socketId === currentSocketId);
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
 
-  // Pre-seed the next track in the queue
-  useEffect(() => {
-    if (!snapshot || !snapshot.queue || snapshot.queue.length === 0) return;
-    
-    const currentIndex = snapshot.queue.findIndex(q => q.isCurrent);
-    if (currentIndex === -1 || currentIndex >= snapshot.queue.length - 1) return;
-    
-    const nextTrack = snapshot.queue[currentIndex + 1];
-    if (nextTrack && nextTrack.trackUrl && audioRef.current.prefetchTrack) {
-      audioRef.current.prefetchTrack(nextTrack.trackUrl);
-    }
-  }, [snapshot?.queue]);
+  // ── Smart track prefetcher ──────────────────────────────────────────────────
+  const prefetch = useTrackPrefetcher({
+    snapshot,
+    currentTime: audio.currentTime,
+    duration: audio.duration,
+    roomId,
+  });
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
-  const pause = useCallback(() => socket.emit('playback:pause', { roomId }), [socket, roomId]);
+  const pause = useCallback(() => {
+    socket.emit('playback:pause', {
+      roomId,
+      positionMs: Math.round(audioRef.current.getTruePosition() * 1000)
+    });
+  }, [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
@@ -564,7 +655,5 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady,
-    setParticipantVolume, leave, incomingTrack, togglePrivate, approveJoin, denyJoin, notifyHost
-  };
+  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }

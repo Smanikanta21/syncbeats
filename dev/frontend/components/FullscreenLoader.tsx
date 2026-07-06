@@ -21,7 +21,7 @@ export function FullscreenLoader({ isVisible, message, isMainEntry = false }: Fu
         >
           {/* Subtle animated background */}
           <div className="absolute inset-0 pointer-events-none opacity-50">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] bg-violet-600/20 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-3000" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] bg-sky-600/20 blur-[120px] rounded-full mix-blend-screen animate-pulse duration-3000" />
           </div>
 
           <motion.div

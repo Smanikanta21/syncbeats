@@ -16,16 +16,19 @@ export class Room extends EventEmitter {
   private spatial:      Map<string, SpatialPosition> = new Map();
   private snapshotTime: number                 = Date.now();
   private isPrivate:    boolean                = false;
+  private shuffle:      boolean                = false;
+  private repeatMode:   "off" | "track" | "all" = "off";
   private timeline = {
     startEpoch: null as number | null,
     pauseOffset: 0,
     isPlaying: false
   };
+  private readyTimeout: NodeJS.Timeout | null = null;
 
   constructor(public readonly roomId: string) {
     super();
   }
-
+  
   setParticipantVolume(socketId: string, volume: number): void {
     const participant = this.participants.get(socketId);
     if (!participant) return;
@@ -41,11 +44,15 @@ export class Room extends EventEmitter {
     playbackState: string;
     positionMs: number;
     queue: TrackQueueItem[];
+    shuffle?: boolean;
+    repeatMode?: string;
   }): void {
     this.hostId   = data.hostId;
     this.queue    = [...data.queue].sort((a, b) => a.queueIndex - b.queueIndex);
     const current = this.queue.find((item) => item.isCurrent) ?? null;
     this.trackUrl = current?.trackUrl ?? data.trackUrl;
+    this.shuffle  = data.shuffle ?? false;
+    this.repeatMode = (data.repeatMode as "off" | "track" | "all") ?? "off";
     this.state    = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING
                   : data.playbackState === 'PAUSED'  ? PlaybackState.PAUSED
                   : PlaybackState.IDLE;
@@ -105,6 +112,52 @@ export class Room extends EventEmitter {
     this.emit('pause', { pauseOffset: this.timeline.pauseOffset });
     this.emit('stateChanged', this.snapshot());
   }
+  
+  // Directly syncs the room state from a client-emitted playback:schedule event
+  syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string): void {
+    this.trackUrl = trackUrl;
+    this.timeline.isPlaying = true;
+    this.timeline.startEpoch = startEpoch - positionMs;
+    this.timeline.pauseOffset = 0;
+    this.state = PlaybackState.PLAYING;
+    this.position = positionMs;
+    this.snapshotTime = Date.now();
+    this.pendingPlay = false;
+    
+    this.emit('schedule', {
+        // Mobile App Keys
+        positionMs: positionMs,
+        startTime: startEpoch,
+        senderId: senderId,
+        // Web App Keys
+        atEpoch: startEpoch,
+        fromPosition: positionMs / 1000,
+        startEpoch: this.timeline.startEpoch,
+        // Shared
+        trackUrl: trackUrl,
+    });
+    this.emit('stateChanged', this.snapshot());
+  }
+
+  // Directly syncs the room state from a client-emitted playback:pause event
+  syncPause(positionMs: number, senderId?: string): void {
+    this.pendingPlay = false;
+    this.timeline.startEpoch = null;
+    this.timeline.isPlaying = false;
+    this.timeline.pauseOffset = positionMs / 1000;
+    this.position = positionMs;
+    this.state = PlaybackState.PAUSED;
+    this.snapshotTime = Date.now();
+    
+    this.emit('pause', { 
+        // Mobile App Keys
+        positionMs: positionMs,
+        senderId: senderId,
+        // Web App Keys
+        pauseOffset: this.timeline.pauseOffset
+    });
+    this.emit('stateChanged', this.snapshot());
+  }
 
   seek(_requesterId: string, positionMs: number): void {
     const positionSec = positionMs / 1000;
@@ -133,16 +186,16 @@ export class Room extends EventEmitter {
   addToQueue(item: TrackQueueItem): void {
     const withoutExisting = this.queue.filter((q) => q.id !== item.id);
     this.queue = [...withoutExisting, item].sort((a, b) => a.queueIndex - b.queueIndex);
-    this.emit('queueChanged', this.queueSnapshot());
     if (item.isCurrent) {
       this.setCurrentQueueItem(item.id, true);
     }
+    this.emit('queueChanged', this.queueSnapshot());
   }
 
   syncQueue(queue: TrackQueueItem[], currentItemId: string | null): void {
     this.queue = [...queue].sort((a, b) => a.queueIndex - b.queueIndex);
-    this.emit('queueChanged', this.queueSnapshot());
     this.setCurrentQueueItem(currentItemId, true);
+    this.emit('queueChanged', this.queueSnapshot());
   }
 
   /** Reorder the queue without interrupting current playback. */
@@ -151,6 +204,12 @@ export class Room extends EventEmitter {
     this.emit('queueChanged', this.queueSnapshot());
     // Emit a fresh snapshot so all clients see the new order,
     // but do NOT touch trackUrl / position / state.
+    this.emit('stateChanged', this.snapshot());
+  }
+
+  updatePlaybackSettings(shuffle?: boolean, repeatMode?: "off" | "track" | "all"): void {
+    if (shuffle !== undefined) this.shuffle = shuffle;
+    if (repeatMode !== undefined) this.repeatMode = repeatMode;
     this.emit('stateChanged', this.snapshot());
   }
 
@@ -172,6 +231,8 @@ export class Room extends EventEmitter {
     const next = this.queue.find((item) => item.id === itemId);
     if (!next) return;
 
+    const isSameTrack = this.trackUrl === next.trackUrl;
+
     this.queue = this.queue.map((item) => ({ ...item, isCurrent: item.id === itemId }));
     this.trackUrl  = next.trackUrl;
     this.position  = 0;
@@ -179,11 +240,33 @@ export class Room extends EventEmitter {
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
     this.timeline.pauseOffset = 0;
-    for (const p of this.participants.values()) {
-      p.isReady = false;
-      p.isBlocked = false;
+    
+    if (!isSameTrack) {
+      for (const p of this.participants.values()) {
+        p.isReady = false;
+        p.isBlocked = false;
+      }
     }
     this.snapshotTime = Date.now();
+    
+    if (this.readyTimeout) clearTimeout(this.readyTimeout);
+    this.readyTimeout = setTimeout(() => {
+      let changed = false;
+      for (const p of this.participants.values()) {
+        if (!p.isReady && !p.isBlocked) {
+          p.isBlocked = true;
+          changed = true;
+          console.log(`[Room ${this.roomId}] Participant ${p.socketId} timed out waiting for ready, marking as blocked.`);
+        }
+      }
+      if (changed) {
+        this.emit('stateChanged', this.snapshot());
+        if (this.pendingPlay && this.allReady()) {
+          this._startPlayback();
+        }
+      }
+    }, 15000);
+
     if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
     this.emit('trackSet', { trackUrl: next.trackUrl, title: next.title });
     this.emit('stateChanged', this.snapshot());
@@ -195,9 +278,16 @@ export class Room extends EventEmitter {
     const p = this.participants.get(socketId);
     if (!p) return;
     p.isReady = ready;
+    if (ready) {
+      p.isBlocked = false;
+    }
     this.emit('stateChanged', this.snapshot());
 
     if (this.allReady()) {
+      if (this.readyTimeout) {
+        clearTimeout(this.readyTimeout);
+        this.readyTimeout = null;
+      }
       this.emit('allReady');
       if (this.pendingPlay) {
         this._startPlayback();
@@ -297,6 +387,8 @@ export class Room extends EventEmitter {
       isPlaying:    this.timeline.isPlaying,
       pendingPlay:  this.pendingPlay,
       isPrivate:    this.isPrivate,
+      shuffle:      this.shuffle,
+      repeatMode:   this.repeatMode
     };
   }
 

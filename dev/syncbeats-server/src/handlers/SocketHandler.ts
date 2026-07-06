@@ -9,6 +9,8 @@ import {
 } from '../types';
 
 export class SocketHandler {
+  private nextDebounce = new Map<string, number>();
+
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
@@ -108,12 +110,15 @@ export class SocketHandler {
         const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
 
         if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
-          socket.emit('room:joinPendingApproval', { roomId });
-          const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
-          hostSockets.forEach(p => {
-            this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
-          });
-          return;
+          const hasJoinedBefore = await this.roomRepo.hasParticipantPreviouslyJoined(roomId, socket.data.userId);
+          if (!hasJoinedBefore) {
+            socket.emit('room:joinPendingApproval', { roomId });
+            const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === snapshot.hostId);
+            hostSockets.forEach(p => {
+              this.io.to(p.socketId).emit('room:hostJoinRequest', { socketId: socket.id, userId: socket.data.userId, displayName });
+            });
+            return;
+          }
         }
         // -------------------------
 
@@ -153,6 +158,30 @@ export class SocketHandler {
       room.setIsPrivate(isPrivate);
     });
 
+    socket.on('room:toggleShuffle', async ({ roomId, shuffle }: { roomId: string, shuffle: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        await this.roomRepo.updatePlaybackSettings(roomId, { shuffle });
+        room.updatePlaybackSettings(shuffle, undefined);
+        const newQueue = await this.roomRepo.getQueue(roomId);
+        room.updateQueueOrder(newQueue);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to update shuffle mode' });
+      }
+    });
+
+    socket.on('room:toggleRepeat', async ({ roomId, repeatMode }: { roomId: string, repeatMode: "off" | "track" | "all" }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      try {
+        await this.roomRepo.updatePlaybackSettings(roomId, { repeatMode });
+        room.updatePlaybackSettings(undefined, repeatMode);
+      } catch (err) {
+        socket.emit('error', { message: 'Failed to update repeat mode' });
+      }
+    });
+
     socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room || room.snapshot().hostId !== socket.data.userId) return;
@@ -166,6 +195,12 @@ export class SocketHandler {
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
+
+      // Clear the notification from all host devices
+      const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === room.snapshot().hostId);
+      hostSockets.forEach(p => {
+        this.io.to(p.socketId).emit('room:joinRequestResolved', { targetSocketId });
+      });
     });
 
     socket.on('room:denyJoin', ({ roomId, targetSocketId }: { roomId: string, targetSocketId: string }) => {
@@ -174,6 +209,12 @@ export class SocketHandler {
 
       this.io.to(targetSocketId).emit('room:joinDenied');
       console.log(`[Room ${roomId}] Host denied ${targetSocketId}`);
+
+      // Clear the notification from all host devices
+      const hostSockets = room.snapshot().participants.filter((p: any) => p.userId === room.snapshot().hostId);
+      hostSockets.forEach(p => {
+        this.io.to(p.socketId).emit('room:joinRequestResolved', { targetSocketId });
+      });
     });
 
     socket.on('room:notifyHost', ({ roomId, displayName }: { roomId: string, displayName: string }) => {
@@ -194,11 +235,26 @@ export class SocketHandler {
       room.updateParticipantDevice(socket.id, deviceName, deviceType);
     });
 
-    socket.on('device:ping', ({ targetSocketId, message }: { targetSocketId: string, message?: string }) => {
-      this.io.to(targetSocketId).emit('device:ping', { message: message || "Ping!", from: socket.id });
+    socket.on('device:register', ({ deviceKey }: { deviceKey: string }) => {
+      socket.join(deviceKey);
+      console.log(`[WS] socket ${socket.id} registered for deviceKey: ${deviceKey}`);
+    });
+
+    socket.on('device:ping', ({ targetDeviceKey, message }: { targetDeviceKey: string, message?: string }) => {
+      this.io.to(targetDeviceKey).emit('device:ping', { message: message || "Ping!", fromDeviceKey: socket.data.deviceKey || socket.id });
     });
 
     // ── Playback — any participant can control ────────────────────────────
+
+    socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string }) => {
+      try {
+        const room = this.roomManager.get(roomId);
+        if (!room) return;
+        room.syncSchedule(trackUrl, positionMs, startTime, senderId);
+      } catch (err) {
+        socket.emit('error', { message: (err as Error).message });
+      }
+    });
 
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
@@ -210,11 +266,12 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:pause', ({ roomId, positionMs }: { roomId: string; positionMs?: number }) => {
+    socket.on('playback:pause', ({ roomId, positionMs, senderId }: { roomId: string; positionMs?: number, senderId?: string }) => {
       try {
         const room = this.roomManager.get(roomId);
         if (!room) return;
-        room.pause(socket.id, positionMs);
+        const pos = positionMs !== undefined ? positionMs : room.computeCurrentPosition();
+        room.syncPause(pos, senderId);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -249,7 +306,32 @@ export class SocketHandler {
       }
     });
 
+    // ── Global Account Sync ──────────────────────────────────────────────────
+
+    socket.on('sync:forceAll', async () => {
+      const userId = socket.data.userId;
+      if (!userId) return;
+
+      // Find all sockets connected with this userId
+      const sockets = await this.io.fetchSockets();
+      const userSockets = sockets.filter(s => s.data.userId === userId);
+
+      userSockets.forEach(s => {
+        // Emit to every socket (including the sender, to ensure it turns on too)
+        s.emit('sync:forceEnable');
+      });
+      console.log(`[WS] Force Syncing all ${userSockets.length} devices for user ${userId}`);
+    });
+
     socket.on('playback:next', async ({ roomId }: { roomId: string }) => {
+      const now = Date.now();
+      const last = this.nextDebounce.get(roomId) || 0;
+      if (now - last < 2000) {
+        console.log(`[WS] Ignoring duplicate playback:next for room ${roomId}`);
+        return;
+      }
+      this.nextDebounce.set(roomId, now);
+
       const room = this.roomManager.get(roomId);
       if (!room) return;
       try {
@@ -263,6 +345,14 @@ export class SocketHandler {
     });
 
     socket.on('playback:prev', async ({ roomId }: { roomId: string }) => {
+      const now = Date.now();
+      const last = this.nextDebounce.get(roomId) || 0;
+      if (now - last < 2000) {
+        console.log(`[WS] Ignoring duplicate playback:prev for room ${roomId}`);
+        return;
+      }
+      this.nextDebounce.set(roomId, now);
+
       const room = this.roomManager.get(roomId);
       if (!room) return;
       try {
@@ -337,6 +427,32 @@ export class SocketHandler {
 
     socket.on('room:upload_progress', ({ roomId, title, progress }: { roomId: string, title: string, progress: number }) => {
       socket.to(roomId).emit('room:upload_progress', { title, progress });
+    });
+
+    socket.on('room:sync_progress', ({ roomId, progress }: { roomId: string, progress: number }) => {
+      // Forward to other participants
+      socket.to(roomId).emit('room:deviceSyncProgress', { socketId: socket.id, progress });
+    });
+
+    // Chat & Reactions
+    socket.on('room:chat', ({ roomId, message }: { roomId: string, message: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      const p = room.snapshot().participants.find(p => p.socketId === socket.id);
+      if (!p) return;
+      
+      this.io.to(roomId).emit('room:chat', {
+        id: crypto.randomUUID(),
+        socketId: socket.id,
+        displayName: p.displayName,
+        message,
+        timestamp: Date.now()
+      });
+    });
+
+    socket.on('room:reaction', ({ roomId, emoji }: { roomId: string, emoji: string }) => {
+      // Broadcast to everyone else in the room (sender already spawns it locally)
+      socket.to(roomId).emit('room:reaction', { socketId: socket.id, emoji });
     });
 
     // ── NTP sync ─────────────────────────────────────────────────────────

@@ -13,7 +13,8 @@ import { SocketHandler }       from './handlers/SocketHandler';
 
 import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
-import { createDeviceRoutes }  from './handlers/DeviceRoutes';
+import { createDeviceRoutes } from './handlers/DeviceRoutes';
+import { createSearchRoutes }  from './handlers/SearchRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
@@ -150,6 +151,7 @@ export class SyncBeatsServer {
     this.app.use('/auth',    createAuthRoutes());
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
+    this.app.use('/search',  createSearchRoutes());
   }
 
   private setupSocketIO(): void {
@@ -159,12 +161,13 @@ export class SyncBeatsServer {
   }
 
   private setupRoomCleanup(): void {
-    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+    // Rooms expire 30 days after their last access (timer resets on every join)
+    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // run every hour
 
     const cleanup = async () => {
       try {
-        const cutoff = new Date(Date.now() - ONE_DAY_MS);
+        const cutoff = new Date(Date.now() - ONE_MONTH_MS);
         const candidates = await this.roomRepo.listOlderThan(cutoff);
 
         for (const room of candidates) {

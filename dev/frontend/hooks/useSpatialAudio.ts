@@ -43,15 +43,21 @@ interface UseSpatialAudioOptions {
   initialDevices?: DeviceSpatialState[];
   participants?: any[];
   isPlaying?: boolean;
+  is8DSoloMode?: boolean;
+  onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
 }
 
 interface UseSpatialAudioReturn {
   updatePosition: (deviceId: string, position: SpatialPosition) => void;
+  syncUIState: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => void;
   setDeviceGain: (deviceId: string, gain: number) => void;
   setMasterGain: (gain: number) => void;
+  setDeviceSequence: (deviceIds: string[]) => void;
+  setOrbitSpeed: (secondsPerDevice: number) => void;
+  orbitSpeed: number;
   engineState: AudioContextState | 'uninitialised';
   resumeAudio: () => Promise<void>;
-  /** Current list of device spatial states for rendering the OrbitUI */
+  /** Current list of device spatial states for rendering the UI */
   spatialDevices: DeviceSpatialState[];
 }
 
@@ -65,17 +71,27 @@ export function useSpatialAudio({
   initialDevices = [],
   participants = [],
   isPlaying = false,
+  is8DSoloMode = false,
+  onOrbitUpdate,
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
   const initialisedRef = useRef(false);
 
-  // Sync auto-rotate state
+  // Sync auto-rotate state — set mode FIRST, then start/stop orbit
   useEffect(() => {
+    engine.set8DSoloMode(is8DSoloMode);
     engine.setAutoRotate(isPlaying);
-  }, [isPlaying, engine]);
+  }, [isPlaying, is8DSoloMode, engine]);
+
+  useEffect(() => {
+    if (onOrbitUpdate) {
+      engine.setOrbitUpdateCallback(onOrbitUpdate);
+    }
+  }, [onOrbitUpdate, engine]);
 
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
   const [spatialDevices, setSpatialDevices] = useState<DeviceSpatialState[]>(initialDevices);
+  const [orbitSpeed, setOrbitSpeedState] = useState(3);
 
   // Track which snapshot we last applied to avoid re-running on unrelated re-renders
   const lastSnapshotRef = useRef<string>("");
@@ -114,22 +130,41 @@ export function useSpatialAudio({
       let changed = false;
       const newDevices = [...prev];
       
-      // Add missing participants — place them on actual orbit rings
-      // Orbit radii: 1 (inner), 2 (middle), 3 (outer) — matching MAX_RADIUS / 3 increments
+      // Add missing participants
       const ORBIT_RINGS = [1, 2, 3] as const;
       participants.forEach(p => {
         if (!newDevices.some(d => d.deviceId === p.socketId)) {
-          const idx = newDevices.length;
-          // Assign to a ring based on device index (round-robin through rings)
-          const ring = ORBIT_RINGS[idx % ORBIT_RINGS.length];
-          // Count how many devices are already on this ring to space them evenly
-          const devicesOnRing = newDevices.filter(d => d.position.radius === ring).length;
-          // Spread devices on the same ring evenly by expected count on that ring
-          const totalOnRing = Math.ceil(participants.length / ORBIT_RINGS.length);
-          const angle = devicesOnRing > 0
-            ? (devicesOnRing / Math.max(totalOnRing, 1)) * 2 * Math.PI
-            : (idx / Math.max(participants.length, 1)) * 2 * Math.PI;
-          const defaultPos = { angle, radius: ring, elevation: 0 };
+          const userId = p.userId ?? p.socketId;
+          const existingDeviceForUser = newDevices.find(d => {
+            const existingP = participants.find(ep => ep.socketId === d.deviceId);
+            const existingUserId = existingP ? (existingP.userId ?? existingP.socketId) : d.deviceId;
+            return existingUserId === userId;
+          });
+
+          let defaultPos;
+          if (existingDeviceForUser) {
+            defaultPos = { ...existingDeviceForUser.position };
+          } else {
+            const checkCollision = (r: number, a: number) => {
+              return newDevices.some(d => d.position.radius === r && d.position.angle === a);
+            };
+
+            let ring = 1;
+            let posOnRing = 0;
+            while (true) {
+              const angle = posOnRing * (Math.PI / 2);
+              if (!checkCollision(ring, angle)) {
+                defaultPos = { angle, radius: ring, elevation: 0 };
+                break;
+              }
+              posOnRing++;
+              if (posOnRing >= 4) {
+                posOnRing = 0;
+                ring++;
+              }
+            }
+          }
+          
           newDevices.push({ deviceId: p.socketId, position: defaultPos });
           engine.addDevice(p.socketId, defaultPos);
           changed = true;
@@ -213,7 +248,6 @@ export function useSpatialAudio({
     };
 
     const onUpdate = ({ deviceId, position }: SpatialUpdatePayload) => {
-      if (deviceId === myDeviceId) return;
       engine.updatePosition(deviceId, position);
       setSpatialDevices(prev =>
         prev.map(d => (d.deviceId === deviceId ? { ...d, position } : d))
@@ -287,5 +321,26 @@ export function useSpatialAudio({
     setEngineState(engine.getContextState());
   }, [engine]);
 
-  return { updatePosition, setDeviceGain, setMasterGain, engineState, resumeAudio, spatialDevices };
+  const setDeviceSequence = useCallback(
+    (deviceIds: string[]) => {
+      engine.setDeviceSequence(deviceIds);
+    },
+    [engine]
+  );
+
+  const setOrbitSpeed = useCallback(
+    (secondsPerDevice: number) => {
+      engine.setOrbitSpeed(secondsPerDevice);
+      setOrbitSpeedState(secondsPerDevice);
+    },
+    [engine]
+  );
+  const syncUIState = useCallback((listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => {
+    engine.setUIState(listenerCart, offsets);
+    if (myPos) {
+      engine.orientListenerTowardCenter(myPos);
+    }
+  }, [engine]);
+
+  return { updatePosition, syncUIState, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };
 }

@@ -229,6 +229,8 @@ export interface RoomRecord {
   position_ms:    number;
   created_at:     string;
   ended_at:       string | null;
+  shuffle:        boolean;
+  repeat_mode:    string;
   is_private?:    boolean;
   participant_count?: number;
 }
@@ -280,6 +282,17 @@ export const roomsApi = {
     request<any>(`/rooms/${roomId}/enqueue-magnet`, {
       method: 'POST',
       body: JSON.stringify({ magnetUri, title }),
+    }, true),
+
+  reorderQueue: (roomId: string, itemId: string, newIndex: number) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/queue/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ itemId, newIndex }),
+    }, true),
+
+  removeFromQueue: (roomId: string, itemId: string) =>
+    request<any>(`/rooms/${roomId}/queue/${itemId}`, {
+      method: 'DELETE',
     }, true),
 
   searchYoutube: (roomId: string, query: string) =>

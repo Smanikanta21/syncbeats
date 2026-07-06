@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle2, LogOut, Edit3, Shield, Activity, Heart, Laptop, Smartphone, X, KeyRound, Radio } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, LogOut, Edit3, Smartphone, Laptop, X, KeyRound, MonitorSmartphone, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
+import { SettingsPanel } from "../../../components/SettingsPanel";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
-  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-4 h-4 text-foreground/70" />;
-  return <Laptop className="w-4 h-4 text-foreground/70" />;
+  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-5 h-5 text-foreground/70" />;
+  return <Laptop className="w-5 h-5 text-foreground/70" />;
 }
 
 function getPlatformLabel(userAgent: string | null): string {
@@ -29,81 +30,66 @@ export default function ProfilePage() {
   const { user, device, logout, emailVerified, updateProfile } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
+  
+  // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const [profileEmail, setProfileEmail] = useState("");
-  const [showDeviceRename, setShowDeviceRename] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Modals state
+  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | null>(null);
+  
+  useEffect(() => {
+    if (window.innerWidth >= 768) {
+      setActivePanel('settings');
+    }
+  }, []);
+  
+  // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingDeviceName, setEditingDeviceName] = useState("");
   const [savingDeviceRename, setSavingDeviceRename] = useState(false);
-  const [deviceMenu, setDeviceMenu] = useState<{ device: Device; x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    const handleGlobalClick = () => {
-      if (deviceMenu) setDeviceMenu(null);
-    };
-    window.addEventListener("click", handleGlobalClick);
-    return () => window.removeEventListener("click", handleGlobalClick);
-  }, [deviceMenu]);
 
   const displayName = profileName.trim() || user?.name || "—";
-  const displayEmail = profileEmail.trim() || user?.email || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const accountId = user ? `#SB-${user.id.slice(0, 4).toUpperCase()}` : "—";
-  const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "—";
+  const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
-    devicesApi.mine()
-      .then(({ devices }) => setDevices(devices))
-      .catch(() => { });
+    devicesApi.mine().then(({ devices }) => setDevices(devices)).catch(() => {});
+    roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0));
   }, []);
-
-  useEffect(() => {
-    roomsApi.mine()
-      .then(({ rooms }) => setHostedSessionCount(rooms.length))
-      .catch(() => setHostedSessionCount(0));
-  }, []);
-
 
   useEffect(() => {
     setProfileName(user?.name ?? "");
-    setProfileEmail(user?.email ?? "");
-  }, [user?.name, user?.email]);
+  }, [user?.name]);
 
   const handleLogout = () => {
     logout();
     router.push("/login");
   };
 
-  const openEditProfile = () => {
-    setProfileName(user?.name ?? "");
-    setProfileEmail(user?.email ?? "");
-    setIsEditingProfile(true);
-  };
-
-  const cancelEditProfile = () => {
-    setProfileName(user?.name ?? "");
-    setProfileEmail(user?.email ?? "");
-    setIsEditingProfile(false);
-  };
-
   const saveEditProfile = async () => {
+    if (!profileName.trim() || profileName.trim() === user?.name) {
+      setIsEditingProfile(false);
+      setProfileName(user?.name ?? "");
+      return;
+    }
+    setIsSavingProfile(true);
     try {
-      if (profileName.trim() && profileName.trim() !== user?.name) {
-        await updateProfile(profileName.trim());
-      }
+      await updateProfile(profileName.trim());
       setIsEditingProfile(false);
     } catch (err) {
       console.error("Failed to update profile", err);
-      // fallback in case of error
       setProfileName(user?.name ?? "");
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
   const openDeviceRename = (deviceId: string, currentName: string) => {
     setEditingDeviceId(deviceId);
     setEditingDeviceName(currentName);
-    setShowDeviceRename(true);
   };
 
   const handleDeviceRename = async (e: React.FormEvent) => {
@@ -116,7 +102,6 @@ export default function ProfilePage() {
       setDevices(devices.map(d =>
         d.id === editingDeviceId ? { ...d, name: editingDeviceName.trim() } : d
       ));
-      setShowDeviceRename(false);
       setEditingDeviceId(null);
     } catch (err) {
       console.error("Failed to rename device:", err);
@@ -125,391 +110,382 @@ export default function ProfilePage() {
     }
   };
 
+  const handleDeleteDevice = async (deviceId: string) => {
+    try {
+      await devicesApi.remove(deviceId);
+      setDevices(devices.filter(d => d.id !== deviceId));
+    } catch (err) {
+      console.error("Failed to delete device", err);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 pb-20">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-[400px] bg-foreground/5 blur-[150px] rounded-full pointer-events-none -z-10" />
+    <div className="h-full w-full flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 pt-28 pb-8">
+      {/* Subtle Background Glows */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl h-[400px] bg-foreground/5 blur-[150px] rounded-full pointer-events-none -z-10" />
 
-      <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col mt-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[minmax(220px,auto)]">
+      {/* Main container sets flex-row on md screens to allow side-by-side layout */}
+      <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col md:flex-row items-start justify-center gap-6 relative">
+        <motion.div
+          layout
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+          className="w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-8 flex flex-col items-center overflow-hidden z-10"
+        >
+          {/* Avatar Section */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-foreground/10 blur-2xl rounded-full scale-150" />
+            <div className="relative w-32 h-32 rounded-full bg-gradient-to-tr from-foreground/10 to-foreground/5 flex items-center justify-center border border-foreground/20 shadow-xl overflow-hidden backdrop-blur-md">
+              <span className="text-4xl font-black text-foreground tracking-widest">{initials}</span>
+            </div>
+          </div>
 
-          {/* 1. Main Profile Card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 }}
-            className="md:col-span-2 md:row-span-2 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-[0_20px_40px_rgba(0,0,0,0.4)] relative overflow-hidden group flex flex-col p-10"
-          >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-foreground/5 blur-[60px] rounded-full pointer-events-none group-hover:bg-foreground/10 transition-colors duration-1000" />
-
-            <div className="flex justify-between items-start w-full relative z-10">
-              <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-foreground/20 to-foreground/10 flex items-center justify-center border-4 border-background shadow-lg">
-                <span className="text-4xl font-black text-foreground tracking-widest">{initials}</span>
+          {/* Name & Edit Section */}
+          <div className="w-full text-center mb-6 relative">
+            {!isEditingProfile ? (
+              <div className="flex flex-col items-center group cursor-pointer" onClick={() => setIsEditingProfile(true)}>
+                <h1 className="text-3xl font-black text-foreground tracking-tight flex items-center gap-2">
+                  {displayName}
+                  <Edit3 className="w-4 h-4 text-foreground/30 group-hover:text-foreground/70 transition-colors" />
+                </h1>
+                <p className="text-foreground/50 font-medium text-base mt-1">{user?.email}</p>
               </div>
-              {!isEditingProfile ? (
-                <button onClick={openEditProfile} className="h-10 px-6 rounded-full bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 text-foreground font-semibold flex items-center gap-2 transition-all">
-                  <Edit3 className="w-4 h-4" /> Edit Profile
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button onClick={cancelEditProfile} className="h-10 px-4 rounded-full bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 text-foreground font-semibold transition-all">
+            ) : (
+              <div className="flex flex-col items-center gap-3 w-full">
+                <input
+                  autoFocus
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveEditProfile()}
+                  className="w-full text-center rounded-2xl border border-foreground/20 bg-foreground/5 px-4 py-3 text-2xl font-black tracking-tight text-foreground outline-none transition-colors focus:border-foreground/40 focus:bg-foreground/10"
+                  placeholder="Your name"
+                />
+                <div className="flex items-center gap-2 w-full justify-center">
+                  <button onClick={() => { setIsEditingProfile(false); setProfileName(user?.name ?? ""); }} className="flex-1 max-w-[120px] py-2.5 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground font-semibold transition-all">
                     Cancel
                   </button>
-                  <button onClick={saveEditProfile} className="h-10 px-5 rounded-full bg-foreground text-background font-semibold transition-all hover:opacity-90">
-                    Save
+                  <button onClick={saveEditProfile} disabled={isSavingProfile} className="flex-1 max-w-[120px] py-2.5 rounded-xl bg-foreground text-background font-bold transition-all hover:scale-[0.98] disabled:opacity-70">
+                    {isSavingProfile ? "Saving..." : "Save"}
                   </button>
                 </div>
-              )}
-            </div>
-
-            <div className="mt-auto relative z-10">
-              {!isEditingProfile ? (
-                <>
-                  <h1 className="text-5xl font-black text-foreground mb-2 tracking-tight">{displayName}</h1>
-                  <div className="mb-6 flex flex-wrap items-center gap-3">
-                    <p className="text-foreground/50 font-medium text-xl">{displayEmail}</p>
-                    {emailVerified && (
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-emerald-300 disabled:cursor-default"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Verified
-                      </button>
-                    )}
-                    {!emailVerified && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-foreground/5 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-foreground/60">
-                        Unverified
-                      </span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-3 mb-6">
-                  <input
-                    type="text"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-3xl font-black tracking-tight text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
-                    placeholder="Your name"
-                  />
-                  <input
-                    type="email"
-                    value={profileEmail}
-                    onChange={(e) => setProfileEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-lg font-medium text-foreground/70 outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
-                    placeholder="your@email.com"
-                  />
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
-                  <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Member Since</p>
-                  <p className="text-foreground/70 font-medium">{memberSince}</p>
-                </div>
-                <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
-                  <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Account ID</p>
-                  <p className="text-foreground/70 font-mono text-sm">{accountId}</p>
-                </div>
-                <div className="bg-foreground/5 rounded-2xl p-4 border border-foreground/5">
-                  <p className="text-xs text-foreground/50 font-bold uppercase tracking-widest mb-1">Account Type</p>
-                  <p className="text-foreground/70 font-medium capitalize">
-                    {user?.auth_provider === 'GOOGLE_LOCAL' ? 'Google & Local' : user?.auth_provider?.toLowerCase() || 'Local'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* 2. Subscription */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-foreground/10 transition-colors">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center"><Shield className="w-5 h-5 text-foreground/70" /></div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-xs text-green-400 font-bold tracking-widest uppercase">Active</span>
-              </div>
-            </div>
-            <div className="mt-auto">
-              <h3 className="text-2xl font-black text-foreground mb-1">Beta Plan</h3>
-              <p className="text-foreground/50 text-sm font-medium">Free during early access</p>
-            </div>
-          </motion.div>
-
-          {/* 3. Stats */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.25 }}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-foreground/10 transition-colors">
-              <div className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center mb-4"><Activity className="w-5 h-5 text-foreground/70" /></div>
-              <div className="mt-auto flex items-end gap-2">
-                <h3 className="text-5xl font-black text-foreground leading-none">{hostedSessionCount}</h3>
-                <p className="text-foreground/50 text-sm font-medium pb-1 leading-tight">Sessions<br />Hosted</p>
-              </div>
-            </motion.div>
-
-          {/* 4. GitHub Sponsors */}
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }} 
-            transition={{ delay: 0.3 }}
-            onClick={() => window.open("https://github.com/sponsors/Smanikanta21", "_blank")}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-pink-500/30 hover:bg-pink-500/5 transition-all cursor-pointer">
-            <div className="w-10 h-10 rounded-full bg-pink-500/10 flex items-center justify-center mb-4 group-hover:bg-pink-500/20 transition-colors">
-              <Heart className="w-5 h-5 text-pink-500" />
-            </div>
-            <div className="mt-auto">
-              <h3 className="text-xl font-bold text-pink-500 mb-1">GitHub Sponsors</h3>
-              <p className="text-foreground/50 text-sm font-medium">Support us on GitHub</p>
-            </div>
-          </motion.div>
-
-          {/* 5. Log Out */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.35 }}
-            onClick={handleLogout}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-red-500/30 hover:bg-red-500/5 transition-all cursor-pointer">
-            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-4 group-hover:bg-red-500/20 transition-colors">
-              <LogOut className="w-5 h-5 text-red-500" />
-            </div>
-            <div className="mt-auto">
-              <h3 className="text-xl font-bold text-red-500 mb-1">Log Out</h3>
-              <p className="text-foreground/50 text-sm font-medium">Clear session &amp; return to login</p>
-            </div>
-          </motion.div>
-
-          {/* 6. Change Password */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
-            onClick={() => router.push("/forgot-password" + (user?.email ? "?email=" + encodeURIComponent(user.email) : ""))}
-            className="md:col-span-1 md:row-span-1 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl flex flex-col p-8 relative overflow-hidden group hover:border-blue-500/30 hover:bg-blue-500/5 transition-all cursor-pointer">
-            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
-              <KeyRound className="w-5 h-5 text-blue-500" />
-            </div>
-            <div className="mt-auto">
-              <h3 className="text-xl font-bold text-blue-500 mb-1">Change Password</h3>
-              <p className="text-foreground/50 text-sm font-medium">Update your password</p>
-            </div>
-          </motion.div>
-
-          {/* 6. Devices */}
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.4 }}
-            className="md:col-span-3 glass-panel rounded-[2.5rem] border border-foreground/5 bg-background/60 shadow-xl p-12">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Account Devices</p>
-                <h3 className="text-2xl font-black text-foreground mt-1">Your devices</h3>
-              </div>
-              <div className="text-sm text-foreground/50 font-medium">{devices.length} saved</div>
-            </div>
-            {devices.length === 0 ? (
-              <p className="text-foreground/40 text-sm font-medium">No devices saved yet.</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {devices.map((savedDevice) => {
-                  const isCurrent = device?.id === savedDevice.id;
-                  const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
-                  return (
-                    <div
-                      key={savedDevice.id}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setDeviceMenu({ device: savedDevice, x: event.clientX, y: event.clientY });
-                      }}
-                      className={`rounded-3xl border p-4 transition-colors ${isCurrent ? "border-foreground/20 bg-foreground/5" : "border-foreground/5 bg-foreground/5"}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-2xl bg-background/40 border border-foreground/5 flex items-center justify-center shrink-0">
-                            <DeviceGlyph userAgent={savedDevice.user_agent} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} title={isOffline ? 'Offline' : 'Online'} />
-                              <h4 className="font-bold text-foreground truncate">{savedDevice.name}</h4>
-                              {isCurrent && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
-                            </div>
-                            <p className="text-xs text-foreground/50 mt-1 truncate">{getPlatformLabel(savedDevice.user_agent)}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
-                          className="h-8 w-8 rounded-lg bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="mt-4 flex items-center justify-between text-xs text-foreground/50">
-                        <span>Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
-                        <span>{savedDevice.device_key.slice(0, 8).toUpperCase()}</span>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             )}
-          </motion.div>
-        </div>
+            
+            {/* Status Pills */}
+            <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+              {emailVerified ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3" /> Verified
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400">
+                  Unverified
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 bg-foreground/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/60">
+                ID: {accountId}
+              </span>
+            </div>
+          </div>
 
-        {/* Device Rename Modal */}
-        {showDeviceRename && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md rounded-[2rem] border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device</p>
-                  <h2 className="text-2xl font-black text-foreground mt-1">Rename Device</h2>
+          {/* Quick Stats Grid */}
+          <div className="w-full grid grid-cols-2 gap-3 mb-8">
+            <div className="bg-foreground/5 rounded-2xl p-4 flex flex-col items-center justify-center border border-foreground/5">
+              <span className="text-2xl font-black text-foreground">{hostedSessionCount}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 mt-1">Sessions Hosted</span>
+            </div>
+            <div className="bg-foreground/5 rounded-2xl p-4 flex flex-col items-center justify-center border border-foreground/5">
+              <span className="text-lg font-black text-foreground">{memberSince}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 mt-1">Member Since</span>
+            </div>
+          </div>
+
+          {/* Action List */}
+          <div className="w-full flex flex-col gap-2">
+            <button
+              onClick={() => setActivePanel(activePanel === 'settings' ? null : 'settings')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'settings' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
+                  <Settings className="w-5 h-5 text-foreground/70" />
                 </div>
-                <button onClick={() => setShowDeviceRename(false)} className="text-foreground/60 hover:text-foreground"><X className="w-5 h-5" /></button>
+                <div className="text-left">
+                  <h4 className="font-bold text-foreground">App Settings</h4>
+                  <p className="text-xs text-foreground/50">Audio, Sync & Appearance</p>
+                </div>
               </div>
-              <form className="space-y-4" onSubmit={handleDeviceRename}>
-                {(() => {
-                  const dev = devices.find(d => d.id === editingDeviceId);
-                  return dev ? (
-                    <div className="flex items-center gap-3 mb-4 p-3.5 rounded-2xl border border-foreground/10 bg-foreground/5">
-                      <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center shrink-0 shadow-sm border border-foreground/5">
-                        <DeviceGlyph userAgent={dev.user_agent} />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold uppercase tracking-widest text-foreground/40">Detected Type</span>
-                        <span className="text-sm text-foreground font-semibold">
-                          {getPlatformLabel(dev.user_agent)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-foreground/60">Device Name</label>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={editingDeviceName}
-                    onChange={(e) => setEditingDeviceName(e.target.value)}
-                    className="w-full rounded-2xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-foreground outline-none transition-colors placeholder:text-foreground/40 focus:border-foreground/30"
-                    placeholder="My Device"
-                  />
+              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'settings' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
+            </button>
+
+            <button
+              onClick={() => setActivePanel(activePanel === 'devices' ? null : 'devices')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'devices' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
+                  <MonitorSmartphone className="w-5 h-5 text-foreground/70" />
                 </div>
-                <button
-                  disabled={savingDeviceRename || !editingDeviceName.trim()}
-                  className="h-12 w-full rounded-2xl bg-foreground font-bold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {savingDeviceRename ? "Saving..." : "Save Device Name"}
+                <div className="text-left">
+                  <h4 className="font-bold text-foreground">Manage Devices</h4>
+                  <p className="text-xs text-foreground/50">{devices.length} devices linked</p>
+                </div>
+              </div>
+              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'devices' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
+            </button>
+
+            <button
+              onClick={() => router.push("/forgot-password" + (user?.email ? "?email=" + encodeURIComponent(user.email) : ""))}
+              className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-foreground/5 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
+                <KeyRound className="w-5 h-5 text-foreground/50 group-hover:text-foreground transition-colors" />
+              </div>
+              <h4 className="font-bold text-foreground/70 group-hover:text-foreground transition-colors">Change Password</h4>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-red-500/10 transition-all group mt-2"
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
+                <LogOut className="w-5 h-5 text-red-400 group-hover:text-red-500 transition-colors" />
+              </div>
+              <h4 className="font-bold text-red-400 group-hover:text-red-500 transition-colors">Log Out</h4>
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Medium+ Screens: Side Panel */}
+        <AnimatePresence mode="popLayout">
+          {activePanel === 'devices' && (
+            <motion.div
+              layout
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              className="hidden md:flex flex-col w-full max-w-md shrink-0 gap-3 relative z-0 h-full max-h-full"
+            >
+              <div className="flex items-center justify-between px-2 pb-2 shrink-0">
+                <h2 className="text-2xl font-black text-foreground">Your Devices</h2>
+                <button onClick={() => setActivePanel(null)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+                  <X className="w-5 h-5" />
                 </button>
-              </form>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar pb-10">
+                {devices.length === 0 ? (
+                  <p className="text-foreground/40 text-sm font-medium text-center py-10">No devices saved yet.</p>
+                ) : (
+                  devices.map((savedDevice, index) => {
+                    const isCurrent = device?.id === savedDevice.id;
+                    const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
+                    const isEditingThis = editingDeviceId === savedDevice.id;
+
+                    return (
+                      <motion.div 
+                        key={savedDevice.id} 
+                        layout
+                        initial={{ opacity: 0, y: -40, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: index * 0.08, type: "spring", bounce: 0.4, duration: 0.6 }}
+                        className={`p-5 rounded-3xl border transition-all shadow-lg ${isCurrent ? "bg-foreground/5 border-foreground/20 backdrop-blur-xl" : "bg-background/40 backdrop-blur-md border-foreground/10"}`}
+                      >
+                        {!isEditingThis ? (
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 rounded-2xl bg-background/50 flex items-center justify-center border border-foreground/5 shrink-0">
+                                <DeviceGlyph userAgent={savedDevice.user_agent} />
+                              </div>
+                              <div className="min-w-0 flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
+                                  {isCurrent && <span className="px-2 py-0.5 rounded-full bg-foreground/10 text-foreground text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
+                                  <span className="text-xs text-foreground/50 truncate">{getPlatformLabel(savedDevice.user_agent)} • Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              {!isCurrent && (
+                                <button onClick={() => handleDeleteDevice(savedDevice.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-foreground/50 hover:text-red-500 transition-colors">
+                                  <LogOut className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
+                            <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
+                            <input
+                              autoFocus
+                              value={editingDeviceName}
+                              onChange={(e) => setEditingDeviceName(e.target.value)}
+                              className="w-full rounded-xl border border-foreground/10 bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-foreground/30"
+                              placeholder="Device Name"
+                            />
+                            <div className="flex items-center gap-2 justify-end mt-1">
+                              <button type="button" onClick={() => setEditingDeviceId(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-foreground/70 hover:bg-foreground/5 transition-colors">
+                                Cancel
+                              </button>
+                              <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className="px-5 py-2 rounded-xl text-sm font-bold bg-foreground text-background transition-transform active:scale-95 disabled:opacity-50">
+                                {savingDeviceRename ? "Saving..." : "Save"}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </motion.div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activePanel === 'settings' && (
+            <motion.div
+              layout
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative z-0 h-full max-h-[calc(100vh-10rem)]"
+            >
+              <SettingsPanel onClose={() => setActivePanel(null)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* Mobile Screens: Bottom Modal */}
+      <AnimatePresence>
+        {activePanel === 'devices' && (
+          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActivePanel(null)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10"
+            >
+              <div className="p-6 border-b border-foreground/5 flex items-center justify-between sticky top-0 bg-background/50 backdrop-blur-md z-10">
+                <div>
+                  <h2 className="text-2xl font-black text-foreground">Devices</h2>
+                  <p className="text-xs font-medium text-foreground/50 mt-1">Manage where your account is logged in</p>
+                </div>
+                <button onClick={() => setActivePanel(null)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto space-y-4" data-lenis-prevent="true">
+                {devices.length === 0 ? (
+                  <p className="text-foreground/40 text-sm font-medium text-center py-10">No devices saved yet.</p>
+                ) : (
+                  devices.map((savedDevice) => {
+                    const isCurrent = device?.id === savedDevice.id;
+                    const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
+                    const isEditingThis = editingDeviceId === savedDevice.id;
+
+                    return (
+                      <div key={savedDevice.id} className={`p-4 rounded-2xl border transition-all ${isCurrent ? "bg-foreground/5 border-foreground/20 shadow-sm" : "bg-transparent border-foreground/10"}`}>
+                        {!isEditingThis ? (
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center border border-foreground/5 shrink-0">
+                                <DeviceGlyph userAgent={savedDevice.user_agent} />
+                              </div>
+                              <div className="min-w-0 flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
+                                  {isCurrent && <span className="px-2 py-0.5 rounded-full bg-foreground/10 text-foreground text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
+                                  <span className="text-xs text-foreground/50 truncate">{getPlatformLabel(savedDevice.user_agent)} • Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              {!isCurrent && (
+                                <button onClick={() => handleDeleteDevice(savedDevice.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-foreground/50 hover:text-red-500 transition-colors">
+                                  <LogOut className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
+                            <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
+                            <input
+                              autoFocus
+                              value={editingDeviceName}
+                              onChange={(e) => setEditingDeviceName(e.target.value)}
+                              className="w-full rounded-xl border border-foreground/10 bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-foreground/30"
+                              placeholder="Device Name"
+                            />
+                            <div className="flex items-center gap-2 justify-end mt-1">
+                              <button type="button" onClick={() => setEditingDeviceId(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-foreground/70 hover:bg-foreground/5 transition-colors">
+                                Cancel
+                              </button>
+                              <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className="px-5 py-2 rounded-xl text-sm font-bold bg-foreground text-background transition-transform active:scale-95 disabled:opacity-50">
+                                {savingDeviceRename ? "Saving..." : "Save"}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
 
-        {deviceMenu && (
-          <>
-            {/* Mobile Bottom Sheet Menu */}
-            <div className="md:hidden fixed inset-0 z-[80] bg-background/45 backdrop-blur-sm flex items-end" onClick={() => setDeviceMenu(null)}>
-              <motion.div
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 220 }}
-                className="w-full rounded-t-[2.5rem] border-t border-foreground/10 bg-background/95 p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="w-12 h-1.5 rounded-full bg-foreground/20 mx-auto mb-2" />
-                <h3 className="text-lg font-black text-foreground text-center mb-1">Device Settings</h3>
-                <p className="text-xs text-foreground/40 font-mono text-center tracking-widest uppercase mb-2">Device: {deviceMenu.device.name}</p>
-                
-                <div className="flex flex-col gap-2.5">
-                  <button
-                    onClick={() => {
-                      openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
-                      setDeviceMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <Edit3 className="w-5 h-5 text-foreground/70" />
-                    Rename this device
-                  </button>
-                  <button
-                    onClick={() => {
-                      alert("Ping sent to device!");
-                      setDeviceMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <Radio className="w-5 h-5 text-foreground/70" />
-                    Ping this device
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await devicesApi.remove(deviceMenu.device.id);
-                        const { devices: updatedDevices } = await devicesApi.mine();
-                        setDevices(updatedDevices);
-                      } catch (err) {
-                        alert("Failed to logout device");
-                      }
-                      setDeviceMenu(null);
-                    }}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl text-foreground hover:bg-foreground/5 text-base font-bold flex items-center gap-3 border border-foreground/5 bg-foreground/2 active:scale-[0.99] transition-all"
-                  >
-                    <LogOut className="w-5 h-5 text-red-400" />
-                    Logout this device
-                  </button>
-                </div>
-                <button
-                  onClick={() => setDeviceMenu(null)}
-                  className="mt-2 w-full h-12 rounded-2xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </motion.div>
-            </div>
-
-            {/* Desktop Context Menu */}
-            <div
-              className="hidden md:block fixed z-[80] min-w-55 rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl"
-              style={{
-                left: Math.min(deviceMenu.x, typeof window !== "undefined" ? window.innerWidth - 240 : deviceMenu.x),
-                top: Math.min(deviceMenu.y, typeof window !== "undefined" ? window.innerHeight - 160 : deviceMenu.y),
-              }}
-              onClick={(event) => event.stopPropagation()}
+      <AnimatePresence>
+        {activePanel === 'settings' && (
+          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActivePanel(null)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10 p-4"
             >
-              <button
-                onClick={() => {
-                  openDeviceRename(deviceMenu.device.id, deviceMenu.device.name);
-                  setDeviceMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <Edit3 className="w-4 h-4 text-foreground/70" />
-                Rename this device
-              </button>
-              <button
-                onClick={() => {
-                  alert("Ping sent to device!");
-                  setDeviceMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <Radio className="w-4 h-4 text-foreground/70" />
-                Ping this device
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    await devicesApi.remove(deviceMenu.device.id);
-                    const { devices: updatedDevices } = await devicesApi.mine();
-                    setDevices(updatedDevices);
-                  } catch (err) {
-                    alert("Failed to logout device");
-                  }
-                  setDeviceMenu(null);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl text-foreground hover:bg-foreground/10 text-sm font-medium flex items-center gap-2"
-              >
-                <LogOut className="w-4 h-4 text-red-400" />
-                Logout this device
-              </button>
-            </div>
-          </>
+              <SettingsPanel onClose={() => setActivePanel(null)} />
+            </motion.div>
+          </div>
         )}
-      </main>
+      </AnimatePresence>
     </div>
   );
 }

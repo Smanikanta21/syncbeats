@@ -26,6 +26,10 @@ export interface Participant {
   userId?:     string;
   outputDeviceName?: string;
   outputDeviceType?: string;
+  /** Median RTT to server in ms — updated after each NTP burst */
+  latency?:    number;
+  /** IQR-based jitter in ms — updated after each NTP burst */
+  jitter?:     number;
 }
 
 export interface TrackQueueItem {
@@ -38,6 +42,7 @@ export interface TrackQueueItem {
   addedBy:    string;
   addedByName?: string;
   createdAt:  number;
+  sizeBytes?: number; // used for smart prefetch timing
 }
 
 export interface DeviceSpatialState {
@@ -60,6 +65,8 @@ export interface RoomSnapshot {
   isPlaying?:   boolean;
   pendingPlay?: boolean;
   isPrivate?:   boolean;
+  shuffle:      boolean;
+  repeatMode:   "off" | "track" | "all";
 }
 
 export interface PlaybackSchedulePayload {

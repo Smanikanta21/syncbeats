@@ -1,4 +1,4 @@
-// handlers/DeviceRoutes.ts — /devices REST endpoints
+// handlers/DeviceRoutes.ts - /devices REST endpoints
 
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
@@ -19,6 +19,10 @@ export function createDeviceRoutes(): Router {
 
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {
     try {
+      const { deviceKey, userAgent } = getDeviceContext(req);
+      if (deviceKey) {
+        await repo.ensureForUser(req.user!.sub, deviceKey, userAgent, req.user!.name);
+      }
       const devices = await repo.listByUser(req.user!.sub);
       res.json({ devices });
     } catch (err) {

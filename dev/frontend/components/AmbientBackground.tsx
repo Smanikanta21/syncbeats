@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useAudio } from "../context/AudioContext";
 import { useTheme } from "next-themes";
 import { useSyncInfo } from "../context/SyncContext";
+import { useSettings } from "../hooks/useSettings";
 
 export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: boolean }) {
   const blob1Ref = useRef<HTMLDivElement>(null);
   const blob2Ref = useRef<HTMLDivElement>(null);
   const blob3Ref = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
+  const { settings } = useSettings();
   const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
@@ -36,16 +38,32 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
 
   // Theme-adaptive values
   const blendMode = isDark ? "screen" : "multiply";
+  const bMult = (settings.ambientBrightness || 100) / 100;
+  const cMult = (settings.ambientContrast || 100) / 100;
+
   // Light mode needs much higher base opacity to be visible on white
-  const baseOpacity = isDark ? [0.06, 0.05, 0.05] : [0.15, 0.12, 0.12];
-  const peakOpacity = isDark ? [0.45, 0.38, 0.35] : [0.55, 0.48, 0.45];
-  // Light mode uses deeper, more saturated colors
-  const bassSat = isDark ? 85 : 75;
-  const bassLight = isDark ? 55 : 50;
-  const midSat = isDark ? 80 : 70;
-  const midLight = isDark ? 50 : 42;
-  const highSat = isDark ? 75 : 70;
-  const highLight = isDark ? 55 : 48;
+  const baseOpacity = (isDark ? [0.06, 0.05, 0.05] : [0.15, 0.12, 0.12]).map(v => v * bMult);
+  const peakOpacity = (isDark ? [0.45, 0.38, 0.35] : [0.55, 0.48, 0.45]).map(v => v * bMult);
+  
+  // Contrast should increase SATURATION (up to 100%) to make colors pop,
+  // and push LIGHTNESS closer to 50% (the most intense color point in HSL).
+  // If lightness goes too high, it turns white!
+  const adjustSat = (base: number) => Math.min(100, base * Math.pow(cMult, 1.2));
+  
+  // As contrast increases, we pull the lightness closer to 50% for maximum color vibrancy
+  const adjustLight = (base: number) => {
+    if (cMult === 1) return base;
+    return base + (50 - base) * (1 - 1 / cMult);
+  };
+
+  const bassSat = adjustSat(isDark ? 85 : 75);
+  const bassLight = adjustLight(isDark ? 55 : 50);
+  
+  const midSat = adjustSat(isDark ? 80 : 70);
+  const midLight = adjustLight(isDark ? 50 : 42);
+  
+  const highSat = adjustSat(isDark ? 75 : 70);
+  const highLight = adjustLight(isDark ? 55 : 48);
 
   useEffect(() => {
     if (!syncWithAudio || !audioContext) return;
@@ -132,34 +150,35 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
       }
 
       // ── Apply styles to each blob ──
-      // Blob 1: Bass → warm red/orange
+      // Blob 1: Bass → warm red/orange (or user custom)
       const bassScale = 1 + smoothed[0] * 0.7;
       const bassOpacityVal = baseOpacity[0] + smoothed[0] * (peakOpacity[0] - baseOpacity[0]);
-      const bassHue = 0 + smoothed[0] * 25;
+      const bassHue = settings.ambientColors.bassHue + smoothed[0] * 25;
       blob1.style.transform = `translate3d(${posX[0]}vw, ${posY[0]}vh, 0) scale(${bassScale})`;
       blob1.style.opacity = `${bassOpacityVal}`;
       blob1.style.background = `radial-gradient(circle, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0.9) 0%, hsla(${bassHue}, ${bassSat}%, ${bassLight}%, 0) 70%)`;
 
-      // Blob 2: Mids → teal/cyan
+      // Blob 2: Mids → teal/cyan (or user custom)
       const midScale = 1 + smoothed[1] * 0.55;
       const midOpacityVal = baseOpacity[1] + smoothed[1] * (peakOpacity[1] - baseOpacity[1]);
-      const midHue = 180 + smoothed[1] * 30;
+      const midHue = settings.ambientColors.midHue + smoothed[1] * 30;
       blob2.style.transform = `translate3d(${posX[1]}vw, ${posY[1]}vh, 0) scale(${midScale})`;
       blob2.style.opacity = `${midOpacityVal}`;
       blob2.style.background = `radial-gradient(circle, hsla(${midHue}, ${midSat}%, ${midLight}%, 0.9) 0%, hsla(${midHue}, ${midSat}%, ${midLight}%, 0) 70%)`;
 
-      // Blob 3: Highs → violet/purple
-      const highScale = 1 + smoothed[2] * 0.5;
+      // Blob 3: Highs → purple/pink (or user custom)
+      const highScale = 1 + smoothed[2] * 0.45;
       const highOpacityVal = baseOpacity[2] + smoothed[2] * (peakOpacity[2] - baseOpacity[2]);
-      const highHue = 270 + smoothed[2] * 20;
+      const highHue = settings.ambientColors.highHue + smoothed[2] * 40;
       blob3.style.transform = `translate3d(${posX[2]}vw, ${posY[2]}vh, 0) scale(${highScale})`;
       blob3.style.opacity = `${highOpacityVal}`;
       blob3.style.background = `radial-gradient(circle, hsla(${highHue}, ${highSat}%, ${highLight}%, 0.9) 0%, hsla(${highHue}, ${highSat}%, ${highLight}%, 0) 70%)`;
     };
 
     animate();
+
     return () => cancelAnimationFrame(rafId);
-  }, [syncWithAudio, audioContext, isDark]);
+  }, [syncWithAudio, audioContext, isDark, settings.ambientColors, settings.ambientBrightness, settings.ambientContrast]);
 
   if (!mounted) return null;
 
@@ -178,7 +197,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           transform: "translate3d(30vw, 25vh, 0)",
           opacity: baseOpacity[0],
           mixBlendMode: blendMode,
-          background: `radial-gradient(circle, hsla(0, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(0, ${bassSat}%, ${bassLight}%, 0) 70%)`,
+          background: `radial-gradient(circle, hsla(${settings.ambientColors.bassHue}, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(${settings.ambientColors.bassHue}, ${bassSat}%, ${bassLight}%, 0) 70%)`,
         }}
       />
       {/* Blob 2: Mids — teal/cyan */}
@@ -192,7 +211,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           transform: "translate3d(70vw, 65vh, 0)",
           opacity: baseOpacity[1],
           mixBlendMode: blendMode,
-          background: `radial-gradient(circle, hsla(180, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(180, ${midSat}%, ${midLight}%, 0) 70%)`,
+          background: `radial-gradient(circle, hsla(${settings.ambientColors.midHue}, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(${settings.ambientColors.midHue}, ${midSat}%, ${midLight}%, 0) 70%)`,
         }}
       />
       {/* Blob 3: Highs — violet/purple */}
@@ -206,7 +225,7 @@ export function AmbientBackground({ syncWithAudio = false }: { syncWithAudio?: b
           transform: "translate3d(50vw, 85vh, 0)",
           opacity: baseOpacity[2],
           mixBlendMode: blendMode,
-          background: `radial-gradient(circle, hsla(270, ${highSat}%, ${highLight}%, 0.8) 0%, hsla(270, ${highSat}%, ${highLight}%, 0) 70%)`,
+          background: `radial-gradient(circle, hsla(${settings.ambientColors.highHue}, ${highSat}%, ${highLight}%, 0.8) 0%, hsla(${settings.ambientColors.highHue}, ${highSat}%, ${highLight}%, 0) 70%)`,
         }}
       />
     </div>

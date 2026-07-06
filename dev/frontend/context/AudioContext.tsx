@@ -2,8 +2,9 @@
 
 // context/AudioContext.tsx — Singleton audio player shared across app
 
-import { createContext, useContext, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, type ReactNode } from "react";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+import { useSettings } from "../hooks/useSettings";
 
 type AudioCtx = ReturnType<typeof useAudioPlayer>;
 
@@ -11,6 +12,13 @@ const AudioContext = createContext<AudioCtx | null>(null);
 
 export function AudioProvider({ children }: { children: ReactNode }) {
   const player = useAudioPlayer();
+  const { settings } = useSettings();
+
+  useEffect(() => {
+    // Convert ms to seconds for WebAudio API
+    player.setManualLatency(settings.audioLatencyOffsetMs / 1000);
+  }, [settings.audioLatencyOffsetMs, player]);
+
   return <AudioContext.Provider value={player}>{children}</AudioContext.Provider>;
 }
 
