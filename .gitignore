@@ -35,3 +35,12 @@ NATIVE_CLIENTS_ARCHITECTURE.md
 .git_backup
 dev/syncbeats-server/scripts/sendUpdateEmail.ts
 dev/db-visualizer/data/
+
+# Next.js
+.next/
+out/
+
+# SyncBeats Backend
+dev/syncbeats-server/yt-dlp
+dev/syncbeats-server/yt-dlp_linux
+dev/syncbeats-server/tmp/

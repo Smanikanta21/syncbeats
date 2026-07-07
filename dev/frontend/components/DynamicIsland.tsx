@@ -529,7 +529,7 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
 // YouTubeTab
 // ─────────────────────────────────────────────────────────
 
-const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isSearchOnly }: any) => {
+const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isSearchOnly, onSuccess }: any) => {
   const upload = useUpload();
   const [results, setResults] = useState<any[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -538,23 +538,25 @@ const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isS
   const [enqueuing, setEnqueuing] = useState<string | null>(null);
   const [addedSongs, setAddedSongs] = useState<Set<string>>(new Set());
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [uploadQueue, setUploadQueue] = useState<{id: string, name: string, status: "pending" | "uploading" | "done" | "error"}[]>([]);
 
   useEffect(() => {
-    if (!query.trim()) { setSuggestions([]); return; }
+    if (!query.trim()) { setSuggestions([]); setSelectedIndex(0); return; }
     const timer = setTimeout(async () => {
-      try { const sugs = await roomsApi.suggestYoutube(query); setSuggestions(sugs); } catch (err) {}
+      try { const sugs = await roomsApi.suggestYoutube(query); setSuggestions(sugs); setSelectedIndex(0); } catch (err) {}
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
     if (isSearching) { onResultsCountChange(1); return; }
-    onResultsCountChange(showSuggestions && suggestions.length > 0 ? suggestions.length : results.length);
-  }, [isSearching, showSuggestions, suggestions.length, results.length, onResultsCountChange]);
+    onResultsCountChange((showSuggestions && suggestions.length > 0 ? suggestions.length : results.length) + uploadQueue.length);
+  }, [isSearching, showSuggestions, suggestions.length, results.length, uploadQueue.length, onResultsCountChange]);
 
   const performSearch = async (q: string) => {
     if (!q.trim()) return;
-    setIsSearching(true); setShowSuggestions(false); setDownloadError(null);
+    setIsSearching(true); setShowSuggestions(false); setDownloadError(null); setSelectedIndex(0);
     try { const res = await roomsApi.searchYoutube(roomId, q); setResults(res); }
     catch (err) { console.error(err); } finally { setIsSearching(false); }
   };
@@ -565,13 +567,36 @@ const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isS
       const videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
       await upload.downloadYoutubeToP2P(roomId, videoId, result.title);
       setAddedSongs(prev => new Set(prev).add(result.url));
+      onSuccess?.();
     } catch (err: any) {
       setDownloadError(err.message?.includes("RapidAPI") || err.message?.includes("FATAL")
         ? "This track is age-restricted or blocked by YouTube. Try another." : err.message || "Failed to load.");
     } finally { setEnqueuing(null); }
   };
 
-  const isCentered = !query.trim() && !isSearching && results.length === 0;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const list = showSuggestions && suggestions.length > 0 ? suggestions : results;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev < list.length - 1 ? prev + 1 : prev));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (showSuggestions && suggestions.length > 0) {
+        const s = suggestions[selectedIndex];
+        if (s) { setQuery(s); performSearch(s); }
+      } else if (results.length > 0) {
+        const r = results[selectedIndex];
+        if (r && !addedSongs.has(r.url) && enqueuing !== r.url) handlePlay(r);
+      } else if (query) {
+        performSearch(query);
+      }
+    }
+  };
+
+  const isCentered = !query.trim() && !isSearching && results.length === 0 && uploadQueue.length === 0;
   const containerPadding = isSearchOnly ? "p-[2px]" : "px-5 sm:px-8 py-6";
 
   return (
@@ -586,10 +611,10 @@ const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isS
           <input
             value={query}
             onChange={e => { setQuery(e.target.value); setShowSuggestions(true); }}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); performSearch(query); } }}
+            onKeyDown={handleKeyDown}
             onClick={e => { e.stopPropagation(); setShowSuggestions(true); }}
             onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setShowSuggestions(false)}
+            onBlur={() => { /* don't hide immediately to allow clicking results */ }}
             placeholder="Search YouTube or upload…"
             className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query ? "pr-4" : "pr-10"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
             autoFocus
@@ -601,11 +626,30 @@ const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isS
                 className="absolute right-1.5 top-1/2 -translate-y-1/2">
                 <label className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 cursor-pointer text-white/50 hover:text-white transition-colors" title="Upload Local File">
                   {upload.isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  <input type="file" accept="audio/*" className="hidden"
+                  <input type="file" accept="audio/*" multiple className="hidden"
                     onChange={async e => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try { await upload.uploadFile(file, roomId); } catch (err) { console.error(err); }
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      const fileIds = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), name: f.name, status: "pending" as const }));
+                      setUploadQueue(prev => [...prev, ...fileIds]);
+                      e.target.value = ''; // Reset input
+                      
+                      for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        const fid = fileIds[i].id;
+                        setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "uploading" } : item));
+                        try { 
+                          await upload.uploadFile(file, roomId); 
+                          setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "done" } : item));
+                          onSuccess?.();
+                          setTimeout(() => {
+                            setUploadQueue(prev => prev.filter(item => item.id !== fid));
+                          }, 3000); // clear after 3 seconds
+                        } catch (err) { 
+                          console.error(err);
+                          setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "error" } : item));
+                        }
+                      }
                     }} />
                 </label>
               </motion.div>
@@ -626,35 +670,57 @@ const YouTubeTab = ({ roomId, onBack, onResultsCountChange, query, setQuery, isS
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 15 }}
             transition={{ ...SPRING, opacity: { duration: 0.2 } }}
             className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 space-y-2 -mx-2 px-2 flex flex-col pointer-events-auto"
+            style={{ scrollSnapType: "y mandatory" }}
             data-lenis-prevent="true"
             onClick={e => e.stopPropagation()}>
             {isSearching ? (
-              <div className="flex-1 flex items-center justify-center min-h-37.5"><Loader2 className="w-8 h-8 text-white/50 animate-spin" /></div>
+              <div className="flex-1 flex items-center justify-center min-h-[37.5px] h-full"><Loader2 className="w-8 h-8 text-white/50 animate-spin" /></div>
             ) : showSuggestions && suggestions.length > 0 ? (
               suggestions.map((s, idx) => (
                 <div key={idx} onMouseDown={e => { e.preventDefault(); setQuery(s); performSearch(s); }}
-                  className="px-4 py-3 text-sm text-white/80 hover:text-white hover:bg-white/10 rounded-xl cursor-pointer flex items-center gap-3 transition-colors">
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`px-4 py-3 text-sm rounded-xl cursor-pointer flex items-center gap-3 transition-colors shrink-0 ${selectedIndex === idx ? "bg-white/20 text-white" : "text-white/80 hover:text-white hover:bg-white/10"}`}
+                  style={{ scrollSnapAlign: "start" }}>
                   <Search className="w-3.5 h-3.5 text-white/40" />{s}
                 </div>
               ))
-            ) : results.length > 0 ? (
-              results.map(r => {
-                const isAdded = addedSongs.has(r.url);
-                return (
-                  <div key={r.url} className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
-                    <img src={r.thumbnail} className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="text-white text-sm font-bold truncate">{r.title}</div>
-                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.uploaderName}</div>
+            ) : (results.length > 0 || uploadQueue.length > 0) ? (
+              <>
+                {uploadQueue.map(uq => (
+                  <div key={uq.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent shrink-0" style={{ scrollSnapAlign: "start" }}>
+                    <div className="w-20 h-14 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
+                      <Upload className="w-6 h-6 text-white/50" />
                     </div>
-                    <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
-                      className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
-                      {enqueuing === r.url ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : isAdded ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                    </button>
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="text-white text-sm font-bold truncate">{uq.name}</div>
+                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">Local Upload</div>
+                    </div>
+                    <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 text-white">
+                      {uq.status === "uploading" ? <Loader2 className="w-4 h-4 animate-spin" /> : uq.status === "done" ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : uq.status === "error" ? <AlertCircle className="w-5 h-5 text-red-500" /> : <Loader2 className="w-4 h-4 animate-spin opacity-50" />}
+                    </div>
                   </div>
-                );
-              })
+                ))}
+                {results.map((r, idx) => {
+                  const isAdded = addedSongs.has(r.url);
+                  return (
+                    <div key={r.url} 
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-green-500/20 border border-green-500/30" : selectedIndex === idx ? "bg-white/15 border border-white/20" : "bg-white/5 border border-transparent hover:bg-white/10"}`}
+                      style={{ scrollSnapAlign: "start" }}>
+                      <img src={r.thumbnail} className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="text-white text-sm font-bold truncate">{r.title}</div>
+                        <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.uploaderName}</div>
+                      </div>
+                      <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
+                        className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
+                        {enqueuing === r.url ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : isAdded ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
             ) : query ? <div className="text-center text-white/40 text-sm mt-10">Press Enter to search</div> : null}
           </motion.div>
         )}
@@ -930,6 +996,7 @@ export function DynamicIsland() {
   const [islandState, setIslandState] = useState<IslandState>("pill");
   const [isExpanded, setIsExpanded] = useState(false); // non-room
   const islandRef = useRef<HTMLDivElement>(null);
+  const [wiggle, setWiggle] = useState(false);
   const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReqCountRef = useRef(0);
 
@@ -1394,6 +1461,7 @@ export function DynamicIsland() {
               isHoveringRef.current = false;
               if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
               shrinkTimerRef.current = setTimeout(() => {
+                if (activeTab === "youtube") return; // stay open for search
                 if (islandState === "expanded" || islandState === "extended") {
                   setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
                 }
@@ -1421,12 +1489,17 @@ export function DynamicIsland() {
             borderRadius: { ...SPRING, stiffness: 200 },
             scale: { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
           }}
-          animate={{
-            width: currentWidth,
-            height: currentHeight,
-            borderRadius: currentRadius,
-            scale: isPressing && islandState === "pill" ? 0.94 : 1,
-          }}
+          animate={
+            wiggle ? {
+              x: [0, -4, 4, -4, 4, 0],
+              transition: { duration: 0.4 }
+            } : {
+              width: currentWidth,
+              height: currentHeight,
+              borderRadius: currentRadius,
+              scale: isPressing && islandState === "pill" ? 0.94 : 1,
+            }
+          }
           style={{
             backgroundColor: "#000000",
             cursor: isExpanded_room ? "default" : "pointer",
@@ -1542,7 +1615,15 @@ export function DynamicIsland() {
               )}
               {activeTab === "youtube" && (
                 <motion.div key="youtube" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="absolute inset-0">
-                  <YouTubeTab roomId={roomId} onBack={() => setActiveTab("player")} onResultsCountChange={setYtResultsCount} query={ytQuery} setQuery={setYtQuery} isSearchOnly={false} />
+                  <YouTubeTab 
+                    roomId={roomId} 
+                    onBack={() => setActiveTab("player")} 
+                    onResultsCountChange={setYtResultsCount} 
+                    query={ytQuery} 
+                    setQuery={setYtQuery} 
+                    isSearchOnly={false} 
+                    onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
+                  />
                 </motion.div>
               )}
               {activeTab === "requests" && (
