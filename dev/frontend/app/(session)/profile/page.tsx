@@ -56,7 +56,7 @@ export default function ProfilePage() {
   const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
-    devicesApi.mine().then(({ devices }) => setDevices(devices)).catch(() => {});
+    devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {});
     roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0));
   }, []);
 

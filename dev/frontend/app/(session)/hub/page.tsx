@@ -78,7 +78,7 @@ export default function HubPage() {
       .catch(() => { }); // not critical if it fails
 
     devicesApi.mine()
-      .then(({ devices }) => setDevices(devices))
+      .then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-'))))
       .catch(() => { });
   }, []);
 
@@ -716,7 +716,7 @@ export default function HubPage() {
                       try {
                         await devicesApi.remove(deviceMenu.device.id);
                         const { devices: updatedDevices } = await devicesApi.mine();
-                        setDevices(updatedDevices);
+                        setDevices(updatedDevices.filter(d => !d.device_key.startsWith('NATIVE-')));
                       } catch {
                         toast.error("Failed to logout device");
                       }
@@ -771,7 +771,7 @@ export default function HubPage() {
                   try {
                     await devicesApi.remove(deviceMenu.device.id);
                     const { devices: updatedDevices } = await devicesApi.mine();
-                    setDevices(updatedDevices);
+                    setDevices(updatedDevices.filter(d => !d.device_key.startsWith('NATIVE-')));
                   } catch {
                     toast.error("Failed to logout device");
                   }

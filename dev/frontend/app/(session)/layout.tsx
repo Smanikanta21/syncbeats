@@ -57,7 +57,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
 
     devicesApi.mine()
       .then(({ devices }) => {
-        setSavedDevices(devices);
+        setSavedDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')));
       })
       .catch(() => {
         setSavedDevices([]);
