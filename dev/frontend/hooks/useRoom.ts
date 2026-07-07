@@ -324,7 +324,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         // Micro-drift: Soft correction via playback rate
         if (audioRef.current.setPlaybackRate) {
           if (isYoutube) {
-            // YouTube ignores 1.05, so we use officially supported 1.25 / 0.75
+            // YouTube iframe API supports rate changes without pitch shifting
             // To catch up `driftMs` playing at 1.25x (0.25x faster), we need driftMs / 0.25 ms.
             const rate = drift > 0 ? 1.25 : 0.75;
             const correctionDurationMs = driftMs / 0.25; 
@@ -338,19 +338,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
               }
             }, Math.min(correctionDurationMs, 2000)); // Cap at 2s just in case
           } else {
-            // WebAudio handles fine-grained rates beautifully
-            // Use extremely precise rate adjustment based on drift magnitude
-            const rateOffset = Math.max(0.01, Math.min(0.05, driftMs / 1000)); 
-            const rate = drift > 0 ? (1 + rateOffset) : (1 - rateOffset);
-            const correctionDurationMs = driftMs / rateOffset; 
-            
-            audioRef.current.setPlaybackRate(rate);
-            
-            setTimeout(() => {
-              if (audioRef.current?.setPlaybackRate) {
-                audioRef.current.setPlaybackRate(1);
-              }
-            }, correctionDurationMs);
+            // WebAudio (AudioBufferSourceNode) pitch-shifts when playbackRate changes.
+            // We cannot use rate adjustment to fix drift without making it sound like a chipmunk.
+            // Instead, we just tolerate the drift until it hits the hard-seek threshold.
+            audioRef.current.setPlaybackRate(1);
           }
         }
       } else {
