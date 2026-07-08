@@ -159,5 +159,74 @@ export function createYoutubeRoutes(): Router {
     }
   });
 
+  // Fetch Curated "Home" data (Genres / Trending)
+  router.get('/home', async (req, res) => {
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    
+    // We can allow unauthenticated access to generic playlists by using an API key
+    // But since the user is likely authenticated on Mac app, we can use their token too.
+    // However, if we just use the Google API Key from env for generic data:
+    const youtube = google.youtube({ 
+      version: 'v3', 
+      auth: accessToken ? undefined : process.env.RAPID_API_KEY, 
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+    });
+    
+    // If we have access token, we use OAuth2 client
+    if (accessToken) {
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({ access_token: accessToken });
+      google.options({ auth: oauth2Client });
+    } else {
+      google.options({ auth: process.env.RAPID_API_KEY }); // fallback to API key if you have one
+    }
+
+    try {
+      const curatedCategories = [
+        {
+          title: "Top Hits & Trending",
+          playlistIds: ['PL4fGSI1pQAnOQbcJk2YI-K-8LqE8-mH9F', 'PLMC9KNkIncKvYin_USF1qoJQnIyMAfRxl']
+        },
+        {
+          title: "Genres & Moods",
+          playlistIds: ['PLFPg_IUxqnZNnARruZ-B3XQ4F4kG41T6A', 'RDCLAK5uy_l4jeC3h8F3Ue5FpX1I76s-J0wXn-xL7dY'] // Electronic, Hip Hop
+        },
+        {
+          title: "Chill & Focus",
+          playlistIds: ['RDCLAK5uy_nMhr-l-K60pS9ZlR7d5-dZt_tN6e91-Y4', 'RDCLAK5uy_m-r7F3o0L7H8-yXfC6rT7eR3Q8O-U_Bxo'] // Lo-Fi, Focus
+        }
+      ];
+
+      const allIds = curatedCategories.flatMap(c => c.playlistIds);
+      
+      // Fetch playlist details
+      const playlistsRes = await google.youtube('v3').playlists.list({
+        part: ['snippet', 'contentDetails'],
+        id: allIds,
+        maxResults: 50
+      });
+
+      const playlistsMap = new Map();
+      playlistsRes.data.items?.forEach(p => {
+        playlistsMap.set(p.id, {
+          id: p.id,
+          title: p.snippet?.title,
+          thumbnail: p.snippet?.thumbnails?.high?.url || p.snippet?.thumbnails?.medium?.url,
+          itemCount: p.contentDetails?.itemCount
+        });
+      });
+
+      const sections = curatedCategories.map(cat => ({
+        title: cat.title,
+        playlists: cat.playlistIds.map(id => playlistsMap.get(id)).filter(Boolean)
+      }));
+
+      res.json({ sections });
+    } catch (error) {
+      console.error('[YouTube] Home Data Error:', error);
+      res.status(500).json({ error: 'Failed to fetch home data' });
+    }
+  });
+
   return router;
 }
