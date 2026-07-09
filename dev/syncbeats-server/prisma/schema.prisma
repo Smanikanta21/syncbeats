@@ -25,6 +25,8 @@ model User {
   roomParticipants           RoomParticipant[]
   roomQueueItems             RoomQueueItem[]
   rooms                      Room[]
+  searchHistory              SearchHistory[]
+  listenHistory              ListenHistory[]
 
   @@map("users")
 }
@@ -109,4 +111,29 @@ model cached_tracks {
   created_at   DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([youtube_id], map: "idx_cached_tracks_youtube_id")
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  query     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("search_history")
+}
+
+model ListenHistory {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  youtubeId String   @map("youtube_id")
+  title     String
+  artist    String?
+  thumbnail String?
+  playedAt  DateTime @default(now()) @map("played_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, playedAt(sort: Desc)])
+  @@map("listen_history")
 }

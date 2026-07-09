@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { google } from 'googleapis';
+import prisma from '../db/prisma';
 
 export function createYoutubeRoutes(): Router {
   const router = Router();
@@ -15,7 +16,7 @@ export function createYoutubeRoutes(): Router {
   );
 
   // Endpoint to generate auth URL
-  router.get('/auth', (req, res) => {
+  router.get('/auth', (req: any, res: any) => {
     const redirectUrl = req.query.redirect as string || 'http://localhost:3000';
     // We encode the final destination in the state parameter
     const state = Buffer.from(JSON.stringify({ redirectUrl })).toString('base64');
@@ -38,7 +39,7 @@ export function createYoutubeRoutes(): Router {
   });
 
   // OAuth Callback
-  router.get('/callback', async (req, res) => {
+  router.get('/callback', async (req: any, res: any) => {
     const code = req.query.code as string;
     const stateB64 = req.query.state as string;
     
@@ -74,7 +75,7 @@ export function createYoutubeRoutes(): Router {
   });
 
   // Fetch YouTube Library
-  router.get('/library', async (req, res) => {
+  router.get('/library', async (req: any, res: any) => {
     const accessToken = req.headers.authorization?.split(' ')[1];
     if (!accessToken) {
       res.status(401).json({ error: 'No access token provided' });
@@ -127,7 +128,7 @@ export function createYoutubeRoutes(): Router {
   });
   
   // Fetch specific playlist items
-  router.get('/playlistItems', async (req, res) => {
+  router.get('/playlistItems', async (req: any, res: any) => {
     const accessToken = req.headers.authorization?.split(' ')[1];
     const playlistId = req.query.playlistId as string;
     
@@ -159,67 +160,129 @@ export function createYoutubeRoutes(): Router {
     }
   });
 
-  // Fetch Curated "Home" data (Genres / Trending)
-  router.get('/home', async (req, res) => {
+  // Fetch Curated "Home" data (Recommendations, History, Trending)
+  router.get('/home', async (req: any, res: any) => {
     const accessToken = req.headers.authorization?.split(' ')[1];
+    const userId = req.query.userId as string; // passed from client
     
-    // We can allow unauthenticated access to generic playlists by using an API key
-    // But since the user is likely authenticated on Mac app, we can use their token too.
-    // However, if we just use the Google API Key from env for generic data:
-    const youtube = google.youtube({ 
-      version: 'v3', 
-      auth: accessToken ? undefined : process.env.RAPID_API_KEY, 
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
-    });
-    
-    // If we have access token, we use OAuth2 client
-    if (accessToken) {
-      const oauth2Client = new google.auth.OAuth2();
-      oauth2Client.setCredentials({ access_token: accessToken });
-      google.options({ auth: oauth2Client });
-    } else {
-      google.options({ auth: process.env.RAPID_API_KEY }); // fallback to API key if you have one
+    if (!accessToken) {
+      return res.status(401).json({ error: 'No access token provided' });
     }
 
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    const youtube = google.youtube({ version: 'v3', auth });
+
     try {
-      const curatedCategories = [
-        {
-          title: "Top Hits & Trending",
-          playlistIds: ['PL4fGSI1pQAnOQbcJk2YI-K-8LqE8-mH9F', 'PLMC9KNkIncKvYin_USF1qoJQnIyMAfRxl']
-        },
-        {
-          title: "Genres & Moods",
-          playlistIds: ['PLFPg_IUxqnZNnARruZ-B3XQ4F4kG41T6A', 'RDCLAK5uy_l4jeC3h8F3Ue5FpX1I76s-J0wXn-xL7dY'] // Electronic, Hip Hop
-        },
-        {
-          title: "Chill & Focus",
-          playlistIds: ['RDCLAK5uy_nMhr-l-K60pS9ZlR7d5-dZt_tN6e91-Y4', 'RDCLAK5uy_m-r7F3o0L7H8-yXfC6rT7eR3Q8O-U_Bxo'] // Lo-Fi, Focus
-        }
-      ];
+      const sections: any[] = [];
 
-      const allIds = curatedCategories.flatMap(c => c.playlistIds);
-      
-      // Fetch playlist details
-      const playlistsRes = await google.youtube('v3').playlists.list({
-        part: ['snippet', 'contentDetails'],
-        id: allIds,
-        maxResults: 50
-      });
-
-      const playlistsMap = new Map();
-      playlistsRes.data.items?.forEach(p => {
-        playlistsMap.set(p.id, {
-          id: p.id,
-          title: p.snippet?.title,
-          thumbnail: p.snippet?.thumbnails?.high?.url || p.snippet?.thumbnails?.medium?.url,
-          itemCount: p.contentDetails?.itemCount
+      // 1. Fetch SyncBeats Listen History from DB
+      let recentQuery: string | null = null;
+      if (userId) {
+        const recentListens = await prisma.listenHistory.findMany({
+          where: { userId },
+          orderBy: { playedAt: 'desc' },
+          take: 20
         });
+        
+        if (recentListens.length > 0) {
+          sections.push({
+            title: "Your Most Listened",
+            tracks: recentListens.map((h: any) => ({
+              id: h.youtubeId,
+              title: h.title,
+              artist: h.artist || 'Unknown',
+              thumbnail: h.thumbnail
+            }))
+          });
+          recentQuery = `${recentListens[0].artist || ''} ${recentListens[0].title}`.trim();
+        }
+      }
+
+      // 2. Fetch Personalized Recommendations
+      // Since relatedToVideoId is deprecated in Googleapis, we generate a targeted query!
+      if (recentQuery) {
+        const relatedRes = await youtube.search.list({
+          part: ['snippet'],
+          q: `${recentQuery} official music video`,
+          type: ['video'],
+          videoCategoryId: '10',
+          maxResults: 20
+        });
+
+        if (relatedRes.data.items && relatedRes.data.items.length > 0) {
+          sections.push({
+            title: "Recommended for You",
+            tracks: relatedRes.data.items.map((item: any) => ({
+              id: item.id?.videoId,
+              title: item.snippet?.title,
+              artist: item.snippet?.channelTitle,
+              thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
+            }))
+          });
+        }
+      }
+
+      // 3. Fetch Trending Music directly from YouTube
+      const trendingRes = await youtube.videos.list({
+        part: ['snippet', 'statistics'],
+        chart: 'mostPopular',
+        videoCategoryId: '10', // Music
+        regionCode: 'US',
+        maxResults: 20
       });
 
-      const sections = curatedCategories.map(cat => ({
-        title: cat.title,
-        playlists: cat.playlistIds.map(id => playlistsMap.get(id)).filter(Boolean)
-      }));
+      if (trendingRes.data.items) {
+        sections.push({
+          title: "Trending Music",
+          tracks: trendingRes.data.items.map((item: any) => ({
+            id: item.id,
+            title: item.snippet?.title,
+            artist: item.snippet?.channelTitle,
+            thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
+          }))
+        });
+      }
+
+      // 4. Fetch Liked Videos (Favorites)
+      const channelsRes = await youtube.channels.list({ part: ['contentDetails'], mine: true });
+      const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
+      
+      if (likesPlaylistId) {
+        const likesRes = await youtube.playlistItems.list({
+          part: ['snippet'],
+          playlistId: likesPlaylistId,
+          maxResults: 50 // Fetch more to ensure we find enough music videos
+        });
+        
+        if (likesRes.data.items && likesRes.data.items.length > 0) {
+          const videoIds = likesRes.data.items.map(item => item.snippet?.resourceId?.videoId).filter(Boolean) as string[];
+          
+          if (videoIds.length > 0) {
+            // 4a. Fetch detailed video data to filter by Category ID
+            const videosRes = await youtube.videos.list({
+              part: ['snippet'],
+              id: videoIds, // Fixed: id must be an array of strings
+              maxResults: 50
+            });
+
+            // 4b. Filter strictly for Category 10 (Music)
+            const musicVideos = videosRes.data.items?.filter((v: any) => v.snippet?.categoryId === '10') || [];
+
+            if (musicVideos.length > 0) {
+              sections.push({
+                title: "Your YouTube Favorites",
+                tracks: musicVideos.map((v: any) => ({
+                  id: v.id,
+                  title: v.snippet?.title,
+                  artist: v.snippet?.channelTitle,
+                  thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url
+                }))
+              });
+            }
+          }
+        }
+      }
 
       res.json({ sections });
     } catch (error) {

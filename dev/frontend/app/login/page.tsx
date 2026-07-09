@@ -103,8 +103,12 @@ export default function AuthPage() {
       const returnTo = params.get('returnTo') || '/hub';
       
       if (isLogin) {
-        await login(email, password);
-        router.push(returnTo);
+        const token = await login(email, password);
+        if (returnTo.startsWith('syncbeats://')) {
+          window.location.href = `${returnTo}?token=${token}`;
+        } else {
+          router.push(returnTo);
+        }
       } else {
         if (password !== confirmPassword) {
           triggerShake(["signup-password", "signup-confirm-password"]);
@@ -204,8 +208,12 @@ export default function AuthPage() {
           try {
             const params = new URLSearchParams(window.location.search);
             const returnTo = params.get('returnTo') || '/hub';
-            await googleLogin(response.credential);
-            router.push(returnTo);
+            const token = await googleLogin(response.credential);
+            if (returnTo.startsWith('syncbeats://')) {
+              window.location.href = `${returnTo}?token=${token}`;
+            } else {
+              router.push(returnTo);
+            }
           } catch (err) {
             setError((err as Error).message);
             setLoading(false);
