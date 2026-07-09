@@ -16,13 +16,15 @@ class SocketService: ObservableObject {
     private var chunkBuffer: [Int: Data] = [:]
     private var totalChunksExpected: Int = 0
     private var currentDownloadTrackUrl: String? = nil
+    @Published var downloadProgress: Double = 0.0
+    @Published var isReady: Bool = false
     
     // NTP timing offset (milliseconds)
     @Published var serverTimeOffset: Double = 0.0
     
     private init() {
         // Setup SocketManager
-        let url = URL(string: "https://dev-api.syncbeats.app")!
+        let url = URL(string: Config.backendURL)!
         // We use .compress for performance, and .log(false) to prevent Xcode console spam
         manager = SocketManager(socketURL: url, config: [.log(false), .compress])
         socket = manager.defaultSocket
@@ -52,6 +54,11 @@ class SocketService: ObservableObject {
                 print("SocketService: Connected to server!")
                 // Initiate NTP burst upon connection to calculate micro-drift latency
                 self?.performNTPBurst()
+                
+                // Reconnect to the room if we were in one!
+                if let roomId = self?.currentRoom?.roomId {
+                    self?.joinRoom(roomId: roomId)
+                }
             }
         }
         
@@ -62,23 +69,51 @@ class SocketService: ObservableObject {
             }
         }
         
-        // Room snapshot listener
-        socket.on("room:snapshot") { [weak self] data, ack in
+        let handleRoomUpdate: ([Any], SocketAckEmitter) -> Void = { [weak self] data, ack in
             guard let dict = data.first as? [String: Any],
-                  let jsonData = try? JSONSerialization.data(withJSONObject: dict),
-                  let snapshot = try? JSONDecoder().decode(RoomSnapshot.self, from: jsonData) else { return }
+                  let jsonData = try? JSONSerialization.data(withJSONObject: dict) else { return }
             
-            DispatchQueue.main.async {
-                let previousTrack = self?.currentRoom?.trackUrl
-                self?.currentRoom = snapshot
-                print("SocketService: Room snapshot updated for \(snapshot.roomId)")
+            do {
+                let snapshot = try JSONDecoder().decode(RoomSnapshot.self, from: jsonData)
                 
-                // If track changed, request it from peers!
-                if let newTrack = snapshot.trackUrl, newTrack != previousTrack {
-                    self?.requestTrackFile(trackUrl: newTrack)
+                DispatchQueue.main.async {
+                    let previousTrack = self?.currentRoom?.trackUrl
+                    let wasNotInRoom = self?.currentRoom == nil
+                    
+                    self?.currentRoom = snapshot
+                    print("SocketService: Room snapshot updated for \(snapshot.roomId)")
+                    
+                    if wasNotInRoom {
+                        NotificationCenter.default.post(name: NSNotification.Name("RoomJoined"), object: nil)
+                    }
+                    
+                    // If track changed, request it from peers!
+                    if let newTrack = snapshot.trackUrl, newTrack != previousTrack {
+                        self?.isReady = false
+                        self?.requestTrackFile(trackUrl: newTrack)
+                    }
+                    
+                    // If the track is the SAME, but the state changed to PLAYING and we are ready, play it!
+                    if snapshot.state == "PLAYING" && snapshot.trackUrl == previousTrack && self?.currentDownloadTrackUrl == nil {
+                        AudioEngine.shared.play(at: snapshot.position)
+                    }
                 }
+            } catch let DecodingError.dataCorrupted(context) {
+                print("SocketService: Decoding corrupted: \(context)")
+            } catch let DecodingError.keyNotFound(key, context) {
+                print("SocketService: Key '\(key.stringValue)' not found: \(context.debugDescription)")
+            } catch let DecodingError.valueNotFound(value, context) {
+                print("SocketService: Value '\(value)' not found: \(context.debugDescription)")
+            } catch let DecodingError.typeMismatch(type, context) {
+                print("SocketService: Type '\(type)' mismatch: \(context.debugDescription)")
+            } catch {
+                print("SocketService: Room decoding failed: \(error)")
             }
         }
+        
+        // Listen to BOTH initial snapshots and continuous state changes
+        socket.on("room:snapshot", callback: handleRoomUpdate)
+        socket.on("room:stateChanged", callback: handleRoomUpdate)
         
         // Chat listener
         socket.on("room:chat") { [weak self] data, ack in
@@ -127,13 +162,23 @@ class SocketService: ObservableObject {
                 self.chunkBuffer.removeAll()
                 self.currentDownloadTrackUrl = trackUrl
                 self.totalChunksExpected = totalChunks
+                self.downloadProgress = 0.0
             }
             
             self.chunkBuffer[chunkIndex] = chunkData
             
+            let currentProgress = Double(self.chunkBuffer.count) / Double(self.totalChunksExpected)
+            self.downloadProgress = currentProgress
+            
+            if let roomId = self.currentRoom?.roomId {
+                self.socket.emit("room:sync_progress", ["roomId": roomId, "progress": Int(currentProgress * 100)])
+            }
+            
             // Check if we have all chunks
             if self.chunkBuffer.count == self.totalChunksExpected {
                 print("SocketService: Fully received \(self.totalChunksExpected) chunks for track!")
+                self.downloadProgress = 0.0 // reset for next track
+                self.isReady = true
                 self.assembleAndPlayTrack(trackUrl: trackUrl)
             }
         }
@@ -142,11 +187,12 @@ class SocketService: ObservableObject {
     // MARK: - Actions
     
     func joinRoom(roomId: String) {
+        let userName = AuthManager.shared.userName ?? "Anonymous"
         let payload: [String: Any] = [
             "roomId": roomId,
-            "displayName": "MacBook Client", // We will pull this from Auth later
-            "userId": AuthManager.shared.appToken ?? "anonymous_mac",
-            "isReady": true
+            "displayName": "\(userName)::Mac", 
+            "userId": AuthManager.shared.userId ?? "anonymous_mac",
+            "isReady": self.isReady
         ]
         socket.emit("room:join", payload)
     }
@@ -209,6 +255,9 @@ class SocketService: ObservableObject {
             // Feed it into the AudioEngine!
             AudioEngine.shared.loadFile(url: fileUrl)
             
+            // Tell the backend we are fully buffered and ready to play!
+            socket.emit("room:clientReady", ["roomId": currentRoom?.roomId, "isReady": true])
+            
             // If the room is already playing, start playback immediately!
             if let room = currentRoom, room.state == "PLAYING" {
                 AudioEngine.shared.play(at: room.position)
@@ -217,6 +266,12 @@ class SocketService: ObservableObject {
             print("SocketService: Failed to write assembled track to disk: \(error)")
         }
         
+        self.resetDownloadState()
+    }
+    
+    private func resetDownloadState() {
+        self.totalChunksExpected = 0
+        self.downloadProgress = 0.0
         // Clear buffer
         chunkBuffer.removeAll()
         currentDownloadTrackUrl = nil

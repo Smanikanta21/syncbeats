@@ -12,7 +12,7 @@ export function createYoutubeRoutes(): Router {
     // but google requires it to match what's in the console exactly.
     // If the console has a specific redirect URI, we should use that, or a generic backend one.
     // Let's use a generic backend callback that then redirects to the client.
-    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : 'http://localhost:4000/youtube/callback'
+    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
   );
 
   // Endpoint to generate auth URL
@@ -32,7 +32,7 @@ export function createYoutubeRoutes(): Router {
       access_type: 'offline',
       scope: scopes,
       state: state,
-      redirect_uri: 'http://localhost:4000/youtube/callback' 
+      redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback` 
     });
 
     res.redirect(url);
@@ -58,7 +58,7 @@ export function createYoutubeRoutes(): Router {
       // Must match the redirect_uri used in generateAuthUrl
       const { tokens } = await oauth2Client.getToken({
         code: code,
-        redirect_uri: 'http://localhost:4000/youtube/callback'
+        redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
       });
       
       // Redirect back to the client app (Mac or Web) with the tokens securely passed
@@ -121,8 +121,11 @@ export function createYoutubeRoutes(): Router {
       }
 
       res.json({ playlists });
-    } catch (error) {
-      console.error('[YouTube] API Error:', error);
+    } catch (error: any) {
+      console.error('[YouTube] API Error:', error.message);
+      if (error.code === 401 || error.code === '401' || error.response?.status === 401 || error.status === 401) {
+        return res.status(401).json({ error: 'YouTube token expired or invalid' });
+      }
       res.status(500).json({ error: 'Failed to fetch YouTube library' });
     }
   });
@@ -178,110 +181,123 @@ export function createYoutubeRoutes(): Router {
 
       // 1. Fetch SyncBeats Listen History from DB
       let recentQuery: string | null = null;
-      if (userId) {
-        const recentListens = await prisma.listenHistory.findMany({
-          where: { userId },
-          orderBy: { playedAt: 'desc' },
-          take: 20
-        });
-        
-        if (recentListens.length > 0) {
-          sections.push({
-            title: "Your Most Listened",
-            tracks: recentListens.map((h: any) => ({
-              id: h.youtubeId,
-              title: h.title,
-              artist: h.artist || 'Unknown',
-              thumbnail: h.thumbnail
-            }))
+      try {
+        if (userId) {
+          const recentListens = await prisma.listenHistory.findMany({
+            where: { userId },
+            orderBy: { playedAt: 'desc' },
+            take: 20
           });
-          recentQuery = `${recentListens[0].artist || ''} ${recentListens[0].title}`.trim();
+          
+          if (recentListens.length > 0) {
+            sections.push({
+              title: "Your Most Listened",
+              tracks: recentListens.map((h: any) => ({
+                id: h.youtubeId,
+                title: h.title,
+                artist: h.artist || 'Unknown',
+                thumbnail: h.thumbnail
+              }))
+            });
+            recentQuery = `${recentListens[0].artist || ''} ${recentListens[0].title}`.trim();
+          }
         }
+      } catch (err) {
+        console.error('[YouTube] Failed to fetch History:', err);
       }
 
       // 2. Fetch Personalized Recommendations
-      // Since relatedToVideoId is deprecated in Googleapis, we generate a targeted query!
-      if (recentQuery) {
-        const relatedRes = await youtube.search.list({
-          part: ['snippet'],
-          q: `${recentQuery} official music video`,
-          type: ['video'],
-          videoCategoryId: '10',
+      try {
+        if (recentQuery) {
+          const relatedRes = await youtube.search.list({
+            part: ['snippet'],
+            q: `${recentQuery} official music video`,
+            type: ['video'],
+            videoCategoryId: '10',
+            maxResults: 20
+          });
+
+          if (relatedRes.data.items && relatedRes.data.items.length > 0) {
+            sections.push({
+              title: "Recommended for You",
+              tracks: relatedRes.data.items.map((item: any) => ({
+                id: item.id?.videoId,
+                title: item.snippet?.title,
+                artist: item.snippet?.channelTitle,
+                thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
+              }))
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[YouTube] Failed to fetch Recommendations:', err);
+      }
+
+      // 3. Fetch Trending Music directly from YouTube
+      try {
+        const trendingRes = await youtube.videos.list({
+          part: ['snippet', 'statistics'],
+          chart: 'mostPopular',
+          videoCategoryId: '10', // Music
+          regionCode: 'US',
           maxResults: 20
         });
 
-        if (relatedRes.data.items && relatedRes.data.items.length > 0) {
+        if (trendingRes.data.items) {
           sections.push({
-            title: "Recommended for You",
-            tracks: relatedRes.data.items.map((item: any) => ({
-              id: item.id?.videoId,
+            title: "Trending Music",
+            tracks: trendingRes.data.items.map((item: any) => ({
+              id: item.id,
               title: item.snippet?.title,
               artist: item.snippet?.channelTitle,
               thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
             }))
           });
         }
-      }
-
-      // 3. Fetch Trending Music directly from YouTube
-      const trendingRes = await youtube.videos.list({
-        part: ['snippet', 'statistics'],
-        chart: 'mostPopular',
-        videoCategoryId: '10', // Music
-        regionCode: 'US',
-        maxResults: 20
-      });
-
-      if (trendingRes.data.items) {
-        sections.push({
-          title: "Trending Music",
-          tracks: trendingRes.data.items.map((item: any) => ({
-            id: item.id,
-            title: item.snippet?.title,
-            artist: item.snippet?.channelTitle,
-            thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-          }))
-        });
+      } catch (err) {
+        console.error('[YouTube] Failed to fetch Trending:', err);
       }
 
       // 4. Fetch Liked Videos (Favorites)
-      const channelsRes = await youtube.channels.list({ part: ['contentDetails'], mine: true });
-      const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
-      
-      if (likesPlaylistId) {
-        const likesRes = await youtube.playlistItems.list({
-          part: ['snippet'],
-          playlistId: likesPlaylistId,
-          maxResults: 50 // Fetch more to ensure we find enough music videos
-        });
+      try {
+        const channelsRes = await youtube.channels.list({ part: ['contentDetails'], mine: true });
+        const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
         
-        if (likesRes.data.items && likesRes.data.items.length > 0) {
-          const videoIds = likesRes.data.items.map(item => item.snippet?.resourceId?.videoId).filter(Boolean) as string[];
+        if (likesPlaylistId) {
+          const likesRes = await youtube.playlistItems.list({
+            part: ['snippet'],
+            playlistId: likesPlaylistId,
+            maxResults: 50
+          });
           
-          if (videoIds.length > 0) {
-            // 4a. Fetch detailed video data to filter by Category ID
-            const videosRes = await youtube.videos.list({
-              part: ['snippet'],
-              id: videoIds, // Fixed: id must be an array of strings
-              maxResults: 50
-            });
-
-            // 4b. Filter strictly for Category 10 (Music)
-            const musicVideos = videosRes.data.items?.filter((v: any) => v.snippet?.categoryId === '10') || [];
-
-            if (musicVideos.length > 0) {
-              sections.push({
-                title: "Your YouTube Favorites",
-                tracks: musicVideos.map((v: any) => ({
-                  id: v.id,
-                  title: v.snippet?.title,
-                  artist: v.snippet?.channelTitle,
-                  thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url
-                }))
+          if (likesRes.data.items && likesRes.data.items.length > 0) {
+            const videoIds = likesRes.data.items.map(item => item.snippet?.resourceId?.videoId).filter(Boolean) as string[];
+            
+            if (videoIds.length > 0) {
+              const videosRes = await youtube.videos.list({
+                part: ['snippet'],
+                id: videoIds,
+                maxResults: 50
               });
+
+              const musicVideos = videosRes.data.items?.filter((v: any) => v.snippet?.categoryId === '10') || [];
+
+              if (musicVideos.length > 0) {
+                sections.push({
+                  title: "Your YouTube Favorites",
+                  tracks: musicVideos.map((v: any) => ({
+                    id: v.id,
+                    title: v.snippet?.title,
+                    artist: v.snippet?.channelTitle,
+                    thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url
+                  }))
+                });
+              }
             }
           }
         }
+      } catch (err) {
+        console.error('[YouTube] Failed to fetch Favorites:', err);
       }
 
       res.json({ sections });

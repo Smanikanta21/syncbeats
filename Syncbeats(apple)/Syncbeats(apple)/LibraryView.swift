@@ -199,7 +199,7 @@ struct YouTubePrivacyModal: View {
                 
                 Button(action: {
                     isPresented = false
-                    if let url = URL(string: "https://dev-api.syncbeats.app/youtube/auth?redirect=syncbeats%3A%2F%2Fauth") {
+                    if let url = URL(string: "\(Config.backendURL)/youtube/auth?redirect=syncbeats%3A%2F%2Fauth") {
                         NSWorkspace.shared.open(url)
                     }
                 }) {

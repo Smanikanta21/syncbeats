@@ -5,7 +5,7 @@ class YouTubeService: ObservableObject {
     static let shared = YouTubeService()
     
     // Using localhost for dev, can be swapped via env variables later
-    private let baseURL = "https://dev-api.syncbeats.app"
+    private let baseURL = Config.backendURL
     
     // Models
     struct Playlist: Codable, Identifiable {

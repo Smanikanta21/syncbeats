@@ -144,6 +144,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] mode in
                 self?.islandPanel.ignoresMouseEvents = (mode == .hidden || mode == .welcome)
             }.store(in: &cancellables)
+            
+        // Listen for successful room joins to automatically reveal the island!
+        NotificationCenter.default.publisher(for: NSNotification.Name("RoomJoined"))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
+                    self?.stateManager.mode = .player
+                }
+            }.store(in: &cancellables)
 
         islandPanel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)))
         islandPanel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]

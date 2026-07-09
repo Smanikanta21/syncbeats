@@ -47,9 +47,7 @@ struct MainAppView: View {
                     } else if selection == "library" {
                         LibraryView()
                     } else {
-                        Text("Active Rooms")
-                            .font(.largeTitle)
-                            .foregroundColor(.white)
+                        RoomsView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,9 +82,7 @@ struct MainAppView: View {
             .preferredColorScheme(.dark)
         }
         .onAppear {
-            if PowerState.isPluggedIn {
-                socket.connect()
-            }
+            socket.connect()
         }
         .sheet(isPresented: $showSyncBeatsModal) {
             SyncBeatsModal(isPresented: $showSyncBeatsModal)

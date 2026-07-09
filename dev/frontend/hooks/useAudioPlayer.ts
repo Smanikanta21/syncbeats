@@ -661,6 +661,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
         } catch (decodeErr) {
           console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
+          setError("Corrupted audio file received from proxy. Please try another track.");
           pendingArrayBufferRef.current = arrayBuffer;
           
           if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {

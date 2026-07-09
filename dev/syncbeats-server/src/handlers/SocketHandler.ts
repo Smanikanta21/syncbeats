@@ -81,8 +81,16 @@ export class SocketHandler {
 
     socket.on('room:join', async ({ roomId, displayName, userId, isReady = false }: JoinPayload) => {
       try {
+        // Protect against JWT tokens being passed as userId accidentally
+        if (userId && userId.includes('.') && userId.length > 50) {
+          console.warn(`[Socket] Received JWT token instead of userId from ${socket.id}. Ignoring.`);
+          userId = undefined;
+        }
+
         if (userId) socket.data.userId = userId;
         const room = this.roomManager.getOrCreate(roomId);
+
+        // Allow multiple devices per user. Duplicate socket joins will simply overwrite in the Map.
 
         // Disconnect from previous room if any to prevent ghosts
         this.roomManager.handleDisconnect(socket.id);
@@ -108,6 +116,19 @@ export class SocketHandler {
         const snapshot = room.snapshot();
         const isHost = snapshot.hostId === socket.data.userId;
         const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
+
+        // If joining an existing room, kick any ghost sockets with the same userId and displayName
+        if (room && userId) {
+          const existingGhosts = room.snapshot().participants.filter(
+            (p: any) => p.userId === userId && p.displayName === displayName && p.socketId !== socket.id
+          );
+          for (const ghost of existingGhosts) {
+            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${userId}`);
+            this.io.to(ghost.socketId).emit('room:kicked', { reason: 'Joined from another device' });
+            this.io.sockets.sockets.get(ghost.socketId)?.disconnect();
+            room.removeParticipant(ghost.socketId);
+          }
+        }
 
         if (room.getIsPrivate() && roomHasActiveHost && !isHost && !room.hasParticipant(socket.id)) {
           const hasJoinedBefore = await this.roomRepo.hasParticipantPreviouslyJoined(roomId, socket.data.userId);

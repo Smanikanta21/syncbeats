@@ -9,6 +9,37 @@ class AuthManager: ObservableObject {
     @Published var appToken: String? = nil
     @Published var ytToken: String? = nil
     
+    var userId: String? {
+        return extractClaim(key: "sub")
+    }
+    
+    var userName: String? {
+        return extractClaim(key: "name")
+    }
+    
+    private func extractClaim(key: String) -> String? {
+        guard let token = appToken else { return nil }
+        let segments = token.components(separatedBy: ".")
+        guard segments.count > 1 else { return nil }
+        
+        var base64String = segments[1]
+        let requiredLength = Int(4 * ceil(Double(base64String.count) / 4.0))
+        let paddingLength = requiredLength - base64String.count
+        if paddingLength > 0 {
+            let padding = String(repeating: "=", count: paddingLength)
+            base64String += padding
+        }
+        
+        base64String = base64String.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        
+        guard let data = Data(base64Encoded: base64String),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+              let value = json[key] as? String else {
+            return nil
+        }
+        return value
+    }
+    
     private let appTokenKey = "com.syncbeats.appToken"
     private let ytTokenKey = "com.syncbeats.ytToken"
     

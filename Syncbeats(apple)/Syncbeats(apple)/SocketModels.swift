@@ -1,5 +1,9 @@
 import Foundation
 
+struct Config {
+    static let backendURL = "https://dev-api.syncbeats.app"
+}
+
 // MARK: - Room Synchronization Models
 
 struct RoomSnapshot: Codable {
@@ -22,13 +26,12 @@ struct Participant: Codable, Identifiable {
     let userId: String?
     let joinedAt: Double
     let isReady: Bool
-    let volume: Double
+    let volume: Double?
     let latency: Double?
     let jitter: Double?
-    let deviceName: String?
-    let deviceType: String?
+    let outputDeviceName: String?
+    let outputDeviceType: String?
     let isBlocked: Bool?
-    let spatialPosition: SpatialPosition?
 }
 
 struct SpatialPosition: Codable {
@@ -42,7 +45,7 @@ struct TrackQueueItem: Codable, Identifiable {
     let trackUrl: String
     let title: String
     let addedBy: String
-    let addedAt: Double
+    let createdAt: Double
     let isCurrent: Bool?
 }
 

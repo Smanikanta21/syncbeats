@@ -25,7 +25,7 @@ struct IslandView: View {
 
     // Widths
     private let collapsedWidth: CGFloat = 220
-    private let hoveredWidth: CGFloat = 240
+    private let hoveredWidth: CGFloat = 244
     private let welcomeWidth: CGFloat = 320
     private let playerWidth: CGFloat = 700
     
@@ -180,13 +180,35 @@ struct IslandView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.gray)
                     
-                    let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? "No Track Playing"
-                    
-                    Text(currentTrack)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
+                    if socket.downloadProgress > 0.0 && socket.downloadProgress < 1.0 {
+                        Text("Peering... \(Int(socket.downloadProgress * 100))%")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7)) // Cyan
+                            .lineLimit(1)
+                            
+                        ProgressView(value: socket.downloadProgress, total: 1.0)
+                            .progressViewStyle(.linear)
+                            .tint(Color(red: 0.0, green: 1.0, blue: 0.7))
+                            .frame(height: 4)
+                            .padding(.top, 4)
+                    } else {
+                        let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? "No Track Playing"
+                        
+                        Text(currentTrack)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            
+                        if audio.duration > 0 {
+                            ProgressView(value: min(audio.currentPosition, audio.duration), total: audio.duration)
+                                .progressViewStyle(.linear)
+                                .tint(Color(red: 0.0, green: 1.0, blue: 0.7))
+                                .frame(height: 4)
+                                .padding(.top, 4)
+                        }
+                    }
                 }
+                .frame(maxWidth: 200)
 
                 Spacer()
 

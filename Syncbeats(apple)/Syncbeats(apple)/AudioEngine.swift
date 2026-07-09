@@ -15,7 +15,7 @@ class AudioEngine: ObservableObject {
     
     private var audioFile: AVAudioFile?
     private var sampleRate: Double = 44100.0
-    private var duration: TimeInterval = 0
+    @Published var duration: TimeInterval = 0
     
     // Tracking manual seeks
     private var seekTime: TimeInterval = 0
