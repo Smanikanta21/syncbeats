@@ -12,7 +12,7 @@ export function createYoutubeRoutes(): Router {
     // but google requires it to match what's in the console exactly.
     // If the console has a specific redirect URI, we should use that, or a generic backend one.
     // Let's use a generic backend callback that then redirects to the client.
-    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
+    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback`
   );
 
   // Endpoint to generate auth URL
@@ -32,7 +32,7 @@ export function createYoutubeRoutes(): Router {
       access_type: 'offline',
       scope: scopes,
       state: state,
-      redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback` 
+      redirect_uri: `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback` 
     });
 
     res.redirect(url);
@@ -58,7 +58,7 @@ export function createYoutubeRoutes(): Router {
       // Must match the redirect_uri used in generateAuthUrl
       const { tokens } = await oauth2Client.getToken({
         code: code,
-        redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
+        redirect_uri: `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback`
       });
       
       // Redirect back to the client app (Mac or Web) with the tokens securely passed

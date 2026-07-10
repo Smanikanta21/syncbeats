@@ -18,6 +18,7 @@ class SocketService: ObservableObject {
     private var currentDownloadTrackUrl: String? = nil
     @Published var downloadProgress: Double = 0.0
     @Published var isReady: Bool = false
+    @Published var localPlaybackTitle: String? = nil
     
     // NTP timing offset (milliseconds)
     @Published var serverTimeOffset: Double = 0.0
@@ -225,6 +226,48 @@ class SocketService: ObservableObject {
     func emitPause(positionMs: Double) {
         guard let roomId = currentRoom?.roomId else { return }
         socket.emit("playback:pause", ["roomId": roomId, "positionMs": positionMs])
+    }
+    
+    func emitSeek(positionMs: Double) {
+        guard let roomId = currentRoom?.roomId else { return }
+        socket.emit("playback:seek", ["roomId": roomId, "position": positionMs])
+    }
+    
+    // MARK: - Direct Playback
+    
+    func playTrackDirectly(videoId: String, title: String) {
+        guard let url = URL(string: "\(Config.backendURL)/rooms/local/yt-proxy?videoId=\(videoId)") else { return }
+        
+        DispatchQueue.main.async {
+            self.localPlaybackTitle = "Loading: \(title)..."
+        }
+        print("SocketService: Downloading track \(videoId) directly...")
+        
+        let task = URLSession.shared.downloadTask(with: url) { localURL, response, error in
+            guard let localURL = localURL, error == nil else {
+                print("SocketService: Download failed: \(String(describing: error))")
+                return
+            }
+            
+            let tempDir = FileManager.default.temporaryDirectory
+            let destinationURL = tempDir.appendingPathComponent("syncbeats_local_\(videoId).m4a")
+            
+            try? FileManager.default.removeItem(at: destinationURL)
+            do {
+                try FileManager.default.copyItem(at: localURL, to: destinationURL)
+                DispatchQueue.main.async {
+                    self.localPlaybackTitle = title
+                    AudioEngine.shared.loadFile(url: destinationURL)
+                    AudioEngine.shared.play()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.localPlaybackTitle = "Failed to load"
+                }
+                print("SocketService: Failed to copy downloaded track: \(error)")
+            }
+        }
+        task.resume()
     }
     
     // MARK: - P2P Audio Handling

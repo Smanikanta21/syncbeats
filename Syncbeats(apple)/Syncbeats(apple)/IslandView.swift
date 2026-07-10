@@ -22,6 +22,8 @@ struct IslandView: View {
     @ObservedObject var audio = AudioEngine.shared
     
     @State private var earbudLatencyMs: Double = 0.0
+    @State private var isDraggingSlider = false
+    @State private var dragPosition: Double = 0.0
 
     // Widths
     private let collapsedWidth: CGFloat = 220
@@ -65,6 +67,14 @@ struct IslandView: View {
     private var currentTopConcaveRadius: CGFloat {
         // The physical MacBook notch has a very sharp 8pt concave curve at the bezel
         return 8
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        guard !seconds.isNaN && !seconds.isInfinite else { return "0:00" }
+        let totalSeconds = Int(seconds)
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     var body: some View {
@@ -192,7 +202,7 @@ struct IslandView: View {
                             .frame(height: 4)
                             .padding(.top, 4)
                     } else {
-                        let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? "No Track Playing"
+                        let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? socket.localPlaybackTitle ?? "No Track Playing"
                         
                         Text(currentTrack)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -200,11 +210,34 @@ struct IslandView: View {
                             .lineLimit(1)
                             
                         if audio.duration > 0 {
-                            ProgressView(value: min(audio.currentPosition, audio.duration), total: audio.duration)
-                                .progressViewStyle(.linear)
+                            HStack(spacing: 6) {
+                                Text(formatTime(isDraggingSlider ? dragPosition : audio.currentPosition))
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .frame(width: 32, alignment: .trailing)
+                                
+                                Slider(
+                                    value: Binding(
+                                        get: { isDraggingSlider ? dragPosition : min(audio.currentPosition, audio.duration) },
+                                        set: { dragPosition = $0 }
+                                    ),
+                                    in: 0...max(1, audio.duration),
+                                    onEditingChanged: { editing in
+                                        isDraggingSlider = editing
+                                        if !editing {
+                                            audio.seek(to: dragPosition * 1000)
+                                            socket.emitSeek(positionMs: dragPosition * 1000)
+                                        }
+                                    }
+                                )
                                 .tint(Color(red: 0.0, green: 1.0, blue: 0.7))
-                                .frame(height: 4)
-                                .padding(.top, 4)
+                                
+                                Text(formatTime(audio.duration))
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .frame(width: 32, alignment: .leading)
+                            }
+                            .padding(.top, 2)
                         }
                     }
                 }

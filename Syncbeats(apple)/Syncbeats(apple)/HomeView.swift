@@ -127,9 +127,8 @@ struct TrackCard: View {
             }
         }
         .onTapGesture {
-            // Play logic (and log listen!)
             YouTubeService.shared.logListen(track: track)
-            // TODO: integrate with playback manager
+            SocketService.shared.playTrackDirectly(videoId: track.id, title: track.title)
         }
     }
 }
