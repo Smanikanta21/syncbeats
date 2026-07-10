@@ -152,17 +152,22 @@ export function createSpotifyRoutes(): Router {
 
   // GET /spotify/status — check if the user has connected Spotify
   router.get('/status', requireAuth, async (req: any, res: any) => {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { spotifyAccessToken: true },
-    });
-    res.json({ connected: !!user?.spotifyAccessToken });
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.sub },
+        select: { spotifyAccessToken: true },
+      });
+      res.json({ connected: !!user?.spotifyAccessToken });
+    } catch (err: any) {
+      console.error('[Spotify] Status check error:', err);
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    }
   });
 
   // GET /spotify/playlists — list user's Spotify playlists
   router.get('/playlists', requireAuth, async (req: any, res: any) => {
     const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
+      where: { id: req.user.sub },
       select: { spotifyAccessToken: true, spotifyRefreshToken: true },
     });
 
@@ -180,7 +185,7 @@ export function createSpotifyRoutes(): Router {
         // Try refreshing the token
         if (user.spotifyRefreshToken) {
           accessToken = await refreshSpotifyToken(user.spotifyRefreshToken);
-          await prisma.user.update({ where: { id: req.user.id }, data: { spotifyAccessToken: accessToken } });
+          await prisma.user.update({ where: { id: req.user.sub }, data: { spotifyAccessToken: accessToken } });
           data = await spotifyFetch('https://api.spotify.com/v1/me/playlists?limit=50', accessToken);
         } else {
           throw new Error('Token expired and no refresh token');
@@ -216,7 +221,7 @@ export function createSpotifyRoutes(): Router {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
+      where: { id: req.user.sub },
       select: { spotifyAccessToken: true, spotifyRefreshToken: true },
     });
 
@@ -238,7 +243,7 @@ export function createSpotifyRoutes(): Router {
         } catch {
           if (user.spotifyRefreshToken) {
             accessToken = await refreshSpotifyToken(user.spotifyRefreshToken);
-            await prisma.user.update({ where: { id: req.user.id }, data: { spotifyAccessToken: accessToken } });
+            await prisma.user.update({ where: { id: req.user.sub }, data: { spotifyAccessToken: accessToken } });
             data = await spotifyFetch(url, accessToken);
           } else throw new Error('Token expired');
         }
@@ -254,7 +259,7 @@ export function createSpotifyRoutes(): Router {
       // Create the playlist in DB first
       const playlist = await prisma.playlist.create({
         data: {
-          userId:     req.user.id,
+          userId:     req.user.sub,
           name:       playlistName,
           coverUrl,
           sourceType: 'SPOTIFY',
@@ -306,7 +311,7 @@ export function createSpotifyRoutes(): Router {
   // GET /spotify/my-playlists — get all SyncBeats playlists for the user
   router.get('/my-playlists', requireAuth, async (req: any, res: any) => {
     const playlists = await prisma.playlist.findMany({
-      where: { userId: req.user.id },
+      where: { userId: req.user.sub },
       include: { tracks: { orderBy: { position: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -316,7 +321,7 @@ export function createSpotifyRoutes(): Router {
   // DELETE /spotify/disconnect — remove Spotify tokens
   router.delete('/disconnect', requireAuth, async (req: any, res: any) => {
     await prisma.user.update({
-      where: { id: req.user.id },
+      where: { id: req.user.sub },
       data: { spotifyAccessToken: null, spotifyRefreshToken: null },
     });
     res.json({ ok: true });

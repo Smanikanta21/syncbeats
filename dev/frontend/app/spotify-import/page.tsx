@@ -43,12 +43,18 @@ function SpotifyImportContent() {
       const r = await fetch(`${SERVER}/spotify/status`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!r.ok) {
+        throw new Error(`Server returned status ${r.status}`);
+      }
       const data = await r.json();
       setConnected(data.connected);
       if (data.connected) {
         fetchPlaylists();
         fetchImported();
       }
+    } catch (e: any) {
+      console.error('[Spotify] Status check failed:', e);
+      setError(e.message || "Failed to check Spotify status");
     } finally {
       setLoading(false);
     }
