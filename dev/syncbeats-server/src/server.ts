@@ -155,7 +155,7 @@ export class SyncBeatsServer {
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
     this.app.use('/search',  createSearchRoutes());
-    this.app.use('/youtube', createYoutubeRoutes());
+    // this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
     this.app.use('/spotify', createSpotifyRoutes());
   }

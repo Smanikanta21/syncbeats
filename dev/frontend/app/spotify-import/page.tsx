@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -23,7 +23,7 @@ interface ImportedPlaylist {
   tracks: { id: string; title: string; artist: string; thumbnail: string; youtubeId: string }[];
 }
 
-export default function SpotifyImportPage() {
+function SpotifyImportContent() {
   const { token, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -359,5 +359,17 @@ export default function SpotifyImportPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SpotifyImportPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-[#0e0e14]">
+        <p className="text-white">Loading...</p>
+      </div>
+    }>
+      <SpotifyImportContent />
+    </Suspense>
   );
 }

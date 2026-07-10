@@ -192,4 +192,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             mainWindow.makeKeyAndOrderFront(nil)
         }
     }
+
+    // Intercept custom URL scheme launches (deep links) to avoid duplicate window creation
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let url = urls.first {
+            AuthManager.shared.handleDeepLink(url)
+        }
+        // Focus the main window when opening a deep link
+        if let mainWindow = NSApp.windows.first(where: { $0 !== islandPanel }) {
+            mainWindow.makeKeyAndOrderFront(nil)
+        }
+    }
 }
