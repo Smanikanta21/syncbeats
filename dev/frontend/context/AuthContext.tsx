@@ -16,9 +16,9 @@ interface AuthContextType {
   emailVerified: boolean;
   token:    string | null;
   loading:  boolean;
-  login:    (email: string, password: string) => Promise<void>;
+  login:    (email: string, password: string) => Promise<string>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  googleLogin: (credential: string) => Promise<void>;
+  googleLogin: (credential: string) => Promise<string>;
   resendVerification: (email?: string) => Promise<void>;
   renameDevice: (name: string) => Promise<void>;
   replaceDevice: (targetDeviceId: string) => Promise<void>;
@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(token, user);
     setDevice(device);
     setNeedsDeviceRename(needsDeviceRename);
+    return token;
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
@@ -94,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(token, user);
     setDevice(device);
     setNeedsDeviceRename(needsDeviceRename);
+    return token;
   }, []);
 
   const resendVerification = useCallback(async (email?: string) => {

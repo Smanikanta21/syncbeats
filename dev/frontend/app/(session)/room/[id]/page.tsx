@@ -123,7 +123,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   // ── Spatial Mode State ────────────────────────────────────────────────────────
   const [spatialMode, setSpatialMode] = useState<'multiplayer' | '8d-solo'>('multiplayer');
 
-  const allow8DSolo = participants.length === 1 || (participants.length > 0 && !!user?.id && participants.every(p => p.userId === user.id));
+  const allow8DSolo = false; // Temporarily removed 8D audio solo
 
   // Spatial audio
   const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({

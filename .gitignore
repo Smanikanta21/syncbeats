@@ -44,3 +44,21 @@ out/
 dev/syncbeats-server/yt-dlp
 dev/syncbeats-server/yt-dlp_linux
 dev/syncbeats-server/tmp/
+CLAUDE.md
+
+# Xcode / Swift / macOS
+*.xcuserdata/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.xcworkspace/
+!default.xcworkspace/
+DerivedData/
+build/
+.build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Pods/
