@@ -33,16 +33,12 @@ services:
       # Auth
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       FRONTEND_URL: ${FRONTEND_URL}
+      BACKEND_URL: ${BACKEND_URL}
       # Email
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      # AWS S3
-      AWS_REGION: ${AWS_REGION:-ap-south-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-syncbeats-audio}
-      CDN_DOMAIN: ${CDN_DOMAIN:-ds4qzxgjm76yj.cloudfront.net}
       # RapidAPI Configuration
       RAPID_API_KEY: ${RAPID_API_KEY:-}
     volumes:

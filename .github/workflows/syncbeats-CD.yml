@@ -120,15 +120,12 @@ jobs:
           V_POSTGRES_DB:           ${{ vars.POSTGRES_DB }}
           V_JWT_SECRET:            ${{ secrets.JWT_SECRET }}
           V_GOOGLE_CLIENT_ID:      ${{ secrets.GOOGLE_CLIENT_ID }}
+          V_GOOGLE_CLIENT_SECRET:  ${{ secrets.GOOGLE_CLIENT_SECRET }}
           V_FRONTEND_URL:          ${{ vars.FRONTEND_URL }}
+          V_BACKEND_URL:           ${{ vars.BACKEND_URL }}
           V_AUTH_FROM_EMAIL:       ${{ vars.AUTH_FROM_EMAIL }}
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
-          V_AWS_REGION:            ${{ vars.AWS_REGION }}
-          V_AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          V_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          V_S3_BUCKET_NAME:        ${{ vars.S3_BUCKET_NAME }}
-          V_CDN_DOMAIN:            ${{ vars.CDN_DOMAIN }}
           V_RAPID_API_KEY:         ${{ secrets.RAPID_API_KEY }}
         run: |
           APP_DIR="sync-beats"
@@ -149,15 +146,12 @@ jobs:
             echo "DATABASE_URL=postgresql://${V_POSTGRES_USER}:${V_POSTGRES_PASSWORD}@${DB_HOST}:5432/${V_POSTGRES_DB}"
             echo "JWT_SECRET=${V_JWT_SECRET}"
             echo "GOOGLE_CLIENT_ID=${V_GOOGLE_CLIENT_ID}"
+            echo "GOOGLE_CLIENT_SECRET=${V_GOOGLE_CLIENT_SECRET}"
             echo "FRONTEND_URL=${V_FRONTEND_URL}"
+            echo "BACKEND_URL=${V_BACKEND_URL}"
             echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}"
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
-            echo "AWS_REGION=${V_AWS_REGION}"
-            echo "AWS_ACCESS_KEY_ID=${V_AWS_ACCESS_KEY_ID}"
-            echo "AWS_SECRET_ACCESS_KEY=${V_AWS_SECRET_ACCESS_KEY}"
-            echo "S3_BUCKET_NAME=${V_S3_BUCKET_NAME}"
-            echo "CDN_DOMAIN=${V_CDN_DOMAIN}"
             echo "RAPID_API_KEY=${V_RAPID_API_KEY}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
