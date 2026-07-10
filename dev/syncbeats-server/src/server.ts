@@ -17,6 +17,7 @@ import { createDeviceRoutes } from './handlers/DeviceRoutes';
 import { createSearchRoutes }  from './handlers/SearchRoutes';
 import { createYoutubeRoutes } from './handlers/YoutubeRoutes';
 import { createHistoryRoutes } from './handlers/HistoryRoutes';
+import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
@@ -156,6 +157,7 @@ export class SyncBeatsServer {
     this.app.use('/search',  createSearchRoutes());
     this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
+    this.app.use('/spotify', createSpotifyRoutes());
   }
 
   private setupSocketIO(): void {

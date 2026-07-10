@@ -439,6 +439,35 @@ export default function HubPage() {
             </button>
           </motion.div>
 
+          {/* SPOTIFY IMPORT CARD */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.4 }}
+            className="glass-panel p-8 rounded-[2.5rem] shadow-xl transition-all group flex flex-col items-center text-center relative overflow-hidden"
+            style={{ gridColumn: "1 / -1" }}
+          >
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(29,185,84,0.08) 0%, transparent 70%)" }} />
+            <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-all duration-300" style={{ background: "linear-gradient(135deg, rgba(29,185,84,0.2), rgba(29,185,84,0.05))", border: "1px solid rgba(29,185,84,0.3)" }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="#1DB954">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z"/>
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-3">Import from Spotify</h2>
+            <p className="text-foreground/60 mb-8 max-w-sm mx-auto text-sm leading-relaxed">
+              Connect your Spotify account, select your playlists, and we&apos;ll match every track to YouTube and add it to your SyncBeats library.
+            </p>
+            <Magnetic className="w-full mt-auto max-w-xs">
+              <button
+                onClick={() => router.push("/spotify-import")}
+                className="w-full h-14 rounded-2xl font-black text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg text-white"
+                style={{ background: "linear-gradient(135deg, #1DB954, #158a3e)", boxShadow: "0 8px 32px rgba(29,185,84,0.3)" }}
+              >
+                Connect Spotify
+              </button>
+            </Magnetic>
+          </motion.div>
+
         </div>
 
         {/* Recent Sessions */}

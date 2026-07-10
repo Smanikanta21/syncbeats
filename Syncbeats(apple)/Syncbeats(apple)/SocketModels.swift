@@ -1,7 +1,7 @@
 import Foundation
 
 struct Config {
-    static let backendURL = "https://dev-api.syncbeats.app"
+    static let backendURL = "http://localhost:4000"
 }
 
 // MARK: - Room Synchronization Models

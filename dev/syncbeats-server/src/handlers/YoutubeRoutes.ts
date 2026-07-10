@@ -12,7 +12,7 @@ export function createYoutubeRoutes(): Router {
     // but google requires it to match what's in the console exactly.
     // If the console has a specific redirect URI, we should use that, or a generic backend one.
     // Let's use a generic backend callback that then redirects to the client.
-    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback`
+    process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/api/auth/callback/youtube` : `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
   );
 
   // Endpoint to generate auth URL
@@ -32,8 +32,10 @@ export function createYoutubeRoutes(): Router {
       access_type: 'offline',
       scope: scopes,
       state: state,
-      redirect_uri: `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback` 
+      redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback` 
     });
+
+    console.log(`[YouTube Auth] Using redirect_uri: ${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`);
 
     res.redirect(url);
   });
@@ -58,7 +60,7 @@ export function createYoutubeRoutes(): Router {
       // Must match the redirect_uri used in generateAuthUrl
       const { tokens } = await oauth2Client.getToken({
         code: code,
-        redirect_uri: `${process.env.BACKEND_URL || 'https://dev-api.syncbeats.app'}/youtube/callback`
+        redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
       });
       
       // Redirect back to the client app (Mac or Web) with the tokens securely passed
@@ -178,6 +180,14 @@ export function createYoutubeRoutes(): Router {
 
     try {
       const sections: any[] = [];
+      const uniqueTracks = (tracks: any[]) => {
+        const seen = new Set();
+        return tracks.filter(t => {
+          if (!t.thumbnail || seen.has(t.thumbnail)) return false;
+          seen.add(t.thumbnail);
+          return true;
+        });
+      };
 
       // 1. Fetch SyncBeats Listen History from DB
       let recentQuery: string | null = null;
@@ -218,14 +228,14 @@ export function createYoutubeRoutes(): Router {
           });
 
           if (relatedRes.data.items && relatedRes.data.items.length > 0) {
-            sections.push({
-              title: "Recommended for You",
-              tracks: relatedRes.data.items.map((item: any) => ({
+            sections.unshift({
+              title: "Quick picks",
+              tracks: uniqueTracks(relatedRes.data.items.map((item: any) => ({
                 id: item.id?.videoId,
                 title: item.snippet?.title,
                 artist: item.snippet?.channelTitle,
                 thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-              }))
+              })))
             });
           }
         }
@@ -233,32 +243,56 @@ export function createYoutubeRoutes(): Router {
         console.error('[YouTube] Failed to fetch Recommendations:', err);
       }
 
-      // 3. Fetch Trending Music directly from YouTube
+      // 3. Fetch "India's biggest hits" (Trending Music in IN)
       try {
         const trendingRes = await youtube.videos.list({
           part: ['snippet', 'statistics'],
           chart: 'mostPopular',
           videoCategoryId: '10', // Music
-          regionCode: 'US',
-          maxResults: 20
+          regionCode: 'IN', // Changed to IN for Indian hits
+          maxResults: 80
         });
 
-        if (trendingRes.data.items) {
+        if (trendingRes.data.items && trendingRes.data.items.length > 0) {
           sections.push({
-            title: "Trending Music",
-            tracks: trendingRes.data.items.map((item: any) => ({
+            title: "India's biggest hits",
+            tracks: uniqueTracks(trendingRes.data.items.map((item: any) => ({
               id: item.id,
               title: item.snippet?.title,
               artist: item.snippet?.channelTitle,
               thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-            }))
+            })))
           });
         }
       } catch (err) {
-        console.error('[YouTube] Failed to fetch Trending:', err);
+        console.error('[YouTube] Failed to fetch Trending India:', err);
       }
 
-      // 4. Fetch Liked Videos (Favorites)
+      // 4. Fetch "Featured playlists for you" (Search for popular playlists)
+      try {
+        const playlistsRes = await youtube.search.list({
+          part: ['snippet'],
+          q: 'Top Hits Music',
+          type: ['playlist'],
+          maxResults: 10
+        });
+
+        if (playlistsRes.data.items && playlistsRes.data.items.length > 0) {
+          sections.push({
+            title: "Featured playlists for you",
+            tracks: uniqueTracks(playlistsRes.data.items.map((item: any) => ({
+              id: item.id?.playlistId,
+              title: item.snippet?.title,
+              artist: item.snippet?.channelTitle,
+              thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
+            })))
+          });
+        }
+      } catch (err) {
+        console.error('[YouTube] Failed to fetch Featured Playlists:', err);
+      }
+
+      // 5. Fetch Liked Videos (Favorites)
       try {
         const channelsRes = await youtube.channels.list({ part: ['contentDetails'], mine: true });
         const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
@@ -285,12 +319,12 @@ export function createYoutubeRoutes(): Router {
               if (musicVideos.length > 0) {
                 sections.push({
                   title: "Your YouTube Favorites",
-                  tracks: musicVideos.map((v: any) => ({
+                  tracks: uniqueTracks(musicVideos.map((v: any) => ({
                     id: v.id,
                     title: v.snippet?.title,
                     artist: v.snippet?.channelTitle,
                     thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url
-                  }))
+                  })))
                 });
               }
             }

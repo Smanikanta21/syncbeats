@@ -123,6 +123,8 @@ jobs:
           V_GOOGLE_CLIENT_SECRET:  ${{ secrets.GOOGLE_CLIENT_SECRET }}
           V_FRONTEND_URL:          ${{ vars.FRONTEND_URL }}
           V_BACKEND_URL:           ${{ vars.BACKEND_URL }}
+          V_SPOTIFY_CLIENT_ID:     ${{ secrets.SPOTIFY_CLIENT_ID }}
+          V_SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           V_AUTH_FROM_EMAIL:       ${{ vars.AUTH_FROM_EMAIL }}
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
@@ -149,6 +151,8 @@ jobs:
             echo "GOOGLE_CLIENT_SECRET=${V_GOOGLE_CLIENT_SECRET}"
             echo "FRONTEND_URL=${V_FRONTEND_URL}"
             echo "BACKEND_URL=${V_BACKEND_URL}"
+            echo "SPOTIFY_CLIENT_ID=${V_SPOTIFY_CLIENT_ID}"
+            echo "SPOTIFY_CLIENT_SECRET=${V_SPOTIFY_CLIENT_SECRET}"
             echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}"
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
