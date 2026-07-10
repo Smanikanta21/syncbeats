@@ -100,7 +100,7 @@ export function createSpotifyRoutes(): Router {
       const { AuthService } = require('../auth/AuthService');
       const authService = new AuthService();
       const payload = authService.verifyToken(token);
-      userId = payload.id;
+      userId = payload.sub;
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
