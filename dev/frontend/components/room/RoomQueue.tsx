@@ -32,10 +32,10 @@ interface RoomQueueProps {
   roomId: string;
   onTrackSelect?: (item: TrackQueueItem) => void;
   onAddSong?: () => void;
-  onRemoveTrack?: (id: string) => void;
+  onRemoveTrack: (id: string) => void;
   isPlaying?: boolean;
   shuffle: boolean;
-  repeatMode: RepeatMode;
+  repeatMode: "off" | "all" | "track";
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
 }
@@ -141,6 +141,17 @@ export function RoomQueue({
             title={`Repeat: ${repeatMode}`}
           >
             <RepeatIcon className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Import Playlist */}
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent("island:expand-spotify"))}
+            className="w-10 h-10 rounded-xl bg-foreground/[0.03] hover:bg-foreground/[0.08] flex items-center justify-center transition-colors group relative"
+            title="Import Spotify Playlist"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z"/>
+            </svg>
           </button>
 
           {/* Add */}

@@ -54,7 +54,7 @@ export class RoomRepository {
     return rooms.map(r => this.mapRoom(r));
   }
 
-  async listByUser(userId: string): Promise<RoomRow[]> {
+  async listByUser(userId: string): Promise<{ rooms: RoomRow[], invitedRooms: any[] }> {
     const rooms = await prisma.room.findMany({
       where: { 
         OR: [
@@ -70,10 +70,43 @@ export class RoomRepository {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return rooms.map(r => ({
+    const mappedRooms = rooms.map(r => ({
       ...this.mapRoom(r),
       participant_count: r._count.roomParticipants
     }));
+
+    const invited = await prisma.roomInvite.findMany({
+      where: { inviteeId: userId, status: 'PENDING' },
+      include: { 
+        room: { include: { _count: { select: { roomParticipants: { where: { leftAt: null } } } } } },
+        inviter: { select: { name: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const invitedRooms = invited.map(inv => ({
+      inviteId: inv.id,
+      inviterName: inv.inviter.name,
+      ...this.mapRoom(inv.room as any),
+      participant_count: inv.room._count.roomParticipants
+    }));
+
+    return { rooms: mappedRooms, invitedRooms };
+  }
+
+  async createInvite(roomId: string, inviterId: string, inviteeId: string | null, inviteeEmail: string | null) {
+    if (inviteeId) {
+      const existing = await prisma.roomInvite.findFirst({ where: { roomId, inviteeId } });
+      if (existing) return existing;
+    }
+    return prisma.roomInvite.create({
+      data: {
+        roomId,
+        inviterId,
+        inviteeId,
+        inviteeEmail
+      }
+    });
   }
 
   async updateState(

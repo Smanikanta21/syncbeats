@@ -17,8 +17,14 @@ function cleanTitle(t: string) {
 
 function ytThumb(trackUrl: string | null | undefined) {
   if (!trackUrl) return null;
-  const m = trackUrl.match(/^ws-p2p:yt:([^_]+)_/);
-  return m ? `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg` : null;
+
+  // Check if a custom thumbnail was appended (e.g. from Spotify import)
+  const thumbMatch = trackUrl.match(/[?&]thumb=([^&]+)/);
+  if (thumbMatch) return decodeURIComponent(thumbMatch[1]);
+
+  // Otherwise, extract YouTube ID
+  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?]+)/);
+  return ytMatch ? `https://i.ytimg.com/vi/${ytMatch[1]}/mqdefault.jpg` : null;
 }
 
 interface SortableTrackItemProps {

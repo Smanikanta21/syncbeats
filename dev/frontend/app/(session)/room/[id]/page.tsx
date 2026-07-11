@@ -20,6 +20,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
   const resolvedParams = use(params);
+  const roomId = resolvedParams.id;
 
   // Drive the global ambient background blobs reactively with music frequency data
   useAmbientLight();
@@ -47,7 +48,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setReady,
     prefetch,
   } = useRoom({
-    roomId: resolvedParams.id,
+    roomId: roomId,
     displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
     userId: user?.id,
   });
@@ -55,15 +56,12 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const isConnecting = joinStatus === "connecting" || joinStatus === "pending";
   const connectionError = joinStatus === "denied";
 
-  // State for UI pan meter / orbit trail
-  // orbitData is now managed locally in SpatialPanel
-
   // Auto-redirect if not logged in
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace(`/login?returnTo=/room/${resolvedParams.id}`);
+      router.replace(`/login?returnTo=/room/${roomId}`);
     }
-  }, [user, authLoading, router, resolvedParams.id]);
+  }, [user, authLoading, router, roomId]);
 
   // Sync client ready state to the room
   useEffect(() => {
@@ -131,7 +129,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     audioCtx: audio.audioCtx,
     gainNode: audio.gainNode,
     myDeviceId: currentSocketId ?? "",
-    roomId: resolvedParams.id,
+    roomId: roomId,
     enabled: isConnected,
     initialDevices: snapshot?.spatial ?? [],
     participants: participants,
@@ -206,7 +204,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* Main room UI */}
       {isConnected && (
         <RoomDashboard
-          roomId={resolvedParams.id}
+          roomId={roomId}
           snapshot={snapshot}
           participants={participants}
           mySocketId={currentSocketId}

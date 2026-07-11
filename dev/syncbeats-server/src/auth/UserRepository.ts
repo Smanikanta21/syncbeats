@@ -81,6 +81,21 @@ export class UserRepository {
     return user ? this.toPublicUser(user) : null;
   }
 
+  async searchUsers(query: string, excludeUserId: string): Promise<PublicUser[]> {
+    const q = query.toLowerCase().trim();
+    const users = await prisma.user.findMany({
+      where: {
+        id: { not: excludeUserId },
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } }
+        ]
+      },
+      take: 10
+    }) as any[];
+    return users.map(u => this.toPublicUser(u));
+  }
+
   async create(name: string, email: string, passwordHash: string | null): Promise<PublicUser> {
     const user = await prisma.user.create({
       data: {

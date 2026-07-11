@@ -5,6 +5,8 @@ import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { requireAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
+import prisma             from '../db/prisma';
+import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
@@ -67,8 +69,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   // GET /rooms/mine
   router.get('/mine', requireAuth, async (req: Request, res: Response) => {
     try {
-      const rooms = await repo.listByUser(req.user!.sub);
-      res.json({ rooms });
+      const { rooms, invitedRooms } = await repo.listByUser(req.user!.sub);
+      res.json({ rooms, invitedRooms });
     } catch (err) {
       console.error('[Rooms] mine error:', err);
       res.status(500).json({ error: 'Failed to fetch your rooms' });
@@ -86,17 +88,75 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       ]);
       const liveRoom = roomManager.get(roomId);
       const snapshot = liveRoom ? liveRoom.snapshot() : null;
+
       res.json({ db: dbRow, live: snapshot, participants, queue });
     } catch (err) {
-      console.error('[Rooms] get error:', err);
-      res.status(500).json({ error: 'Failed to get room' });
+      console.error(`[Rooms] GET /${roomId} error:`, err);
+      res.status(500).json({ error: 'Failed to fetch room' });
+    }
+  });
+
+  // POST /rooms/:roomId/invite
+  router.post('/:roomId/invite', requireAuth, async (req: Request, res: Response) => {
+    const roomId = req.params['roomId'] as string;
+    const { targetUserId, targetEmail } = req.body;
+    try {
+      const inviterId = req.user!.sub;
+      const inviter = await users.findById(inviterId);
+      
+      let finalInviteeId: string | null = null;
+      let finalEmail: string | null = null;
+
+      if (targetUserId) {
+        const invitee = await users.findById(targetUserId);
+        if (invitee) {
+          finalInviteeId = invitee.id;
+          finalEmail = invitee.email;
+        }
+      } else if (targetEmail) {
+        finalEmail = targetEmail;
+        const existingUsers = await users.searchUsers(targetEmail, inviterId);
+        if (existingUsers.length > 0 && existingUsers[0].email === targetEmail) {
+          finalInviteeId = existingUsers[0].id;
+        }
+      }
+
+      if (!finalEmail) {
+        return res.status(400).json({ error: 'Invalid invite target' });
+      }
+
+      const invite = await repo.createInvite(roomId, inviterId, finalInviteeId, finalEmail);
+
+      const frontendUrl = process.env.FRONTEND_URL || 'https://syncbeats.app';
+      const inviteLink = finalInviteeId 
+        ? `${frontendUrl}/room/${roomId}` 
+        : `${frontendUrl}/login?mode=register&returnTo=/room/${roomId}`;
+
+      const { AuthService } = await import('../auth/AuthService');
+      const authService = new AuthService(users);
+      await authService.sendEmail(
+        finalEmail,
+        `${inviter?.name || 'A friend'} invited you to a SyncBeats room!`,
+        `<div style="font-family: sans-serif; color: #111;">
+          <h2>You're invited!</h2>
+          <p><strong>${inviter?.name || 'A friend'}</strong> has invited you to join their listening room on SyncBeats.</p>
+          <p><a href="${inviteLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Join Room</a></p>
+          <p>Or copy and paste this link into your browser: <br/>${inviteLink}</p>
+        </div>`,
+        `You're invited! ${inviter?.name || 'A friend'} has invited you to join their listening room on SyncBeats. Join here: ${inviteLink}`
+      );
+
+      res.json({ success: true, inviteId: invite.id });
+    } catch (err) {
+      console.error(`[Rooms] POST /${roomId}/invite error:`, err);
+      res.status(500).json({ error: 'Failed to send invite' });
     }
   });
 
   // POST /rooms — create room, persist to DB
   router.post('/', requireAuth, async (req: Request, res: Response) => {
     const hostUserId = req.user!.sub;
-    const roomId = (req.body as { roomId?: string }).roomId
+    const roomId = (req.body as { roomId?: string })?.roomId
       ?? Math.floor(100000 + Math.random() * 900000).toString();
 
     try {
@@ -120,6 +180,145 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     } catch (err) {
       console.error('[Rooms] delete error:', err);
       res.status(500).json({ error: 'Failed to end room' });
+    }
+  });
+
+  // POST /rooms/:roomId/enqueue-playlist
+  router.post('/:roomId/enqueue-playlist', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const roomId = req.params.roomId as string;
+      const { playlistId } = req.body;
+      const userId = req.user!.sub;
+
+      if (!playlistId) {
+        res.status(400).json({ error: 'Missing playlistId' });
+        return;
+      }
+
+      // Fetch the playlist and its tracks
+      const playlist = await prisma.playlist.findUnique({
+        where: { id: playlistId },
+        include: { tracks: { orderBy: { position: 'asc' } } }
+      });
+
+      if (!playlist || playlist.tracks.length === 0) {
+        res.status(404).json({ error: 'Playlist not found or empty' });
+        return;
+      }
+
+      const room = roomManager.getOrCreate(roomId);
+      let enqueuedCount = 0;
+      const currentQueueLen = room.getQueue().length;
+
+      for (let i = 0; i < playlist.tracks.length; i++) {
+        const track = playlist.tracks[i];
+        let trackUrl = '';
+        const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
+        const pidParam = `pid=${playlistId}`;
+        const queryParams = [thumbParam, pidParam].filter(Boolean).join('&');
+        const qs = `?${queryParams}`;
+
+        // If it's a lazy loaded track without youtubeId, use our special scheme
+        if (!track.youtubeId) {
+          // Resolve the very first track synchronously so playback can start instantly
+          if (i === 0 && currentQueueLen === 0) {
+            console.log(`[Rooms] Resolving first lazy track synchronously: ${track.title}`);
+            try {
+              const ytResult = await matchToYouTubeFallback(track.title, track.artist || '');
+              if (ytResult && ytResult.youtubeId) {
+                trackUrl = `youtube:${ytResult.youtubeId}${qs}`;
+                await prisma.playlistTrack.update({
+                  where: { id: track.id },
+                  data: { youtubeId: ytResult.youtubeId }
+                });
+              } else {
+                trackUrl = `spotify-lazy:${track.id}${qs}`;
+              }
+            } catch (e) {
+              console.warn(`[Rooms] Sync resolve failed for first track:`, e);
+              trackUrl = `spotify-lazy:${track.id}${qs}`;
+            }
+          } else {
+            trackUrl = `spotify-lazy:${track.id}${qs}`;
+          }
+        } else {
+          trackUrl = `youtube:${track.youtubeId}${qs}`;
+        }
+
+        const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+          trackUrl,
+          title: track.title,
+          fileName: `playlist_track.yt`,
+          mimeType: 'video/youtube', // We treat them all as youtube eventually
+          sizeBytes: 0,
+        });
+
+        room.addToQueue(item);
+        enqueuedCount++;
+
+        // Small delay to prevent database locks on massive playlists
+        if (enqueuedCount % 10 === 0) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+
+      console.log(`[Rooms] Enqueued ${enqueuedCount} tracks from playlist ${playlistId} in room ${roomId}`);
+      res.json({ success: true, enqueuedCount });
+    } catch (err) {
+      console.error('[Rooms] enqueue playlist error:', err);
+      res.status(500).json({ error: 'Failed to enqueue playlist' });
+    }
+  });
+
+  // POST /rooms/:roomId/resolve-lazy
+  // Used by the frontend prefetcher to resolve a lazy Spotify track into a YouTube track just-in-time
+  router.post('/:roomId/resolve-lazy', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const roomId = req.params.roomId as string;
+      const { queueItemId, trackId, title, artist } = req.body;
+      
+      if (!queueItemId || !title) {
+        res.status(400).json({ error: 'queueItemId and title required' });
+        return;
+      }
+
+      console.log(`[Rooms] Resolving lazy track: ${title} - ${artist}`);
+      
+      // Make a call to our bridge resolve endpoint logic (we can just hit localhost or duplicate the RapidAPI fallback call here)
+      // Since it's better to keep logic central, we'll fetch our own internal bridge endpoint
+      const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:4000';
+      const resolveRes = await fetch(`${BACKEND_URL}/api/bridge/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': req.headers.authorization || ''
+        },
+        body: JSON.stringify({ trackId, title, artist })
+      });
+
+      if (!resolveRes.ok) {
+        res.status(404).json({ error: 'Failed to resolve lazy track' });
+        return;
+      }
+
+      const data = await resolveRes.json() as { youtubeId?: string };
+      const youtubeId = data.youtubeId;
+
+      if (youtubeId) {
+        const room = roomManager.getOrCreate(roomId);
+        // Find the item in the queue and update its trackUrl
+        const qItem = room.getQueue().find(q => q.id === queueItemId);
+        if (qItem) {
+          qItem.trackUrl = `youtube:${youtubeId}`;
+          room.emit('queueChanged', room.getQueue());
+        }
+        res.json({ success: true, youtubeId });
+      } else {
+        res.status(404).json({ error: 'No youtube id returned' });
+      }
+    } catch (err) {
+      console.error('[Rooms] resolve-lazy error:', err);
+      res.status(500).json({ error: 'Failed to resolve lazy track' });
     }
   });
 

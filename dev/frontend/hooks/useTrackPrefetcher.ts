@@ -80,11 +80,61 @@ export function useTrackPrefetcher({
   })();
 
   const doDownload = useCallback(async (track: TrackQueueItem) => {
-    const videoId = extractVideoId(track.trackUrl);
-    if (!videoId) return;
+    let resolvedUrl = track.trackUrl;
+    
+    // Check if it's a lazy-loaded Spotify track
+    if (track.trackUrl.startsWith('spotify-lazy:')) {
+      const trackId = track.trackUrl.split(':')[1];
+      try {
+        setNextTrackTitle(`Resolving: ${track.title}`);
+        setIsPrefetching(true);
+        const res = await fetch(`${getServerUrl()}/rooms/${roomId}/resolve-lazy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Pass authorization if needed
+            'Authorization': `Bearer ${localStorage.getItem('sb_auth_token') || ''}`
+          },
+          body: JSON.stringify({
+            queueItemId: track.id,
+            trackId,
+            title: track.title,
+            artist: '' // We could pass artist if we stored it in the queue item
+          })
+        });
+        
+        const data = await res.json();
+        if (data.success && data.youtubeId) {
+          resolvedUrl = `youtube:${data.youtubeId}`;
+          console.log(`[Prefetcher] Resolved lazy track to ${resolvedUrl}`);
+        } else {
+          console.warn('[Prefetcher] Failed to resolve lazy track:', data);
+          setIsPrefetching(false);
+          return;
+        }
+      } catch (err) {
+        console.error('[Prefetcher] Error resolving lazy track:', err);
+        setIsPrefetching(false);
+        return;
+      }
+    }
+
+    const videoId = extractVideoId(resolvedUrl);
+    if (!videoId) {
+       // If it's still 'youtube:XYZ' instead of 'ws-p2p:yt:'
+       let parsedId = null;
+       const m = resolvedUrl.match(/^youtube:([^_]+)/);
+       if (m) parsedId = m[1];
+       else return;
+       
+       resolvedUrl = `ws-p2p:yt:${parsedId}_audio`;
+    }
+
+    const finalVideoId = extractVideoId(resolvedUrl);
+    if (!finalVideoId) return;
 
     const { getTrack, saveTrack } = await import("../lib/idb");
-    const existing = await getTrack(track.trackUrl);
+    const existing = await getTrack(resolvedUrl);
     if (existing) {
       setNextTrackProgress(100);
       setIsPrefetching(false);
@@ -99,7 +149,7 @@ export function useTrackPrefetcher({
     setIsPrefetching(true);
     setNextTrackProgress(1);
 
-    const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+    const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}`;
     const startedAt = Date.now();
 
     try {
@@ -127,7 +177,7 @@ export function useTrackPrefetcher({
       let off = 0;
       for (const c of chunks) { merged.set(c, off); off += c.length; }
       const blob = new Blob([merged.buffer], { type: "audio/mpeg" });
-      await saveTrack(track.trackUrl, blob);
+      await saveTrack(resolvedUrl, blob);
 
       const elapsed = (Date.now() - startedAt) / 1000;
       if (elapsed > 0) saveSpeedEstimate(loaded / elapsed);

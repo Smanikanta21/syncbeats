@@ -253,9 +253,21 @@ export interface RoomDetailsResponse {
   queue: TrackQueueItem[];
 }
 
+export const usersApi = {
+  search: async (query: string) => {
+    return request<{users: {id: string, name: string, email: string}[]}>(`/users/search?q=${encodeURIComponent(query)}`, {}, true);
+  }
+};
+
 export const roomsApi = {
   create: () =>
     request<{ roomId: string; createdAt: string }>('/rooms', { method: 'POST', body: '{}' }, true),
+
+  invite: (roomId: string, targetUserId?: string, targetEmail?: string) =>
+    request<{ success: boolean; inviteId: string }>(`/rooms/${roomId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, targetEmail })
+    }, true),
 
   get: (roomId: string) =>
     request<RoomDetailsResponse>(`/rooms/${roomId}`, {}, true),
@@ -297,6 +309,15 @@ export const roomsApi = {
 
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
+
+  async searchSpotifyPlaylists(query: string): Promise<any[]> {
+    try {
+      const data = await request<{ playlists: any[] }>(`/spotify/search?q=${encodeURIComponent(query)}`);
+      return data.playlists || [];
+    } catch {
+      return [];
+    }
+  },
 
   suggestYoutube: (query: string) =>
     request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),

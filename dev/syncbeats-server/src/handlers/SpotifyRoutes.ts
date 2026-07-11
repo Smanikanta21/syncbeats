@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma from '../db/prisma';
+import { RoomRepository } from '../db/RoomRepository';
+import { RoomManager } from '../core/RoomManager';
+
+const repo = new RoomRepository();
+const roomManager = RoomManager.getInstance();
 
 const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID!;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!;
@@ -9,6 +14,28 @@ const SPOTIFY_REDIRECT_URI  = `${BACKEND_URL}/spotify/callback`;
 const SPOTIFY_SCOPES        = 'playlist-read-private playlist-read-collaborative user-library-read';
 
 // ── Token helpers ────────────────────────────────────────────────────────────
+
+let appSpotifyToken: string | null = null;
+let appSpotifyTokenExpiresAt = 0;
+
+async function getAppSpotifyToken(): Promise<string> {
+  if (appSpotifyToken && Date.now() < appSpotifyTokenExpiresAt) return appSpotifyToken;
+  
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+  });
+  if (!res.ok) throw new Error("Failed to get Spotify client credentials token");
+  const data: any = await res.json();
+  appSpotifyToken = data.access_token;
+  appSpotifyTokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
+  return appSpotifyToken as string;
+}
+
 
 async function getSpotifyTokens(code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   const body = new URLSearchParams({
@@ -201,6 +228,11 @@ export function createSpotifyRoutes(): Router {
         owner:       p.owner?.display_name,
       })) || [];
 
+      console.log(`[Spotify] Fetched ${playlists.length} playlists for user. Raw items count: ${data.items?.length}`);
+      if (playlists.length === 0) {
+        console.log('[Spotify] Full raw Spotify response:', JSON.stringify(data));
+      }
+
       res.json({ playlists });
     } catch (err) {
       console.error('[Spotify] Playlists error:', err);
@@ -208,16 +240,43 @@ export function createSpotifyRoutes(): Router {
     }
   });
 
+  // GET /spotify/search — search Spotify public playlists
+  router.get('/search', async (req: any, res: any) => {
+    const q = req.query.q as string;
+    if (!q) return res.status(400).json({ error: 'Missing query' });
+
+    try {
+      const token = await getAppSpotifyToken();
+      const data = await spotifyFetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=playlist&limit=8`, token);
+      
+      const playlists = data.playlists?.items?.map((p: any) => ({
+        id:          p.id,
+        name:        p.name,
+        description: p.description,
+        coverUrl:    p.images?.[0]?.url,
+        trackCount:  p.tracks?.total,
+        owner:       p.owner?.display_name,
+        url:         p.external_urls?.spotify || `https://open.spotify.com/playlist/${p.id}`,
+      })) || [];
+
+      res.json({ playlists });
+    } catch (err) {
+      console.error('[Spotify] Search error:', err);
+      res.status(500).json({ error: 'Failed to search Spotify playlists' });
+    }
+  });
+
   // POST /spotify/import — import a Spotify playlist by matching tracks to YouTube
   router.post('/import', requireAuth, async (req: any, res: any) => {
-    const { playlistId, playlistName, coverUrl } = req.body as {
-      playlistId:   string;
-      playlistName: string;
-      coverUrl?:    string;
-    };
+    let { playlistUrl, playlistId } = req.body;
 
-    if (!playlistId || !playlistName) {
-      return res.status(400).json({ error: 'playlistId and playlistName are required' });
+    if (playlistUrl) {
+      const match = playlistUrl.match(/playlist\/([a-zA-Z0-9]+)/);
+      if (match) playlistId = match[1];
+    }
+
+    if (!playlistId) {
+      return res.status(400).json({ error: 'playlistId or valid playlistUrl is required' });
     }
 
     const user = await prisma.user.findUnique({
@@ -230,8 +289,26 @@ export function createSpotifyRoutes(): Router {
     }
 
     let accessToken = user.spotifyAccessToken;
+    let playlistName = "Imported Spotify Playlist";
+    let coverUrl = "";
 
     try {
+      try {
+        const details = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}`, accessToken);
+        if (details.name) playlistName = details.name;
+        if (details.images?.[0]?.url) coverUrl = details.images[0].url;
+      } catch (err) {
+        if (user.spotifyRefreshToken) {
+          accessToken = await refreshSpotifyToken(user.spotifyRefreshToken);
+          await prisma.user.update({ where: { id: req.user.sub }, data: { spotifyAccessToken: accessToken } });
+          const details = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}`, accessToken);
+          if (details.name) playlistName = details.name;
+          if (details.images?.[0]?.url) coverUrl = details.images[0].url;
+        } else {
+          throw new Error('Failed to fetch playlist details');
+        }
+      }
+
       // Fetch all tracks from the Spotify playlist (handle pagination)
       let allTracks: any[] = [];
       let url: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(name,artists,album(images)))`;
@@ -241,11 +318,8 @@ export function createSpotifyRoutes(): Router {
         try {
           data = await spotifyFetch(url, accessToken);
         } catch {
-          if (user.spotifyRefreshToken) {
-            accessToken = await refreshSpotifyToken(user.spotifyRefreshToken);
-            await prisma.user.update({ where: { id: req.user.sub }, data: { spotifyAccessToken: accessToken } });
-            data = await spotifyFetch(url, accessToken);
-          } else throw new Error('Token expired');
+          // Token should already be refreshed from details fetch, but handle just in case
+          throw new Error('Failed to fetch tracks');
         }
         allTracks = allTracks.concat(data.items || []);
         url = data.next;
@@ -255,6 +329,10 @@ export function createSpotifyRoutes(): Router {
       const validTracks = allTracks
         .map((item: any) => item.track)
         .filter((t: any) => t && t.name && t.artists?.length > 0);
+
+      if (validTracks.length === 0) {
+        return res.status(404).json({ error: 'Playlist is empty or tracks could not be loaded.' });
+      }
 
       // Create the playlist in DB first
       const playlist = await prisma.playlist.create({
@@ -315,7 +393,21 @@ export function createSpotifyRoutes(): Router {
       include: { tracks: { orderBy: { position: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
-    res.json({ playlists });
+
+    // Clean up empty bridged playlists that might have failed to import in the past
+    const emptyBridgedPlaylists = playlists.filter(
+      p => p.tracks.length === 0 && (p.sourceType === 'SPOTIFY_BRIDGE' || p.sourceType === 'SPOTIFY')
+    );
+    
+    if (emptyBridgedPlaylists.length > 0) {
+      await prisma.playlist.deleteMany({
+        where: { id: { in: emptyBridgedPlaylists.map(p => p.id) } }
+      });
+      console.log(`[SpotifyRoutes] Cleaned up ${emptyBridgedPlaylists.length} empty imported playlists for user ${req.user.sub}`);
+    }
+
+    const validPlaylists = playlists.filter(p => p.tracks.length > 0 || (p.sourceType !== 'SPOTIFY_BRIDGE' && p.sourceType !== 'SPOTIFY'));
+    res.json({ playlists: validPlaylists });
   });
 
   // DELETE /spotify/disconnect — remove Spotify tokens
@@ -325,6 +417,56 @@ export function createSpotifyRoutes(): Router {
       data: { spotifyAccessToken: null, spotifyRefreshToken: null },
     });
     res.json({ ok: true });
+  });
+
+  // DELETE /spotify/my-playlists/:id - Delete a specific playlist
+  router.delete('/my-playlists/:id', requireAuth, async (req: any, res: any) => {
+    const { id } = req.params;
+    
+    const playlist = await prisma.playlist.findUnique({
+      where: { id }
+    });
+
+    if (!playlist || playlist.userId !== req.user.sub) {
+      res.status(404).json({ error: 'Playlist not found or access denied.' });
+      return;
+    }
+
+    try {
+      // Find all queue items that were enqueued from this playlist
+      const affectedQueueItems = await prisma.roomQueueItem.findMany({
+        where: { trackUrl: { contains: `pid=${id}` } }
+      });
+
+      // Group by room ID
+      const affectedRooms = new Set<string>();
+      affectedQueueItems.forEach(item => affectedRooms.add(item.roomId));
+
+      // Delete the queue items
+      if (affectedQueueItems.length > 0) {
+        await prisma.roomQueueItem.deleteMany({
+          where: { trackUrl: { contains: `pid=${id}` } }
+        });
+      }
+
+      // Delete the playlist itself
+      await prisma.playlist.delete({ where: { id } });
+
+      // Sync the affected rooms so active players update immediately
+      for (const roomId of affectedRooms) {
+        const latestQueue = await repo.getQueue(roomId);
+        const room = roomManager.get(roomId);
+        if (room) {
+          const currentItem = latestQueue.find(i => i.isCurrent);
+          room.syncQueue(latestQueue, currentItem?.id ?? null);
+        }
+      }
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[SpotifyRoutes] Delete error:', err);
+      res.status(500).json({ error: 'Failed to delete playlist.' });
+    }
   });
 
   return router;

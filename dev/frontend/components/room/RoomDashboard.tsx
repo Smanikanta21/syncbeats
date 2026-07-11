@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -184,14 +184,26 @@ export function RoomDashboard({
             <div className="shrink-0 flex flex-col gap-2 bg-foreground/[0.02] p-2 rounded-xl border border-foreground/[0.05]">
               <div className="flex justify-between items-center px-1">
                 <span className="text-[10px] font-bold tracking-widest text-foreground/50 uppercase">Room Info</span>
-                {isHost && onTogglePrivate && (
-                  <button 
-                    onClick={onTogglePrivate}
-                    className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
-                  >
-                    {isPrivate ? 'Private' : 'Public'}
-                  </button>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {isHost && (
+                    <button 
+                      onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
+                      className="text-[9px] px-2 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                      title="Invite Friends"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
+                  {isHost && onTogglePrivate && (
+                    <button 
+                      onClick={onTogglePrivate}
+                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
+                    >
+                      {isPrivate ? 'Private' : 'Public'}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 bg-background/50 rounded-lg border border-foreground/10 px-2 py-1.5 flex justify-between items-center">

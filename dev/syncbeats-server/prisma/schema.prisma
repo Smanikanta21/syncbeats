@@ -32,6 +32,8 @@ model User {
   searchHistory              SearchHistory[]
   listenHistory              ListenHistory[]
   playlists                  Playlist[]
+  invitesSent                RoomInvite[] @relation("InvitesSent")
+  invitesReceived            RoomInvite[] @relation("InvitesReceived")
 
   @@map("users")
 }
@@ -66,6 +68,7 @@ model Room {
   roomParticipants RoomParticipant[]
   queueItems       RoomQueueItem[]
   host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  invites          RoomInvite[]
 
   @@index([hostId])
   @@index([endedAt], map: "idx_rooms_active")
@@ -174,3 +177,23 @@ model PlaylistTrack {
   @@index([playlistId, position])
   @@map("playlist_tracks")
 }
+
+model RoomInvite {
+  id           String   @id @default(cuid())
+  roomId       String   @map("room_id")
+  inviterId    String   @map("inviter_id")
+  inviteeId    String?  @map("invitee_id") // Optional for raw email invites
+  inviteeEmail String?  @map("invitee_email") // The email address if inviteeId is null
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  inviter      User     @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee      User?    @relation("InvitesReceived", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, inviteeId])
+  @@index([inviteeId])
+  @@index([inviteeEmail])
+  @@map("room_invites")
+}
+
