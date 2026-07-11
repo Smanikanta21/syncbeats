@@ -133,7 +133,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         : `${frontendUrl}/login?mode=register&returnTo=/room/${roomId}`;
 
       const { AuthService } = await import('../auth/AuthService');
-      const authService = new AuthService(users);
+      const authService = new AuthService();
       await authService.sendEmail(
         finalEmail,
         `${inviter?.name || 'A friend'} invited you to a SyncBeats room!`,

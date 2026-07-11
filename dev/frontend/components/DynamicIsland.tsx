@@ -340,9 +340,9 @@ const RealtimeProgressBar = ({
 // ─────────────────────────────────────────────────────────
 
 const tabVariants = {
-  enter: (direction: number) => ({ x: direction > 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
+  enter: (direction: number) => ({ x: direction === 0 ? 0 : direction > 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
   center: { x: 0, opacity: 1, filter: "blur(0px)" },
-  exit: (direction: number) => ({ x: direction < 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
+  exit: (direction: number) => ({ x: direction === 0 ? 0 : direction < 0 ? "100%" : "-100%", opacity: 0, filter: "blur(4px)" }),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -1006,6 +1006,7 @@ export function DynamicIsland() {
   useEffect(() => {
     const handleExpandAdd = () => {
       setInitialSearchMode("youtube");
+      setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
@@ -1013,12 +1014,14 @@ export function DynamicIsland() {
     };
     const handleExpandSpotify = () => {
       setInitialSearchMode("spotify");
+      setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandInvite = () => {
+      setSlideDir(0);
       setActiveTab("invite");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
@@ -1299,6 +1302,11 @@ export function DynamicIsland() {
     if (isSyncingNow) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
+      if (!hasTrack) {
+        setInitialSearchMode("youtube");
+        setSlideDir(0);
+        setActiveTab("search");
+      }
       setIslandState("expanded");
       setForceShowDetails(false);
       setIsPressing(false);
@@ -1323,6 +1331,9 @@ export function DynamicIsland() {
         lastTapRef.current = nowTime;
         if (islandState === "pill") {
           if (!hasTrack) {
+            setInitialSearchMode("youtube");
+            setSlideDir(0);
+            setActiveTab("search");
             setIslandState("expanded");
           } else {
             setIslandState("extended");
@@ -1378,6 +1389,11 @@ export function DynamicIsland() {
             if (windowWidth >= 768) {
               if (isSyncingNow) return;
               if (islandState === "pill" || islandState === "extended") {
+                if (!hasTrack) {
+                  setInitialSearchMode("youtube");
+                  setSlideDir(0);
+                  setActiveTab("search");
+                }
                 setIslandState("expanded");
               } else if (islandState === "expanded") {
                 if (activeTab === "player" || activeTab === "network" || activeTab === "deviceInfo") {

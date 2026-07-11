@@ -152,33 +152,39 @@ export async function DELETE(
     });
     
     if (recordsToDelete.length > 0) {
-      const binPath = path.join(process.cwd(), 'data', 'deleted_records.json');
-      await fs.mkdir(path.dirname(binPath), { recursive: true });
-      
-      let existing = [];
       try {
-        const fileData = await fs.readFile(binPath, 'utf-8');
-        existing = JSON.parse(fileData);
-      } catch (e) {
-        // File doesn't exist or is invalid
-      }
-      
-      const now = new Date().toISOString();
-      const newEntries = recordsToDelete.map((record: any) => {
-        const clone = { ...record };
-        for (const key in clone) {
-          if (typeof clone[key] === 'bigint') {
-            clone[key] = clone[key].toString();
-          }
+        const isVercel = process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ENV;
+        const binDir = isVercel ? '/tmp/data' : path.join(process.cwd(), 'data');
+        const binPath = path.join(binDir, 'deleted_records.json');
+        await fs.mkdir(path.dirname(binPath), { recursive: true });
+        
+        let existing = [];
+        try {
+          const fileData = await fs.readFile(binPath, 'utf-8');
+          existing = JSON.parse(fileData);
+        } catch (e) {
+          // File doesn't exist or is invalid
         }
-        return {
-          deletedAt: now,
-          tableName: dbInfo.model.name,
-          data: clone
-        };
-      });
-      
-      await fs.writeFile(binPath, JSON.stringify([...existing, ...newEntries], null, 2));
+        
+        const now = new Date().toISOString();
+        const newEntries = recordsToDelete.map((record: any) => {
+          const clone = { ...record };
+          for (const key in clone) {
+            if (typeof clone[key] === 'bigint') {
+              clone[key] = clone[key].toString();
+            }
+          }
+          return {
+            deletedAt: now,
+            tableName: dbInfo.model.name,
+            data: clone
+          };
+        });
+        
+        await fs.writeFile(binPath, JSON.stringify([...existing, ...newEntries], null, 2));
+      } catch (err) {
+        console.warn('Could not write deleted records backup to file system:', err);
+      }
     }
     
     // Perform actual deletion
