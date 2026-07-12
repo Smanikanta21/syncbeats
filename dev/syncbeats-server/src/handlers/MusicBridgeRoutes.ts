@@ -8,11 +8,9 @@ import play from 'play-dl';
 // Fallback search using RapidAPI with multi-key rotation, and play-dl as the ultimate fallback
 export async function matchToYouTubeFallback(title: string, artist: string): Promise<{ youtubeId: string; thumbnail: string } | null> {
   // 1. Intelligent RapidAPI Key Rotation
-  // Define keys as comma-separated in .env: RAPID_API_KEYS="key1,key2,key3"
   const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
   if (keysStr) {
     const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
-    // Shuffle keys for random distribution, but we will iterate through all if they fail
     const shuffledKeys = keys.sort(() => 0.5 - Math.random());
     const q = encodeURIComponent(`${artist} - ${title} official audio`);
 
@@ -28,7 +26,6 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
           }
         );
         
-        // If the key is out of quota (429) or unsubscribed (403), skip to the next key
         if (res.status === 429 || res.status === 403) {
           console.warn(`[BridgeRoutes] RapidAPI key ${key.substring(0, 5)}... failed with ${res.status}. Trying next...`);
           continue; 
@@ -74,10 +71,11 @@ export function createMusicBridgeRoutes(): Router {
 
   /**
    * POST /api/bridge/import
-   * Body: { playlistUrl: string }
+   * Body: { playlistUrl: string, playlistName?: string }
    * 
-   * This endpoint takes a Spotify public playlist URL, scrapes the tracks without using credentials,
-   * searches YouTube for each track to get the youtubeId, and saves the playlist to the database.
+   * Imports a Spotify public playlist. Instantly creates Song records in the
+   * global catalog and links them via PlaylistTrack. YouTube IDs are resolved
+   * separately via client-side scraper (Tier 2) or server fallback (Tier 3).
    */
   router.post('/import', requireAuth, async (req: any, res: any): Promise<void> => {
     try {
@@ -91,48 +89,63 @@ export function createMusicBridgeRoutes(): Router {
       console.log(`[BridgeRoutes] Received request to import playlist: ${playlistUrl}`);
 
       // 1. Get playlist metadata (credential-free via scraping)
-      const tracks = await MusicBridgeService.getPlaylistMetadata(playlistUrl);
+      const { name, coverUrl, tracks } = await MusicBridgeService.getPlaylistMetadata(playlistUrl);
 
       if (tracks.length === 0) {
         res.status(404).json({ error: 'No tracks found or could not read playlist.' });
         return;
       }
 
-      // We'll use the title of the first track or a generic name as we can't easily scrape the playlist name yet.
-      // Wait, we can let the user name it in the UI and send it, or we can just name it "Imported Spotify Playlist".
-      const playlistName = req.body.playlistName || 'Imported Spotify Playlist';
+      const playlistName = req.body.playlistName || name || 'Imported Spotify Playlist';
 
       // 2. Create the playlist in DB
       const playlist = await prisma.playlist.create({
         data: {
           userId:     req.user.sub,
           name:       playlistName,
-          coverUrl:   tracks[0]?.artworkUrl || '',
+          coverUrl:   coverUrl,
           sourceType: 'SPOTIFY_BRIDGE',
-          sourceId:   playlistUrl, // Use URL as sourceId for uniqueness
+          sourceId:   playlistUrl,
         },
       });
 
+      // 3. For each track, upsert into the global Song catalog, then link via PlaylistTrack
+      const trackOps = tracks.map(async (track: any, i: number) => {
+        // Upsert by title + artist — if a previous user already imported this song, reuse the Song record
+        const song = await prisma.song.upsert({
+          where: { title_artist: { title: track.title, artist: track.artist } },
+          update: {
+            // Update album art if we have a better URL
+            ...(track.artworkUrl ? { albumArt: track.artworkUrl } : {}),
+          },
+          create: {
+            title:    track.title,
+            artist:   track.artist,
+            albumArt: track.artworkUrl || null,
+            // youtubeId is intentionally left null — resolved later via 3-tier resolution
+          },
+        });
 
+        // Create PlaylistTrack linking to the Song
+        return prisma.playlistTrack.create({
+          data: {
+            playlistId: playlist.id,
+            songId:     song.id,
+            youtubeId:  song.youtubeId || '',  // Use already-resolved YT ID if available
+            title:      song.title,
+            artist:     song.artist,
+            thumbnail:  song.youtubeThumbnail || song.albumArt || null,
+            position:   i,
+          },
+        });
+      });
 
-      // 3. Map tracks directly (Instant Import, no YouTube lookup yet)
-      const toInsert = tracks.map((track, i) => ({
-        playlistId: playlist.id,
-        youtubeId:  '', // Left blank for Lazy-Load resolution during playback
-        title:      track.title,
-        artist:     track.artist,
-        thumbnail:  track.artworkUrl,
-        position:   i,
-      }));
-
-      // 4. Bulk-insert all tracks instantly
-      await prisma.playlistTrack.createMany({ data: toInsert });
+      await Promise.all(trackOps);
 
       res.status(200).json({
-        ok:           true,
-        playlistId:   playlist.id,
-        totalTracks:  tracks.length,
-        matchedTracks: toInsert.length,
+        ok:          true,
+        playlistId:  playlist.id,
+        totalTracks: tracks.length,
       });
       return;
     } catch (error: any) {
@@ -147,19 +160,53 @@ export function createMusicBridgeRoutes(): Router {
 
   /**
    * POST /api/bridge/resolve
-   * Body: { trackId?: string, title: string, artist: string }
+   * Body: { trackId?: string, songId?: string, title: string, artist: string }
    * 
-   * Lazily resolves a Spotify track to a YouTube videoId and updates the DB if trackId is provided.
+   * 3-Tier resolution:
+   * Tier 1: Check global Song catalog first (DB cache, no YouTube call)
+   * Tier 2: Client-side scraper (handled in Swift, not here)
+   * Tier 3: Server-side fallback using yt-search / RapidAPI
    */
   router.post('/resolve', requireAuth, async (req: any, res: any): Promise<void> => {
     try {
-      const { trackId, title, artist } = req.body;
+      const { trackId, songId, title, artist } = req.body;
       if (!title) {
         res.status(400).json({ error: 'title is required.' });
         return;
       }
 
-      console.log(`[BridgeRoutes] JIT resolving track: ${title} - ${artist}`);
+      // --- TIER 1: Check global Song catalog ---
+      const existingSong = await prisma.song.findFirst({
+        where: {
+          title:  { equals: title, mode: 'insensitive' },
+          artist: { equals: artist || '', mode: 'insensitive' },
+          youtubeId: { not: null },
+        },
+      });
+
+      if (existingSong?.youtubeId) {
+        console.log(`[BridgeRoutes] Tier 1 hit for "${title}" — served from Song catalog!`);
+        // Also update the PlaylistTrack if provided
+        if (trackId) {
+          await prisma.playlistTrack.update({
+            where: { id: trackId },
+            data: {
+              youtubeId: existingSong.youtubeId,
+              thumbnail: existingSong.youtubeThumbnail || existingSong.albumArt || undefined,
+              songId:    existingSong.id,
+            },
+          }).catch((e: unknown) => console.warn('[BridgeRoutes] PlaylistTrack update failed:', e));
+        }
+        return res.status(200).json({
+          ok:        true,
+          tier:      1,
+          youtubeId: existingSong.youtubeId,
+          thumbnail: existingSong.youtubeThumbnail || existingSong.albumArt,
+        });
+      }
+
+      // --- TIER 3: Server-Side Fallback (Tier 2 = Swift client-side, handled separately) ---
+      console.log(`[BridgeRoutes] Tier 3 resolving: ${title} - ${artist}`);
       const ytResult = await matchToYouTubeFallback(title, artist || '');
 
       if (!ytResult || !ytResult.youtubeId) {
@@ -167,26 +214,90 @@ export function createMusicBridgeRoutes(): Router {
         return;
       }
 
-      // If a PlaylistTrack ID was provided, update it so we don't have to resolve it again
+      // Save result back to global Song catalog
+      const targetSongId = songId || (existingSong?.id);
+      if (targetSongId) {
+        await prisma.song.update({
+          where: { id: targetSongId },
+          data: {
+            youtubeId:        ytResult.youtubeId,
+            youtubeThumbnail: ytResult.thumbnail,
+            resolvedAt:       new Date(),
+          },
+        }).catch((e: unknown) => console.warn('[BridgeRoutes] Song update failed:', e));
+      }
+
+      // Save to PlaylistTrack if provided
       if (trackId) {
-        try {
-          await prisma.playlistTrack.update({
-            where: { id: trackId },
-            data: { youtubeId: ytResult.youtubeId }
-          });
-        } catch (e) {
-          console.warn(`[BridgeRoutes] Failed to update PlaylistTrack ${trackId} with youtubeId:`, e);
-        }
+        await prisma.playlistTrack.update({
+          where: { id: trackId },
+          data: {
+            youtubeId: ytResult.youtubeId,
+            thumbnail: ytResult.thumbnail,
+            ...(targetSongId ? { songId: targetSongId } : {}),
+          },
+        }).catch((e: unknown) => console.warn('[BridgeRoutes] PlaylistTrack update failed:', e));
       }
 
       res.status(200).json({
-        ok: true,
+        ok:        true,
+        tier:      3,
         youtubeId: ytResult.youtubeId,
-        thumbnail: ytResult.thumbnail
+        thumbnail: ytResult.thumbnail,
       });
     } catch (error: any) {
       console.error('[BridgeRoutes] Error resolving track:', error);
       res.status(500).json({ error: 'Failed to resolve track.' });
+    }
+  });
+
+  /**
+   * PATCH /api/bridge/songs/:songId
+   * Body: { youtubeId: string, thumbnail: string, trackId?: string }
+   * 
+   * Called by the Mac App after a successful client-side (Tier 2) YouTube scrape.
+   * Saves the resolved data to the global Song catalog and optionally updates a PlaylistTrack.
+   */
+  router.patch('/songs/:songId', requireAuth, async (req: any, res: any): Promise<void> => {
+    try {
+      const { songId } = req.params;
+      const { youtubeId, thumbnail, trackId } = req.body;
+
+      if (!youtubeId) {
+        res.status(400).json({ error: 'youtubeId is required.' });
+        return;
+      }
+
+      // Update the global Song catalog (Tier 2 result)
+      await prisma.song.update({
+        where: { id: songId },
+        data: {
+          youtubeId,
+          youtubeThumbnail: thumbnail || null,
+          resolvedAt:       new Date(),
+        },
+      });
+
+      console.log(`[BridgeRoutes] Tier 2 client resolved songId=${songId} → youtubeId=${youtubeId}`);
+
+      // Optionally update the specific PlaylistTrack too
+      if (trackId) {
+        await prisma.playlistTrack.update({
+          where: { id: trackId },
+          data: { youtubeId, thumbnail: thumbnail || undefined, songId },
+        }).catch((e: unknown) => console.warn('[BridgeRoutes] PlaylistTrack update failed:', e));
+      }
+
+      // Also update ALL playlist tracks that reference this song (cascade update)
+      await prisma.playlistTrack.updateMany({
+        where: { songId, youtubeId: '' },
+        data: { youtubeId, thumbnail: thumbnail || undefined },
+      });
+
+      res.status(200).json({ ok: true });
+    } catch (error: any) {
+      console.error('[BridgeRoutes] Error saving client-resolved song:', error);
+      res.status(500).json({ error: 'Failed to save resolution.' });
     }
   });
 

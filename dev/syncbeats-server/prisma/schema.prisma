@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -140,7 +141,9 @@ model ListenHistory {
   artist    String?
   thumbnail String?
   playedAt  DateTime @default(now()) @map("played_at") @db.Timestamptz(6)
+  songId    String?  @map("song_id")  // Optional link to global Song catalog
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song      Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
 
   @@index([userId, playedAt(sort: Desc)])
   @@map("listen_history")
@@ -163,18 +166,60 @@ model Playlist {
   @@map("playlists")
 }
 
+// Global Song Catalog — shared across all users, like Spotify/Apple Music's internal DB
+model Song {
+  id               String    @id @default(cuid())
+
+  // Core identity
+  title            String
+  artist           String
+  album            String?
+
+  // Rich metadata
+  albumArt         String?   @map("album_art")        // High-res album cover (from Spotify)
+  duration         Int?                                // Duration in seconds
+  releaseYear      Int?      @map("release_year")
+  genre            String?
+
+  // Cross-platform source IDs
+  spotifyId        String?   @unique @map("spotify_id")  // Spotify track URI
+
+  // YouTube resolution (populated by client-side or server-side scraper)
+  youtubeId        String?   @map("youtube_id")           // YouTube video ID
+  youtubeThumbnail String?   @map("youtube_thumbnail")    // YouTube HQ thumbnail URL
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  playlistTracks   PlaylistTrack[]
+  listenHistory    ListenHistory[]
+
+  @@unique([title, artist])  // Deduplication key
+  @@index([youtubeId])
+  @@index([spotifyId])
+  @@map("songs")
+}
+
 model PlaylistTrack {
   id          String   @id @default(cuid())
   playlistId  String   @map("playlist_id")
-  youtubeId   String   @map("youtube_id")
+  songId      String?  @map("song_id")   // Link to global Song catalog (nullable for backward compat)
+
+  // Denormalized fields kept for backward compat & fast reads (mirrors Song fields)
+  youtubeId   String   @default("") @map("youtube_id")
   title       String
   artist      String?
-  thumbnail   String?
+  thumbnail   String?  // Will hold YouTubeThumbnail once resolved
+
   position    Int      @default(0)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
   playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song        Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
 
   @@index([playlistId, position])
+  @@index([songId])
   @@map("playlist_tracks")
 }
 

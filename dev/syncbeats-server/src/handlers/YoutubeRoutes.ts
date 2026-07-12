@@ -76,121 +76,67 @@ export function createYoutubeRoutes(): Router {
     }
   });
 
-  // Fetch YouTube Library
+  // Fetch user's imported playlists from DB
   router.get('/library', async (req: any, res: any) => {
-    const accessToken = req.headers.authorization?.split(' ')[1];
-    if (!accessToken) {
-      res.status(401).json({ error: 'No access token provided' });
-      return;
-    }
-
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const youtube = google.youtube({ version: 'v3', auth });
-
     try {
-      // 1. Fetch "Liked Videos"
-      // Wait, to get the Liked Videos playlist, we need to get the user's channel details
-      const channelsRes = await youtube.channels.list({
-        part: ['contentDetails'],
-        mine: true
-      });
-      
-      const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
-      
-      // 2. Fetch User's Playlists
-      const playlistsRes = await youtube.playlists.list({
-        part: ['snippet', 'contentDetails'],
-        mine: true,
-        maxResults: 50
-      });
-
-      const playlists = playlistsRes.data.items?.map(p => ({
-        id: p.id,
-        title: p.snippet?.title,
-        thumbnail: p.snippet?.thumbnails?.medium?.url,
-        itemCount: p.contentDetails?.itemCount
-      })) || [];
-
-      // If they have a likes playlist, prepend it
-      if (likesPlaylistId) {
-        playlists.unshift({
-          id: likesPlaylistId,
-          title: 'Liked Songs',
-          thumbnail: 'https://music.youtube.com/img/on_platform_logo_dark.svg', // generic thumbnail
-          itemCount: 0 // We'd have to fetch items to know
-        });
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.json({ playlists: [] });
       }
+
+      const dbPlaylists = await prisma.playlist.findMany({
+        where: { userId },
+        include: { _count: { select: { tracks: true } } },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const playlists = dbPlaylists.map((p: any) => ({
+        id: p.id,
+        title: p.name,
+        thumbnail: p.coverUrl || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
+        itemCount: p._count.tracks
+      }));
 
       res.json({ playlists });
-    } catch (error: any) {
-      console.error('[YouTube] API Error:', error.message);
-      if (error.code === 401 || error.code === '401' || error.response?.status === 401 || error.status === 401) {
-        return res.status(401).json({ error: 'YouTube token expired or invalid' });
-      }
-      res.status(500).json({ error: 'Failed to fetch YouTube library' });
+    } catch (err) {
+      console.error('[Library] DB fetch error:', err);
+      res.status(500).json({ error: 'Failed to fetch library' });
     }
   });
   
-  // Fetch specific playlist items
+  // Fetch specific playlist items using yt-search instead of googleapis
   router.get('/playlistItems', async (req: any, res: any) => {
-    const accessToken = req.headers.authorization?.split(' ')[1];
     const playlistId = req.query.playlistId as string;
     
-    if (!accessToken) return res.status(401).json({ error: 'No access token provided' });
     if (!playlistId) return res.status(400).json({ error: 'Missing playlistId' });
     
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const youtube = google.youtube({ version: 'v3', auth });
-
     try {
-      const itemsRes = await youtube.playlistItems.list({
-        part: ['snippet'],
-        playlistId: playlistId,
-        maxResults: 50
-      });
-
-      const tracks = itemsRes.data.items?.map(item => ({
-        id: item.snippet?.resourceId?.videoId,
-        title: item.snippet?.title,
-        artist: item.snippet?.videoOwnerChannelTitle || 'Unknown Artist',
-        thumbnail: item.snippet?.thumbnails?.medium?.url
-      })).filter(t => t.id) || []; // Filter out private/deleted videos
+      // @ts-ignore - importing inline to avoid top-level require if not needed, but we can just use require
+      const ytSearch = require('yt-search');
+      const list = await ytSearch({ listId: playlistId });
+      
+      const tracks = list.videos.map((v: any) => ({
+        id: v.videoId,
+        title: v.title,
+        artist: v.author?.name || 'Unknown Artist',
+        thumbnail: v.thumbnail
+      })).filter((t: any) => t.id) || [];
 
       res.json({ tracks });
     } catch (error) {
       console.error('[YouTube] Playlist Items Error:', error);
-      res.status(500).json({ error: 'Failed to fetch playlist items' });
+      res.status(500).json({ error: 'Failed to fetch playlist items via yt-search' });
     }
   });
 
   // Fetch Curated "Home" data (Recommendations, History, Trending)
   router.get('/home', async (req: any, res: any) => {
-    const accessToken = req.headers.authorization?.split(' ')[1];
     const userId = req.query.userId as string; // passed from client
     
-    if (!accessToken) {
-      return res.status(401).json({ error: 'No access token provided' });
-    }
-
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    const youtube = google.youtube({ version: 'v3', auth });
-
     try {
       const sections: any[] = [];
-      const uniqueTracks = (tracks: any[]) => {
-        const seen = new Set();
-        return tracks.filter(t => {
-          if (!t.thumbnail || seen.has(t.thumbnail)) return false;
-          seen.add(t.thumbnail);
-          return true;
-        });
-      };
-
+      
       // 1. Fetch SyncBeats Listen History from DB
-      let recentQuery: string | null = null;
       try {
         if (userId) {
           const recentListens = await prisma.listenHistory.findMany({
@@ -209,134 +155,16 @@ export function createYoutubeRoutes(): Router {
                 thumbnail: h.thumbnail
               }))
             });
-            recentQuery = `${recentListens[0].artist || ''} ${recentListens[0].title}`.trim();
           }
         }
       } catch (err) {
-        console.error('[YouTube] Failed to fetch History:', err);
+        console.error('[YouTube] Failed to fetch Listen History:', err);
       }
 
-      // 2. Fetch Personalized Recommendations
-      try {
-        if (recentQuery) {
-          const relatedRes = await youtube.search.list({
-            part: ['snippet'],
-            q: `${recentQuery} official music video`,
-            type: ['video'],
-            videoCategoryId: '10',
-            maxResults: 20
-          });
-
-          if (relatedRes.data.items && relatedRes.data.items.length > 0) {
-            sections.unshift({
-              title: "Quick picks",
-              tracks: uniqueTracks(relatedRes.data.items.map((item: any) => ({
-                id: item.id?.videoId,
-                title: item.snippet?.title,
-                artist: item.snippet?.channelTitle,
-                thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-              })))
-            });
-          }
-        }
-      } catch (err) {
-        console.error('[YouTube] Failed to fetch Recommendations:', err);
-      }
-
-      // 3. Fetch "India's biggest hits" (Trending Music in IN)
-      try {
-        const trendingRes = await youtube.videos.list({
-          part: ['snippet', 'statistics'],
-          chart: 'mostPopular',
-          videoCategoryId: '10', // Music
-          regionCode: 'IN', // Changed to IN for Indian hits
-          maxResults: 80
-        });
-
-        if (trendingRes.data.items && trendingRes.data.items.length > 0) {
-          sections.push({
-            title: "India's biggest hits",
-            tracks: uniqueTracks(trendingRes.data.items.map((item: any) => ({
-              id: item.id,
-              title: item.snippet?.title,
-              artist: item.snippet?.channelTitle,
-              thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-            })))
-          });
-        }
-      } catch (err) {
-        console.error('[YouTube] Failed to fetch Trending India:', err);
-      }
-
-      // 4. Fetch "Featured playlists for you" (Search for popular playlists)
-      try {
-        const playlistsRes = await youtube.search.list({
-          part: ['snippet'],
-          q: 'Top Hits Music',
-          type: ['playlist'],
-          maxResults: 10
-        });
-
-        if (playlistsRes.data.items && playlistsRes.data.items.length > 0) {
-          sections.push({
-            title: "Featured playlists for you",
-            tracks: uniqueTracks(playlistsRes.data.items.map((item: any) => ({
-              id: item.id?.playlistId,
-              title: item.snippet?.title,
-              artist: item.snippet?.channelTitle,
-              thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url
-            })))
-          });
-        }
-      } catch (err) {
-        console.error('[YouTube] Failed to fetch Featured Playlists:', err);
-      }
-
-      // 5. Fetch Liked Videos (Favorites)
-      try {
-        const channelsRes = await youtube.channels.list({ part: ['contentDetails'], mine: true });
-        const likesPlaylistId = channelsRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
-        
-        if (likesPlaylistId) {
-          const likesRes = await youtube.playlistItems.list({
-            part: ['snippet'],
-            playlistId: likesPlaylistId,
-            maxResults: 50
-          });
-          
-          if (likesRes.data.items && likesRes.data.items.length > 0) {
-            const videoIds = likesRes.data.items.map(item => item.snippet?.resourceId?.videoId).filter(Boolean) as string[];
-            
-            if (videoIds.length > 0) {
-              const videosRes = await youtube.videos.list({
-                part: ['snippet'],
-                id: videoIds,
-                maxResults: 50
-              });
-
-              const musicVideos = videosRes.data.items?.filter((v: any) => v.snippet?.categoryId === '10') || [];
-
-              if (musicVideos.length > 0) {
-                sections.push({
-                  title: "Your YouTube Favorites",
-                  tracks: uniqueTracks(musicVideos.map((v: any) => ({
-                    id: v.id,
-                    title: v.snippet?.title,
-                    artist: v.snippet?.channelTitle,
-                    thumbnail: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url
-                  })))
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[YouTube] Failed to fetch Favorites:', err);
-      }
-
+      // No more googleapis calls here since YouTube OAuth is removed.
       res.json({ sections });
     } catch (error) {
-      console.error('[YouTube] Home Data Error:', error);
+      console.error('[YouTube] Home API Error:', error);
       res.status(500).json({ error: 'Failed to fetch home data' });
     }
   });

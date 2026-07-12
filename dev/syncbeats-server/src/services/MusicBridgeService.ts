@@ -19,9 +19,9 @@ export class MusicBridgeService {
    *
    * 
    * @param playlistUrl A public Spotify playlist URL (e.g. https://open.spotify.com/playlist/...)
-   * @returns Array of TrackMetadata
+   * @returns Object with playlist name, cover, and tracks
    */
-  static async getPlaylistMetadata(playlistUrl: string): Promise<TrackMetadata[]> {
+  static async getPlaylistMetadata(playlistUrl: string): Promise<{ name: string, coverUrl: string, tracks: TrackMetadata[] }> {
     try {
       // Validate the URL format
       const match = playlistUrl.match(/playlist\/([a-zA-Z0-9]+)/);
@@ -63,10 +63,14 @@ export class MusicBridgeService {
         title: t.title,
         artist: t.subtitle,
         duration_ms: t.duration || 0,
-        artworkUrl: t.audioPreview?.url || entity.visualIdentity?.image?.[0]?.url || ''
+        artworkUrl: entity.visualIdentity?.image?.[0]?.url || ''
       }));
 
-      return tracks;
+      return {
+        name: entity.name || 'Imported Spotify Playlist',
+        coverUrl: entity.visualIdentity?.image?.[0]?.url || tracks[0]?.artworkUrl || '',
+        tracks
+      };
     } catch (error: any) {
       console.error('[MusicBridge] Error fetching Spotify metadata:', error.message);
       throw new Error(`Could not extract Spotify playlist: ${error.message}`);

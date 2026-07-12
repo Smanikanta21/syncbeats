@@ -8,6 +8,7 @@ struct DbRoom: Codable, Identifiable {
     let playback_state: String
     let position_ms: Int
     let track_url: String?
+    let participant_count: Int?
 }
 
 struct RoomsResponse: Codable {
@@ -120,12 +121,17 @@ struct RoomCard: View {
                 Spacer()
                 
                 let isEnded = room.ended_at != nil
-                Text(isEnded ? "Ended" : "Active")
+                let isActive = !isEnded && (room.participant_count ?? 0) > 0
+                
+                let statusText = isEnded ? "Ended" : (isActive ? "Active" : "Inactive")
+                let statusColor = isEnded ? Color.gray : (isActive ? Color(red: 0.0, green: 1.0, blue: 0.7) : Color.orange)
+                
+                Text(statusText)
                     .font(.caption.bold())
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(isEnded ? Color.gray.opacity(0.3) : Color(red: 0.0, green: 1.0, blue: 0.7).opacity(0.2))
-                    .foregroundColor(isEnded ? .gray : Color(red: 0.0, green: 1.0, blue: 0.7))
+                    .background(statusColor.opacity(0.2))
+                    .foregroundColor(statusColor)
                     .cornerRadius(8)
             }
             

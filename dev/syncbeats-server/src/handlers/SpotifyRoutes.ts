@@ -18,7 +18,7 @@ const SPOTIFY_SCOPES        = 'playlist-read-private playlist-read-collaborative
 let appSpotifyToken: string | null = null;
 let appSpotifyTokenExpiresAt = 0;
 
-async function getAppSpotifyToken(): Promise<string> {
+export async function getAppSpotifyToken(): Promise<string> {
   if (appSpotifyToken && Date.now() < appSpotifyTokenExpiresAt) return appSpotifyToken;
   
   const res = await fetch('https://accounts.spotify.com/api/token', {
@@ -73,7 +73,7 @@ async function refreshSpotifyToken(refreshToken: string): Promise<string> {
   return data.access_token;
 }
 
-async function spotifyFetch(url: string, accessToken: string): Promise<any> {
+export async function spotifyFetch(url: string, accessToken: string): Promise<any> {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });

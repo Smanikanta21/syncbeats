@@ -444,6 +444,23 @@ export class SocketHandler {
       if (typeof callback === 'function') callback();
     });
 
+    socket.on('track:request_missing_chunk', ({ roomId, trackUrl, chunkIndex }: { roomId: string, trackUrl: string, chunkIndex: number }) => {
+      // Find the host or the person who has the track
+      const room = this.roomManager.get(roomId);
+      if (!room || !room.snapshot().hostId) return;
+
+      const hostParticipant = room.snapshot().participants.find(p => p.userId === room.snapshot().hostId);
+      if (hostParticipant) {
+        // Ask the host to resend this specific chunk
+        this.io.to(hostParticipant.socketId).emit('track:request_chunk_resend', { trackUrl, chunkIndex, targetSocketId: socket.id });
+      }
+    });
+
+    socket.on('track:resend_chunk', ({ targetSocketId, trackUrl, chunkIndex, totalChunks, data }: any) => {
+      // Host sends the chunk back, we route it directly to the requesting peer
+      this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+    });
+
     // ── Upload Progress ──────────────────────────────────────────────────
 
     socket.on('room:upload_progress', ({ roomId, title, progress }: { roomId: string, title: string, progress: number }) => {

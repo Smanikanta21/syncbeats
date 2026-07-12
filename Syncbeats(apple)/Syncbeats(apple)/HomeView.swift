@@ -76,6 +76,7 @@ struct HomeView: View {
 struct TrackCard: View {
     let track: YouTubeService.Track
     @Binding var hoveredTrackId: String?
+    @State private var shimmerPhase: CGFloat = 0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -89,18 +90,50 @@ struct TrackCard: View {
                     AsyncImage(url: url) { phase in
                         if let image = phase.image {
                             image.resizable().aspectRatio(contentMode: .fill)
+                        } else if phase.error != nil {
+                            // Fallback for broken image
+                            Image(systemName: "music.note")
+                                .font(.system(size: 36))
+                                .foregroundColor(.white.opacity(0.3))
+                        } else {
+                            // Loading shimmer
+                            ShimmerView()
                         }
                     }
+                } else if !track.isResolved {
+                    // Unresolved track — pulsing shimmer with icon
+                    ZStack {
+                        ShimmerView()
+                        VStack(spacing: 6) {
+                            Image(systemName: "waveform.circle")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white.opacity(0.3))
+                            Text("Resolving...")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.25))
+                        }
+                    }
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 36))
+                        .foregroundColor(.white.opacity(0.3))
                 }
                 
                 let isHovered = hoveredTrackId == track.id
                 
                 if isHovered {
                     Color.black.opacity(0.4)
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
-                        .shadow(radius: 10)
+                    if track.isResolved {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
+                            .shadow(radius: 10)
+                    } else {
+                        // Show hourglass for unresolved
+                        Image(systemName: "hourglass")
+                            .font(.system(size: 32))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -119,6 +152,7 @@ struct TrackCard: View {
                 .lineLimit(1)
         }
         .frame(width: 180)
+        .opacity(track.isResolved ? 1.0 : 0.75)
         .onHover { hovering in
             if hovering {
                 hoveredTrackId = track.id
@@ -127,8 +161,34 @@ struct TrackCard: View {
             }
         }
         .onTapGesture {
+            guard track.isResolved, let ytId = track.youtubeId else { return }
             YouTubeService.shared.logListen(track: track)
-            SocketService.shared.playTrackDirectly(videoId: track.id, title: track.title)
+            SocketService.shared.playTrackDirectly(videoId: ytId, title: track.title)
         }
+    }
+}
+
+/// Animated shimmer view for loading states
+struct ShimmerView: View {
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.white.opacity(0.04), location: phase - 0.3),
+                        .init(color: Color.white.opacity(0.12), location: phase),
+                        .init(color: Color.white.opacity(0.04), location: phase + 0.3),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                    phase = 1.3
+                }
+            }
     }
 }

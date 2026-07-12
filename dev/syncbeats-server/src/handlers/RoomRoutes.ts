@@ -20,7 +20,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
 
   // GET /rooms/:roomId/youtube-search
-  router.get('/:roomId/youtube-search', requireAuth, async (req: Request, res: Response) => {
+  router.get('/:roomId/youtube-search', async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {
@@ -50,7 +50,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   });
 
   // GET /rooms/youtube-suggest
-  router.get('/youtube/suggest', requireAuth, async (req: Request, res: Response) => {
+  router.get('/youtube/suggest', async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {

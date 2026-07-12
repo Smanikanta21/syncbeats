@@ -8,7 +8,9 @@ class AudioEngine: ObservableObject {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let timePitchNode = AVAudioUnitTimePitch() // For adaptive sync playback rate
-    private let environmentNode = AVAudioEnvironmentNode() // For spatial audio
+    // SWIFT CONCEPT: CPU Optimization
+    // We removed `AVAudioEnvironmentNode` because spatial 3D audio processing is highly CPU intensive.
+    // By connecting directly from `timePitchNode` to the `mainMixerNode`, we save battery and CPU cycles.
     
     @Published var isPlaying = false
     @Published var currentPosition: TimeInterval = 0
@@ -28,17 +30,12 @@ class AudioEngine: ObservableObject {
         // Attach nodes
         engine.attach(playerNode)
         engine.attach(timePitchNode)
-        engine.attach(environmentNode)
         
-        // Setup Spatial Environment
-        environmentNode.listenerPosition = AVAudio3DPoint(x: 0, y: 0, z: 0)
-        environmentNode.listenerAngularOrientation = AVAudio3DAngularOrientation(yaw: 0, pitch: 0, roll: 0)
-        
-        // Connect nodes: Player -> TimePitch -> Environment -> MainMixer
+        // Connect nodes: Player -> TimePitch -> MainMixer
         let format = engine.outputNode.inputFormat(forBus: 0)
         engine.connect(playerNode, to: timePitchNode, format: format)
-        engine.connect(timePitchNode, to: environmentNode, format: format)
-        engine.connect(environmentNode, to: engine.mainMixerNode, format: format)
+        engine.connect(timePitchNode, to: engine.mainMixerNode, format: format)
+        
         
         do {
             try engine.start()
@@ -60,14 +57,20 @@ class AudioEngine: ObservableObject {
             self.duration = Double(file.length) / self.sampleRate
             print("AudioEngine: Loaded file, duration \(self.duration)s")
             
+            // SWIFT CONCEPT: Safe AVAudioEngine Mutation
+            // It is very dangerous to disconnect nodes while the engine is actively rendering audio.
+            // It can cause core audio to crash. We must stop the player and pause the engine first.
+            playerNode.stop()
+            engine.pause()
+            
             // Reconnect with file format if needed, though usually standard
             engine.disconnectNodeInput(timePitchNode)
-            engine.disconnectNodeInput(environmentNode)
             engine.disconnectNodeInput(engine.mainMixerNode)
             
             engine.connect(playerNode, to: timePitchNode, format: file.processingFormat)
-            engine.connect(timePitchNode, to: environmentNode, format: file.processingFormat)
-            engine.connect(environmentNode, to: engine.mainMixerNode, format: engine.mainMixerNode.outputFormat(forBus: 0))
+            engine.connect(timePitchNode, to: engine.mainMixerNode, format: engine.mainMixerNode.outputFormat(forBus: 0))
+            
+            try? engine.start()
             
         } catch {
             print("AudioEngine: Failed to load file: \(error)")
@@ -95,7 +98,12 @@ class AudioEngine: ObservableObject {
         playerNode.pause()
         isPlaying = false
         updatePosition()
-        seekTime = currentPosition // Save current position for resume
+        
+        // SWIFT CONCEPT: Position Tracking Fix
+        // We previously set `seekTime = currentPosition` here. But AVAudioPlayerNode's `sampleTime` 
+        // does NOT reset to 0 when paused; it just freezes. If we set `seekTime = currentPosition`, 
+        // when we resume, the elapsed `sampleTime` would be added *again* to `seekTime`, causing 
+        // the tracker to double-count elapsed time and skip forward visually! We removed it to fix the drift.
     }
     
     func seek(to positionMs: Double) {
@@ -114,8 +122,10 @@ class AudioEngine: ObservableObject {
     
     // Spatial Audio Control
     func setPan(pan: Float) {
-        // Simple 1D panning on X axis for spatial audio (-1.0 to 1.0)
-        playerNode.position = AVAudio3DPoint(x: pan * 5.0, y: 0, z: -1.0)
+        // SWIFT CONCEPT: Simplified Panning
+        // Since we removed AVAudioEnvironmentNode for performance, we can just use 
+        // the standard `AVAudioPlayerNode.pan` property for stereo panning (-1.0 to 1.0)
+        playerNode.pan = pan
     }
     
     private func updatePosition() {
