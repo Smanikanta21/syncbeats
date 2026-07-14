@@ -26,7 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 import { roomsApi } from "../../lib/api";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { cn } from "../../../db-visualizer/src/lib/utils";
+import { cn } from "../../lib/utils";
 
 type RepeatMode = "off" | "track" | "all";
 
