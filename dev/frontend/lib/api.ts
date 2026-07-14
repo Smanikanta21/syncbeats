@@ -322,6 +322,9 @@ export const roomsApi = {
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
 
+  searchLocalSongs: (query: string) =>
+    request<{ results: any[] }>(`/search/songs?q=${encodeURIComponent(query)}`, {}, true),
+
   async searchSpotifyPlaylists(query: string): Promise<any[]> {
     try {
       const data = await request<{ playlists: any[] }>(`/spotify/search?q=${encodeURIComponent(query)}`);
@@ -374,4 +377,21 @@ export const devicesApi = {
       method: 'POST',
       body: JSON.stringify({ targetDeviceId }),
     }, true),
+};
+
+export const historyApi = {
+  logSearch: (userId: string, query: string) =>
+    request<{ success: boolean; entry: any }>('/history/search', {
+      method: 'POST',
+      body: JSON.stringify({ userId, query }),
+    }, true),
+  
+  logListen: (userId: string, data: { youtubeId: string; title: string; artist?: string; thumbnail?: string }) =>
+    request<{ success: boolean; entry: any }>('/history/listen', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...data }),
+    }, true),
+
+  getRecent: (userId: string) =>
+    request<{ listens: any[]; searches: any[] }>(`/history/recent?userId=${encodeURIComponent(userId)}`, {}, true),
 };

@@ -1,9 +1,46 @@
 import { Router } from 'express';
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
+import prisma from '../db/prisma';
 
 export function createSearchRoutes(): Router {
   const router = Router();
+
+  router.get('/songs', async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        res.status(400).json({ error: 'Query parameter "q" is required' });
+        return;
+      }
+
+      console.log(`[Search] Querying database for: ${query}`);
+      const songs = await prisma.song.findMany({
+        where: {
+          OR: [
+            { title: { contains: query, mode: 'insensitive' } },
+            { artist: { contains: query, mode: 'insensitive' } }
+          ],
+          youtubeId: { not: null }
+        },
+        take: 10
+      });
+
+      const results = songs.map(s => ({
+        url: `youtube:${s.youtubeId}`,
+        type: 'spotify-db',
+        title: s.title,
+        thumbnail: s.youtubeThumbnail || s.albumArt || '',
+        uploaderName: s.artist,
+        duration: s.duration || 0,
+      }));
+
+      res.json({ results });
+    } catch (err) {
+      console.error('[Search] Local song search failed:', err);
+      res.status(500).json({ error: 'Failed to perform local search' });
+    }
+  });
 
   router.get('/youtube', async (req, res) => {
     try {

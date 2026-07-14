@@ -245,29 +245,44 @@ export function createSpotifyRoutes(): Router {
     }
   });
 
-  // GET /spotify/search — search Spotify public playlists
+  // GET /spotify/search — search playlists in our DB (imported or native)
   router.get('/search', async (req: any, res: any) => {
     const q = req.query.q as string;
     if (!q) return res.status(400).json({ error: 'Missing query' });
 
     try {
-      const token = await getAppSpotifyToken();
-      const data = await spotifyFetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=playlist&limit=8`, token);
-      
-      const playlists = data.playlists?.items?.map((p: any) => ({
+      const dbPlaylists = await prisma.playlist.findMany({
+        where: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { description: { contains: q, mode: 'insensitive' } }
+          ]
+        },
+        include: {
+          tracks: true,
+          user: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        take: 8,
+      });
+
+      const playlists = dbPlaylists.map((p: any) => ({
         id:          p.id,
         name:        p.name,
         description: p.description,
-        coverUrl:    p.images?.[0]?.url,
-        trackCount:  p.tracks?.total,
-        owner:       p.owner?.display_name,
-        url:         p.external_urls?.spotify || `https://open.spotify.com/playlist/${p.id}`,
-      })) || [];
+        coverUrl:    p.coverUrl,
+        trackCount:  p.tracks?.length || 0,
+        owner:       p.user?.name || 'SyncBeats',
+        url:         p.sourceId || `https://open.spotify.com/playlist/${p.id}`,
+      }));
 
       res.json({ playlists });
     } catch (err) {
-      console.error('[Spotify] Search error:', err);
-      res.status(500).json({ error: 'Failed to search Spotify playlists' });
+      console.error('[Spotify] DB Search error:', err);
+      res.status(500).json({ error: 'Failed to search playlists in database' });
     }
   });
 

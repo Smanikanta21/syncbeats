@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
-import { roomsApi } from "../../lib/api";
+import { roomsApi, historyApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -21,7 +21,7 @@ interface SearchTabProps {
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
 export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, isSearchOnly, onSuccess, onPlaylistViewChange }: SearchTabProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +30,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
 
   // YouTube State
   const [ytResults, setYtResults] = useState<any[]>([]);
+  const [dbResults, setDbResults] = useState<any[]>([]);
   const [ytSuggestions, setYtSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -64,6 +65,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     setQuery("");
     setYtResults([]);
     setSpResults([]);
+    setDbResults([]);
     setMySpotifyPlaylists([]);
     setSelectedPlaylistId(null);
     setSelectedPlaylistData(null);
@@ -109,24 +111,40 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
   useEffect(() => {
     if (isSearching) { onResultsCountChange(1); return; }
     let total = 0;
-    if (mode === "spotify" && !query.trim()) {
+    if (mode === "spotify") {
       if (selectedPlaylistId) {
-        total = loadingPlaylist ? 1 : (selectedPlaylistData?.tracks?.length || 0) + 1;
+        if (selectedPlaylistData) {
+          total = selectedPlaylistData.tracks?.length || 0;
+        }
       } else {
         total = mySpotifyPlaylists.length;
       }
     } else {
-      total = (showSuggestions && ytSuggestions.length > 0 ? ytSuggestions.length : ytResults.length) + spResults.length + uploadQueue.length;
+      total = (showSuggestions && ytSuggestions.length > 0 ? ytSuggestions.length : ytResults.length) + spResults.length + dbResults.length + uploadQueue.length;
     }
     onResultsCountChange(total);
-  }, [isSearching, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, uploadQueue.length, mySpotifyPlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, loadingPlaylist, selectedPlaylistData]);
+  }, [isSearching, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, dbResults.length, uploadQueue.length, mySpotifyPlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, loadingPlaylist, selectedPlaylistData]);
 
   const performSearch = async (q: string) => {
     if (!q.trim()) return;
     setIsSearching(true); setShowSuggestions(false); setDownloadError(null); setSpError(null); setSelectedIndex(0);
 
+    // Save to search history if user is logged in
+    if (user?.id) {
+      historyApi.logSearch(user.id, q).catch((err) => {
+        console.warn("[SearchTab] Failed to log search history:", err);
+      });
+    }
+
     if (mode === "youtube") {
-      try { const res = await roomsApi.searchYoutube(roomId, q); setYtResults(res); }
+      try {
+        const [ytRes, dbRes] = await Promise.all([
+          roomsApi.searchYoutube(roomId, q).catch(() => []),
+          roomsApi.searchLocalSongs(q).catch(() => ({ results: [] }))
+        ]);
+        setYtResults(ytRes);
+        setDbResults(dbRes.results || []);
+      }
       catch (err) { console.error(err); } finally { setIsSearching(false); }
     } else if (mode === "spotify") {
       setIsSearching(false);
@@ -134,12 +152,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     } else {
       // Global Search
       try {
-        const [ytRes, spRes] = await Promise.all([
+        const [ytRes, spRes, dbRes] = await Promise.all([
           roomsApi.searchYoutube(roomId, q).catch(() => []),
-          roomsApi.searchSpotifyPlaylists(q).catch(() => [])
+          roomsApi.searchSpotifyPlaylists(q).catch(() => []),
+          roomsApi.searchLocalSongs(q).catch(() => ({ results: [] }))
         ]);
         setYtResults(ytRes);
         setSpResults(spRes);
+        setDbResults(dbRes.results || []);
       } catch (err) { console.error(err); } finally { setIsSearching(false); }
     }
   };
@@ -255,7 +275,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
   const handlePlay = async (result: any) => {
     setEnqueuing(result.url); setDownloadError(null);
     try {
-      const videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
+      let videoId = "";
+      if (result.url.startsWith("youtube:")) {
+        videoId = result.url.split(":")[1];
+      } else {
+        videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
+      }
       await upload.downloadYoutubeToP2P(roomId, videoId, result.title);
       setAddedSongs(prev => new Set(prev).add(result.url));
       onSuccess?.();
@@ -289,7 +314,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     }
   };
 
-  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && uploadQueue.length === 0 && (mode !== "spotify" || (mySpotifyPlaylists.length === 0 && !selectedPlaylistId));
+  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0 && (mode !== "spotify" || (mySpotifyPlaylists.length === 0 && !selectedPlaylistId));
   const containerPadding = isSearchOnly ? "p-[2px]" : "px-5 sm:px-8 py-6";
 
   const getPlaceholder = () => {
@@ -624,6 +649,37 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
                       </>
                     )}
                   </div>
+                )}
+
+                {/* Local DB Songs (from Spotify library) */}
+                {dbResults.length > 0 && (
+                  <>
+                    <div className="text-[10px] text-white/40 uppercase tracking-widest font-bold px-2 mb-1.5 mt-2">From Spotify Library (DB)</div>
+                    {dbResults.map((r, idx) => {
+                      const isAdded = addedSongs.has(r.url);
+                      return (
+                        <div key={`db-${r.url}-${idx}`}
+                          className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
+                          <div className="relative">
+                            <img src={r.thumbnail || "/placeholder-playlist.png"} loading="eager" decoding="sync" className={cn('w-20', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
+                            <div className="absolute -bottom-1 -right-1 bg-black/80 p-0.5 rounded-full border border-white/10 shadow-md">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
+                            </div>
+                          </div>
+                          <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
+                            <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{r.title}</div>
+                            <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.uploaderName}</div>
+                          </div>
+                          <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
+                            className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#1DB954] text-black hover:text-white active:scale-90"}`}>
+                            {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
+                              : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <div className="border-b border-white/10 my-3" />
+                  </>
                 )}
 
                 {/* YouTube Results */}
