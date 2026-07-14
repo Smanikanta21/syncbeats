@@ -132,10 +132,11 @@ function DeviceCard({
         }`}>
           {initials}
           {isHost && (
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
-              <Crown className="w-2.5 h-2.5 text-amber-900" />
+            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 bg-amber-500 text-[6px] font-black uppercase tracking-widest text-amber-950 px-[3px] rounded-[3px] shadow-sm border-[1px] border-background z-10 leading-none py-[2px]">
+              Host
             </div>
           )}
+
           {/* online dot */}
           <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-background shadow-[0_0_6px_#4ade80]" />
         </div>

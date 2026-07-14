@@ -26,9 +26,17 @@ export interface PublicUser {
   email_verified_at: Date | null;
   last_login_at: Date | null;
   created_at: Date;
+  settings?:  any;
 }
 
 export class UserRepository {
+  async updateSettings(userId: string, settings: any): Promise<PublicUser | null> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { settings },
+    }) as any;
+    return user ? this.toPublicUser(user) : null;
+  }
   async findByEmail(email: string): Promise<UserRow | null> {
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
@@ -232,6 +240,7 @@ export class UserRepository {
       email_verified_at: user.emailVerifiedAt ?? null,
       last_login_at: user.lastLoginAt ?? null,
       created_at: user.createdAt,
+      settings: user.settings,
     };
   }
 }

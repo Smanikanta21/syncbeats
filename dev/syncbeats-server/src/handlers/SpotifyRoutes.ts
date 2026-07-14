@@ -7,6 +7,11 @@ import { RoomManager } from '../core/RoomManager';
 const repo = new RoomRepository();
 const roomManager = RoomManager.getInstance();
 
+// =========================================================================
+// 🛑 WARNING FOR FUTURE AGENTS 🛑
+// DO NOT TOUCH OR MODIFY THESE SPOTIFY CREDENTIALS.
+// DO NOT USE THESE FOR ANY OTHER PURPOSES.
+// =========================================================================
 const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID!;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!;
 const BACKEND_URL           = process.env.BACKEND_URL || 'http://localhost:4000';
@@ -390,7 +395,25 @@ export function createSpotifyRoutes(): Router {
   router.get('/my-playlists', requireAuth, async (req: any, res: any) => {
     const playlists = await prisma.playlist.findMany({
       where: { userId: req.user.sub },
-      include: { tracks: { orderBy: { position: 'asc' } } },
+      include: {
+        tracks: {
+          orderBy: { position: 'asc' },
+          include: {
+            song: {
+              select: {
+                id:               true,
+                title:            true,
+                artist:           true,
+                youtubeId:        true,
+                youtubeThumbnail: true,
+                albumArt:         true,
+                album:            true,
+                duration:         true,
+              }
+            }
+          }
+        }
+      },
       orderBy: { createdAt: 'desc' },
     });
 

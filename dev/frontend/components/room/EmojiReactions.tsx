@@ -97,30 +97,40 @@ export function EmojiReactions({ roomId }: EmojiReactionsProps) {
         </AnimatePresence>
       </div>
       
-      {/* Chat Messages */}
-      <div className="hidden md:flex flex-1 min-h-0 flex-col overflow-y-auto mb-2 space-y-1.5 scrollbar-thin scrollbar-thumb-foreground/10 scrollbar-track-transparent">
-        {messages.map(msg => (
-          <div key={msg.id} className="text-[11px] leading-tight">
-            <span className="font-bold text-foreground/70 mr-1.5">{msg.displayName}:</span>
-            <span className="text-foreground/90 break-words">{msg.message}</span>
+      {/* Chat Area (Blurred / Coming Soon) */}
+      <div className="hidden md:flex flex-1 min-h-0 flex-col relative mb-3">
+        <div className="absolute inset-0 z-10 backdrop-blur-md bg-background/20 rounded-xl flex items-center justify-center">
+          <span className="text-foreground/50 font-bold uppercase tracking-widest text-xs tracking-[0.2em] bg-background/80 px-4 py-2 rounded-full shadow-xl border border-white/5">Coming Soon</span>
+        </div>
+        
+        <div className="flex-1 min-h-0 flex flex-col opacity-30 pointer-events-none overflow-hidden select-none">
+          {/* Chat Messages */}
+          <div className="flex-1 min-h-0 flex-col overflow-y-auto mb-2 space-y-1.5 scrollbar-thin scrollbar-thumb-foreground/10 scrollbar-track-transparent">
+            {messages.map(msg => (
+              <div key={msg.id} className="text-[11px] leading-tight">
+                <span className="font-bold text-foreground/70 mr-1.5">{msg.displayName}:</span>
+                <span className="text-foreground/90 break-words">{msg.message}</span>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Input Form */}
-      <form onSubmit={sendChat} className="hidden md:flex items-center gap-2 mb-3 bg-foreground/5 rounded-full px-3 py-1.5">
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Say something..."
-          className="flex-1 min-w-0 bg-transparent text-[11px] outline-none placeholder:text-foreground/40"
-        />
-        <button type="submit" disabled={!inputText.trim()} className="text-foreground disabled:opacity-50 hover:text-foreground">
-          <Send className="w-3.5 h-3.5" />
-        </button>
-      </form>
+          {/* Input Form */}
+          <form onSubmit={sendChat} className="flex items-center gap-2 bg-foreground/5 rounded-full px-3 py-1.5 shrink-0">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Say something..."
+              className="flex-1 min-w-0 bg-transparent text-[11px] outline-none placeholder:text-foreground/40"
+              disabled
+            />
+            <button type="submit" disabled className="text-foreground opacity-50 hover:text-foreground">
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      </div>
 
       {/* Emoji strip */}
       <div className="flex items-center justify-between shrink-0">

@@ -23,6 +23,7 @@ interface AuthContextType {
   renameDevice: (name: string) => Promise<void>;
   replaceDevice: (targetDeviceId: string) => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
+  updateSettings: (settings: any) => Promise<void>;
   logout:   () => void;
 }
 
@@ -117,6 +118,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updated);
   }, []);
 
+  const updateSettings = useCallback(async (settings: any) => {
+    const { user: updated } = await authApi.updateSettings(settings);
+    setUser(updated);
+  }, []);
+
   const replaceDevice = useCallback(async (targetDeviceId: string) => {
     const { device: updated } = await devicesApi.replace(targetDeviceId);
     setDevice(updated);
@@ -134,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, updateProfile, logout }}>
+    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, updateProfile, updateSettings, logout }}>
       {children}
     </AuthContext.Provider>
   );

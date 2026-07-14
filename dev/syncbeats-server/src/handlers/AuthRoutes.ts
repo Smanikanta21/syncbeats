@@ -205,12 +205,26 @@ export function createAuthRoutes(): Router {
   // PATCH /auth/me
   router.patch('/me', requireAuth, async (req: Request, res: Response) => {
     try {
-      const { name } = req.body;
-      if (!name || typeof name !== 'string') {
-        res.status(400).json({ error: 'Name is required' });
+      const { name, settings } = req.body;
+      let updatedUser = null;
+
+      if (name !== undefined) {
+        if (typeof name !== 'string') {
+          res.status(400).json({ error: 'Name must be a string' });
+          return;
+        }
+        updatedUser = await authService.updateProfile(req.user!.sub, name.trim());
+      }
+
+      if (settings !== undefined) {
+        updatedUser = await authService.updateSettings(req.user!.sub, settings);
+      }
+
+      if (!updatedUser) {
+        res.status(400).json({ error: 'At least one field (name or settings) is required' });
         return;
       }
-      const updatedUser = await authService.updateProfile(req.user!.sub, name.trim());
+
       res.json({ user: updatedUser });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

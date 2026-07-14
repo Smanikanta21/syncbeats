@@ -1,3 +1,4 @@
+import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TrackQueueItem } from "../lib/types";
@@ -27,60 +28,65 @@ function ytThumb(trackUrl: string | null | undefined) {
   return ytMatch ? `https://i.ytimg.com/vi/${ytMatch[1]}/mqdefault.jpg` : null;
 }
 
-interface SortableTrackItemProps {
+export interface TrackItemRowProps {
   item: TrackQueueItem;
   idx: number;
   isCurrent: boolean;
   isPlaying: boolean;
   isHovered: boolean;
   isHost: boolean;
-  onHoverStart: () => void;
-  onHoverEnd: () => void;
-  onTrackSelect: (item: TrackQueueItem) => void;
-  onRemoveTrack: (id: string) => void;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
+  onTrackSelect?: (item: TrackQueueItem) => void;
+  onRemoveTrack?: (id: string) => void;
   disableDrag?: boolean;
+  isHistory?: boolean;
+  isNew?: boolean;
+  isDragging?: boolean;
+  style?: React.CSSProperties;
+  dragHandleProps?: any;
+  setNodeRef?: (node: HTMLElement | null) => void;
 }
 
-export function SortableTrackItem({
+export function TrackItemRow({
   item, idx, isCurrent, isPlaying, isHovered, isHost,
-  onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag
-}: SortableTrackItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id, disabled: disableDrag });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
-    opacity: isDragging ? 0.8 : 1,
-  };
-
+  onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag, isHistory, isNew,
+  isDragging, style, dragHandleProps, setNodeRef
+}: TrackItemRowProps) {
   const thumb = ytThumb(item.trackUrl);
 
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+  }, []);
+
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
+      {...(isMobile && !disableDrag && !isHistory ? dragHandleProps : {})}
+      initial={isNew ? { opacity: 0, y: -16, scale: 1.12 } : { opacity: 1, y: 0, scale: 1 }}
+      animate={{ opacity: isDragging ? 0.3 : 1, y: 0, scale: 1 }}
+      transition={{ 
+        type: "spring", 
+        stiffness: 500, 
+        damping: 22,
+      }}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className={`relative flex items-center gap-2 p-2 rounded-xl cursor-pointer group transition-colors duration-150 ${
+      className={`relative flex items-center gap-2 p-2 rounded-xl cursor-pointer group transition-all duration-150 transform-gpu ${
         isCurrent
           ? "bg-foreground/20 border border-foreground/20"
-          : "border border-transparent hover:bg-foreground/[0.04]"
-      } ${isDragging ? "shadow-lg bg-foreground/10" : ""}`}
-      onClick={() => onTrackSelect(item)}
+          : isHistory 
+            ? "opacity-50 hover:bg-foreground/[0.04] grayscale-[30%]"
+            : "border border-transparent hover:bg-foreground/[0.04]"
+      } ${isDragging ? "bg-foreground/5 border-dashed border-foreground/20 rounded-2xl" : ""}`}
+      onClick={() => onTrackSelect?.(item)}
     >
       {/* Drag Handle */}
-      {isHost && !disableDrag && (
+      {!disableDrag && !isHistory && (
         <div
-          {...attributes}
-          {...listeners}
+          {...dragHandleProps}
           className="hidden md:block p-1 cursor-grab active:cursor-grabbing text-foreground/30 hover:text-foreground/80 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
           onClick={(e) => e.stopPropagation()}
         >
@@ -133,7 +139,7 @@ export function SortableTrackItem({
       {/* Thumbnail */}
       <div className={`w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center ${thumb ? "" : "bg-foreground/10"}`}>
         {thumb ? (
-          <img src={thumb} alt="" className="w-full h-full object-cover pointer-events-none" />
+          <img src={thumb} loading="eager" decoding="sync" alt="" className="w-full h-full object-cover pointer-events-none" />
         ) : (
           <Disc className={`w-5 h-5 ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/30"}`} />
         )}
@@ -144,6 +150,11 @@ export function SortableTrackItem({
         <div className={`text-sm font-semibold truncate ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/80"}`}>
           {cleanTitle(item.title)}
         </div>
+        {item.artist && (
+          <div className="text-[11px] text-foreground/50 truncate mt-[1px]">
+            {item.artist}
+          </div>
+        )}
         {item.addedByName && (
           <div className="text-[10px] text-foreground/25 truncate mt-0.5">
             Added by {item.addedByName}
@@ -151,17 +162,61 @@ export function SortableTrackItem({
         )}
       </div>
 
-      {/* Remove button (host only) */}
-      {isHost && isHovered && !isDragging && (
+      {/* Remove button */}
+      {isHovered && !isDragging && !isHistory && (
         <motion.button
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          onClick={e => { e.stopPropagation(); onRemoveTrack(item.id); }}
+          onClick={e => { e.stopPropagation(); onRemoveTrack?.(item.id); }}
           className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
         >
           <Trash2 className="w-3 h-3" />
         </motion.button>
       )}
-    </div>
+    </motion.div>
+  );
+}
+
+export interface SortableTrackItemProps {
+  item: TrackQueueItem;
+  idx: number;
+  isCurrent: boolean;
+  isPlaying: boolean;
+  isHovered: boolean;
+  isHost: boolean;
+  onHoverStart: () => void;
+  onHoverEnd: () => void;
+  onTrackSelect: (item: TrackQueueItem) => void;
+  onRemoveTrack: (id: string) => void;
+  disableDrag?: boolean;
+  isHistory?: boolean;
+  isNew?: boolean;
+}
+
+export function SortableTrackItem(props: SortableTrackItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.item.id, disabled: props.disableDrag });
+
+  const style: React.CSSProperties = {
+    transform: isDragging ? undefined : CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const dragHandleProps = props.disableDrag ? undefined : { ...attributes, ...listeners };
+
+  return (
+    <TrackItemRow
+      {...props}
+      isDragging={isDragging}
+      style={style}
+      dragHandleProps={dragHandleProps}
+      setNodeRef={setNodeRef}
+    />
   );
 }

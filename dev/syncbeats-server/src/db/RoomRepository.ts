@@ -19,6 +19,7 @@ export interface RoomRow {
 interface NewQueueTrackInput {
   trackUrl: string;
   title: string;
+  artist?: string;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -250,6 +251,7 @@ export class RoomRepository {
           uploaderUserId,
           trackUrl: input.trackUrl,
           title: input.title,
+          artist: input.artist,
           fileName: input.fileName,
           mimeType: input.mimeType,
           sizeBytes: BigInt(input.sizeBytes),
@@ -499,16 +501,49 @@ export class RoomRepository {
 
       if (!target || target.roomId !== roomId) return null;
 
-      const current = await tx.roomQueueItem.findFirst({
-        where: { roomId, isCurrent: true },
+      const queueItems = await tx.roomQueueItem.findMany({
+        where: { roomId },
+        orderBy: { queueIndex: 'asc' },
       });
 
-      if (current && current.id !== target.id) {
-        await tx.roomQueueItem.update({
-          where: { id: current.id },
-          data: { isCurrent: false },
-        });
+      const oldCurrentIdx = queueItems.findIndex(i => i.isCurrent);
+      const targetIdx = queueItems.findIndex(i => i.id === itemId);
+
+      if (oldCurrentIdx !== -1 && targetIdx !== -1 && targetIdx !== oldCurrentIdx) {
+        // Reorder in memory
+        const [movingItem] = queueItems.splice(targetIdx, 1);
+        const insertIdx = targetIdx > oldCurrentIdx ? oldCurrentIdx + 1 : oldCurrentIdx;
+        queueItems.splice(insertIdx, 0, movingItem);
+
+        const minIdx = Math.min(targetIdx, insertIdx);
+        const maxIdx = Math.max(targetIdx, insertIdx);
+        const affectedItems = queueItems.slice(minIdx, maxIdx + 1);
+
+        // Update to negative values first to prevent constraint violations
+        for (let i = 0; i < affectedItems.length; i++) {
+          const item = affectedItems[i];
+          const newQueueIdx = minIdx + i;
+          await tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: { queueIndex: -(newQueueIdx + 1) }
+          });
+        }
+
+        // Assign the final correct indices
+        for (let i = 0; i < affectedItems.length; i++) {
+          const item = affectedItems[i];
+          const newQueueIdx = minIdx + i;
+          await tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: { queueIndex: newQueueIdx }
+          });
+        }
       }
+
+      await tx.roomQueueItem.updateMany({
+        where: { roomId, isCurrent: true },
+        data: { isCurrent: false },
+      });
 
       await tx.roomQueueItem.update({
         where: { id: target.id },
@@ -525,6 +560,8 @@ export class RoomRepository {
       });
 
       return this.mapQueueItem({ ...target, isCurrent: true });
+    }, {
+      timeout: 15000
     });
   }
 
@@ -556,6 +593,37 @@ export class RoomRepository {
     return true;
   }
 
+  async clearUpcomingQueue(roomId: string): Promise<boolean> {
+    const queueItems = await prisma.roomQueueItem.findMany({
+      where: { roomId },
+      orderBy: { queueIndex: 'asc' },
+    });
+    
+    const currentIndex = queueItems.findIndex(i => i.isCurrent);
+    if (currentIndex === -1) {
+       await prisma.roomQueueItem.deleteMany({ where: { roomId } });
+       return true;
+    }
+    // Delete from currentIndex to the end (current + upcoming)
+    const itemsToDelete = queueItems.slice(currentIndex).map(i => i.id);
+    if (itemsToDelete.length > 0) {
+      await prisma.roomQueueItem.deleteMany({
+        where: { id: { in: itemsToDelete } }
+      });
+    }
+
+    await prisma.room.update({
+      where: { id: roomId },
+      data: {
+        trackUrl: null,
+        playbackState: 'IDLE',
+        positionMs: 0n,
+      }
+    });
+
+    return true;
+  }
+
   async reorderQueue(roomId: string, itemId: string, newIndex: number): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
       const queueItems = await tx.roomQueueItem.findMany({
@@ -574,23 +642,33 @@ export class RoomRepository {
       queueItems.splice(safeNewIndex, 0, movingItem);
       
       // Persist the new sequence indices
+      const minIdx = Math.min(oldIndexArray, safeNewIndex);
+      const maxIdx = Math.max(oldIndexArray, safeNewIndex);
+      const affectedItems = queueItems.slice(minIdx, maxIdx + 1);
+
       // First, map to temporary negative values to avoid @@unique([roomId, queueIndex]) constraint violations
-      for (let i = 0; i < queueItems.length; i++) {
+      for (let i = 0; i < affectedItems.length; i++) {
+        const item = affectedItems[i];
+        const newQueueIdx = minIdx + i;
         await tx.roomQueueItem.update({
-          where: { id: queueItems[i].id },
-          data: { queueIndex: -(i + 1) }
+          where: { id: item.id },
+          data: { queueIndex: -(newQueueIdx + 1) }
         });
       }
 
       // Then map to the final correct indices
-      for (let i = 0; i < queueItems.length; i++) {
+      for (let i = 0; i < affectedItems.length; i++) {
+        const item = affectedItems[i];
+        const newQueueIdx = minIdx + i;
         await tx.roomQueueItem.update({
-          where: { id: queueItems[i].id },
-          data: { queueIndex: i }
+          where: { id: item.id },
+          data: { queueIndex: newQueueIdx }
         });
       }
       
       return true;
+    }, {
+      timeout: 15000 // Increase timeout for large queues
     });
   }
 
@@ -625,6 +703,7 @@ export class RoomRepository {
     id: string;
     trackUrl: string;
     title: string;
+    artist?: string | null;
     fileName: string;
     queueIndex: number;
     isCurrent: boolean;
@@ -637,6 +716,7 @@ export class RoomRepository {
       id: item.id,
       trackUrl: item.trackUrl,
       title: item.title,
+      artist: item.artist || undefined,
       fileName: item.fileName,
       queueIndex: item.queueIndex,
       isCurrent: item.isCurrent,

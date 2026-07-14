@@ -248,6 +248,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         const { item, activated } = await repo.enqueueTrack(roomId, userId, {
           trackUrl,
           title: track.title,
+          artist: track.artist || undefined,
           fileName: `playlist_track.yt`,
           mimeType: 'video/youtube', // We treat them all as youtube eventually
           sizeBytes: 0,
@@ -353,6 +354,25 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       res.json({ ok: true, roomId, newHostEmail: target.email });
     } catch (err) {
       console.error('[Rooms] host transfer error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // DELETE /rooms/:roomId/queue (Clear upcoming)
+  router.delete('/:roomId/queue', requireAuth, async (req, res) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      await repo.clearUpcomingQueue(roomId);
+      
+      const latestQueue = await repo.getQueue(roomId);
+      const room = roomManager.get(roomId);
+      if (room) {
+        room.syncQueue(latestQueue, null);
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Rooms] clear queue error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }
@@ -471,9 +491,19 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         }
       }
 
+      // Try to extract artist from title if it looks like "Artist - Title"
+      let parsedArtist;
+      let parsedTitle = title;
+      if (title.includes(' - ')) {
+        const parts = title.split(' - ');
+        parsedArtist = parts[0].trim();
+        parsedTitle = parts.slice(1).join(' - ').trim();
+      }
+
       const { item, activated } = await repo.enqueueTrack(roomId as string, userId, {
         trackUrl: `youtube:${videoId}`,
-        title,
+        title: parsedTitle,
+        artist: parsedArtist,
         fileName: `youtube_${videoId}.yt`,
         mimeType: 'video/youtube',
         sizeBytes: 0,
@@ -495,7 +525,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   router.post('/:roomId/enqueue-magnet', requireAuth, async (req: Request, res: Response) => {
     try {
       const roomId = req.params['roomId'] as string;
-      const { magnetUri, title } = req.body as { magnetUri?: string; title?: string };
+      const { magnetUri, title, artist } = req.body as { magnetUri?: string; title?: string; artist?: string };
       const userId = req.user!.sub;
 
       if (!magnetUri) {
@@ -506,6 +536,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const { item, activated } = await repo.enqueueTrack(roomId, userId, {
         trackUrl: magnetUri,
         title: title || 'P2P Track',
+        artist: artist,
         fileName: 'webtorrent.mp3',
         mimeType: 'audio/mpeg',
         sizeBytes: 0,

@@ -305,7 +305,7 @@ export function SpotifyIslandTab({
                 <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/[0.03] border border-foreground/[0.05] hover:bg-foreground/[0.06] transition-colors group">
                   <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => handlePlayPlaylist(p.id)}>
                     {p.coverUrl ? (
-                      <img src={p.coverUrl} alt={p.name} className="w-12 h-12 rounded-lg object-cover" />
+                      <img src={p.coverUrl} alt={p.name} loading="eager" decoding="sync" className="w-12 h-12 rounded-lg object-cover" />
                     ) : (
                       <div className="w-12 h-12 rounded-lg bg-foreground/10 flex items-center justify-center">
                         <Disc className="w-5 h-5 text-foreground/30" />

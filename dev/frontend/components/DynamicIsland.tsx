@@ -30,15 +30,15 @@ import { SearchTab } from "./room/SearchTab";
 
 const SPRING = {
   type: "spring" as const,
-  stiffness: 260,
-  damping: 28,
+  stiffness: 140,
+  damping: 18,
   mass: 0.9,
 };
 
 const SHAPE_SPRING = {
   type: "spring" as const,
-  stiffness: 340,
-  damping: 34,
+  stiffness: 150,
+  damping: 17,
   mass: 0.85,
 };
 
@@ -587,6 +587,14 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (query.includes("@")) {
+                  handleInvite(undefined, query);
+                }
+              }
+            }}
             placeholder="Search name or email..."
             className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
           />
@@ -911,11 +919,24 @@ export function DynamicIsland() {
   const [volIndicator, setVolIndicator] = useState<{ amount: number; text: string } | null>(null);
   const volTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [forceShowDetails, setForceShowDetails] = useState(false);
+  const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
   const [windowWidth, setWindowWidth] = useState(0);
+  const [windowHeight, setWindowHeight] = useState(0);
   const localProgressRef = useRef(0);
+
+  useEffect(() => {
+    setWindowWidth(window.innerWidth);
+    setWindowHeight(window.innerHeight);
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const lastTapRef = useRef<number>(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
@@ -927,12 +948,7 @@ export function DynamicIsland() {
   const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    setWindowWidth(window.innerWidth);
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+
 
   // ── Auto-trigger extended when syncing/buffering, stay extended until done
   useEffect(() => {
@@ -971,6 +987,13 @@ export function DynamicIsland() {
       setActiveTab("search");
     }
   }, [isRoom, hasTrack, islandState, activeTab]);
+
+  // ── Collapse island to pill if current track is cleared (e.g. queue cleared)
+  useEffect(() => {
+    if (isRoom && !hasTrack) {
+      setIslandState("pill");
+    }
+  }, [hasTrack, isRoom]);
 
   // ── Auto-trigger extended for join requests
   useEffect(() => {
@@ -1073,7 +1096,7 @@ export function DynamicIsland() {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     const expanded = isRoom ? islandState === "expanded" : isExpanded;
     // Check for height changes
-    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "search") {
+    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "invite" && activeTab !== "search") {
       inactivityTimerRef.current = setTimeout(() => {
         if (isRoom) setIslandState("pill");
         else setIsExpanded(false);
@@ -1281,6 +1304,7 @@ export function DynamicIsland() {
   const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
   let expandedHeight: number | "auto" = "auto";
+  
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
   // Current animated dimensions
@@ -1428,8 +1452,11 @@ export function DynamicIsland() {
             cursor: isExpanded_room ? "default" : "pointer",
             position: "relative",
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
+            maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
           }}
           className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-white/[0.08] select-none"
         >
@@ -1496,7 +1523,7 @@ export function DynamicIsland() {
 
           {/* Expanded content */}
           <motion.div
-            className="w-full pointer-events-none"
+            className={`w-full pointer-events-none flex-1 min-h-0 flex flex-col`}
             animate={{ opacity: isExpanded_room ? 1 : 0, scale: isExpanded_room ? 1 : 0.97, filter: isExpanded_room ? "blur(0px)" : "blur(6px)" }}
             transition={{ opacity: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, filter: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, scale: { ...SPRING, stiffness: 200 } }}
             style={{ 
@@ -1508,7 +1535,7 @@ export function DynamicIsland() {
           >
             <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
               {activeTab === "player" && (
-                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
+                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
                   <PlayerTab
                     effectivePlaying={effectivePlaying}
                     trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
@@ -1537,24 +1564,25 @@ export function DynamicIsland() {
                 </motion.div>
               )}
               {activeTab === "network" && (
-                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
+                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
                   <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                 </motion.div>
               )}
               {activeTab === "search" && (
-                <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
+                <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
                   <SearchTab 
                     roomId={roomId!} 
                     initialMode={initialSearchMode}
                     onBack={() => setActiveTab("player")} 
                     onResultsCountChange={setYtResultsCount} 
                     isSearchOnly={false} 
+                    onPlaylistViewChange={setIsViewingPlaylist}
                     onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
                   />
                 </motion.div>
               )}
-              {activeTab === "invite" && (
-                <motion.div key="invite" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
+              {(activeTab === "deviceInfo" || activeTab === "invite") && (
+                <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
                   <InviteTab onBack={() => setActiveTab("player")} roomId={roomId || ''} />
                 </motion.div>
               )}

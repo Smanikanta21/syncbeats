@@ -177,13 +177,13 @@ export class SyncBeatsServer {
   }
 
   private setupRoomCleanup(): void {
-    // Rooms expire 30 days after their last access (timer resets on every join)
-    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+    // Rooms expire 60 days after their last access (timer resets on every join)
+    const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000;
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // run every hour
 
     const cleanup = async () => {
       try {
-        const cutoff = new Date(Date.now() - ONE_MONTH_MS);
+        const cutoff = new Date(Date.now() - TWO_MONTHS_MS);
         const candidates = await this.roomRepo.listOlderThan(cutoff);
 
         for (const room of candidates) {

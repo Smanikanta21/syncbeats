@@ -19,6 +19,8 @@ router.get('/:id', requireAuth, async (req: any, res: any) => {
             song: {
               select: {
                 id:               true,
+                title:            true,
+                artist:           true,
                 youtubeId:        true,
                 youtubeThumbnail: true,
                 albumArt:         true,

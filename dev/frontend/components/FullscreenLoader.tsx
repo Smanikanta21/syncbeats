@@ -17,7 +17,7 @@ export function FullscreenLoader({ isVisible, message, isMainEntry = false }: Fu
           initial={{ opacity: 1 }}
           exit={isMainEntry ? { opacity: 0, y: "-100%" } : { opacity: 0 }}
           transition={{ duration: 0.8, ease: [0.76, 0, 0.24, 1] }}
-          className={`fixed inset-0 z-[100] flex flex-col items-center justify-center text-foreground overflow-hidden ${isMainEntry ? "bg-background" : "bg-background/80 backdrop-blur-xl"}`}
+          className={`fixed inset-0 z-[100] fullscreen-loader-active flex flex-col items-center justify-center text-foreground overflow-hidden ${isMainEntry ? "bg-background" : "bg-background/80 backdrop-blur-xl"}`}
         >
           {/* Subtle animated background */}
           <div className="absolute inset-0 pointer-events-none opacity-50">

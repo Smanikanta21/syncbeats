@@ -9,6 +9,7 @@ type PromptState = "hidden" | "initial" | "asking" | "locked";
 export function FullscreenPrompt() {
   const [promptState, setPromptState] = useState<PromptState>("hidden");
   const hasEnteredOnce = useRef(false);
+  const isLocked = useRef(false);
 
   useEffect(() => {
     const checkFullscreen = () => {
@@ -20,7 +21,21 @@ export function FullscreenPrompt() {
         return;
       }
 
-      const isFullscreen = document.fullscreenElement != null || (document as any).webkitFullscreenElement != null;
+      // Hide prompt if loader is active in the document
+      const isLoaderActive = document.querySelector(".fullscreen-loader-active") !== null;
+      if (isLoaderActive) {
+        setPromptState("hidden");
+        return;
+      }
+
+      // Check standard Fullscreen API first
+      let isFullscreen = document.fullscreenElement != null || (document as any).webkitFullscreenElement != null;
+      
+      // Fallback for F11 or OS-level fullscreen where the API might return null
+      if (!isFullscreen) {
+        // Allow a small threshold for UI elements like a 1px border
+        isFullscreen = Math.abs(window.innerHeight - window.screen.height) <= 2;
+      }
       
       if (!isFullscreen) {
         if (!hasEnteredOnce.current) {
@@ -29,7 +44,7 @@ export function FullscreenPrompt() {
         } else {
           // They escaped fullscreen after already entering
           // Only show 'asking' if we aren't already locked
-          setPromptState(prev => prev === "locked" ? "locked" : "asking");
+          setPromptState(isLocked.current ? "locked" : "asking");
         }
       } else {
         // They are in fullscreen, hide prompt and mark as entered
@@ -46,10 +61,15 @@ export function FullscreenPrompt() {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
 
+    // Observe body for changes (e.g. loader mount/unmount) to re-evaluate fullscreen prompt
+    const observer = new MutationObserver(() => checkFullscreen());
+    observer.observe(document.body, { childList: true, subtree: true });
+
     return () => {
       clearTimeout(timer);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      observer.disconnect();
     };
   }, []);
 
@@ -72,6 +92,7 @@ export function FullscreenPrompt() {
   };
 
   const handleEscapeYes = () => {
+    isLocked.current = true;
     setPromptState("locked");
   };
 
@@ -112,6 +133,15 @@ export function FullscreenPrompt() {
                   className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] active:scale-95 uppercase tracking-widest"
                 >
                   Enter Fullscreen
+                </button>
+                <button
+                  onClick={() => {
+                    hasEnteredOnce.current = true;
+                    setPromptState("hidden");
+                  }}
+                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all uppercase tracking-widest"
+                >
+                  I'm already in fullscreen
                 </button>
               </div>
             )}
@@ -156,6 +186,16 @@ export function FullscreenPrompt() {
                   className="w-full py-4 bg-foreground/10 hover:bg-foreground/20 text-foreground text-sm font-bold rounded-xl transition-all active:scale-95 uppercase tracking-widest"
                 >
                   Return to Fullscreen
+                </button>
+                <button
+                  onClick={() => {
+                    isLocked.current = false;
+                    hasEnteredOnce.current = true;
+                    setPromptState("hidden");
+                  }}
+                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all uppercase tracking-widest"
+                >
+                  Continue in Window
                 </button>
               </div>
             )}
