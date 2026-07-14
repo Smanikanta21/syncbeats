@@ -386,8 +386,23 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
 
       {spError && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-          className={cn('bg-red-500/20', 'border', 'border-red-500/30', 'text-red-200', 'text-xs', 'px-3', 'py-2', 'rounded-xl', 'mb-3', 'shrink-0')}>
-          {spError}
+          className={cn('bg-red-500/20', 'border', 'border-red-500/30', 'text-red-200', 'text-xs', 'px-3', 'py-3', 'rounded-xl', 'mb-3', 'shrink-0', 'flex', 'flex-col', 'gap-2')}>
+          <div>{spError}</div>
+          {spError === "Private playlists cannot be imported. Make it public first." && (
+            <div className="w-full rounded-lg overflow-hidden border border-red-500/30 mt-1 relative bg-black/50 aspect-video flex-shrink-0">
+              <video 
+                className="w-full h-full object-cover"
+                autoPlay 
+                loop 
+                muted 
+                playsInline
+                src="/demo-make-public.mp4"
+              />
+              <div className="absolute bottom-2 left-2 pointer-events-none">
+                 <span className="bg-black/60 text-white/80 text-[9px] px-2 py-1 rounded-md uppercase tracking-wider font-bold backdrop-blur-md">How to make public</span>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
 

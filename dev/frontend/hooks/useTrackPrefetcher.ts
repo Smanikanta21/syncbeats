@@ -99,7 +99,7 @@ export function useTrackPrefetcher({
             queueItemId: track.id,
             trackId,
             title: track.title,
-            artist: '' // We could pass artist if we stored it in the queue item
+            artist: track.artist || ''
           })
         });
         
