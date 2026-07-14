@@ -21,10 +21,20 @@ model User {
   createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   lastLoginAt                DateTime?         @map("last_login_at") @db.Timestamptz(6)
+  ytAccessToken              String?           @map("yt_access_token") @db.Text
+  ytRefreshToken             String?           @map("yt_refresh_token") @db.Text
+  spotifyAccessToken         String?           @map("spotify_access_token") @db.Text
+  spotifyRefreshToken        String?           @map("spotify_refresh_token") @db.Text
+  settings                   Json?
   devices                    Device[]
   roomParticipants           RoomParticipant[]
   roomQueueItems             RoomQueueItem[]
   rooms                      Room[]
+  searchHistory              SearchHistory[]
+  listenHistory              ListenHistory[]
+  playlists                  Playlist[]
+  invitesSent                RoomInvite[]      @relation("InvitesSent")
+  invitesReceived            RoomInvite[]      @relation("InvitesReceived")
 
   @@map("users")
 }
@@ -59,6 +69,7 @@ model Room {
   roomParticipants RoomParticipant[]
   queueItems       RoomQueueItem[]
   host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  invites          RoomInvite[]
 
   @@index([hostId])
   @@index([endedAt], map: "idx_rooms_active")
@@ -71,6 +82,7 @@ model RoomQueueItem {
   uploaderUserId String   @map("uploader_user_id")
   trackUrl       String   @map("track_url")
   title          String
+  artist         String?
   fileName       String   @map("file_name")
   mimeType       String   @map("mime_type")
   sizeBytes      BigInt   @map("size_bytes")
@@ -109,4 +121,124 @@ model cached_tracks {
   created_at   DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([youtube_id], map: "idx_cached_tracks_youtube_id")
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  query     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("search_history")
+}
+
+model ListenHistory {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  youtubeId String   @map("youtube_id")
+  title     String
+  artist    String?
+  thumbnail String?
+  playedAt  DateTime @default(now()) @map("played_at") @db.Timestamptz(6)
+  songId    String?  @map("song_id") // Optional link to global Song catalog
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song      Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  @@index([userId, playedAt(sort: Desc)])
+  @@map("listen_history")
+}
+
+model Playlist {
+  id          String          @id @default(cuid())
+  userId      String          @map("user_id")
+  name        String
+  description String?
+  coverUrl    String?         @map("cover_url")
+  sourceType  String          @default("SYNCBEATS") @map("source_type") // SYNCBEATS | SPOTIFY | APPLE_MUSIC
+  sourceId    String?         @map("source_id") // original spotify playlist ID
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks      PlaylistTrack[]
+
+  @@index([userId])
+  @@map("playlists")
+}
+
+// Global Song Catalog — shared across all users, like Spotify/Apple Music's internal DB
+model Song {
+  id String @id @default(cuid())
+
+  // Core identity
+  title  String
+  artist String
+  album  String?
+
+  // Rich metadata
+  albumArt    String? @map("album_art") // High-res album cover (from Spotify)
+  duration    Int? // Duration in seconds
+  releaseYear Int?    @map("release_year")
+  genre       String?
+
+  // Cross-platform source IDs
+  spotifyId String? @unique @map("spotify_id") // Spotify track URI
+
+  // YouTube resolution (populated by client-side or server-side scraper)
+  youtubeId        String?   @map("youtube_id") // YouTube video ID
+  youtubeThumbnail String?   @map("youtube_thumbnail") // YouTube HQ thumbnail URL
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  playlistTracks PlaylistTrack[]
+  listenHistory  ListenHistory[]
+
+  @@unique([title, artist]) // Deduplication key
+  @@index([youtubeId])
+  @@index([spotifyId])
+  @@map("songs")
+}
+
+model PlaylistTrack {
+  id         String  @id @default(cuid())
+  playlistId String  @map("playlist_id")
+  songId     String? @map("song_id") // Link to global Song catalog (nullable for backward compat)
+
+  // Denormalized fields kept for backward compat & fast reads (mirrors Song fields)
+  youtubeId String  @default("") @map("youtube_id")
+  title     String
+  artist    String?
+  thumbnail String? // Will hold YouTubeThumbnail once resolved
+
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song     Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  @@index([playlistId, position])
+  @@index([songId])
+  @@map("playlist_tracks")
+}
+
+model RoomInvite {
+  id           String   @id @default(cuid())
+  roomId       String   @map("room_id")
+  inviterId    String   @map("inviter_id")
+  inviteeId    String?  @map("invitee_id") // Optional for raw email invites
+  inviteeEmail String?  @map("invitee_email") // The email address if inviteeId is null
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  room    Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  inviter User  @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User? @relation("InvitesReceived", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, inviteeId])
+  @@index([inviteeId])
+  @@index([inviteeEmail])
+  @@map("room_invites")
 }
