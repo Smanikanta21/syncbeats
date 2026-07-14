@@ -57,7 +57,7 @@ export class AuthService {
     return process.env.FRONTEND_URL || "https://syncbeats.app";
   }
 
-  private async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {
+  public async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
     const authAddress = process.env.AUTH_FROM_EMAIL;
     const from = authAddress ? `SYNCBEATS <${authAddress}>` : authAddress;
@@ -307,6 +307,12 @@ export class AuthService {
 
   async updateProfile(userId: string, name: string): Promise<PublicUser> {
     const updated = await this.repo.updateProfile(userId, name);
+    if (!updated) throw new Error('User not found');
+    return updated;
+  }
+
+  async updateSettings(userId: string, settings: any): Promise<PublicUser> {
+    const updated = await this.repo.updateSettings(userId, settings);
     if (!updated) throw new Error('User not found');
     return updated;
   }

@@ -30,6 +30,7 @@ export default function HubPage() {
   const [joinCode, setJoinCode] = useState("");
   const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
+  const [invitedRooms, setInvitedRooms] = useState<any[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [roomMenu, setRoomMenu] = useState<{ room: RecentRoom; x: number; y: number } | null>(null);
   const [deviceMenu, setDeviceMenu] = useState<{ device: Device; x: number; y: number } | null>(null);
@@ -74,7 +75,10 @@ export default function HubPage() {
 
   useEffect(() => {
     roomsApi.mine()
-      .then(({ rooms }) => setRecentRooms(rooms as RecentRoom[]))
+      .then((res: any) => {
+        setRecentRooms(res.rooms as RecentRoom[]);
+        setInvitedRooms(res.invitedRooms || []);
+      })
       .catch(() => { }); // not critical if it fails
 
     devicesApi.mine()
@@ -452,6 +456,32 @@ export default function HubPage() {
             <Clock className="w-4 h-4 text-foreground/60" />
             <h2 className="text-sm font-semibold tracking-widest text-foreground/60 uppercase">Recent Sessions</h2>
           </div>
+
+          {invitedRooms.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-xs font-bold tracking-widest text-foreground/40 uppercase mb-3 ml-2">Invited</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {invitedRooms.map((room) => (
+                  <div
+                    key={room.inviteId}
+                    onClick={() => window.open(`/room/${room.id}`, '_blank')}
+                    className="glass-panel p-4 rounded-2xl border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 flex items-center justify-between cursor-pointer transition-colors group relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 px-2 py-0.5 bg-blue-500 text-white text-[9px] font-bold tracking-widest rounded-bl-lg">INVITED</div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                        <Play className="w-4 h-4 text-blue-400 group-hover:text-blue-300 transition-colors" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-blue-300 font-mono tracking-widest">{room.id}</div>
+                        <div className="text-xs text-foreground/50 mt-0.5">Invited by {room.inviterName}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {recentRooms.length === 0 ? (
             <p className="text-foreground/40 text-sm font-medium text-center py-8">

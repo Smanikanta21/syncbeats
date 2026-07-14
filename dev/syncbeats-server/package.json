@@ -34,6 +34,7 @@
     "google-auth-library": "^10.6.2",
     "googleapis": "^173.0.0",
     "helmet": "^8.2.0",
+    "isomorphic-unfetch": "^4.0.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.5",
@@ -42,6 +43,7 @@
     "redis": "^6.0.0",
     "resend": "^6.12.4",
     "socket.io": "^4.8.3",
+    "spotify-url-info": "^3.3.1",
     "uuid": "^13.0.0",
     "youtube-dl-exec": "^3.1.8",
     "yt-search": "^2.13.1"

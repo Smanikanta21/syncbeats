@@ -107,7 +107,8 @@ export class SpatialAudioEngine {
     this.stereoPanner.pan.value = 0;
 
     this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 256;
+    this.analyser.fftSize = 512;
+    this.analyser.smoothingTimeConstant = 0.4;
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
     this.source = inputNode;
@@ -391,8 +392,13 @@ export class SpatialAudioEngine {
     const fromId = seq[idx % seq.length];
     const toId = seq[(idx + 1) % seq.length];
 
-    const fromPos = this.devicePositions.get(fromId)!;
-    const toPos = this.devicePositions.get(toId)!;
+    const fromPos = this.devicePositions.get(fromId);
+    const toPos = this.devicePositions.get(toId);
+
+    if (!fromPos || !toPos) {
+      this.setPannerPosition(0, 0, 0);
+      return;
+    }
 
     if (this.onOrbitUpdate) {
       this.onOrbitUpdate(fromId, toId, frac);

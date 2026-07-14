@@ -20,6 +20,7 @@ export interface TrackQueueItem {
   id:         string;
   trackUrl:   string;
   title:      string;
+  artist?:    string;
   fileName:   string;
   queueIndex: number;
   isCurrent:  boolean;

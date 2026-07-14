@@ -101,6 +101,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const trackUrlRef = useRef<string | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   const playbackRateRef = useRef<number>(1);
   
@@ -123,7 +124,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioCtxRef.current = new AudioContextClass();
     gainNodeRef.current = audioCtxRef.current.createGain();
     analyserNodeRef.current = audioCtxRef.current.createAnalyser();
-    analyserNodeRef.current.fftSize = 256;
+    analyserNodeRef.current.fftSize = 512;
+    analyserNodeRef.current.smoothingTimeConstant = 0.25;
 
     // Create 5-band EQ with proper shelf/peak types
     const freqs = [60, 230, 910, 3600, 14000];
@@ -580,7 +582,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             });
           }
         } else if (url.startsWith('youtube:')) {
-          const videoId = url.split(':')[1];
+          const match = url.match(/^youtube:([^?&]+)/);
+          const videoId = match ? match[1] : '';
           const roomId = window.location.pathname.split('/').pop();
           const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
           const response = await fetch(fetchUrl);
@@ -935,8 +938,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const getVolume = useCallback(() => volumeRef.current, []);
 
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
-    if (url.startsWith('local:')) {
-      console.warn("Ignoring deprecated local: track url", url);
+    if (!url) return;
+    if (url === trackUrlRef.current && audioBufferRef.current) {
+      setTrackTitle(title);
+      setTrackArtist(artist);
       return;
     }
     stopCurrentSource();
@@ -947,6 +952,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioBufferRef.current = null;
     pendingArrayBufferRef.current = null; 
     
+    trackUrlRef.current = url;
     setTrackUrl(url);
     setTrackTitle(title);
     setTrackArtist(artist);
@@ -954,6 +960,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const clearTrack = useCallback(() => {
     stopCurrentSource();
+    trackUrlRef.current = null;
     setTrackUrl(null);
     setTrackTitle("");
     setTrackArtist("");

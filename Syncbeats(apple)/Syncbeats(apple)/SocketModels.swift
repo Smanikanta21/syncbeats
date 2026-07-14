@@ -1,7 +1,7 @@
 import Foundation
 
 struct Config {
-    static let backendURL = "https://dev-api.syncbeats.app"
+    static let backendURL = "http://localhost:4000"
 }
 
 // MARK: - Room Synchronization Models
@@ -13,6 +13,7 @@ struct RoomSnapshot: Codable {
     let trackUrl: String?
     let state: String // "playing", "paused", "buffering"
     let position: Double // Position in milliseconds
+    let startEpoch: Double? // Epoch timestamp when track started playing
     let participants: [Participant]
     let queue: [TrackQueueItem]
     let shuffle: Bool

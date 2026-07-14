@@ -153,6 +153,30 @@ export default function RootLayout({
       />
       <Script id="google-analytics" strategy="afterInteractive">
         {`
+          try {
+            const isDev = window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
+            let isAdmin = false;
+            
+            // Read sb_token from cookies
+            const match = document.cookie.match(new RegExp('(^| )sb_token=([^;]+)'));
+            if (match && match[2]) {
+              const token = decodeURIComponent(match[2]);
+              const payloadB64 = token.split('.')[1];
+              if (payloadB64) {
+                // Decode base64url
+                const payloadStr = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
+                const payload = JSON.parse(payloadStr);
+                
+                if (payload.email === 'siraparapuabhinay21@gmail.com') {
+                  isAdmin = true;
+                }
+              }
+            }
+            
+            if (isDev || isAdmin) {
+              window['ga-disable-G-9D67M1G5XC'] = true;
+            }
+          } catch(e) {}
           window.dataLayer = window.dataLayer || [];
           function gtag(){window.dataLayer.push(arguments);}
           gtag('js', new Date());

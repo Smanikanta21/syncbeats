@@ -285,15 +285,14 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
       const isYoutube = snap.trackUrl?.startsWith("youtube:");
       // Read adaptive tolerances — poor-network devices get wider windows
-      // to prefer rate-correction over hard seeks, reducing audio glitches
-      const { DRIFT_HARD_SEEK_MS, DRIFT_SOFT_SEEK_MS } = paramsRef.current;
-      const hardSeekTolerance = isYoutube ? 500 : DRIFT_HARD_SEEK_MS;
-      const softSeekTolerance = isYoutube ? 100 : DRIFT_SOFT_SEEK_MS;
+      // to reduce jarring seeks, while keeping pitch perfect at 1.0x
+      const { DRIFT_HARD_SEEK_MS } = paramsRef.current;
+      const hardSeekTolerance = DRIFT_HARD_SEEK_MS;
 
       if (driftMs > hardSeekTolerance) {
         // Severe drift: Crossfade seek to avoid jarring jumps
-        if (isYoutube || !audioRef.current.audioCtx || !audioRef.current.gainNode) {
-          // YouTube or fallback: just hard seek
+        if (!audioRef.current.audioCtx || !audioRef.current.gainNode) {
+          // Fallback: just hard seek
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {
@@ -320,32 +319,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
             newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.05);
           }, 50);
         }
-      } else if (driftMs > softSeekTolerance) { 
-        // Micro-drift: Soft correction via playback rate
-        if (audioRef.current.setPlaybackRate) {
-          if (isYoutube) {
-            // YouTube iframe API supports rate changes without pitch shifting
-            // To catch up `driftMs` playing at 1.25x (0.25x faster), we need driftMs / 0.25 ms.
-            const rate = drift > 0 ? 1.25 : 0.75;
-            const correctionDurationMs = driftMs / 0.25; 
-            
-            audioRef.current.setPlaybackRate(rate);
-            
-            // Revert back to normal speed after we've caught up
-            setTimeout(() => {
-              if (audioRef.current?.setPlaybackRate) {
-                audioRef.current.setPlaybackRate(1);
-              }
-            }, Math.min(correctionDurationMs, 2000)); // Cap at 2s just in case
-          } else {
-            // WebAudio (AudioBufferSourceNode) pitch-shifts when playbackRate changes.
-            // We cannot use rate adjustment to fix drift without making it sound like a chipmunk.
-            // Instead, we just tolerate the drift until it hits the hard-seek threshold.
-            audioRef.current.setPlaybackRate(1);
-          }
-        }
       } else {
-        // Perfectly in sync (< 50ms): Normal playback rate
+        // Tolerable drift: Keep normal playback rate (1.0)
         if (audioRef.current.setPlaybackRate) {
           audioRef.current.setPlaybackRate(1);
         }
@@ -579,8 +554,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       const isPastStart = snap.startEpoch == null || nowServer >= snap.startEpoch;
       const shouldBePlaying = snap.isPlaying && isPastStart;
 
-      // Local state is blocked if we should be playing, but local audio is not playing
-      const isBlocked = !!(shouldBePlaying && audioRef.current.isReady && !audioRef.current.isPlaying);
+      // Local state is blocked if we should be playing but audio is not playing, or if we have a loading/playback error
+      const isBlocked = !!(
+        (shouldBePlaying && audioRef.current.isReady && !audioRef.current.isPlaying) ||
+        audioRef.current.error
+      );
 
       if (reportedBlockedRef.current !== isBlocked) {
         reportedBlockedRef.current = isBlocked;

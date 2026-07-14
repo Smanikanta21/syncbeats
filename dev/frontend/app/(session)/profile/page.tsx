@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/SettingsPanel";
+import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-5 h-5 text-foreground/70" />;
@@ -18,11 +19,11 @@ function getPlatformLabel(userAgent: string | null): string {
   const ua = userAgent.toLowerCase();
   if (ua.includes("iphone")) return "iPhone";
   if (ua.includes("ipad")) return "iPad";
-  if (ua.includes("android")) return "Android";
-  if (ua.includes("mac")) return "Mac";
+  if (ua.includes("macintosh")) return "Mac";
   if (ua.includes("windows")) return "Windows";
   if (ua.includes("linux")) return "Linux";
-  return "Browser";
+  if (ua.includes("android")) return "Android";
+  return "Desktop";
 }
 
 export default function ProfilePage() {
@@ -37,7 +38,7 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Modals state
-  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | null>(null);
+  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | 'password' | null>(null);
   
   useEffect(() => {
     if (window.innerWidth >= 768) {
@@ -52,7 +53,7 @@ export default function ProfilePage() {
 
   const displayName = profileName.trim() || user?.name || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-  const accountId = user ? `#SB-${user.id.slice(0, 4).toUpperCase()}` : "—";
+  const accountId = user ? `#SB-${user.id.slice(0, 8).toUpperCase()}` : "—";
   const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
@@ -128,9 +129,9 @@ export default function ProfilePage() {
       <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col md:flex-row items-start justify-center gap-6 relative">
         <motion.div
           layout
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+          initial={{ opacity: 0, x: -40 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ type: "spring", stiffness: 350, damping: 25 }}
           className="w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-8 flex flex-col items-center overflow-hidden z-10"
         >
           {/* Avatar Section */}
@@ -237,13 +238,19 @@ export default function ProfilePage() {
             </button>
 
             <button
-              onClick={() => router.push("/forgot-password" + (user?.email ? "?email=" + encodeURIComponent(user.email) : ""))}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-foreground/5 transition-all group"
+              onClick={() => setActivePanel(activePanel === 'password' ? null : 'password')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'password' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
-                <KeyRound className="w-5 h-5 text-foreground/50 group-hover:text-foreground transition-colors" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5 text-foreground/70" />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-bold text-foreground">Change Password</h4>
+                  <p className="text-xs text-foreground/50">Set or reset account password</p>
+                </div>
               </div>
-              <h4 className="font-bold text-foreground/70 group-hover:text-foreground transition-colors">Change Password</h4>
+              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'password' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
             </button>
 
             <button
@@ -263,11 +270,11 @@ export default function ProfilePage() {
           {activePanel === 'devices' && (
             <motion.div
               layout
-              initial={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-              className="hidden md:flex flex-col w-full max-w-md shrink-0 gap-3 relative z-0 h-full max-h-full"
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
             >
               <div className="flex items-center justify-between px-2 pb-2 shrink-0">
                 <h2 className="text-2xl font-black text-foreground">Your Devices</h2>
@@ -354,13 +361,26 @@ export default function ProfilePage() {
           {activePanel === 'settings' && (
             <motion.div
               layout
-              initial={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative z-0 h-full max-h-[calc(100vh-10rem)]"
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
             >
               <SettingsPanel onClose={() => setActivePanel(null)} />
+            </motion.div>
+          )}
+
+          {activePanel === 'password' && (
+            <motion.div
+              layout
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ type: "spring", stiffness: 350, damping: 25 }}
+              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
+            >
+              <ForgotPasswordPanel onClose={() => setActivePanel(null)} initialEmail={user?.email || ""} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -482,6 +502,29 @@ export default function ProfilePage() {
               className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10 p-4"
             >
               <SettingsPanel onClose={() => setActivePanel(null)} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activePanel === 'password' && (
+          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActivePanel(null)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10 p-4"
+            >
+              <ForgotPasswordPanel onClose={() => setActivePanel(null)} initialEmail={user?.email || ""} />
             </motion.div>
           </div>
         )}

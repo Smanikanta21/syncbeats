@@ -111,6 +111,7 @@ export interface User {
   auth_provider: 'LOCAL' | 'GOOGLE' | string;
   email_verified_at: string | null;
   created_at: string;
+  settings?:  any;
 }
 
 export interface AuthResponse {
@@ -197,6 +198,12 @@ export const authApi = {
       body: JSON.stringify({ name }),
     }, true),
 
+  updateSettings: (settings: any) =>
+    request<{ user: User }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ settings }),
+    }, true),
+
   me: () => request<AuthResponse>('/auth/me', {}, true),
 };
 
@@ -253,9 +260,21 @@ export interface RoomDetailsResponse {
   queue: TrackQueueItem[];
 }
 
+export const usersApi = {
+  search: async (query: string) => {
+    return request<{users: {id: string, name: string, email: string}[]}>(`/users/search?q=${encodeURIComponent(query)}`, {}, true);
+  }
+};
+
 export const roomsApi = {
   create: () =>
     request<{ roomId: string; createdAt: string }>('/rooms', { method: 'POST', body: '{}' }, true),
+
+  invite: (roomId: string, targetUserId?: string, targetEmail?: string) =>
+    request<{ success: boolean; inviteId: string }>(`/rooms/${roomId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, targetEmail })
+    }, true),
 
   get: (roomId: string) =>
     request<RoomDetailsResponse>(`/rooms/${roomId}`, {}, true),
@@ -295,8 +314,42 @@ export const roomsApi = {
       method: 'DELETE',
     }, true),
 
+  clearQueue: (roomId: string) =>
+    request<any>(`/rooms/${roomId}/queue`, {
+      method: 'DELETE',
+    }, true),
+
   searchYoutube: (roomId: string, query: string) =>
     request<any[]>(`/rooms/${roomId}/youtube-search?q=${encodeURIComponent(query)}`, {}, true),
+
+  async searchSpotifyPlaylists(query: string): Promise<any[]> {
+    try {
+      const data = await request<{ playlists: any[] }>(`/spotify/search?q=${encodeURIComponent(query)}`);
+      return data.playlists || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getUserSpotifyPlaylists(): Promise<any[]> {
+    try {
+      const data = await request<{ playlists: any[] }>('/spotify/my-playlists', {}, true);
+      return (data.playlists || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        coverUrl: p.coverUrl,
+        trackCount: p.tracks?.length || 0,
+        tracks: p.tracks || [],
+        owner: 'SyncBeats',
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  getPlaylist: (id: string) => request<any>(`/api/playlists/${id}`, {}, true),
+  updatePlaylist: (id: string, data: { name?: string, coverUrl?: string }) => request<{ playlist: any }>(`/api/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }, true),
+  deletePlaylist: (id: string) => request<{ ok: boolean }>(`/api/playlists/${id}`, { method: 'DELETE' }, true),
 
   suggestYoutube: (query: string) =>
     request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),

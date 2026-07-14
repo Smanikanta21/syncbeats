@@ -17,6 +17,11 @@ import { createDeviceRoutes } from './handlers/DeviceRoutes';
 import { createSearchRoutes }  from './handlers/SearchRoutes';
 import { createYoutubeRoutes } from './handlers/YoutubeRoutes';
 import { createHistoryRoutes } from './handlers/HistoryRoutes';
+import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
+import { createMusicBridgeRoutes } from './handlers/MusicBridgeRoutes';
+import playlistRoutes from './handlers/PlaylistRoutes';
+import { createUserRoutes } from './handlers/UserRoutes';
+import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
@@ -151,11 +156,18 @@ export class SyncBeatsServer {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
     this.app.use('/auth',    createAuthRoutes());
+    
+    const userRepository = new UserRepository();
+    this.app.use('/users',   createUserRoutes(userRepository));
+    
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
     this.app.use('/search',  createSearchRoutes());
     this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
+    this.app.use('/spotify', createSpotifyRoutes());
+    this.app.use('/api/bridge', createMusicBridgeRoutes());
+    this.app.use('/api/playlists', playlistRoutes);
   }
 
   private setupSocketIO(): void {
@@ -165,13 +177,13 @@ export class SyncBeatsServer {
   }
 
   private setupRoomCleanup(): void {
-    // Rooms expire 30 days after their last access (timer resets on every join)
-    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+    // Rooms expire 60 days after their last access (timer resets on every join)
+    const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000;
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // run every hour
 
     const cleanup = async () => {
       try {
-        const cutoff = new Date(Date.now() - ONE_MONTH_MS);
+        const cutoff = new Date(Date.now() - TWO_MONTHS_MS);
         const candidates = await this.roomRepo.listOlderThan(cutoff);
 
         for (const room of candidates) {

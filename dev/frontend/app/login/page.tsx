@@ -38,6 +38,11 @@ export default function AuthPage() {
       setTheme(localStorage.getItem('theme'));
     }
     const params = new URLSearchParams(window.location.search);
+    
+    if (params.get('mode') === 'register') {
+      setIsLogin(false);
+    }
+    
     const cameFromGoogle = document.referrer.includes("accounts.google.");
     const hasGoogleOAuthParams =
       params.has("code") ||

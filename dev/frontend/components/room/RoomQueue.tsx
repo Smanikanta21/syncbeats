@@ -1,19 +1,22 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
-import { SortableTrackItem } from "../SortableTrackItem";
+import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
 import { 
   DndContext, 
   closestCenter, 
   KeyboardSensor, 
-  PointerSensor, 
+  MouseSensor,
+  TouchSensor,
   useSensor, 
   useSensors,
   DragEndEvent,
-  DragStartEvent
+  DragStartEvent,
+  DragOverlay
 } from "@dnd-kit/core";
 import { 
   SortableContext, 
@@ -23,6 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 import { roomsApi } from "../../lib/api";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
+import { cn } from "../../lib/utils";
 
 type RepeatMode = "off" | "track" | "all";
 
@@ -32,10 +36,10 @@ interface RoomQueueProps {
   roomId: string;
   onTrackSelect?: (item: TrackQueueItem) => void;
   onAddSong?: () => void;
-  onRemoveTrack?: (id: string) => void;
+  onRemoveTrack: (id: string) => void;
   isPlaying?: boolean;
   shuffle: boolean;
-  repeatMode: RepeatMode;
+  repeatMode: "off" | "all" | "track";
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
 }
@@ -60,19 +64,44 @@ export function RoomQueue({
   shuffle, repeatMode, onToggleShuffle, onToggleRepeat
 }: RoomQueueProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [optimisticQueue, setOptimisticQueue] = useState(queue);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentIndex = optimisticQueue.findIndex(q => q.isCurrent);
+  const splitIndex = currentIndex >= 0 ? currentIndex : 0;
+  const historyQueue = optimisticQueue.slice(0, splitIndex);
+  // Current song is separate — not draggable
+  const currentSong = currentIndex >= 0 ? optimisticQueue[currentIndex] : null;
+  // Only songs AFTER current are draggable
+  const draggableQueue = currentIndex >= 0 ? optimisticQueue.slice(currentIndex + 1) : optimisticQueue;
+
+  // Track which IDs are newly added for snap animation
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   // Keep optimistic queue synced with server updates, UNLESS we are dragging
   useEffect(() => {
     if (!activeDragId) {
+      const incoming = queue.map(q => q.id);
+      const added = incoming.filter(id => !knownIdsRef.current.has(id));
+      if (added.length > 0) {
+        setNewIds(new Set(added));
+        setTimeout(() => setNewIds(new Set()), 1000);
+      }
+      knownIdsRef.current = new Set(incoming);
       setOptimisticQueue(queue);
     }
   }, [queue, activeDragId]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -85,90 +114,105 @@ export function RoomQueue({
     setActiveDragId(null);
     if (!over || active.id === over.id) return;
 
-    const oldIndex = optimisticQueue.findIndex(q => q.id === active.id);
-    const newIndex = optimisticQueue.findIndex(q => q.id === over.id);
-    
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const reordered = arrayMove(optimisticQueue, oldIndex, newIndex);
+    // Find indices within the draggable (post-current) portion
+    const oldDragIdx = draggableQueue.findIndex(q => q.id === active.id);
+    const newDragIdx = draggableQueue.findIndex(q => q.id === over.id);
+
+    if (oldDragIdx === -1 || newDragIdx === -1) return;
+
+    // Map to full queue indices for the server
+    const offsetFromStart = (currentIndex >= 0 ? currentIndex + 1 : 0);
+    const oldFullIdx = offsetFromStart + oldDragIdx;
+    const newFullIdx = offsetFromStart + newDragIdx;
+
+    if (oldFullIdx !== -1 && newFullIdx !== -1) {
+      const reordered = arrayMove(optimisticQueue, oldFullIdx, newFullIdx);
       setOptimisticQueue(reordered);
-      
+
       try {
-        await roomsApi.reorderQueue(roomId, active.id as string, newIndex);
+        await roomsApi.reorderQueue(roomId, active.id as string, newFullIdx);
       } catch (err) {
         console.error("Failed to reorder queue", err);
-        // Revert on error
         setOptimisticQueue(queue);
+      }
+    }
+  };
+
+  const handleClearQueue = async () => {
+    if (confirm("Are you sure you want to clear the upcoming queue?")) {
+      try {
+        await roomsApi.clearQueue(roomId);
+      } catch (err) {
+        console.error("Failed to clear queue", err);
       }
     }
   };
 
   const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
 
+  // Find the actively dragged item for overlay
+  const activeDragItem = activeDragId ? draggableQueue.find(q => q.id === activeDragId) : null;
+
   return (
-    <div className="h-full flex flex-col min-h-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-1 pb-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <Music2 className="w-4 h-4 text-foreground dark:text-foreground" />
-          <span className="text-xs font-black uppercase tracking-widest text-foreground/50">Queue</span>
-          {queue.length > 0 && (
-            <span className="text-[10px] font-black text-foreground/20">{queue.length}</span>
-          )}
+    <div className={cn('flex', 'flex-col', 'h-full', 'overflow-hidden')}>
+      {/* Header Section */}
+      <div className={cn('flex', 'items-center', 'justify-between', 'px-3', 'pt-3', 'pb-2', 'shrink-0')}>
+        <div className={cn('flex', 'items-center', 'gap-2')}>
+          <Disc className={cn('w-4', 'h-4', 'text-foreground/50')} />
+          <h3 className={cn('text-sm', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/60')}>
+            Queue
+          </h3>
+          <span className={cn('text-xs', 'font-bold', 'text-foreground/30', 'ml-1')}>{optimisticQueue.length}</span>
         </div>
-
-        <div className="flex items-center gap-1">
-          {/* Shuffle */}
-          <button
-            onClick={onToggleShuffle}
-            className={`p-2 rounded-xl transition-all duration-200 ${
-              shuffle
-                ? "bg-foreground/20 text-foreground dark:text-foreground"
-                : "text-foreground/30 hover:text-foreground/60 hover:bg-foreground/[0.05]"
-            }`}
-            title="Shuffle"
-          >
-            <Shuffle className="w-3.5 h-3.5" />
+        <div className={cn('flex', 'items-center', 'gap-1')}>
+          <button onClick={onToggleShuffle}
+            className={cn('p-2', 'rounded-lg', 'transition-colors', shuffle ? 'bg-foreground/10 text-foreground' : 'text-foreground/40 hover:text-foreground/70')}>
+            <Shuffle className={cn('w-4', 'h-4')} />
           </button>
-
-          {/* Repeat */}
-          <button
-            onClick={onToggleRepeat}
-            className={`p-2 rounded-xl transition-all duration-200 relative ${
-              repeatMode !== "off"
-                ? "bg-foreground/20 text-foreground dark:text-foreground"
-                : "text-foreground/30 hover:text-foreground/60 hover:bg-foreground/[0.05]"
-            }`}
-            title={`Repeat: ${repeatMode}`}
-          >
-            <RepeatIcon className="w-3.5 h-3.5" />
+          <button onClick={onToggleRepeat}
+            className={cn('p-2', 'rounded-lg', 'transition-colors', repeatMode !== 'off' ? 'bg-foreground/10 text-foreground' : 'text-foreground/40 hover:text-foreground/70')}>
+            <RepeatIcon className={cn('w-4', 'h-4')} />
           </button>
-
-          {/* Add */}
+          {/* Spotify Import */}
           <button
-            onClick={onAddSong}
-            className="p-2 rounded-xl text-foreground/30 hover:text-foreground/60 hover:bg-foreground/[0.05] transition-all"
-            title="Add song"
+            onClick={() => document.dispatchEvent(new CustomEvent("island:expand-spotify"))}
+            className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-[#1DB954]', 'transition-colors')}
+            title="Import from Spotify"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <svg viewBox="0 0 24 24" className={cn('w-4', 'h-4', 'fill-current')}>
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+            </svg>
           </button>
+          {/* Clear Queue */}
+          {draggableQueue.length > 0 && (
+            <button onClick={handleClearQueue}
+              className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-red-400', 'transition-colors')}
+              title="Clear upcoming queue"
+            >
+              <Trash2 className={cn('w-4', 'h-4')} />
+            </button>
+          )}
+          {/* Add Song */}
+          {onAddSong && (
+            <button onClick={onAddSong}
+              className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-foreground/70', 'transition-colors')}
+              title="Add a song"
+            >
+              <Plus className={cn('w-4', 'h-4')} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Queue list */}
-      {queue.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-foreground/[0.05] flex items-center justify-center">
-            <Disc className="w-6 h-6 text-foreground/20 animate-[spin_6s_linear_infinite]" />
-          </div>
-          <div>
-            <p className="text-foreground/30 text-sm font-semibold">Queue is empty</p>
-            <p className="text-foreground/15 text-xs mt-1">Add songs to get the party started</p>
-          </div>
+      {optimisticQueue.length === 0 ? (
+        <div className={cn('flex-1', 'flex', 'flex-col', 'items-center', 'justify-center', 'gap-3', 'opacity-40', 'select-none', 'px-6')}>
+          <Music2 className={cn('w-10', 'h-10')} />
+          <p className={cn('text-sm', 'font-semibold', 'text-center')}>Queue is empty</p>
           <button
             onClick={onAddSong}
-            className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-foreground/20 text-foreground dark:text-foreground text-xs font-bold hover:bg-foreground/20 transition-colors"
+            className={cn('mt-2', 'flex', 'items-center', 'gap-2', 'px-4', 'py-2', 'rounded-xl', 'bg-foreground/20', 'text-foreground', 'dark:text-foreground', 'text-xs', 'font-bold', 'hover:bg-foreground/20', 'transition-colors')}
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className={cn('w-3.5', 'h-3.5')} />
             Add a song
           </button>
         </div>
@@ -181,32 +225,112 @@ export function RoomQueue({
           modifiers={[restrictToVerticalAxis, restrictToParentElement]}
         >
           <div
-            ref={listRef}
+            ref={scrollRef}
+            className={cn('flex-1', 'overflow-y-auto', 'space-y-1.5', 'pr-0.5', 'min-h-0')}
             data-lenis-prevent="true"
-            className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 min-h-0"
             style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
           >
-            <SortableContext items={optimisticQueue.map(q => q.id)} strategy={verticalListSortingStrategy}>
-              {optimisticQueue.map((item, idx) => (
+            {/* History Section */}
+            {historyQueue.length > 0 && (
+              <div className={cn('space-y-1.5', 'mb-6')}>
+                {historyQueue.map((item, idx) => (
+                  <SortableTrackItem
+                    key={item.id}
+                    item={item}
+                    idx={idx}
+                    isCurrent={false}
+                    isPlaying={false}
+                    isHovered={hoveredId === item.id}
+                    isHost={isHost}
+                    onHoverStart={() => setHoveredId(item.id)}
+                    onHoverEnd={() => setHoveredId(null)}
+                    onTrackSelect={onTrackSelect!}
+                    onRemoveTrack={onRemoveTrack!}
+                    disableDrag={true}
+                    isHistory={true}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Continue Playing Header */}
+            {(historyQueue.length > 0 || currentSong || draggableQueue.length > 0) && (
+              <div className={cn('font-bold', 'text-foreground/80', 'text-sm', 'mt-4', 'mb-3', 'pl-2')}>
+                Continue Playing
+              </div>
+            )}
+
+            {/* Currently Playing — NOT draggable, pinned at top of upcoming */}
+            {currentSong && (
+              <SortableTrackItem
+                key={currentSong.id}
+                item={currentSong}
+                idx={splitIndex}
+                isCurrent={true}
+                isPlaying={isPlaying}
+                isHovered={hoveredId === currentSong.id}
+                isHost={isHost}
+                onHoverStart={() => setHoveredId(currentSong.id)}
+                onHoverEnd={() => setHoveredId(null)}
+                onTrackSelect={onTrackSelect!}
+                onRemoveTrack={onRemoveTrack!}
+                disableDrag={true}
+              />
+            )}
+
+            {/* Draggable upcoming songs (after current) */}
+            <SortableContext items={draggableQueue.map(q => q.id)} strategy={verticalListSortingStrategy}>
+              {draggableQueue.map((item, idx) => (
                 <SortableTrackItem
                   key={item.id}
                   item={item}
-                  idx={idx}
-                  isCurrent={item.isCurrent}
-                  isPlaying={isPlaying}
+                  idx={splitIndex + 1 + idx}
+                  isCurrent={false}
+                  isPlaying={false}
                   isHovered={hoveredId === item.id}
                   isHost={isHost}
                   onHoverStart={() => setHoveredId(item.id)}
                   onHoverEnd={() => setHoveredId(null)}
                   onTrackSelect={onTrackSelect!}
                   onRemoveTrack={onRemoveTrack!}
-                  disableDrag={!isHost}
+                  disableDrag={false}
+                  isNew={newIds.has(item.id)}
                 />
               ))}
             </SortableContext>
           </div>
+
+          {mounted && typeof document !== "undefined" && createPortal(
+            <DragOverlay adjustScale={false}>
+              {activeDragItem ? (
+                <div style={{ width: scrollRef.current?.clientWidth ?? '100%' }}>
+                  <TrackItemRow
+                    item={activeDragItem}
+                    idx={optimisticQueue.findIndex(q => q.id === activeDragId)}
+                    isCurrent={false}
+                    isPlaying={false}
+                    isHovered={false}
+                    isHost={isHost}
+                    disableDrag={true}
+                    style={{
+                      scale: 1.08,
+                      transform: 'rotate(-1deg)',
+                      boxShadow: '0 16px 48px rgba(0,0,0,0.45), 0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08)',
+                      backgroundColor: 'rgba(255,255,255,0.12)',
+                      backdropFilter: 'blur(20px)',
+                      borderRadius: '1rem',
+                    }}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>,
+            document.body
+          )}
         </DndContext>
       )}
+
+
+
     </div>
   );
 }

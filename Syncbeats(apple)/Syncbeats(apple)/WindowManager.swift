@@ -33,9 +33,13 @@ class IslandHostingView<Content: View>: NSHostingView<Content> {
         case .hovered:
             // Intercept clicks on the slightly bloated hovered shape so the user can tap to expand it!
             hitRect = NSRect(x: self.bounds.midX - 137, y: self.bounds.maxY - 44, width: 274, height: 44)
-        case .welcome:
+        case .welcome, .roomWelcome:
             // Never intercept clicks during welcome animation.
             return nil
+        case .miniPlayer:
+            // Intercept clicks on the mini player so the user can tap to expand it!
+            // width: 380, height: 46 (30 + 16)
+            hitRect = NSRect(x: self.bounds.midX - 190, y: self.bounds.maxY - 46, width: 380, height: 46)
         case .player:
             // ONLY intercept clicks strictly inside the 700x138 player shape bounds!
             // Anything outside this exact rectangle will pass through to Safari/Main App!
@@ -79,6 +83,9 @@ class MouseTracker {
         // Define the trigger zone: 300 wide, 100 tall (extends 40pt above screen top to catch bezel touches!)
         let triggerZone = NSRect(x: screenMidX - 150, y: screenMaxY - 60, width: 300, height: 100)
         
+        let isPlaying = AudioEngine.shared.isPlaying
+        let fallbackMode: IslandMode = isPlaying ? .miniPlayer : .hidden
+        
         // If hidden and mouse enters trigger zone -> bloat the island slightly and vibrate!
         if stateManager.mode == .hidden && triggerZone.contains(point) {
             DispatchQueue.main.async {
@@ -90,7 +97,7 @@ class MouseTracker {
         // If hovered but they don't click, and the mouse leaves the trigger zone -> hide again
         if stateManager.mode == .hovered && !triggerZone.contains(point) {
             DispatchQueue.main.async {
-                self.stateManager.mode = .hidden
+                self.stateManager.mode = fallbackMode
             }
         }
         
@@ -100,7 +107,7 @@ class MouseTracker {
             let safeZone = NSRect(x: screenMidX - 350, y: screenMaxY - 140, width: 700, height: 240)
             if !safeZone.contains(point) {
                 DispatchQueue.main.async {
-                    self.stateManager.mode = .hidden
+                    self.stateManager.mode = fallbackMode
                 }
             }
         }
@@ -142,16 +149,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         stateManager.$mode
             .receive(on: RunLoop.main)
             .sink { [weak self] mode in
-                self?.islandPanel.ignoresMouseEvents = (mode == .hidden || mode == .welcome)
+                switch mode {
+                case .hidden, .welcome, .roomWelcome:
+                    self?.islandPanel.ignoresMouseEvents = true
+                default:
+                    self?.islandPanel.ignoresMouseEvents = false
+                }
             }.store(in: &cancellables)
             
         // Listen for successful room joins to automatically reveal the island!
         NotificationCenter.default.publisher(for: NSNotification.Name("RoomJoined"))
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
+                guard let self = self else { return }
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                
+                let roomId = SocketService.shared.currentRoom?.roomId ?? "Unknown"
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
-                    self?.stateManager.mode = .player
+                    self.stateManager.mode = .roomWelcome(roomId)
+                }
+                
+                // Automatically transition to player mode after 2.5 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    // Only transition if we are still in the roomWelcome mode
+                    if case .roomWelcome = self.stateManager.mode {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
+                            self.stateManager.mode = .player
+                        }
+                    }
+                }
+            }.store(in: &cancellables)
+
+        // Observe playback state to automatically show/hide the mini player!
+        AudioEngine.shared.$isPlaying
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isPlaying in
+                guard let self = self else { return }
+                if isPlaying && self.stateManager.mode == .hidden {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) {
+                        self.stateManager.mode = .miniPlayer
+                    }
+                } else if !isPlaying && self.stateManager.mode == .miniPlayer {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) {
+                        self.stateManager.mode = .hidden
+                    }
                 }
             }.store(in: &cancellables)
 
@@ -188,6 +229,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Automatically route focus to the main app window instead of the Island
     func applicationDidBecomeActive(_ notification: Notification) {
         // Find the main SwiftUI window (which is not our IslandPanel)
+        if let mainWindow = NSApp.windows.first(where: { $0 !== islandPanel }) {
+            mainWindow.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    // Intercept custom URL scheme launches (deep links) to avoid duplicate window creation
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let url = urls.first {
+            AuthManager.shared.handleDeepLink(url)
+        }
+        // Focus the main window when opening a deep link
         if let mainWindow = NSApp.windows.first(where: { $0 !== islandPanel }) {
             mainWindow.makeKeyAndOrderFront(nil)
         }
