@@ -43,6 +43,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY}
       # RapidAPI Configuration
       RAPID_API_KEY: ${RAPID_API_KEY:-}
+      RAPID_API_KEYS: ${RAPID_API_KEYS:-}
     volumes:
       - uploads:/app/uploads
 
