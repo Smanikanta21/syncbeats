@@ -129,6 +129,7 @@ jobs:
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
           V_RAPID_API_KEY:         ${{ secrets.RAPID_API_KEY }}
+          V_RAPID_API_KEYS:        ${{ secrets.RAPID_API_KEYS }}
         run: |
           APP_DIR="sync-beats"
           DB_HOST="postgres"
@@ -157,6 +158,7 @@ jobs:
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
             echo "RAPID_API_KEY=${V_RAPID_API_KEY}"
+            echo "RAPID_API_KEYS=${V_RAPID_API_KEYS}"
             echo "IMAGE_TAG=${{ github.ref_name }}"
             echo "COMPOSE_PROJECT_NAME=${APP_DIR}"
           } > /tmp/syncbeats.env
