@@ -6,8 +6,7 @@ struct MainAppView: View {
     @StateObject private var ytService = YouTubeService.shared
     
     @State private var showSyncBeatsModal = false
-    @State private var showQueue = false
-    @State private var selection: String? = "home"
+    @State private var showFullPlayer = false
     
     // Website Gradient Colors
     let colorCyan = Color(red: 0.0, green: 1.0, blue: 0.7)    // #00FFB2
@@ -15,91 +14,60 @@ struct MainAppView: View {
     let colorPink = Color(red: 1.0, green: 0.24, blue: 0.44)   // #FF3D71
     
     var body: some View {
-        NavigationSplitView {
-            // Sidebar
-            List(selection: $selection) {
-                NavigationLink(value: "home") {
-                    Label("Home", systemImage: "house")
-                }
-                NavigationLink(value: "library") {
-                    Label("Library", systemImage: "music.note.list")
-                }
-            }
-            .navigationTitle("SyncBeats")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
+        ZStack {
+            // 1. Ambient Website Gradients Background
+            AmbientBackground(colorCyan: colorCyan, colorPurple: colorPurple, colorPink: colorPink)
+            
+            // 2. Main Content Area: Unified Library/Home/Search (Glassmorphic)
+            VStack(spacing: 0) {
+                // Header with App Title and Logout
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .foregroundColor(colorCyan)
+                        Text("SyncBeats")
+                            .font(.title2.bold())
+                            .foregroundColor(.white)
+                    }
+                    
+                    Spacer()
+                    
                     Button("Logout") {
                         auth.logout()
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.white.opacity(0.6))
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                
+                LibraryView(showJoinModal: $showSyncBeatsModal)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.ultraThinMaterial)
+            
+            // 3. Bottom Player Bar
+            VStack(spacing: 0) {
+                Spacer()
+                
+                if socket.currentRoom != nil || AudioEngine.shared.duration > 0 {
+                    BottomPlayerBar(showFullPlayer: $showFullPlayer)
+                        .transition(.move(edge: .bottom))
                 }
             }
-        } detail: {
-            ZStack {
-                // 1. Ambient Website Gradients Background
-                AmbientBackground(colorCyan: colorCyan, colorPurple: colorPurple, colorPink: colorPink)
-                
-                // 2. Main Content Area (Glassmorphic)
-                VStack {
-                    if selection == "home" {
-                        HomeView()
-                    } else if selection == "library" {
-                        LibraryView(showJoinModal: $showSyncBeatsModal)
-                    } else {
-                        HomeView()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.ultraThinMaterial)
-                
-                // Overlay Queue Panel
-                if showQueue {
-                    HStack {
-                        Spacer()
-                        QueueView(isPresented: $showQueue)
-                            .transition(.move(edge: .trailing))
-                    }
-                    .zIndex(10)
-                }
-                
-                // 3. Bottom Player & FAB
-                VStack(spacing: 0) {
-                    Spacer()
-                    
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            showSyncBeatsModal = true
-                        }) {
-                            Image(systemName: "opticaldisc")
-                                .font(.system(size: 28, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 64, height: 64)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
-                                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(32)
-                        // Breathing animation for the button
-                        .scaleEffect(socket.isConnected ? 1.0 : 0.95)
-                        .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: socket.isConnected)
-                    }
-                    
-                    if socket.currentRoom != nil || AudioEngine.shared.duration > 0 {
-                        BottomPlayerBar(showQueue: $showQueue)
-                            .transition(.move(edge: .bottom))
-                    }
-                }
-            }
-            // Force Dark Mode for the premium glass aesthetic
-            .preferredColorScheme(.dark)
         }
+        .preferredColorScheme(.dark)
         .onAppear {
             socket.connect()
         }
         .sheet(isPresented: $showSyncBeatsModal) {
             SyncBeatsModal(isPresented: $showSyncBeatsModal)
+        }
+        .sheet(isPresented: $showFullPlayer) {
+            PlayerView(isPresented: $showFullPlayer)
         }
     }
 }
@@ -150,7 +118,7 @@ struct BottomPlayerBar: View {
     @State private var isDraggingSlider = false
     @State private var dragPosition: Double = 0.0
     
-    @Binding var showQueue: Bool
+    @Binding var showFullPlayer: Bool
     
     private func formatTime(_ seconds: Double) -> String {
         guard !seconds.isNaN && !seconds.isInfinite else { return "0:00" }
@@ -162,39 +130,59 @@ struct BottomPlayerBar: View {
     
     var body: some View {
         HStack(spacing: 20) {
-            // Album Art
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(white: 0.15))
-                    .frame(width: 48, height: 48)
-                
-                Image(systemName: "opticaldisc")
-                    .font(.system(size: 24))
-                    .foregroundColor(.white.opacity(0.8))
-                    .rotationEffect(.degrees(audio.isPlaying ? 360 : 0))
-                    .animation(audio.isPlaying ? .linear(duration: 4.0).repeatForever(autoreverses: false) : .default, value: audio.isPlaying)
-            }
-            
-            // Track Info
-            VStack(alignment: .leading, spacing: 4) {
-                let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? socket.localPlaybackTitle ?? "No Track Playing"
-                Text(currentTrack)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                
-                Text(socket.currentRoom?.roomId ?? "No Active Room")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
-            }
-            .frame(width: 200, alignment: .leading)
-            
-            // Controls
-            HStack(spacing: 24) {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
+            // Clickable Album Art / Info Area
+            HStack(spacing: 16) {
+                // Album Art
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(white: 0.15))
+                        .frame(width: 44, height: 44)
                     
+                    Image(systemName: "opticaldisc")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white.opacity(0.8))
+                        .rotationEffect(.degrees(audio.isPlaying ? 360 : 0))
+                        .animation(audio.isPlaying ? .linear(duration: 4.0).repeatForever(autoreverses: false) : .default, value: audio.isPlaying)
+                }
+                
+                // Track Info
+                VStack(alignment: .leading, spacing: 4) {
+                    let currentTrack = socket.currentRoom?.queue.first(where: { $0.isCurrent == true })?.title ?? socket.localPlaybackTitle ?? "No Track Playing"
+                    Text(currentTrack)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    if let roomId = socket.currentRoom?.roomId {
+                        Text("SyncBeats Active: \(roomId)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
+                    } else {
+                        Text("Local Playback")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                    showFullPlayer = true
+                }
+            }
+            .frame(width: 240, alignment: .leading)
+            
+            // Playback Controls
+            HStack(spacing: 20) {
+                Button(action: {
+                    socket.emitPrev()
+                }) {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+                
                 Button(action: {
                     if audio.isPlaying {
                         audio.pause()
@@ -205,14 +193,19 @@ struct BottomPlayerBar: View {
                     }
                 }) {
                     Image(systemName: audio.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 32))
+                        .font(.system(size: 30))
                         .foregroundColor(.white)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.plain)
                 
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
+                Button(action: {
+                    socket.emitNext()
+                }) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
             }
             
             Spacer()
@@ -249,17 +242,17 @@ struct BottomPlayerBar: View {
                 }
             }
             
-            // Queue Toggle Button
+            // Maximize Player button
             Button(action: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    showQueue.toggle()
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                    showFullPlayer = true
                 }
             }) {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 16))
-                    .foregroundColor(showQueue ? Color(red: 0.0, green: 1.0, blue: 0.7) : .white)
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
                     .frame(width: 32, height: 32)
-                    .background(showQueue ? Color(red: 0.0, green: 1.0, blue: 0.7).opacity(0.2) : Color.clear)
+                    .background(Color.white.opacity(0.08))
                     .cornerRadius(8)
             }
             .buttonStyle(.plain)

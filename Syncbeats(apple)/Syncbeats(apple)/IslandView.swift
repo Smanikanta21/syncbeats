@@ -282,9 +282,14 @@ struct IslandView: View {
 
                     // Controls
                     HStack(spacing: 24) {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
+                        Button(action: {
+                            socket.emitPrev()
+                        }) {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                             
                         Button(action: {
                             if audio.isPlaying {
@@ -301,9 +306,14 @@ struct IslandView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
+                        Button(action: {
+                            socket.emitNext()
+                        }) {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 36)

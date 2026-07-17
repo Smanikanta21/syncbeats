@@ -13,6 +13,8 @@ class SocketService: ObservableObject {
     
     private var pendingJoinRoomId: String? = nil
     @Published var chatMessages: [ChatMessage] = []
+    @Published var deviceSyncProgress: [String: Int] = [:]
+    @Published var activeReaction: String? = nil
     
     // Audio Chunk Buffering
     private var chunkBuffer: [Int: Data] = [:]
@@ -26,16 +28,16 @@ class SocketService: ObservableObject {
     @Published var serverTimeOffset: Double = 0.0
     
     // Track the currently downloaded temp file so we can delete it later and avoid disk space leaks
-    // SWIFT CONCEPT: Optionals (?) mean a variable might hold a URL, or it might hold 'nil' (nothing).
     private var currentStreamFileUrl: URL? = nil
     
-    // Timer to detect stalled P2P downloads and request missing chunks
+    // Timers
     private var missingChunkTimer: Timer? = nil
+    private var driftSyncTimer: Timer? = nil
+    private var ntpTimer: Timer? = nil
     
     private init() {
         // Setup SocketManager
         let url = URL(string: Config.backendURL)!
-        // We use .compress for performance, and .log(false) to prevent Xcode console spam
         manager = SocketManager(socketURL: url, config: [.log(false), .compress])
         socket = manager.defaultSocket
         
@@ -45,7 +47,6 @@ class SocketService: ObservableObject {
     func connect() {
         guard !isConnected else { return }
         
-        // Pass the app token for authentication if available
         if let token = AuthManager.shared.appToken {
             manager.config = [.log(false), .compress, .extraHeaders(["Authorization": "Bearer \(token)"])]
         }
@@ -55,6 +56,8 @@ class SocketService: ObservableObject {
     
     func disconnect() {
         socket.disconnect()
+        stopNtpTimer()
+        stopDriftSyncTimer()
     }
     
     private func setupListeners() {
@@ -62,8 +65,8 @@ class SocketService: ObservableObject {
             DispatchQueue.main.async {
                 self?.isConnected = true
                 print("SocketService: Connected to server!")
-                // Initiate NTP burst upon connection to calculate micro-drift latency
                 self?.performNTPBurst()
+                self?.startNtpTimer()
                 
                 // Reconnect to the room if we were in one!
                 if let roomId = self?.currentRoom?.roomId {
@@ -75,6 +78,8 @@ class SocketService: ObservableObject {
         socket.on(clientEvent: .disconnect) { [weak self] data, ack in
             DispatchQueue.main.async {
                 self?.isConnected = false
+                self?.stopNtpTimer()
+                self?.stopDriftSyncTimer()
                 print("SocketService: Disconnected from server.")
             }
         }
@@ -100,6 +105,13 @@ class SocketService: ObservableObject {
                         self?.pendingJoinRoomId = nil
                     }
                     
+                    // Start or stop drift correction timer based on playback state
+                    if snapshot.state == "PLAYING" {
+                        self?.startDriftSyncTimer()
+                    } else {
+                        self?.stopDriftSyncTimer()
+                    }
+                    
                     // If track changed, request it from peers!
                     if let newTrack = snapshot.trackUrl, newTrack != previousTrack {
                         self?.isReady = false
@@ -108,14 +120,8 @@ class SocketService: ObservableObject {
                     
                     // If the track is the SAME, but the state changed to PLAYING and we are ready, play it!
                     if snapshot.state == "PLAYING" && snapshot.trackUrl == previousTrack && self?.currentDownloadTrackUrl == nil {
-                        // SWIFT CONCEPT: Safe Unwrapping & Math
-                        // We use the NTP 'serverTimeOffset' to figure out exactly what time it is on the server right now!
                         let nowServerTime = (Date().timeIntervalSince1970 * 1000) + (self?.serverTimeOffset ?? 0)
-                        
-                        // We subtract the time the song originally started on the server to find out exactly how much time has passed
                         let elapsed = nowServerTime - (snapshot.startEpoch ?? nowServerTime)
-                        
-                        // We add the elapsed time to the base position to calculate the exact millisecond the song should be at right now!
                         let actualPosition = snapshot.position + elapsed
                         AudioEngine.shared.play(at: actualPosition)
                     }
@@ -148,6 +154,33 @@ class SocketService: ObservableObject {
             }
         }
         
+        // Reaction listener
+        socket.on("room:reaction") { [weak self] data, ack in
+            guard let dict = data.first as? [String: Any],
+                  let emoji = dict["emoji"] as? String else { return }
+            
+            DispatchQueue.main.async {
+                self?.activeReaction = emoji
+                // Clear reaction after 2.5 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if self?.activeReaction == emoji {
+                        self?.activeReaction = nil
+                    }
+                }
+            }
+        }
+        
+        // Device sync progress listener
+        socket.on("room:deviceSyncProgress") { [weak self] data, ack in
+            guard let dict = data.first as? [String: Any],
+                  let socketId = dict["socketId"] as? String,
+                  let progress = dict["progress"] as? Int else { return }
+            
+            DispatchQueue.main.async {
+                self?.deviceSyncProgress[socketId] = progress
+            }
+        }
+        
         // NTP sync pong listener (calculates latency and clock drift)
         socket.on("sync:pong") { [weak self] data, ack in
             guard let dict = data.first as? [String: Any],
@@ -161,6 +194,10 @@ class SocketService: ObservableObject {
             
             DispatchQueue.main.async {
                 self?.serverTimeOffset = offset
+                // Report stats to server
+                if let roomId = self?.currentRoom?.roomId {
+                    self?.socket.emit("sync:stats", ["roomId": roomId, "latency": rtt, "jitter": 0.0])
+                }
                 print("SocketService: NTP Offset calculated: \(String(format: "%.2f", offset))ms (RTT: \(String(format: "%.2f", rtt))ms)")
             }
         }
@@ -173,17 +210,11 @@ class SocketService: ObservableObject {
                   let chunkIndex = dict["chunkIndex"] as? Int,
                   let totalChunks = dict["totalChunks"] as? Int else { return }
             
-            // The binary payload is usually passed as `Data` in socket.io-client-swift
             guard let chunkData = dict["data"] as? Data else {
                 print("SocketService: Failed to parse chunk data for \(trackUrl)")
                 return
             }
             
-            // SWIFT CONCEPT: Main Thread Execution (DispatchQueue.main.async)
-            // Any variables marked with `@Published` trigger UI updates in SwiftUI.
-            // iOS/macOS strictly requires that all UI updates happen on the "Main Thread".
-            // Since this socket listener runs on a background network thread, modifying `@Published` 
-            // variables directly here will cause the app to crash! We wrap it in DispatchQueue.main.async to fix it.
             DispatchQueue.main.async {
                 if self.currentDownloadTrackUrl != trackUrl {
                     // New track download started
@@ -222,6 +253,9 @@ class SocketService: ObservableObject {
             socket.emit("room:leave", ["roomId": roomId])
             DispatchQueue.main.async {
                 self.currentRoom = nil
+                self.chatMessages.removeAll()
+                self.deviceSyncProgress.removeAll()
+                self.stopDriftSyncTimer()
                 AudioEngine.shared.pause()
             }
         }
@@ -239,6 +273,54 @@ class SocketService: ObservableObject {
         socket.emit("room:join", payload)
     }
     
+    private func startNtpTimer() {
+        ntpTimer?.invalidate()
+        ntpTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+            self?.performNTPBurst()
+        }
+    }
+    
+    private func stopNtpTimer() {
+        ntpTimer?.invalidate()
+        ntpTimer = nil
+    }
+    
+    private func startDriftSyncTimer() {
+        guard driftSyncTimer == nil else { return }
+        driftSyncTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkAndCorrectDrift()
+        }
+    }
+    
+    private func stopDriftSyncTimer() {
+        driftSyncTimer?.invalidate()
+        driftSyncTimer = nil
+    }
+    
+    private func checkAndCorrectDrift() {
+        guard let room = currentRoom, room.state == "PLAYING", let startEpoch = room.startEpoch else {
+            stopDriftSyncTimer()
+            return
+        }
+        
+        // Skip if downloading/peering
+        guard currentDownloadTrackUrl == nil else { return }
+        
+        let nowServerTime = (Date().timeIntervalSince1970 * 1000) + serverTimeOffset
+        let expected = (nowServerTime - startEpoch) / 1000.0
+        let actual = AudioEngine.shared.currentPosition
+        
+        guard expected >= 0 && actual >= 0 else { return }
+        
+        let drift = expected - actual
+        let driftMs = abs(drift) * 1000
+        
+        if driftMs > 150 {
+            print("[Sync] Correcting drift of \(String(format: "%.1f", driftMs))ms. Seeking to \(expected)s")
+            AudioEngine.shared.seek(to: expected * 1000.0)
+        }
+    }
+    
     private func performNTPBurst() {
         let seq = 1
         let payload: [String: Any] = [
@@ -248,15 +330,42 @@ class SocketService: ObservableObject {
         socket.emit("sync:ping", payload)
     }
     
+    func emitNext() {
+        guard let roomId = currentRoom?.roomId else { return }
+        socket.emit("playback:next", ["roomId": roomId])
+    }
+    
+    func emitPrev() {
+        guard let roomId = currentRoom?.roomId else { return }
+        socket.emit("playback:prev", ["roomId": roomId])
+    }
+    
+    func emitChat(message: String) {
+        guard let roomId = currentRoom?.roomId else { return }
+        socket.emit("room:chat", ["roomId": roomId, "message": message])
+    }
+    
+    func emitReaction(emoji: String) {
+        guard let roomId = currentRoom?.roomId else { return }
+        socket.emit("room:reaction", ["roomId": roomId, "emoji": emoji])
+        
+        // Show locally instantly
+        DispatchQueue.main.async {
+            self.activeReaction = emoji
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                if self.activeReaction == emoji {
+                    self.activeReaction = nil
+                }
+            }
+        }
+    }
+    
     func triggerForceAll() {
         socket.emit("sync:forceAll")
     }
     
     func emitPlay(positionMs: Double) {
         guard let roomId = currentRoom?.roomId, let trackUrl = currentRoom?.trackUrl else { return }
-        // SWIFT CONCEPT: NTP Time Sync
-        // Instead of blindly using our device's local clock, we add 'serverTimeOffset' 
-        // to pretend our clock is perfectly synced with the server! This fixes the sync drift flaw!
         let syncedNow = (Date().timeIntervalSince1970 * 1000) + serverTimeOffset
         let startTime = syncedNow + 800 // schedule playback 800ms in the future
         let payload: [String: Any] = [
@@ -267,6 +376,7 @@ class SocketService: ObservableObject {
         ]
         socket.emit("playback:schedule", payload)
     }
+
     
     func emitPause(positionMs: Double) {
         guard let roomId = currentRoom?.roomId else { return }

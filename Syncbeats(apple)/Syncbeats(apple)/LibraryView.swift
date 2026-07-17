@@ -9,8 +9,10 @@ struct LibraryView: View {
     @State private var showPrivacyModal = false
     @State private var searchQuery = ""
     @State private var hoveredTrackId: String? = nil
-    
     @State private var selectedPlaylist: YouTubeService.Playlist? = nil
+    
+    @StateObject private var socket = SocketService.shared
+    @State private var roomCode = ""
     
     var body: some View {
         ScrollView {
@@ -48,6 +50,93 @@ struct LibraryView: View {
                 .cornerRadius(16)
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.primary.opacity(0.1), lineWidth: 1))
                 .padding(.horizontal)
+                
+                // Room Controls Widget (Action Cards mapping to Web Hub Page)
+                if searchQuery.isEmpty && selectedPlaylist == nil {
+                    HStack(spacing: 20) {
+                        // Host Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "radio.fill")
+                                    .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
+                                    .font(.title3)
+                                Text("Host Session")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            Text("Create a master room to sync all your active devices.")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            Button(action: {
+                                let userId = AuthManager.shared.appToken ?? UUID().uuidString
+                                let roomId = "room_\(userId.prefix(8))"
+                                socket.joinRoom(roomId: roomId)
+                                socket.triggerForceAll()
+                            }) {
+                                Text(socket.currentRoom != nil ? "Hosting: \(socket.currentRoom!.roomId)" : "Start Session")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(socket.currentRoom != nil ? Color(red: 0.0, green: 1.0, blue: 0.7).opacity(0.2) : Color.white.opacity(0.1))
+                                    .foregroundColor(socket.currentRoom != nil ? Color(red: 0.0, green: 1.0, blue: 0.7) : .white)
+                                    .cornerRadius(10)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        
+                        // Join Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "magnifyingglass.circle.fill")
+                                    .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
+                                    .font(.title3)
+                                Text("Join Session")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            Text("Already have a code? Enter it to instantly sync to the host.")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            HStack(spacing: 8) {
+                                TextField("Code", text: $roomCode)
+                                    .textFieldStyle(.plain)
+                                    .padding(8)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(8)
+                                    .foregroundColor(.white)
+                                    .font(.system(.body, design: .monospaced))
+                                
+                                Button(action: {
+                                    if !roomCode.isEmpty {
+                                        socket.joinRoom(roomId: roomCode)
+                                        roomCode = ""
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.right.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(Color(red: 0.0, green: 1.0, blue: 0.7))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                    }
+                    .padding(.horizontal)
+                }
                 
                 Text(searchQuery.isEmpty ? "Your Library" : "Search Results")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
@@ -118,6 +207,36 @@ struct LibraryView: View {
                                     .padding(.horizontal)
                                 }
                             }
+                            
+                            // YouTube Recommendations (Home Sections)
+                            if auth.ytToken != nil {
+                                if yt.isLoading && yt.homeSections.isEmpty {
+                                    ProgressView()
+                                        .padding()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    ForEach(yt.homeSections) { section in
+                                        VStack(alignment: .leading, spacing: 16) {
+                                            Text(section.title)
+                                                .font(.title2.bold())
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal)
+                                            
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 20) {
+                                                    if let tracks = section.tracks {
+                                                        ForEach(tracks) { track in
+                                                            TrackCard(track: track, hoveredTrackId: $hoveredTrackId)
+                                                        }
+                                                    }
+                                                }
+                                                .padding(.horizontal)
+                                                .padding(.bottom, 20)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -130,6 +249,9 @@ struct LibraryView: View {
                 await yt.fetchRecentHistory()
                 if yt.personalPlaylists.isEmpty {
                     await yt.fetchLibrary()
+                }
+                if auth.ytToken != nil && yt.homeSections.isEmpty {
+                    await yt.fetchHomeData()
                 }
             }
         }
