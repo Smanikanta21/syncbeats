@@ -587,6 +587,11 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       
       const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, url]);
 
+      let ytDlpError = "";
+      ytDlp.stderr?.on('data', (chunk) => {
+        ytDlpError += chunk.toString();
+      });
+
       ytDlp.on('close', async (code: number) => {
         if (code === 0 && fs.existsSync(outputFile)) {
           console.log(`[Proxy] Native yt-dlp download completed for: ${videoId}`);
@@ -596,7 +601,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
             res.sendFile(outputFile);
           }
         } else {
-          console.warn(`[Proxy] Local yt-dlp failed or exited with code ${code}. Falling back to RapidAPI with load-balanced rotation...`);
+          console.warn(`[Proxy] Local yt-dlp failed or exited with code ${code}. Stderr: ${ytDlpError.trim()}`);
+          console.warn(`[Proxy] Falling back to RapidAPI with load-balanced rotation...`);
           
           try {
             const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
@@ -636,14 +642,18 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
                 }
 
                 if (!apiRes.ok) {
+                  const errText = await apiRes.text().catch(() => "");
+                  console.warn(`[Proxy] RapidAPI request failed for key ${key.substring(0, 5)}...: status=${apiRes.status}, body=${errText}`);
                   continue;
                 }
 
-                const data = (await apiRes.json()) as { link?: string };
+                const data = (await apiRes.json()) as { link?: string; msg?: string; error?: string };
                 if (data.link) {
                   downloadLink = data.link;
                   console.log(`[Proxy] Successfully resolved download link using shuffled key: ${key.substring(0, 5)}...`);
                   break;
+                } else {
+                  console.warn(`[Proxy] RapidAPI key ${key.substring(0, 5)}... resolved but missing link. Response:`, JSON.stringify(data));
                 }
               } catch (keyErr) {
                 console.warn(`[Proxy] Key evaluation error:`, keyErr);
