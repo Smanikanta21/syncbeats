@@ -83,8 +83,7 @@ class MouseTracker {
         // Define the trigger zone: 300 wide, 100 tall (extends 40pt above screen top to catch bezel touches!)
         let triggerZone = NSRect(x: screenMidX - 150, y: screenMaxY - 60, width: 300, height: 100)
         
-        let isPlaying = AudioEngine.shared.isPlaying
-        let fallbackMode: IslandMode = isPlaying ? .miniPlayer : .hidden
+        let fallbackMode: IslandMode = .hidden
         
         // If hidden and mouse enters trigger zone -> bloat the island slightly and vibrate!
         if stateManager.mode == .hidden && triggerZone.contains(point) {
@@ -164,7 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 
-                let roomId = SocketService.shared.currentRoom?.roomId ?? "Unknown"
+                let roomId = "demo_room"
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
                     self.stateManager.mode = .roomWelcome(roomId)
                 }
@@ -176,22 +175,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
                             self.stateManager.mode = .player
                         }
-                    }
-                }
-            }.store(in: &cancellables)
-
-        // Observe playback state to automatically show/hide the mini player!
-        AudioEngine.shared.$isPlaying
-            .receive(on: RunLoop.main)
-            .sink { [weak self] isPlaying in
-                guard let self = self else { return }
-                if isPlaying && self.stateManager.mode == .hidden {
-                    withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) {
-                        self.stateManager.mode = .miniPlayer
-                    }
-                } else if !isPlaying && self.stateManager.mode == .miniPlayer {
-                    withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) {
-                        self.stateManager.mode = .hidden
                     }
                 }
             }.store(in: &cancellables)
@@ -236,9 +219,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Intercept custom URL scheme launches (deep links) to avoid duplicate window creation
     func application(_ application: NSApplication, open urls: [URL]) {
-        if let url = urls.first {
-            AuthManager.shared.handleDeepLink(url)
-        }
         // Focus the main window when opening a deep link
         if let mainWindow = NSApp.windows.first(where: { $0 !== islandPanel }) {
             mainWindow.makeKeyAndOrderFront(nil)
