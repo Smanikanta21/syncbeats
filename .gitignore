@@ -62,3 +62,4 @@ build/
 *.dSYM.zip
 *.dSYM
 Pods/
+docs/MACOS_APP_DESIGN.md
