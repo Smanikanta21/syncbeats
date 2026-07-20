@@ -154,6 +154,32 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // POST /rooms/default — fetch existing active room hosted by this user or create a persistent default room
+  router.post('/default', requireAuth, async (req: Request, res: Response) => {
+    const hostUserId = req.user!.sub;
+    try {
+      // Check for an existing active room hosted by this user
+      let existingRoom = await repo.findActiveByHost(hostUserId);
+      if (existingRoom) {
+        roomManager.getOrCreate(existingRoom.id);
+        console.log(`[Rooms] Reusing existing default room ${existingRoom.id} for user ${hostUserId}`);
+        res.json({ roomId: existingRoom.id, createdAt: existingRoom.created_at, isNew: false });
+        return;
+      }
+
+      // If no active room exists, create a new persistent room
+      const roomId = Math.floor(100000 + Math.random() * 900000).toString();
+      const dbRoom = await repo.create(roomId, hostUserId);
+      roomManager.getOrCreate(roomId);
+      console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
+      res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
+    } catch (err) {
+      console.error('[Rooms] default room error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   // POST /rooms — create room, persist to DB
   router.post('/', requireAuth, async (req: Request, res: Response) => {
     const hostUserId = req.user!.sub;

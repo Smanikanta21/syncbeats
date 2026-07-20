@@ -3,13 +3,13 @@ import ytdl from '@distube/ytdl-core';
 // @ts-ignore
 const fetch = require('isomorphic-unfetch');
 
-
-
 export interface TrackMetadata {
   title: string;
   artist: string;
   duration_ms: number;
   artworkUrl: string;
+  spotifyTrackId?: string;
+  album?: string;
 }
 
 export class MusicBridgeService {
@@ -29,50 +29,40 @@ export class MusicBridgeService {
         throw new Error('Invalid Spotify playlist URL.');
       }
       
-      const playlistId = match[1];
-      console.log(`[MusicBridge] Fetching Spotify metadata for playlist ID ${playlistId}...`);
+      console.log(`[MusicBridge] Fetching Spotify metadata via public scraping...`);
       
-      // Fetch the embed player HTML which still contains the raw JSON state
-      const embedUrl = `https://open.spotify.com/embed/playlist/${playlistId}`;
-      const res = await fetch(embedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        }
+      const spotify = require('spotify-url-info')(fetch);
+      
+      const preview = await spotify.getPreview(playlistUrl);
+      const tracksData = await spotify.getTracks(playlistUrl);
+      
+      const tracks: TrackMetadata[] = tracksData.map((t: any) => {
+        return {
+          title: t.name,
+          artist: t.artist || 'Unknown',
+          duration_ms: t.duration || 0,
+          artworkUrl: preview.image || '',
+          spotifyTrackId: t.uri ? t.uri.replace('spotify:track:', '') : undefined,
+          album: undefined, // spotify-url-info doesn't easily expose album name in getTracks
+        };
       });
-      
-      if (!res.ok) {
-        throw new Error(`Failed to fetch Spotify embed page: ${res.status}`);
-      }
-      
-      const html = await res.text();
-      const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.+?)<\/script>/);
-      
-      if (!nextDataMatch) {
-        throw new Error('Could not find track data in Spotify embed page.');
-      }
-      
-      const nextData = JSON.parse(nextDataMatch[1]);
-      const entity = nextData?.props?.pageProps?.state?.data?.entity;
-      
-      if (!entity || !entity.trackList) {
-        throw new Error('Invalid Spotify data structure.');
-      }
-      
-      // The embed payload structures it slightly differently
-      const tracks = entity.trackList.map((t: any) => ({
-        title: t.title,
-        artist: t.subtitle,
-        duration_ms: t.duration || 0,
-        artworkUrl: entity.visualIdentity?.image?.[0]?.url || ''
-      }));
 
       return {
-        name: entity.name || 'Imported Spotify Playlist',
-        coverUrl: entity.visualIdentity?.image?.[0]?.url || tracks[0]?.artworkUrl || '',
+        name: preview.title || 'Imported Spotify Playlist',
+        coverUrl: preview.image || '',
         tracks
       };
     } catch (error: any) {
       console.error('[MusicBridge] Error fetching Spotify metadata:', error.message);
+      // Spotify serves an embed page with no track data for private, deleted,
+      // or region-blocked playlists — the parser then fails with this message.
+      if (error.message?.includes("Couldn't find any data in embed page")) {
+        const err: any = new Error(
+          'This playlist appears to be private or unavailable. Ask the owner to make it public, then try again.'
+        );
+        err.code = 'PLAYLIST_PRIVATE';
+        throw err;
+      }
       throw new Error(`Could not extract Spotify playlist: ${error.message}`);
     }
   }

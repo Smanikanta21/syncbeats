@@ -79,7 +79,7 @@ export class SocketHandler {
 
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName, userId, isReady = false }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, userId, deviceId, isReady = false }: JoinPayload) => {
       try {
         // Protect against JWT tokens being passed as userId accidentally
         if (userId && userId.includes('.') && userId.length > 50) {
@@ -87,7 +87,13 @@ export class SocketHandler {
           userId = undefined;
         }
 
-        if (userId) socket.data.userId = userId;
+        if (userId) {
+          socket.data.userId = userId;
+          socket.join(`user:${userId}`);
+        }
+        if (deviceId) {
+          socket.data.deviceId = deviceId;
+        }
         const room = this.roomManager.getOrCreate(roomId);
 
         // Allow multiple devices per user. Duplicate socket joins will simply overwrite in the Map.

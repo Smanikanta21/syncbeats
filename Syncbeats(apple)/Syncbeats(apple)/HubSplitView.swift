@@ -21,9 +21,8 @@ struct HubSplitView: View {
     @Environment(AuthStore.self) var authStore
     @Environment(\.colorScheme) var scheme
     @State private var selection: HubSelection? = .songs
-    @State private var searchText = ""
     @State private var playlists: [PlaylistItem] = []
-    
+
     // MARK: - Server Response structs
     struct ServerPlaylistResponse: Codable {
         let playlists: [ServerPlaylistItem]
@@ -125,37 +124,41 @@ struct HubSplitView: View {
                 Group {
                     switch selection {
                     case .search:
-                        VStack(spacing: Theme.Spacing.sectionGap) {
-                            HStack {
-                                Image(systemName: "magnifyingglass")
-                                    .foregroundColor(Theme.Colors.textMuted(for: scheme))
-                                TextField("Search Spotify tracks or paste links...", text: $searchText)
-                                    .textFieldStyle(.plain)
-                                    .font(Theme.Fonts.body(size: 14))
-                            }
-                            .padding(12)
-                            .glassCard()
-                            .padding(.top, Theme.Spacing.containerPadding)
-                            .padding(.horizontal, Theme.Spacing.containerPadding)
-                            
-                            Spacer()
-                            Text("Type to search Spotify tracks.")
-                                .font(Theme.Fonts.body(size: 14))
-                                .foregroundColor(Theme.Colors.textMuted(for: scheme))
-                            Spacer()
-                        }
+                        SearchView(onPlaylistImported: {
+                            Task { await loadPlaylists() }
+                        })
                     case .songs:
                         SongsView()
                     case .playlists:
                         if let first = playlists.first {
-                            PlaylistDetailView(playlistId: first.id, playlistTitle: first.title)
+                            PlaylistDetailView(
+                                playlistId: first.id,
+                                playlistTitle: first.title,
+                                onPlaylistDeleted: {
+                                    Task { await loadPlaylists() }
+                                    selection = .songs
+                                },
+                                onPlaylistUpdated: {
+                                    Task { await loadPlaylists() }
+                                }
+                            )
                         } else {
-                            PlaylistDetailView(playlistId: nil, playlistTitle: "Roadtrip Playlist")
+                            PlaylistDetailView(playlistId: nil, playlistTitle: "Playlists")
                         }
                     case .liked:
                         SongsView()
                     case .playlist(let id, let name):
-                        PlaylistDetailView(playlistId: id, playlistTitle: name)
+                        PlaylistDetailView(
+                            playlistId: id,
+                            playlistTitle: name,
+                            onPlaylistDeleted: {
+                                Task { await loadPlaylists() }
+                                selection = .songs
+                            },
+                            onPlaylistUpdated: {
+                                Task { await loadPlaylists() }
+                            }
+                        )
                     case .devices:
                         DevicesView()
                     case .settings:
@@ -193,13 +196,7 @@ struct HubSplitView: View {
                 self.playlists = mapped
             }
         } catch {
-            print("[HubSplitView] Failed to load library playlists, applying mock fallbacks:", error)
-            await MainActor.run {
-                self.playlists = [
-                    PlaylistItem(id: "mock-roadtrip", title: "Roadtrip Playlist", itemCount: 6, thumbnail: ""),
-                    PlaylistItem(id: "mock-chill", title: "Chill Stacks", itemCount: 4, thumbnail: "")
-                ]
-            }
+            print("[HubSplitView] Failed to load library playlists:", error)
         }
     }
 }

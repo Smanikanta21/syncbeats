@@ -24,7 +24,33 @@ export function createDeviceRoutes(): Router {
         await repo.ensureForUser(req.user!.sub, deviceKey, userAgent, req.user!.name);
       }
       const devices = await repo.listByUser(req.user!.sub);
-      res.json({ devices });
+
+      const io = req.app.get('io');
+      const deviceRoomMap = new Map<string, string>();
+      if (io) {
+        const activeSockets = await io.in(`user:${req.user!.sub}`).fetchSockets();
+        for (const s of activeSockets) {
+          const deviceId = (s.data as any).deviceId;
+          if (deviceId) {
+            // Find the room they are in (filter out their own socket ID and the user room)
+            const room = Array.from(s.rooms).find(r => r !== s.id && r !== `user:${req.user!.sub}`);
+            if (room) deviceRoomMap.set(deviceId as string, room as string);
+          }
+        }
+      }
+
+      const now = Date.now();
+      const enrichedDevices = devices.map(d => {
+        const inRoomId = deviceRoomMap.get(d.device_key);
+        const isOnline = inRoomId ? true : (now - d.last_seen_at.getTime() < 30000);
+        return {
+          ...d,
+          isOnline,
+          roomId: inRoomId || null,
+        };
+      });
+
+      res.json({ devices: enrichedDevices });
     } catch (err) {
       console.error('[Devices] mine error:', err);
       res.status(500).json({ error: 'Failed to fetch devices' });

@@ -59,6 +59,7 @@ export class SyncBeatsServer {
     this.socketHandler = new SocketHandler(
       this.io, this.roomManager, this.roomRepo
     );
+    this.app.set('io', this.io);
     this.setupMiddleware();
     this.setupRoutes();
     this.setupRedisAdapter();

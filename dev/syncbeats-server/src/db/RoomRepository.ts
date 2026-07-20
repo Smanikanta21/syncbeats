@@ -47,6 +47,14 @@ export class RoomRepository {
     return room ? this.mapRoom(room) : null;
   }
 
+  async findActiveByHost(hostId: string): Promise<RoomRow | null> {
+    const room = await prisma.room.findFirst({
+      where: { hostId, endedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return room ? this.mapRoom(room) : null;
+  }
+
   async listActive(): Promise<RoomRow[]> {
     const rooms = await prisma.room.findMany({
       where: { endedAt: null },
