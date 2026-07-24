@@ -193,22 +193,24 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
       </div>
 
       {/* Input Form Bar */}
-      <form onSubmit={handleSend} className="p-3 border-t border-foreground/10 bg-foreground/5 shrink-0 flex items-center gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 bg-foreground/5 border border-foreground/10 rounded-2xl px-4 py-2.5 text-xs text-foreground placeholder:text-foreground/40 outline-none focus:border-foreground/30 transition-colors"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="w-9 h-9 rounded-2xl bg-foreground text-background flex items-center justify-center disabled:opacity-30 transition-all hover:scale-105 active:scale-95 shrink-0"
-          title="Send Message"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+      <form onSubmit={handleSend} className="p-3 border-t border-foreground/10 bg-foreground/5 shrink-0 flex items-center pr-20 md:pr-3">
+        <div className="relative flex-1 flex items-center">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message..."
+            className="w-full bg-foreground/5 border border-foreground/10 rounded-2xl pl-4 pr-11 py-2.5 text-[16px] md:text-xs text-foreground placeholder:text-foreground/40 outline-none focus:border-foreground/30 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="absolute right-1.5 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-30 transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
+            title="Send Message"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </form>
     </div>
   );

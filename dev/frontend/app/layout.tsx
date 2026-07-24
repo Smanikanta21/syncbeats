@@ -33,8 +33,8 @@ const BASE_URL = "https://syncbeats.app";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
@@ -44,6 +44,11 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SyncBeats",
+  },
   title: {
     template: "%s | SyncBeats",
     default: "SyncBeats | One track. Every phone. Zero lag.",

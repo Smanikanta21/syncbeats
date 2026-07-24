@@ -6,7 +6,7 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
   Loader2, CheckCircle2, AlertCircle, AlertTriangle, RotateCcw, Play as Youtube, Activity,
   ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
-  Wifi, Radio, Volume2, VolumeX, UserPlus, Send, User
+  Wifi, Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -37,9 +37,9 @@ const SPRING = {
 
 const SHAPE_SPRING = {
   type: "spring" as const,
-  stiffness: 150,
-  damping: 17,
-  mass: 0.85,
+  stiffness: 420,
+  damping: 28,
+  mass: 0.5,
 };
 
 const COMPACT_WIDTH = 130;
@@ -763,6 +763,43 @@ const RoomPill = ({
 };
 
 // ─────────────────────────────────────────────────────────
+// RadialNavigatorPillContent — Temporary gesture overlay inside Dynamic Island
+// ─────────────────────────────────────────────────────────
+
+const RadialNavigatorPillContent = ({
+  snappedItem,
+}: {
+  snappedItem: { id: string; label: string; sublabel: string; iconName: string } | null;
+}) => {
+  let IconComponent = Compass;
+  if (snappedItem) {
+    if (snappedItem.iconName === "Radio") IconComponent = Radio;
+    else if (snappedItem.iconName === "Activity") IconComponent = Activity;
+    else if (snappedItem.iconName === "Users") IconComponent = Users;
+    else if (snappedItem.iconName === "LayoutGrid") IconComponent = LayoutGrid;
+    else if (snappedItem.iconName === "MessageSquare") IconComponent = MessageSquare;
+  }
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-between px-3 gap-2.5 bg-black rounded-full select-none border-none">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 px-1">
+        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+          <IconComponent className={`w-4 h-4 text-white ${!snappedItem ? "animate-spin-slow" : ""}`} />
+        </div>
+        <div className="flex flex-col justify-center min-w-0">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white truncate leading-tight">
+            {snappedItem ? snappedItem.label : "Hold & Drag"}
+          </span>
+          <span className="text-[9px] font-semibold text-white/50 truncate leading-tight">
+            {snappedItem ? "Release thumb to open" : "Move toward an icon to snap"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
 // Room Extended Pill — iOS live-activity style
 // Left side: track + progress. Right side: sync bar
 // ─────────────────────────────────────────────────────────
@@ -943,6 +980,23 @@ export function DynamicIsland() {
   const [windowWidth, setWindowWidth] = useState(0);
   const [windowHeight, setWindowHeight] = useState(0);
   const localProgressRef = useRef(0);
+
+  const [radialSnapInfo, setRadialSnapInfo] = useState<{
+    isOpen: boolean;
+    snappedItem: { id: string; label: string; sublabel: string; iconName: string } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleRadialSnap = (e: any) => {
+      if (e.detail?.isOpen) {
+        setRadialSnapInfo(e.detail);
+      } else {
+        setRadialSnapInfo(null);
+      }
+    };
+    window.addEventListener("radial-navigator:snap", handleRadialSnap as EventListener);
+    return () => window.removeEventListener("radial-navigator:snap", handleRadialSnap as EventListener);
+  }, []);
 
   useEffect(() => {
     setWindowWidth(window.innerWidth);
@@ -1338,9 +1392,12 @@ export function DynamicIsland() {
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
   // Current animated dimensions
+  // When radial navigator active: expand to 265px
   // When syncing: use a compact width (spinner + progress bar only, no track info)
   const syncingExtendedWidth = Math.min(280, (windowWidth > 0 ? windowWidth : 320) - 32);
-  const currentWidth = isExpanded_room
+  const currentWidth = radialSnapInfo?.isOpen
+    ? Math.min(265, (windowWidth > 0 ? windowWidth : 320) - 32)
+    : isExpanded_room
     ? expandedWidth
     : isExtended_room
     ? (isSyncingNow ? syncingExtendedWidth : extendedWidth)
@@ -1490,6 +1547,22 @@ export function DynamicIsland() {
           }}
           className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-white/[0.08] select-none"
         >
+          {/* Temporary Radial Navigator Gesture Overlay */}
+          <AnimatePresence>
+            {radialSnapInfo?.isOpen && (
+              <motion.div
+                key="radial-content"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-30 bg-black rounded-full"
+              >
+                <RadialNavigatorPillContent snappedItem={radialSnapInfo.snappedItem} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Pill content */}
           <AnimatePresence>
             {islandState === "pill" && (

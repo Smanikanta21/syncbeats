@@ -16,6 +16,7 @@ import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
 import { EmojiReactions } from "./EmojiReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
+import { MobileRadialNavigator } from "./MobileRadialNavigator";
 import { SettingsPanel } from "../SettingsPanel";
 import { ProfileModal } from "../ProfileModal";
 import { ThemeToggle } from "../ThemeToggle";
@@ -185,133 +186,9 @@ export function RoomDashboard({
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // One-handed radial menu states
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [isHolding, setIsHolding] = useState(false);
-  const [activeHoverId, setActiveHoverId] = useState<string | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const holdTimeout = useRef<any>(null);
-
-  const startHold = (e: React.TouchEvent | React.MouseEvent) => {
-    if (holdTimeout.current) clearTimeout(holdTimeout.current);
-    holdTimeout.current = setTimeout(() => {
-      setIsHolding(true);
-      setMenuOpen(true);
-    }, 200);
-  };
-
-  const endHold = () => {
-    if (holdTimeout.current) clearTimeout(holdTimeout.current);
-    if (isHolding) {
-      if (activeHoverId) {
-        setMobileTab(activeHoverId as MobileTab);
-      }
-      setIsHolding(false);
-      setMenuOpen(false);
-      setActiveHoverId(null);
-    } else {
-      setMenuOpen(prev => !prev);
-    }
-  };
-
-  // Mobile Touch Move Gesture
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!triggerRef.current) return;
-    const touch = e.touches[0];
-    const rect = triggerRef.current.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    
-    const dx = touch.clientX - centerX;
-    const dy = touch.clientY - centerY;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    if (distance > 35) {
-      if (e.cancelable) e.preventDefault();
-      setIsHolding(true);
-      setMenuOpen(true);
-      let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-      if (angle < 0) angle += 360;
-
-      // Radial positions relative to bottom-right trigger (180 deg to 270 deg)
-      if (angle >= 265 || angle < 10) {
-        setActiveHoverId("chat");
-      } else if (angle >= 242.5 && angle < 265) {
-        setActiveHoverId("queue");
-      } else if (angle >= 220 && angle < 242.5) {
-        setActiveHoverId("devices");
-      } else if (angle >= 195 && angle < 220) {
-        setActiveHoverId("playing");
-      } else if (angle >= 135 && angle < 195) {
-        setActiveHoverId("spatial");
-      } else {
-        setActiveHoverId(null);
-      }
-    } else {
-      setActiveHoverId(null);
-    }
-  };
-
-  // Desktop Mouse Drag Gesture Simulation
-  useEffect(() => {
-    if (!isHolding) return;
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!triggerRef.current) return;
-      const rect = triggerRef.current.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      
-      const dx = e.clientX - centerX;
-      const dy = e.clientY - centerY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance > 35) {
-        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-        if (angle < 0) angle += 360;
-
-        if (angle >= 265 || angle < 10) {
-          setActiveHoverId("chat");
-        } else if (angle >= 242.5 && angle < 265) {
-          setActiveHoverId("queue");
-        } else if (angle >= 220 && angle < 242.5) {
-          setActiveHoverId("devices");
-        } else if (angle >= 195 && angle < 220) {
-          setActiveHoverId("playing");
-        } else if (angle >= 135 && angle < 195) {
-          setActiveHoverId("spatial");
-        } else {
-          setActiveHoverId(null);
-        }
-      } else {
-        setActiveHoverId(null);
-      }
-    };
-
-    const handleMouseUp = () => {
-      endHold();
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isHolding, activeHoverId]);
-
-  const positions = {
-    spatial: { x: -105, y: 0 },
-    playing: { x: -88, y: -45 },
-    devices: { x: -55, y: -80 },
-    queue: { x: -12, y: -98 },
-    chat: { x: 30, y: -102 },
-  };
-
   const queue = snapshot?.queue ?? [];
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
   const isRoomReady = participants.every(p => p.isReady);
-
 
   const handleTrackSelect = useCallback((item: typeof queue[0]) => {
     if (!isHost) return;
@@ -325,7 +202,6 @@ export function RoomDashboard({
   }, [snapshot, roomId, isPrivate, onTogglePrivate]);
 
   const toggleShuffle = useCallback(() => {
-    // Always reshuffle instead of toggling off
     getSocket().emit("room:toggleShuffle", { roomId, shuffle: true });
   }, [roomId]);
 
@@ -334,14 +210,6 @@ export function RoomDashboard({
     const next = current === "off" ? "all" : current === "all" ? "track" : "off";
     getSocket().emit("room:toggleRepeat", { roomId, repeatMode: next });
   }, [roomId, snapshot?.repeatMode]);
-
-  const mobileTabs: { id: MobileTab; icon: React.ComponentType<any>; label: string }[] = [
-    { id: "spatial", icon: Radio, label: "Spatial" },
-    { id: "playing", icon: Activity, label: "Visualizer" },
-    { id: "devices", icon: Users, label: "Devices" },
-    { id: "queue", icon: LayoutGrid, label: "Queue" },
-    { id: "chat", icon: MessageSquare, label: "Chat" },
-  ];
 
   return (
     <div 
@@ -700,109 +568,11 @@ export function RoomDashboard({
         </AnimatePresence>
       </div>
 
-      {/* ── Mobile One-Handed Radial Menu ───────────────────────────────────── */}
-      <div 
-        className="md:hidden fixed z-[9999] w-14 h-14 select-none pointer-events-none"
-        style={{
-          bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
-          right: "16px"
-        }}
-      >
-        <div className="absolute inset-0 pointer-events-auto flex items-center justify-center">
-          <AnimatePresence>
-            {menuOpen && mobileTabs.map((tab) => {
-              const pos = positions[tab.id];
-              const isHovered = activeHoverId === tab.id;
-              const isActive = mobileTab === tab.id;
-              const Icon = tab.icon;
-
-              return (
-                <motion.button
-                  key={tab.id}
-                  initial={{ x: 0, y: 0, opacity: 0, scale: 0.5 }}
-                  animate={{ 
-                    x: pos.x, 
-                    y: pos.y, 
-                    opacity: 1, 
-                    scale: isHovered ? 1.25 : isActive ? 1.05 : 1,
-                    backgroundColor: isHovered 
-                      ? "rgba(255, 255, 255, 0.95)" 
-                      : isActive 
-                        ? "rgba(255, 255, 255, 0.85)" 
-                        : "rgba(15, 23, 42, 0.75)"
-                  }}
-                  exit={{ x: 0, y: 0, opacity: 0, scale: 0.5 }}
-                  transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                  className={cn(
-                    "absolute w-11 h-11 rounded-full flex items-center justify-center shadow-lg border border-white/10 backdrop-blur-md transition-colors",
-                    isHovered || isActive ? "text-slate-900" : "text-white"
-                  )}
-                  onClick={() => {
-                    setMobileTab(tab.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Icon className="w-5 h-5" />
-                  {isHovered && (
-                    <motion.span 
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: -24 }}
-                      className="absolute text-[8px] font-black uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded-full whitespace-nowrap shadow-md pointer-events-none"
-                    >
-                      {tab.label}
-                    </motion.span>
-                  )}
-                </motion.button>
-              );
-            })}
-          </AnimatePresence>
-
-          <button
-            ref={triggerRef}
-            onTouchStart={startHold}
-            onTouchEnd={endHold}
-            onTouchMove={handleTouchMove}
-            onMouseDown={startHold}
-            onMouseUp={endHold}
-            className={cn(
-              "absolute rounded-full flex items-center justify-center shadow-[0_8px_32px_rgba(0,0,0,0.5)] border border-white/10 cursor-pointer select-none",
-              isHolding ? "scale-90 w-12 h-12" : "w-14 h-14"
-            )}
-            style={{
-              background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))",
-              transition: "transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), width 0.15s, height 0.15s"
-            }}
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              {menuOpen ? (
-                <motion.div
-                  key="close-x"
-                  initial={{ rotate: -90, scale: 0.7, opacity: 0 }}
-                  animate={{ rotate: 0, scale: 1, opacity: 1 }}
-                  exit={{ rotate: 90, scale: 0.7, opacity: 0 }}
-                  transition={{ duration: 0.15, ease: "easeOut" }}
-                >
-                  <X className="w-6 h-6 text-white" />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="tab-icon"
-                  initial={{ scale: 0.7, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.7, opacity: 0 }}
-                  transition={{ duration: 0.15, ease: "easeOut" }}
-                >
-                  {mobileTab === "spatial" && <Radio className="w-6 h-6 text-white" />}
-                  {mobileTab === "playing" && <Activity className="w-6 h-6 text-white" />}
-                  {mobileTab === "devices" && <Users className="w-6 h-6 text-white" />}
-                  {mobileTab === "queue" && <LayoutGrid className="w-6 h-6 text-white" />}
-                  {mobileTab === "chat" && <MessageSquare className="w-6 h-6 text-white" />}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </button>
-        </div>
-      </div>
+      {/* ── Magnetic Semi-Circle Mobile Navigator ────────────────────── */}
+      <MobileRadialNavigator
+        activeTab={mobileTab}
+        onSelectTab={setMobileTab}
+      />
 
       {showQR && (
         <div 
