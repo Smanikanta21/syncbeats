@@ -26,27 +26,30 @@ export function createDeviceRoutes(): Router {
       const devices = await repo.listByUser(req.user!.sub);
 
       const io = req.app.get('io');
-      const deviceRoomMap = new Map<string, string>();
+      const deviceRoomMap = new Map<string, { roomId: string | null; isOnline: boolean }>();
       if (io) {
-        const activeSockets = await io.in(`user:${req.user!.sub}`).fetchSockets();
+        const activeSockets = await io.fetchSockets();
         for (const s of activeSockets) {
-          const deviceId = (s.data as any).deviceId;
-          if (deviceId) {
-            // Find the room they are in (filter out their own socket ID and the user room)
-            const room = Array.from(s.rooms).find(r => r !== s.id && r !== `user:${req.user!.sub}`);
-            if (room) deviceRoomMap.set(deviceId as string, room as string);
+          const sUserId = (s.data as any)?.userId;
+          const sDeviceId = (s.data as any)?.deviceId;
+          if (sUserId === req.user!.sub && sDeviceId) {
+            const room = Array.from(s.rooms).find(r => (r as string) !== s.id && !(r as string).startsWith('user:'));
+            deviceRoomMap.set(sDeviceId as string, {
+              roomId: (room as string) || null,
+              isOnline: true,
+            });
           }
         }
       }
 
       const now = Date.now();
       const enrichedDevices = devices.map(d => {
-        const inRoomId = deviceRoomMap.get(d.device_key);
-        const isOnline = inRoomId ? true : (now - d.last_seen_at.getTime() < 30000);
+        const activeInfo = deviceRoomMap.get(d.device_key);
+        const isOnline = activeInfo ? true : (now - d.last_seen_at.getTime() < 60000);
         return {
           ...d,
           isOnline,
-          roomId: inRoomId || null,
+          roomId: activeInfo?.roomId || null,
         };
       });
 

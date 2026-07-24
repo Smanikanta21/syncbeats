@@ -46,8 +46,9 @@ class IslandHostingView<Content: View>: NSHostingView<Content> {
             // Never intercept clicks during welcome animation.
             return nil
         case .miniPlayer:
-            // width: 330, height: 39
-            hitRect = NSRect(x: self.bounds.midX - 165, y: self.bounds.maxY - 39, width: 330, height: 39)
+            // Match the actual dimensions of the miniPlayer so controls (like play/pause on the right)
+            // are fully hoverable and clickable when active.
+            hitRect = NSRect(x: self.bounds.midX - 171, y: self.bounds.maxY - 47, width: 342, height: 47)
         case .downloading:
             // width: 440, height: 89
             hitRect = NSRect(x: self.bounds.midX - 220, y: self.bounds.maxY - 89, width: 440, height: 89)
@@ -67,11 +68,13 @@ class IslandHostingView<Content: View>: NSHostingView<Content> {
 @MainActor
 class MouseTracker {
     var stateManager: IslandStateManager
+    weak var islandPanel: IslandPanel?
     var globalMonitor: Any?
     var localMonitor: Any?
     
-    init(stateManager: IslandStateManager) {
+    init(stateManager: IslandStateManager, islandPanel: IslandPanel) {
         self.stateManager = stateManager
+        self.islandPanel = islandPanel
         startTracking()
     }
     
@@ -85,27 +88,59 @@ class MouseTracker {
         }
     }
     
+    deinit {
+        let gMon = globalMonitor
+        let lMon = localMonitor
+        DispatchQueue.main.async {
+            if let g = gMon { NSEvent.removeMonitor(g) }
+            if let l = lMon { NSEvent.removeMonitor(l) }
+        }
+    }
+    
+    private func activeHitRect(for mode: IslandMode, screen: NSScreen) -> NSRect {
+        let screenMaxY = screen.frame.maxY
+        let screenMidX = screen.frame.midX
+        
+        switch mode {
+        case .hidden:
+            return .zero
+        case .hovered:
+            return NSRect(x: screenMidX - 122.5, y: screenMaxY - 51, width: 245, height: 51)
+        case .welcome, .roomWelcome:
+            return .zero
+        case .miniPlayer:
+            return NSRect(x: screenMidX - 171, y: screenMaxY - 47, width: 342, height: 47)
+        case .downloading:
+            return NSRect(x: screenMidX - 220, y: screenMaxY - 89, width: 440, height: 89)
+        case .player:
+            return NSRect(x: screenMidX - 350, y: screenMaxY - 159, width: 700, height: 159)
+        }
+    }
+    
     func checkMouse(point: NSPoint) {
         guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else { return }
         
         let screenMaxY = screen.frame.maxY
         let screenMidX = screen.frame.midX
         
-        // Define the trigger zone: 300 wide, 100 tall (extends 40pt above screen top to catch bezel touches!)
-        let triggerZone = NSRect(x: screenMidX - 150, y: screenMaxY - 60, width: 300, height: 100)
+        // Define the entry trigger zone (when hidden): only the top 20pt of the screen
+        let entryTriggerZone = NSRect(x: screenMidX - 150, y: screenMaxY - 20, width: 300, height: 60)
+        
+        // Define the leave zone (when hovered): extends down to 60pt to cover the hovered view
+        let hoveredStayZone = NSRect(x: screenMidX - 150, y: screenMaxY - 60, width: 300, height: 100)
         
         let fallbackMode: IslandMode = PlayerEngine.shared.hasTrack ? .miniPlayer : .hidden
         
-        // If hidden and mouse enters trigger zone -> bloat the island slightly and vibrate!
-        if stateManager.mode == .hidden && triggerZone.contains(point) {
+        // If hidden and mouse enters entry trigger zone -> bloat the island slightly and vibrate!
+        if stateManager.mode == .hidden && entryTriggerZone.contains(point) {
             DispatchQueue.main.async {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 self.stateManager.mode = .hovered
             }
         }
         
-        // If hovered but they don't click, and the mouse leaves the trigger zone -> hide again
-        if stateManager.mode == .hovered && !triggerZone.contains(point) {
+        // If hovered but they don't click, and the mouse leaves the hovered stay zone -> hide again
+        if stateManager.mode == .hovered && !hoveredStayZone.contains(point) {
             DispatchQueue.main.async {
                 self.stateManager.mode = fallbackMode
             }
@@ -113,13 +148,25 @@ class MouseTracker {
         
         // If player is visible and mouse leaves the player shape -> collapse
         if stateManager.mode == .player {
-            // Safe zone wraps the full 700x150 player + a grace margin below (so the
-            // seek slider at the very bottom doesn't trigger a collapse mid-drag)
             let safeZone = NSRect(x: screenMidX - 350, y: screenMaxY - 170, width: 700, height: 270)
             if !safeZone.contains(point) {
                 DispatchQueue.main.async {
                     self.stateManager.mode = fallbackMode
                 }
+            }
+        }
+        
+        // DYNAMIC IGNORES MOUSE EVENTS TOGGLE
+        let activeRect = activeHitRect(for: stateManager.mode, screen: screen)
+        let isInside = activeRect.contains(point)
+        
+        if isInside {
+            if islandPanel?.ignoresMouseEvents == true {
+                islandPanel?.ignoresMouseEvents = false
+            }
+        } else {
+            if islandPanel?.ignoresMouseEvents == false {
+                islandPanel?.ignoresMouseEvents = true
             }
         }
     }
@@ -138,7 +185,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupIslandPanel()
-        mouseTracker = MouseTracker(stateManager: stateManager)
         triggerWelcomeAnimation()
     }
 
@@ -169,6 +215,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         islandPanel.isOpaque = false
         islandPanel.hasShadow = false
         
+        // Setup mouse tracker with panel reference
+        mouseTracker = MouseTracker(stateManager: stateManager, islandPanel: islandPanel)
+        
         // Dynamically update window frame and ignoresMouseEvents so the OS perfectly passes clicks and hover through
         stateManager.$mode
             .receive(on: RunLoop.main)
@@ -179,10 +228,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 case .hidden, .welcome, .roomWelcome:
                     self.islandPanel.ignoresMouseEvents = true
                 default:
-                    self.islandPanel.ignoresMouseEvents = false
+                    self.islandPanel.ignoresMouseEvents = true // Always default to true, MouseTracker will toggle
                 }
                 
                 self.updateWindowFrame(for: mode)
+                self.mouseTracker?.checkMouse(point: NSEvent.mouseLocation)
             }.store(in: &cancellables)
             
         // Listen for successful room joins to automatically reveal the island!
@@ -201,27 +251,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.stateManager.mode = .roomWelcome(roomId)
                 }
                 
-                // Automatically transition to player mode after 2.5 seconds
+                // Automatically transition to miniPlayer mode after 2.5 seconds
+                // (previously went to .player which blocked the entire top 700x159pt of the screen)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     // Only transition if we are still in the roomWelcome mode
                     if case .roomWelcome = self.stateManager.mode {
                         withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
-                            self.stateManager.mode = .player
+                            self.stateManager.mode = .miniPlayer
                         }
                     }
                 }
             }.store(in: &cancellables)
             
-        // Listen for track playback start — expand island to show downloading/loading state.
+        // Listen for track playback start — expand island to show downloading/loading or miniPlayer state.
         NotificationCenter.default.publisher(for: PlayerEngine.didStartPlayingNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self = self else { return }
-                print("[WindowManager] didStartPlayingNotification received — current mode: \(self.stateManager.mode) → expanding to .downloading")
-                // Expand to .downloading when loading starts so the compact download indicator is shown.
-                // IslandView.onChange(of: engine.isLoading) will collapse back to .miniPlayer when ready.
+                let targetMode: IslandMode = PlayerEngine.shared.isLoading ? .downloading : .miniPlayer
+                print("[WindowManager] didStartPlayingNotification received — expanding to \(targetMode)")
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1)) {
-                    self.stateManager.mode = .downloading
+                    self.stateManager.mode = targetMode
                 }
             }.store(in: &cancellables)
 

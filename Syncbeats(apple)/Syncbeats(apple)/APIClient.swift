@@ -9,7 +9,7 @@ enum APIError: Error {
 
 class APIClient {
     static let shared = APIClient()
-    var baseURL = "http://localhost:4000"
+    var baseURL = "http://127.0.0.1:4000"
     
     // JWT token to inject into Authorization header
     var token: String? = nil
@@ -88,6 +88,10 @@ class APIClient {
     func delete<T: Decodable>(path: String) async throws -> T {
         let data = try await makeRequest(path: path, method: "DELETE")
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    func deleteNoResponse(path: String) async throws {
+        _ = try await makeRequest(path: path, method: "DELETE")
     }
     
     // MARK: - Devices

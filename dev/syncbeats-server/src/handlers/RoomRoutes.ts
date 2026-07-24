@@ -12,6 +12,7 @@ import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { downloadAudio } from './SearchRoutes';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -405,6 +406,26 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // POST /rooms/:roomId/reset (Reset room completely — clear all queue & reset playback)
+  router.post('/:roomId/reset', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      await repo.clearEntireQueue(roomId);
+      
+      const room = roomManager.get(roomId);
+      if (room) {
+        room.resetRoom();
+        io.to(roomId).emit('room:reset', { roomId });
+      }
+
+      res.json({ ok: true, message: 'Room has been reset successfully.' });
+    } catch (err) {
+      console.error('[Rooms] reset room error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
   // DELETE /rooms/:roomId/queue/:itemId
   router.delete('/:roomId/queue/:itemId', requireAuth, async (req, res) => {
     try {
@@ -589,137 +610,22 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       }
 
       console.log(`[Proxy] Resolving YouTube audio for video: ${videoId}`);
+      const filePath = await downloadAudio(videoId);
       
-      const tmpDir = path.resolve(process.cwd(), 'tmp');
-      if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir);
-      }
-      
-      const outputFile = path.resolve(tmpDir, `${videoId}.m4a`);
-      
-      // If already downloaded (cached), just serve it
-      if (fs.existsSync(outputFile)) {
-        console.log(`[Proxy] Serving cached audio for: ${videoId}`);
+      if (!res.headersSent) {
         res.setHeader('Content-Type', 'audio/x-m4a');
         res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-        return res.sendFile(outputFile);
+        res.sendFile(filePath);
       }
-
-      // Try local yt-dlp first (free, unlimited, caches files)
-      const ytDlpPath = path.resolve(process.cwd(), 'yt-dlp');
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      
-      console.log(`[Proxy] File not cached. Spawning yt-dlp to download: ${videoId}`);
-      
-      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, url]);
-
-      let ytDlpError = "";
-      ytDlp.stderr?.on('data', (chunk) => {
-        ytDlpError += chunk.toString();
-      });
-
-      ytDlp.on('close', async (code: number) => {
-        if (code === 0 && fs.existsSync(outputFile)) {
-          console.log(`[Proxy] Native yt-dlp download completed for: ${videoId}`);
-          if (!res.headersSent) {
-            res.setHeader('Content-Type', 'audio/x-m4a');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-            res.sendFile(outputFile);
-          }
-        } else {
-          console.warn(`[Proxy] Local yt-dlp failed or exited with code ${code}. Stderr: ${ytDlpError.trim()}`);
-          console.warn(`[Proxy] Falling back to RapidAPI with load-balanced rotation...`);
-          
-          try {
-            const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
-            if (!keysStr) {
-              throw new Error('RAPID_API_KEYS or RAPID_API_KEY is missing from environment variables');
-            }
-
-            const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
-            
-            // Circuit Breaker: Filter out known rate-limited/quota-exhausted keys
-            let activeKeys = keys.filter(k => !exhaustedRapidKeys.has(k));
-            if (activeKeys.length === 0) {
-              console.log('[Proxy] All RapidAPI keys were marked exhausted. Resetting pool for retry.');
-              exhaustedRapidKeys.clear();
-              activeKeys = keys;
-            }
-
-            // Load Balancing: Shuffle active keys to distribute quota hits uniformly
-            const shuffledKeys = activeKeys.sort(() => 0.5 - Math.random());
-            let downloadLink = '';
-
-            for (const key of shuffledKeys) {
-              try {
-                const options = {
-                  method: 'GET',
-                  headers: {
-                    'x-rapidapi-key': key,
-                    'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
-                  }
-                };
-
-                const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, options);
-                if (apiRes.status === 429 || apiRes.status === 403) {
-                  console.warn(`[Proxy] Key rotation: key ${key.substring(0, 5)}... hit quota limit (${apiRes.status}). Marking exhausted.`);
-                  exhaustedRapidKeys.add(key);
-                  continue;
-                }
-
-                if (!apiRes.ok) {
-                  const errText = await apiRes.text().catch(() => "");
-                  console.warn(`[Proxy] RapidAPI request failed for key ${key.substring(0, 5)}...: status=${apiRes.status}, body=${errText}`);
-                  continue;
-                }
-
-                const data = (await apiRes.json()) as { link?: string; msg?: string; error?: string };
-                if (data.link) {
-                  downloadLink = data.link;
-                  console.log(`[Proxy] Successfully resolved download link using shuffled key: ${key.substring(0, 5)}...`);
-                  break;
-                } else {
-                  console.warn(`[Proxy] RapidAPI key ${key.substring(0, 5)}... resolved but missing link. Response:`, JSON.stringify(data));
-                }
-              } catch (keyErr) {
-                console.warn(`[Proxy] Key evaluation error:`, keyErr);
-              }
-            }
-
-            if (!downloadLink) {
-              throw new Error('All RapidAPI keys failed to return a valid download link.');
-            }
-
-            console.log(`[Proxy] Piping audio from RapidAPI stream...`);
-            const audioRes = await fetch(downloadLink);
-            if (!audioRes.ok || !audioRes.body) {
-              throw new Error(`Failed to fetch MP3 stream from RapidAPI link.`);
-            }
-
-            res.setHeader('Content-Type', 'audio/mpeg');
-            res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-
-            if (audioRes.headers.has('content-length')) {
-              res.setHeader('Content-Length', audioRes.headers.get('content-length')!);
-            }
-
-            const { Readable } = require('stream');
-            const readable = Readable.fromWeb(audioRes.body as any);
-            readable.pipe(res);
-          } catch (fallbackErr) {
-            console.error('[Proxy] RapidAPI fallback also failed:', fallbackErr);
-            if (!res.headersSent) {
-              res.status(500).json({ error: `Audio resolution failed: ${(fallbackErr as Error).message}` });
-            }
-          }
-        }
-      });
-
     } catch (err) {
-      console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Truncated YouTube ID')) {
+        console.warn(`[Proxy] Suppressed truncated ID request: ${req.query['videoId']}`);
+      } else {
+        console.error('[Proxy] yt-proxy error:', err);
+      }
       if (!res.headersSent) {
-        res.status(500).json({ error: msg });
+        res.status(400).json({ error: msg });
       }
     }
   });

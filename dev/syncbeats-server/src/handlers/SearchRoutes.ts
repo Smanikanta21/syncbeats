@@ -2,6 +2,7 @@ import { Router } from 'express';
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
 import prisma from '../db/prisma';
+import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 
 export function createSearchRoutes(): Router {
   const router = Router();
@@ -147,68 +148,6 @@ export function createSearchRoutes(): Router {
     }
   });
 
-  // In-flight download lock: prevents multiple yt-dlp spawns for the same videoId
-  const inFlightDownloads = new Map<string, Promise<string>>();
-
-  function downloadAudio(videoId: string): Promise<string> {
-    // If already downloading this videoId, return the existing promise
-    if (inFlightDownloads.has(videoId)) {
-      console.log(`[Search] Download already in-flight for ${videoId}, waiting...`);
-      return inFlightDownloads.get(videoId)!;
-    }
-
-    const { spawn } = require('child_process');
-    const path = require('path');
-    const fs = require('fs');
-
-    const tmpDir = path.resolve(process.cwd(), 'tmp');
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { mode: 0o700 });
-    } else {
-      try { fs.chmodSync(tmpDir, 0o700); } catch (e) {}
-    }
-
-    const outputFile = path.resolve(tmpDir, `${videoId}.m4a`);
-
-    // Already cached on disk
-    if (fs.existsSync(outputFile)) {
-      try { fs.chmodSync(outputFile, 0o600); } catch (e) {}
-      return Promise.resolve(outputFile);
-    }
-
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    console.log(`[Search] Downloading audio via yt-dlp for: ${url}`);
-
-    const promise = new Promise<string>((resolve, reject) => {
-      const ytDlpPath = path.resolve(process.cwd(), 'yt-dlp');
-      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, url]);
-
-      ytDlp.on('close', (code: number) => {
-        inFlightDownloads.delete(videoId);
-        if (code === 0 && fs.existsSync(outputFile)) {
-          try {
-            fs.chmodSync(outputFile, 0o600);
-            console.log(`[Search] Secured file permissions (0600) for: ${outputFile}`);
-          } catch (err) {
-            console.warn('[Search] Failed to set secure permissions:', err);
-          }
-          resolve(outputFile);
-        } else {
-          console.error(`[Search] yt-dlp error: exited with code ${code}`);
-          reject(new Error(`yt-dlp exited with code ${code}`));
-        }
-      });
-
-      ytDlp.on('error', (err: Error) => {
-        inFlightDownloads.delete(videoId);
-        reject(err);
-      });
-    });
-
-    inFlightDownloads.set(videoId, promise);
-    return promise;
-  }
-
   router.get('/youtube/download', async (req, res) => {
     try {
       const videoId = req.query.videoId as string;
@@ -222,9 +161,14 @@ export function createSearchRoutes(): Router {
         res.sendFile(filePath);
       }
     } catch (err) {
-      console.error('[Search] stream failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Truncated YouTube ID')) {
+        console.warn(`[Search] Suppressed truncated ID request: ${req.query.videoId}`);
+      } else {
+        console.error('[Search] stream failed:', err);
+      }
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to download audio' });
+        res.status(400).json({ error: msg });
       }
     }
   });
@@ -264,4 +208,195 @@ export function createSearchRoutes(): Router {
   });
 
   return router;
+}
+
+export function extractYoutubeIdOrSongId(input: string): string {
+  if (!input) return '';
+  let raw = decodeURIComponent(input).trim();
+  
+  // 1. If it contains a youtube watch URL
+  if (raw.includes('youtube.com/watch')) {
+    try {
+      const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+      const v = u.searchParams.get('v');
+      if (v) {
+        const m = v.match(/^([a-zA-Z0-9_-]{11})/);
+        return m ? m[1] : v;
+      }
+    } catch (e) {}
+  } else if (raw.includes('youtu.be/')) {
+    const parts = raw.split('youtu.be/');
+    if (parts[1]) {
+      const idPart = parts[1].split('/')[0].split('?')[0];
+      const m = idPart.match(/^([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+      return idPart;
+    }
+  }
+
+  // 2. Strip prefixes
+  const prefixes = ['youtube:', 'spotify-lazy:', 'ws-p2p:yt:', 'ws-p2p:'];
+  for (const prefix of prefixes) {
+    if (raw.startsWith(prefix)) {
+      raw = raw.slice(prefix.length);
+      break;
+    }
+  }
+
+  // 3. Check if it matches a 11-character YouTube ID optionally followed by _TIMESTAMP
+  const ytIdMatch = raw.match(/^([a-zA-Z0-9_-]{11})(?:_\d+)?$/);
+  if (ytIdMatch && ytIdMatch[1]) {
+    return ytIdMatch[1];
+  }
+
+  // Fallback: strip timestamp if present
+  let cleaned = raw.split('?')[0].split('&')[0];
+  const timestampMatch = cleaned.match(/^(.+)(?:_\d{9,})$/);
+  if (timestampMatch && timestampMatch[1]) {
+    cleaned = timestampMatch[1];
+  }
+
+  return cleaned.trim();
+}
+
+// In-flight download lock: prevents multiple yt-dlp spawns for the same videoId
+const inFlightDownloads = new Map<string, Promise<string>>();
+
+export async function downloadAudio(rawInput: string): Promise<string> {
+  const cleanId = extractYoutubeIdOrSongId(rawInput);
+  if (!cleanId) throw new Error('Invalid input for audio download');
+
+  if (cleanId.length < 11) {
+    throw new Error(`Truncated YouTube ID '${cleanId}' from an earlier session. Please remove this song from the queue and re-add it.`);
+  }
+
+  // Return in-flight download promise if active
+  if (inFlightDownloads.has(cleanId)) {
+    console.log(`[Search] Download already in-flight for ${cleanId}, waiting...`);
+    return inFlightDownloads.get(cleanId)!;
+  }
+
+  const { spawn } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+
+  const promise = new Promise<string>(async (resolve, reject) => {
+    let targetYoutubeId = cleanId;
+    try {
+      const tmpDir = path.resolve(process.cwd(), 'tmp');
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+
+      const cachedOutputFile = path.resolve(tmpDir, `${cleanId}.m4a`);
+      if (fs.existsSync(cachedOutputFile)) {
+        try { fs.chmodSync(cachedOutputFile, 0o600); } catch (e) {}
+        console.log(`[Search] Locally downloaded file found: ${cachedOutputFile}`);
+        resolve(cachedOutputFile);
+        return;
+      }
+
+      try {
+        const dbSong = await prisma.song.findFirst({
+          where: {
+            OR: [
+              { id: cleanId },
+              { youtubeId: cleanId }
+            ]
+          }
+        });
+
+        if (dbSong) {
+          if (dbSong.youtubeId) {
+            targetYoutubeId = dbSong.youtubeId;
+          } else {
+            console.log(`[Search] Song in DB lacks youtubeId, resolving from DB metadata: ${dbSong.title} - ${dbSong.artist}`);
+            const yt = await matchToYouTubeFallback(dbSong.title, dbSong.artist || '');
+            if (yt?.youtubeId) {
+              targetYoutubeId = yt.youtubeId;
+              await prisma.song.update({
+                where: { id: dbSong.id },
+                data: { youtubeId: yt.youtubeId, youtubeThumbnail: yt.thumbnail }
+              }).catch(err => console.warn('[Search] DB update failed:', err));
+            }
+          }
+
+          // Re-check if resolved targetYoutubeId file is already downloaded
+          const ytOutputFile = path.resolve(tmpDir, `${targetYoutubeId}.m4a`);
+          if (fs.existsSync(ytOutputFile)) {
+            try { fs.chmodSync(ytOutputFile, 0o600); } catch (e) {}
+            console.log(`[Search] Locally downloaded file found for DB song YouTube ID: ${ytOutputFile}`);
+            resolve(ytOutputFile);
+            return;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[Search] DB lookup failed, falling back to direct download:', dbErr);
+      }
+
+      const finalOutputFile = path.resolve(tmpDir, `${targetYoutubeId}.m4a`);
+      const url = `https://www.youtube.com/watch?v=${targetYoutubeId}`;
+      console.log(`[Search] Downloading audio via yt-dlp from YouTube: ${url}`);
+
+      const ytDlpPath = (() => {
+        const paths = [
+          path.resolve(__dirname, '../../yt-dlp'),
+          path.resolve(__dirname, '../../bin/yt-dlp'),
+          path.resolve(process.cwd(), 'yt-dlp'),
+          path.resolve(process.cwd(), 'dev/syncbeats-server/yt-dlp'),
+          path.resolve(process.cwd(), 'dev/syncbeats-server/bin/yt-dlp')
+        ];
+        for (const p of paths) {
+          if (fs.existsSync(p)) {
+            console.log(`[Search] Found yt-dlp binary at: ${p}`);
+            return p;
+          }
+        }
+        console.warn('[Search] yt-dlp binary not found in standard paths, falling back to system PATH');
+        return 'yt-dlp';
+      })();
+
+      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', finalOutputFile, url]);
+
+      ytDlp.stdout.on('data', (data: any) => {
+        console.log(`[Search-ytdlp-stdout]: ${data.toString().trim()}`);
+      });
+
+      ytDlp.stderr.on('data', (data: any) => {
+        console.error(`[Search-ytdlp-stderr]: ${data.toString().trim()}`);
+      });
+
+      ytDlp.on('close', (code: number) => {
+        inFlightDownloads.delete(cleanId);
+        if (targetYoutubeId !== cleanId) inFlightDownloads.delete(targetYoutubeId);
+
+        if (code === 0 && fs.existsSync(finalOutputFile)) {
+          try {
+            fs.chmodSync(finalOutputFile, 0o600);
+            console.log(`[Search] Secured file permissions (0600) for: ${finalOutputFile}`);
+          } catch (err) {
+            console.warn('[Search] Failed to set secure permissions:', err);
+          }
+          resolve(finalOutputFile);
+        } else {
+          console.error(`[Search] yt-dlp error: exited with code ${code}`);
+          reject(new Error(`yt-dlp exited with code ${code}`));
+        }
+      });
+
+      ytDlp.on('error', (err: any) => {
+        inFlightDownloads.delete(cleanId);
+        if (targetYoutubeId !== cleanId) inFlightDownloads.delete(targetYoutubeId);
+        console.error('[Search] yt-dlp spawn error:', err);
+        reject(err);
+      });
+
+    } catch (err) {
+      inFlightDownloads.delete(cleanId);
+      reject(err);
+    }
+  });
+
+  inFlightDownloads.set(cleanId, promise);
+  return promise;
 }

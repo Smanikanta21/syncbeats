@@ -281,7 +281,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
       } else {
         videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
       }
-      await upload.downloadYoutubeToP2P(roomId, videoId, result.title);
+      await upload.downloadYoutubeToP2P(roomId, videoId, result.title, result.uploaderName);
       setAddedSongs(prev => new Set(prev).add(result.url));
       onSuccess?.();
     } catch (err: any) {

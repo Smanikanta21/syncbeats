@@ -5,8 +5,9 @@ export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-
-  // VM deployment uses Nginx reverse proxy from /api -> backend.
+  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
   return '/api';
 }
 
@@ -17,7 +18,7 @@ const AUTH_COOKIE_KEY = 'sb_token';
 const AUTH_STORAGE_KEY = 'sb_token';
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 
-function getDeviceId(): string | null {
+export function getDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
 
   const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
@@ -297,10 +298,10 @@ export const roomsApi = {
       body: JSON.stringify({ youtubeUrl, title }),
     }, true),
 
-  enqueueMagnet: (roomId: string, magnetUri: string, title?: string) =>
+  enqueueMagnet: (roomId: string, magnetUri: string, title?: string, artist?: string) =>
     request<any>(`/rooms/${roomId}/enqueue-magnet`, {
       method: 'POST',
-      body: JSON.stringify({ magnetUri, title }),
+      body: JSON.stringify({ magnetUri, title, artist }),
     }, true),
 
   reorderQueue: (roomId: string, itemId: string, newIndex: number) =>
@@ -317,6 +318,11 @@ export const roomsApi = {
   clearQueue: (roomId: string) =>
     request<any>(`/rooms/${roomId}/queue`, {
       method: 'DELETE',
+    }, true),
+
+  resetRoom: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/reset`, {
+      method: 'POST',
     }, true),
 
   searchYoutube: (roomId: string, query: string) =>

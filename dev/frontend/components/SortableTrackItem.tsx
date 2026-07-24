@@ -24,7 +24,7 @@ function ytThumb(trackUrl: string | null | undefined) {
   if (thumbMatch) return decodeURIComponent(thumbMatch[1]);
 
   // Otherwise, extract YouTube ID
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?]+)/);
+  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
   return ytMatch ? `https://i.ytimg.com/vi/${ytMatch[1]}/mqdefault.jpg` : null;
 }
 

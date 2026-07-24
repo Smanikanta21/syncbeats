@@ -21,6 +21,7 @@ export interface TrackQueueItem {
   trackUrl:   string;
   title:      string;
   artist?:    string;
+  thumbnail?: string;   // album art URL (from Song catalog)
   fileName:   string;
   queueIndex: number;
   isCurrent:  boolean;

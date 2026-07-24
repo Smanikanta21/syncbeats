@@ -316,7 +316,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setIsReady(false);
       setError(null);
       try {
-        let arrayBuffer: ArrayBuffer;
+        let arrayBuffer: ArrayBuffer = new ArrayBuffer(0);
 
         if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
@@ -419,7 +419,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 socket.off('track:receive_chunk', onChunk);
                 clearAllTimers();
 
-                const ytMatch = url.match(/^ws-p2p:yt:([^_]+)_/);
+                const ytMatch = url.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
                 if (!ytMatch) {
                   reject(new Error(p2pErrMsg));
                   return;
@@ -582,8 +582,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             });
           }
         } else if (url.startsWith('youtube:')) {
-          const match = url.match(/^youtube:([^?&]+)/);
+          const match = url.match(/^youtube:([a-zA-Z0-9_-]{11})/);
           const videoId = match ? match[1] : '';
+          if (!videoId || videoId.length < 11) {
+            throw new Error(`Corrupted YouTube track ID. Please tap Reset Room or skip track.`);
+          }
           const roomId = window.location.pathname.split('/').pop();
           const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
           const response = await fetch(fetchUrl);
@@ -615,11 +618,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               offset += chunk.length;
             }
             arrayBuffer = concat.buffer;
-          } else {
-            arrayBuffer = await response.arrayBuffer();
           }
         } else {
-          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            fetchUrl = fetchUrl.replace('http://localhost:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
+            fetchUrl = fetchUrl.replace('http://127.0.0.1:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
+          }
+
+          const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
+          if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
+            throw new Error(`Corrupted YouTube track ID '${paramMatch[1]}'. Please tap Reset Room or skip track.`);
+          }
+
           const response = await fetch(fetchUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);

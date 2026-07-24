@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
-  Loader2, CheckCircle2, AlertCircle, Play as Youtube, Activity,
+  Loader2, CheckCircle2, AlertCircle, AlertTriangle, RotateCcw, Play as Youtube, Activity,
   ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
   Wifi, Radio, Volume2, VolumeX, UserPlus, Send
 } from "lucide-react";
@@ -65,7 +65,7 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
   const customThumbMatch = trackUrl.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
   
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?&]+)/);
+  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
   if (ytMatch) {
     return `https://i.ytimg.com/vi/${ytMatch[1]}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
   }
@@ -226,12 +226,14 @@ const SyncProgressBar = ({
   participants,
   incomingTrack,
   isReady,
+  isStuck,
 }: {
   downloadProgress: number;
   deviceSyncProgress: Record<string, number>;
   participants: any[];
   incomingTrack: { title: string; progress: number } | null;
   isReady: boolean;
+  isStuck?: boolean;
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -244,7 +246,7 @@ const SyncProgressBar = ({
 
   const progress = incomingTrack
     ? incomingTrack.progress
-    : !isReady
+    : (hasTrack && !isReady)
     ? downloadProgress
     : hasSync
     ? avgSync
@@ -252,22 +254,28 @@ const SyncProgressBar = ({
 
   const label = incomingTrack
     ? "Receiving"
-    : !isReady
+    : isStuck
+    ? "Stuck (0%) • Tap to skip"
+    : (hasTrack && !isReady)
     ? "Buffering"
     : hasSync && avgSync < 100
     ? "Syncing"
     : "Synced";
 
-  const color =
-    progress < 50 ? "from-amber-500 to-amber-400"
+  const color = isStuck
+    ? "from-amber-600 to-red-500 animate-pulse"
+    : progress < 50 ? "from-amber-500 to-amber-400"
     : progress < 90 ? "from-sky-500 to-sky-400"
     : "from-emerald-500 to-emerald-400";
 
   return (
     <div className="flex flex-col justify-center gap-1 w-full">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{label}</span>
-        <span className="text-[10px] font-black text-white/60">{progress}%</span>
+        <span className={`text-[9px] font-black uppercase tracking-widest ${isStuck ? "text-amber-400 flex items-center gap-1" : "text-white/40"}`}>
+          {isStuck && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0 animate-bounce" />}
+          {label}
+        </span>
+        <span className={`text-[10px] font-black ${isStuck ? "text-amber-400 font-bold" : "text-white/60"}`}>{progress}%</span>
       </div>
       <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
         <div
@@ -738,6 +746,11 @@ const RoomPill = ({
             {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5 text-white" /> : <Rewind className="w-3.5 h-3.5 text-white" />}
             <span className="text-[10px] font-black text-white">{seekIndicator.text}</span>
           </>
+        ) : isSyncing ? (
+          <div className="flex items-center gap-1.5 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
+            <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
+            <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Buffering</span>
+          </div>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
@@ -757,7 +770,7 @@ const RoomExtendedPill = ({
   effectivePlaying, trackTitle, trackUrl, isReady,
   downloadProgress, deviceSyncProgress, participants, incomingTrack,
   pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback,
-  prefetchProgress, prefetchTitle, isPrefetching,
+  prefetchProgress, prefetchTitle, isPrefetching, isStuck,
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -777,20 +790,22 @@ const RoomExtendedPill = ({
   prefetchProgress: number;
   prefetchTitle: string | null;
   isPrefetching: boolean;
+  isStuck?: boolean;
 }) => {
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
   const title = cleanTrackTitle(trackTitle);
 
-  // Determine if syncing is happening
+  // Determine if syncing is happening (only if a track exists or incoming transfer is active)
+  const hasTrack = !!trackUrl || !!trackTitle;
   const progresses = Object.values(deviceSyncProgress);
-  const isSyncing = !isReady || incomingTrack != null || progresses.some(p => p < 100);
+  const isSyncing = (hasTrack && !isReady) || incomingTrack != null || (hasTrack && progresses.some(p => p < 100));
 
   if (isSyncing) {
     // ── Syncing / buffering: full-width progress bar, no track info, no player
     return (
       <div className="absolute inset-0 flex items-center px-4 gap-3">
         {/* Spinner icon */}
-        <Loader2 className="w-4 h-4 text-white/50 animate-spin shrink-0" />
+        <Loader2 className={`w-4 h-4 shrink-0 ${isStuck ? "text-amber-400" : "text-white/50 animate-spin"}`} />
         {/* Full-width progress */}
         <div className="flex-1 min-w-0">
           <SyncProgressBar
@@ -799,6 +814,7 @@ const RoomExtendedPill = ({
             participants={participants}
             incomingTrack={incomingTrack}
             isReady={isReady}
+            isStuck={isStuck}
           />
         </div>
       </div>
@@ -947,6 +963,19 @@ export function DynamicIsland() {
   const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
   const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [isBufferingStuck, setIsBufferingStuck] = useState(false);
+
+  useEffect(() => {
+    if (hasTrack && !audio.isReady && audio.downloadProgress === 0 && !audio.error) {
+      const timer = setTimeout(() => {
+        setIsBufferingStuck(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setIsBufferingStuck(false);
+    }
+  }, [hasTrack, audio.isReady, audio.downloadProgress, audio.error]);
 
 
 
@@ -1516,6 +1545,7 @@ export function DynamicIsland() {
                   prefetchProgress={prefetch.nextTrackProgress}
                   prefetchTitle={prefetch.nextTrackTitle}
                   isPrefetching={prefetch.isPrefetching}
+                  isStuck={isBufferingStuck}
                 />
               </motion.div>
             )}

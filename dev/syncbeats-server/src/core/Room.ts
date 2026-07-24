@@ -1,10 +1,23 @@
-// ─── Room state machine ────────────────────────────────────────────────────
-// Pure EventEmitter — no host gate. Any participant can control playback.
-// Readiness tracking: server holds play until every client has buffered.
-
 import { EventEmitter }  from 'events';
 import { PlaybackState } from './PlaybackState';
 import { Participant, RoomSnapshot, TrackQueueItem, SpatialPosition } from '../types';
+
+function matchesTrackUrl(itemUrl: string, trackUrl: string | null): boolean {
+  if (!trackUrl) return false;
+  if (itemUrl === trackUrl) return true;
+  
+  const extractId = (url: string): string | null => {
+    if (!url) return null;
+    const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
+    return null;
+  };
+
+  const idA = extractId(itemUrl);
+  const idB = extractId(trackUrl);
+  return idA !== null && idB !== null && idA === idB;
+}
 
 export class Room extends EventEmitter {
   private state:        PlaybackState          = PlaybackState.IDLE;
@@ -85,11 +98,16 @@ export class Room extends EventEmitter {
     this.snapshotTime = Date.now();
     this.state = PlaybackState.PLAYING;
 
+    const currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, this.trackUrl));
+
     this.emit('schedule', {
       atEpoch,
       fromPosition: this.timeline.pauseOffset,
       trackUrl: this.trackUrl,
       startEpoch: this.timeline.startEpoch,
+      title: currentItem?.title || 'Unknown Track',
+      artist: currentItem?.artist || 'Unknown Artist',
+      thumbnail: currentItem?.thumbnail || null,
     });
     this.emit('stateChanged', this.snapshot());
   }
@@ -117,24 +135,35 @@ export class Room extends EventEmitter {
   syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string): void {
     this.trackUrl = trackUrl;
     this.timeline.isPlaying = true;
-    this.timeline.startEpoch = startEpoch - positionMs;
-    this.timeline.pauseOffset = 0;
+    
+    // Ensure startEpoch has a minimum lead buffer of 1200ms so all devices have time to buffer before playback starts
+    const now = Date.now();
+    const MIN_LEAD_MS = 1200;
+    const targetEpoch = (!startEpoch || startEpoch < now + 200) ? (now + MIN_LEAD_MS) : Math.max(startEpoch, now + MIN_LEAD_MS);
+
+    this.timeline.startEpoch = targetEpoch - positionMs;
+    this.timeline.pauseOffset = positionMs / 1000;
     this.state = PlaybackState.PLAYING;
     this.position = positionMs;
     this.snapshotTime = Date.now();
     this.pendingPlay = false;
     
+    const currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, trackUrl));
+
     this.emit('schedule', {
         // Mobile App Keys
         positionMs: positionMs,
-        startTime: startEpoch,
+        startTime: targetEpoch,
         senderId: senderId,
         // Web App Keys
-        atEpoch: startEpoch,
+        atEpoch: targetEpoch,
         fromPosition: positionMs / 1000,
         startEpoch: this.timeline.startEpoch,
         // Shared
         trackUrl: trackUrl,
+        title: currentItem?.title || 'Unknown Track',
+        artist: currentItem?.artist || 'Unknown Artist',
+        thumbnail: currentItem?.thumbnail || null,
     });
     this.emit('stateChanged', this.snapshot());
   }
@@ -167,11 +196,16 @@ export class Room extends EventEmitter {
       const atEpoch = Date.now() + scheduleDelay;
       this.timeline.startEpoch = atEpoch - positionMs;
       
+      const currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, this.trackUrl));
+
       this.emit('schedule', {
         atEpoch,
         fromPosition: positionSec,
         trackUrl: this.trackUrl,
         startEpoch: this.timeline.startEpoch,
+        title: currentItem?.title || 'Unknown Track',
+        artist: currentItem?.artist || 'Unknown Artist',
+        thumbnail: currentItem?.thumbnail || null,
       });
     } else {
       this.timeline.pauseOffset = positionSec;
@@ -269,6 +303,23 @@ export class Room extends EventEmitter {
 
     if (!skipQueueEmit) this.emit('queueChanged', this.queueSnapshot());
     this.emit('trackSet', { trackUrl: next.trackUrl, title: next.title });
+    this.emit('stateChanged', this.snapshot());
+  }
+
+  resetRoom(): void {
+    this.queue = [];
+    this.trackUrl = null;
+    this.position = 0;
+    this.state = PlaybackState.IDLE;
+    this.timeline.isPlaying = false;
+    this.timeline.startEpoch = null;
+    this.timeline.pauseOffset = 0;
+    for (const p of this.participants.values()) {
+      p.isReady = false;
+      p.isBlocked = false;
+    }
+    this.snapshotTime = Date.now();
+    this.emit('queueChanged', []);
     this.emit('stateChanged', this.snapshot());
   }
 

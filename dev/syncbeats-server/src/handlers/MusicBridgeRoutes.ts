@@ -7,7 +7,22 @@ import play from 'play-dl';
 
 // Fallback search using RapidAPI with multi-key rotation, and play-dl as the ultimate fallback
 export async function matchToYouTubeFallback(title: string, artist: string): Promise<{ youtubeId: string; thumbnail: string } | null> {
-  // 1. Intelligent RapidAPI Key Rotation
+  // 1. Try yt-search (free, instant, no API keys or 403 limits)
+  try {
+    const searchStr = `${artist} - ${title} official audio`;
+    const r = await ytSearch(searchStr);
+    const video = r.videos?.[0];
+    if (video?.videoId) {
+      return {
+        youtubeId: video.videoId,
+        thumbnail: video.thumbnail || `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`,
+      };
+    }
+  } catch (e) {
+    // Fall back to RapidAPI / play-dl if yt-search fails
+  }
+
+  // 2. Intelligent RapidAPI Key Rotation
   const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
   if (keysStr) {
     const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
@@ -27,7 +42,6 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
         );
         
         if (res.status === 429 || res.status === 403) {
-          console.warn(`[BridgeRoutes] RapidAPI key ${key.substring(0, 5)}... failed with ${res.status}. Trying next...`);
           continue; 
         }
 
@@ -42,12 +56,12 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
           }
         }
       } catch (e) {
-        console.warn(`[BridgeRoutes] RapidAPI network error. Trying next key...`);
+        // next
       }
     }
   }
 
-  // 2. Ultimate Fallback: play-dl (if all RapidAPI keys fail or none exist)
+  // 3. Ultimate Fallback: play-dl
   try {
     const searchStr = `${title} ${artist} audio`;
     const ytResult = await play.search(searchStr, { limit: 1 });
@@ -61,7 +75,6 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
     }
     return null;
   } catch (error) {
-    console.error(`[BridgeRoutes] play-dl fallback error:`, error);
     return null;
   }
 }
@@ -112,7 +125,8 @@ async function enrichFromItunes(
     const batch = songs.slice(i, i + BATCH);
     await Promise.all(batch.map(async (s) => {
       try {
-        const q = encodeURIComponent(`${s.title} ${s.artist}`);
+        const hasUnknownArtist = !s.artist || s.artist === 'Unknown' || s.artist === 'Unknown Artist';
+        const q = encodeURIComponent(hasUnknownArtist ? s.title : `${s.title} ${s.artist}`);
         const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
         if (!res.ok) return;
         const data: any = await res.json();
@@ -126,6 +140,7 @@ async function enrichFromItunes(
         const duration = result.trackTimeMillis
           ? Math.round(result.trackTimeMillis / 1000)
           : undefined;
+        const resolvedArtist = result.artistName || null;
 
         // Update the Song record
         await prisma.song.update({
@@ -134,14 +149,18 @@ async function enrichFromItunes(
             ...(album ? { album } : {}),
             ...(artworkUrl ? { albumArt: artworkUrl } : {}),
             ...(duration ? { duration } : {}),
+            ...(hasUnknownArtist && resolvedArtist ? { artist: resolvedArtist } : {}),
           },
         });
 
-        // Also update PlaylistTrack thumbnails for this playlist
-        if (artworkUrl) {
+        // Also update PlaylistTrack thumbnails & artist for this playlist
+        if (artworkUrl || (hasUnknownArtist && resolvedArtist)) {
           await prisma.playlistTrack.updateMany({
-            where: { songId: s.songId, playlistId },
-            data: { thumbnail: artworkUrl },
+            where: { songId: s.songId },
+            data: {
+              ...(artworkUrl ? { thumbnail: artworkUrl } : {}),
+              ...(hasUnknownArtist && resolvedArtist ? { artist: resolvedArtist } : {}),
+            },
           });
         }
 

@@ -326,7 +326,13 @@ export function RoomDashboard({
   ];
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden select-none" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div 
+      className="fixed inset-0 flex flex-col overflow-hidden select-none h-[100dvh]" 
+      style={{ 
+        paddingTop: "max(env(safe-area-inset-top), 4px)", 
+        paddingBottom: "max(env(safe-area-inset-bottom), 4px)" 
+      }}
+    >
       <FullscreenPrompt />
       {/* ── Desktop Layout (md+) ───────────────────────────────────────────── */}
       <div className="hidden md:flex flex-1 min-h-0 p-4 pt-20 gap-3">
@@ -455,9 +461,9 @@ export function RoomDashboard({
                     title="Copy Invite Link"
                   >
                     {copied ? (
-                      <Check className="w-3.5 h-3.5" />
+                      <Check className="w-3 h-3" />
                     ) : (
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                     )}
                   </button>
                 </div>
@@ -490,9 +496,9 @@ export function RoomDashboard({
       </div>
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
-      <div className="flex md:hidden flex-col flex-1 min-h-0 pb-20 pt-20">
+      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-14 pb-2 px-1">
         {/* Mobile Header */}
-        <div className="flex items-center justify-between px-5 pb-3 border-b border-foreground/5 mb-3 shrink-0">
+        <div className="flex items-center justify-between px-3 pb-2.5 border-b border-foreground/5 mb-2 shrink-0">
           <div className="flex flex-col">
             <span className="text-[8px] font-bold tracking-widest text-foreground/40 uppercase">Room Code</span>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -557,8 +563,8 @@ export function RoomDashboard({
         <AnimatePresence mode="wait">
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2">
+              <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <SpatialPanel
                   myDeviceId={mySocketId ?? ""}
                   spatialDevices={spatialDevices}
@@ -579,12 +585,12 @@ export function RoomDashboard({
           )}
           {mobileTab === "playing" && (
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-3">
-              <div className="h-full flex flex-col gap-3">
-                <GlassCard className="flex-[3] p-5 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2">
+              <div className="h-full flex flex-col gap-2 min-h-0">
+                <GlassCard className="flex-[3] p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                   <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} onOpenVisuals={() => setShowVisualsPanel(true)} />
                 </GlassCard>
-                <GlassCard className="flex-[2] p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+                <GlassCard className="flex-[2] p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                   <RoomVisualizer
                     isPlaying={audio.isPlaying}
                     hasTrack={!!currentQueueItem}
@@ -595,8 +601,8 @@ export function RoomDashboard({
           )}
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-3">
-              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2">
+              <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
                   mySocketId={mySocketId}
@@ -611,8 +617,8 @@ export function RoomDashboard({
           )}
           {mobileTab === "queue" && (
             <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-3 flex flex-col gap-3">
-              <GlassCard className="h-full p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2 flex flex-col gap-2">
+              <GlassCard className="flex-1 min-h-0 p-3 flex flex-col" isPlaying={isPlaying}>
                 <RoomQueue
                   queue={queue}
                   isHost={isHost}
@@ -627,7 +633,7 @@ export function RoomDashboard({
                   onToggleRepeat={toggleRepeat}
                 />
               </GlassCard>
-              <GlassCard className="p-3 shrink-0">
+              <GlassCard className="p-2 shrink-0">
                 <EmojiReactions roomId={roomId} />
               </GlassCard>
             </motion.div>
@@ -636,7 +642,13 @@ export function RoomDashboard({
       </div>
 
       {/* ── Mobile One-Handed Radial Menu ───────────────────────────────────── */}
-      <div className="md:hidden fixed bottom-6 right-6 z-[9999] w-14 h-14 select-none pointer-events-none">
+      <div 
+        className="md:hidden fixed z-[9999] w-14 h-14 select-none pointer-events-none"
+        style={{
+          bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+          right: "16px"
+        }}
+      >
         <div className="absolute inset-0 pointer-events-auto flex items-center justify-center">
           <AnimatePresence>
             {menuOpen && mobileTabs.map((tab) => {

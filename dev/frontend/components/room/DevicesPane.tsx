@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Wifi, Volume2, Crown, Loader2, CheckCircle2, Activity,
+  Wifi, Volume2, Loader2, CheckCircle2, Activity,
   ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
@@ -27,16 +27,14 @@ function latencyColor(ms: number): string {
 function getDeviceIcon(name: string, type?: string) {
   const n = (name || "").toLowerCase();
   
-  // Explicit OS match
-  if (n.includes("iphone") || n.includes("android") || n.includes("ipad")) return Smartphone;
-  if (n.includes("mac") || n.includes("windows") || n.includes("linux")) return Laptop;
+  if (n.includes("iphone") || n.includes("android") || n.includes("ipad") || n.includes("phone")) return Smartphone;
+  if (n.includes("mac") || n.includes("windows") || n.includes("linux") || n.includes("laptop")) return Laptop;
   
-  // Type fallback
   switch (type) {
     case "mobile":     return Smartphone;
     case "speakers":   return Monitor;
     case "headphones": return Headphones;
-    default:           return Headphones;
+    default:           return Laptop;
   }
 }
 
@@ -47,13 +45,32 @@ function getFriendlyDeviceName(name: string, type?: string, fallback?: string) {
   if (n.includes("iphone") || f.includes("iphone")) return "iPhone";
   if (n.includes("ipad") || f.includes("ipad")) return "iPad";
   if (n.includes("mac") || f.includes("mac") || f.includes("macos")) return "Mac";
-  if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows";
+  if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows PC";
   if (n.includes("android") || f.includes("android")) return "Android";
   if (n.includes("linux") || f.includes("linux")) return "Linux";
   
-  if (type === "mobile") return "Mobile";
+  if (type === "mobile") return "Mobile Device";
   if (type === "speakers") return "Desktop";
-  return "Device";
+  return "Connected Device";
+}
+
+function parseParticipantNames(p: Participant) {
+  const nameParts = (p.displayName || "").split("::");
+  const userName = nameParts[0]?.trim() || p.displayName || "Guest";
+  const rawDeviceFromDisplayName = nameParts.length > 1 ? nameParts[1]?.trim() : undefined;
+
+  let deviceName = p.outputDeviceName?.trim();
+  if (!deviceName && rawDeviceFromDisplayName) {
+    deviceName = rawDeviceFromDisplayName;
+  }
+  if (!deviceName) {
+    deviceName = getFriendlyDeviceName("", p.outputDeviceType, rawDeviceFromDisplayName);
+  }
+
+  return {
+    userName,
+    deviceName,
+  };
 }
 
 function DeviceCard({
@@ -89,19 +106,12 @@ function DeviceCard({
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
       setExpanded(false);
-    }, 500); // 500ms delay before closing
+    }, 500);
   };
 
-  const nameParts = p.displayName.split("::");
-  const displayName = nameParts[0] ?? p.displayName;
-  const fallbackName = nameParts.length > 1 ? nameParts[1] : undefined;
-  const deviceLabel = getFriendlyDeviceName(p.outputDeviceName || "", p.outputDeviceType, fallbackName);
-  
-  const DevIcon = getDeviceIcon(deviceLabel, p.outputDeviceType ?? undefined);
-  
-  const initials = displayName.slice(0, 2).toUpperCase();
+  const { deviceName } = parseParticipantNames(p);
+  const DevIcon = getDeviceIcon(deviceName, p.outputDeviceType ?? undefined);
   const lat = Math.round(p.latency ?? 0);
-
   const canAdjustVol = isMySelf || isHost;
 
   return (
@@ -110,7 +120,7 @@ function DeviceCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className={`rounded-2xl border transition-colors duration-200 overflow-hidden ${
+      className={`rounded-xl border transition-colors duration-200 overflow-hidden ${
         isMe
           ? "border-foreground/[0.15] bg-foreground/[0.06]"
           : "border-foreground/[0.07] bg-foreground/[0.03] hover:bg-foreground/[0.05]"
@@ -120,36 +130,26 @@ function DeviceCard({
     >
       {/* Main row */}
       <button
-        className="w-full flex items-center gap-3 px-3.5 py-3 text-left"
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
         onClick={() => {
            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
            setExpanded(v => !v);
         }}
       >
-        {/* Avatar */}
-        <div className={`relative w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${
-          isMe ? "bg-linear-to-tr from-zinc-200 to-zinc-100 dark:from-zinc-800 dark:to-zinc-700 shadow-inner" : "bg-foreground/10 text-foreground/80"
+        {/* Device Icon */}
+        <div className={`relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+          isMe ? "bg-foreground/15 text-foreground shadow-xs" : "bg-foreground/10 text-foreground/70"
         }`}>
-          {initials}
-          {isHost && (
-            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 bg-amber-500 text-[6px] font-black uppercase tracking-widest text-amber-950 px-[3px] rounded-[3px] shadow-sm border-[1px] border-background z-10 leading-none py-[2px]">
-              Host
-            </div>
-          )}
-
-          {/* online dot */}
-          <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-background shadow-[0_0_6px_#4ade80]" />
+          <DevIcon className="w-4 h-4" />
+          {/* Online status indicator */}
+          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-background shadow-[0_0_4px_#4ade80]" />
         </div>
 
-        {/* Info */}
+        {/* Info - Device Name ONLY as primary title */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-foreground/90 truncate">{displayName}</span>
-            {isMe && <span className="text-[9px] font-black tracking-widest text-foreground/60 uppercase">You</span>}
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <DevIcon className="w-3 h-3 text-foreground/30 shrink-0" />
-            <span className="text-[11px] text-foreground/40 truncate">{deviceLabel}</span>
+            <span className="text-xs font-bold text-foreground/90 truncate">{deviceName}</span>
+            {isMe && <span className="text-[8px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 uppercase">Active</span>}
           </div>
         </div>
 
@@ -194,7 +194,7 @@ function DeviceCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-3.5 pb-3.5 space-y-3">
+            <div className="px-3 pb-3 space-y-2.5">
               {/* Volume slider */}
               {canAdjustVol && (
                 <div className="flex items-center gap-2">
@@ -220,17 +220,17 @@ function DeviceCard({
 
               {/* Stats grid */}
               <div className="grid grid-cols-2 gap-1.5">
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-2">
+                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5">
                   <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Latency</div>
-                  <div className="text-sm font-black" style={{ color: latencyColor(lat) }}>{lat}ms</div>
+                  <div className="text-xs font-black" style={{ color: latencyColor(lat) }}>{lat}ms</div>
                 </div>
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-2">
+                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5">
                   <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Jitter</div>
-                  <div className="text-sm font-black text-foreground/70">{Math.round(p.jitter ?? 0)}ms</div>
+                  <div className="text-xs font-black text-foreground/70">{Math.round(p.jitter ?? 0)}ms</div>
                 </div>
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-2 col-span-2">
+                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5 col-span-2">
                   <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Status</div>
-                  <div className="text-xs font-semibold text-foreground/70">
+                  <div className="text-[11px] font-semibold text-foreground/70">
                     {p.isBlocked ? "Blocked" : p.isReady ? "Synced & Playing" : "Buffering…"}
                   </div>
                 </div>
@@ -243,10 +243,50 @@ function DeviceCard({
   );
 }
 
+interface UserGroup {
+  key: string;
+  userName: string;
+  isHost: boolean;
+  isMe: boolean;
+  participants: Participant[];
+}
+
 export function DevicesPane({
   participants, mySocketId, hostId, myUserId, isHost,
   deviceSyncProgress, onVolumeChange,
 }: DevicesPaneProps) {
+  const userGroups = useMemo(() => {
+    const map = new Map<string, UserGroup>();
+
+    participants.forEach(p => {
+      const { userName } = parseParticipantNames(p);
+      const key = p.userId ? `user_${p.userId}` : `name_${userName.toLowerCase()}`;
+
+      let group = map.get(key);
+      if (!group) {
+        group = {
+          key,
+          userName,
+          isHost: false,
+          isMe: false,
+          participants: [],
+        };
+        map.set(key, group);
+      }
+
+      if ((p.userId && p.userId === hostId) || p.socketId === hostId) {
+        group.isHost = true;
+      }
+      if ((p.userId && p.userId === myUserId) || p.socketId === mySocketId) {
+        group.isMe = true;
+      }
+
+      group.participants.push(p);
+    });
+
+    return Array.from(map.values());
+  }, [participants, hostId, myUserId, mySocketId]);
+
   return (
     <div className="h-full flex flex-col min-h-0">
       {/* Header */}
@@ -259,30 +299,68 @@ export function DevicesPane({
         </div>
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">{participants.length} online</span>
+          <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+            {participants.length} {participants.length === 1 ? "device" : "devices"}
+          </span>
         </div>
       </div>
 
-      {/* Scrollable list */}
+      {/* Scrollable list segregated by User */}
       <div
-        className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0"
+        className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0"
         style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
       >
         <AnimatePresence>
-          {participants.map(p => {
-            const isMe = p.socketId === mySocketId;
-            const isThisHost = p.userId ? p.userId === hostId : p.socketId === hostId;
-            const progress = deviceSyncProgress[p.socketId] ?? 0;
+          {userGroups.map(group => {
+            const initials = group.userName.slice(0, 2).toUpperCase();
+
             return (
-              <DeviceCard
-                key={p.socketId}
-                p={p}
-                isMe={isMe}
-                isHost={isThisHost}
-                isMySelf={isMe}
-                syncProgress={progress}
-                onVolumeChange={onVolumeChange}
-              />
+              <div key={group.key} className="space-y-1.5">
+                {/* User Header */}
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black ${
+                      group.isMe ? "bg-foreground/20 text-foreground" : "bg-foreground/10 text-foreground/70"
+                    }`}>
+                      {initials}
+                    </div>
+                    <span className="font-bold text-foreground/90">{group.userName}</span>
+                    {group.isHost && (
+                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md">
+                        Host
+                      </span>
+                    )}
+                    {group.isMe && (
+                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase">
+                        (You)
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold text-foreground/40">
+                    {group.participants.length} {group.participants.length === 1 ? "device" : "devices"}
+                  </span>
+                </div>
+
+                {/* Devices belonging to this User */}
+                <div className="space-y-1.5 pl-2 border-l border-foreground/10">
+                  {group.participants.map(p => {
+                    const isMe = p.socketId === mySocketId;
+                    const isThisHost = (p.userId && p.userId === hostId) || p.socketId === hostId;
+                    const progress = deviceSyncProgress[p.socketId] ?? 0;
+                    return (
+                      <DeviceCard
+                        key={p.socketId}
+                        p={p}
+                        isMe={isMe}
+                        isHost={isThisHost}
+                        isMySelf={isMe}
+                        syncProgress={progress}
+                        onVolumeChange={onVolumeChange}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </AnimatePresence>
@@ -296,3 +374,4 @@ export function DevicesPane({
     </div>
   );
 }
+

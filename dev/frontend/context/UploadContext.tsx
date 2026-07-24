@@ -26,8 +26,8 @@ interface UploadCtx {
   isUploading:      boolean;
   uploadProgress:   number;
   setIsDragging:    (v: boolean) => void;
-  uploadFile:       (file: File, roomId: string) => Promise<UploadResult>;
-  downloadYoutubeToP2P: (roomId: string, videoId: string, title: string) => Promise<void>;
+  uploadFile:       (file: File, roomId: string, customTrackUrl?: string, artist?: string) => Promise<UploadResult>;
+  downloadYoutubeToP2P: (roomId: string, videoId: string, title: string, artist?: string) => Promise<void>;
   activeTransfers:  Record<string, TransferState>;
 }
 
@@ -41,7 +41,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [activeTransfers] = useState<Record<string, TransferState>>({});
 
   // 1. Seed Local File via WebSockets
-  const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string): Promise<UploadResult> => {
+  const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string, artist?: string): Promise<UploadResult> => {
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
@@ -62,7 +62,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       getSocket().emit('room:upload_progress', { roomId, title, progress: 80 });
 
       // Tell the backend to enqueue the custom URL
-      await roomsApi.enqueueMagnet(roomId, trackUrl, title);
+      await roomsApi.enqueueMagnet(roomId, trackUrl, title, artist);
       
       setUploadProgress(100);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
@@ -80,7 +80,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via WebSockets
-  const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string) => {
+  const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string, artist?: string) => {
     setIsUploading(true);
     setUploadProgress(5);
     getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
@@ -113,7 +113,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       const customTrackUrl = `ws-p2p:yt:${videoId}_${Date.now()}`;
       
       // Re-use the existing upload logic
-      await uploadFile(file, roomId, customTrackUrl);
+      await uploadFile(file, roomId, customTrackUrl, artist);
 
     } catch (err) {
       console.error("[UploadContext] downloadYoutubeToP2P failed:", err);

@@ -37,9 +37,18 @@ export class MusicBridgeService {
       const tracksData = await spotify.getTracks(playlistUrl);
       
       const tracks: TrackMetadata[] = tracksData.map((t: any) => {
+        let artistName = 'Unknown Artist';
+        if (t.artists && Array.isArray(t.artists) && t.artists.length > 0) {
+          artistName = t.artists.map((a: any) => a.name).join(', ');
+        } else if (t.artist && typeof t.artist === 'string') {
+          artistName = t.artist;
+        } else if (t.artists && typeof t.artists === 'string') {
+          artistName = t.artists;
+        }
+
         return {
           title: t.name,
-          artist: t.artist || 'Unknown',
+          artist: artistName,
           duration_ms: t.duration || 0,
           artworkUrl: preview.image || '',
           spotifyTrackId: t.uri ? t.uri.replace('spotify:track:', '') : undefined,

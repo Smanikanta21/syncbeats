@@ -12,9 +12,15 @@ struct PlaylistTrack: Identifiable {
     var isMatched: Bool
     var artworkURL: URL?
 
+    var artworkURLResolved: URL? {
+        guard let vid = youtubeId, !vid.isEmpty else { return artworkURL }
+        return PlayerEngine.shared.findLocalArtwork(for: vid) ?? artworkURL
+    }
+
     var playable: PlayableTrack? {
         guard let vid = youtubeId, !vid.isEmpty else { return nil }
-        return PlayableTrack(id: vid, title: title, artist: artist, artworkURL: artworkURL)
+        let resolvedArt = PlayerEngine.shared.findLocalArtwork(for: vid) ?? artworkURL
+        return PlayableTrack(id: vid, title: title, artist: artist, artworkURL: resolvedArt)
     }
 }
 
@@ -463,7 +469,7 @@ struct PlaylistDetailView: View {
 
         ZStack {
             Group {
-                if let url = track.artworkURL {
+                if let url = track.artworkURLResolved {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):

@@ -44,12 +44,16 @@ struct SongItem: Identifiable {
     let artworkURL: URL?
     let artworkColor: Color
     var youtubeId: String?
-    var artworkURLResolved: URL? { artworkURL }  // alias for clarity
+    var artworkURLResolved: URL? {
+        guard let vid = youtubeId, !vid.isEmpty else { return artworkURL }
+        return PlayerEngine.shared.findLocalArtwork(for: vid) ?? artworkURL
+    }
 
     /// Only songs with a resolved youtubeId can stream.
     var playable: PlayableTrack? {
         guard let vid = youtubeId, !vid.isEmpty else { return nil }
-        return PlayableTrack(id: vid, title: title, artist: artist, artworkURL: artworkURL)
+        let resolvedArt = PlayerEngine.shared.findLocalArtwork(for: vid) ?? artworkURL
+        return PlayableTrack(id: vid, title: title, artist: artist, artworkURL: resolvedArt)
     }
 }
 
@@ -343,7 +347,10 @@ struct SongsView: View {
 
     @ViewBuilder
     private func songRow(_ song: SongItem) -> some View {
-        let isCurrentSong = engine.current?.id != nil && engine.current?.id == song.youtubeId
+        let isCurrentSong = (engine.current?.id != nil && !engine.current!.id.isEmpty && engine.current?.id == song.youtubeId) || 
+                            (engine.current != nil && 
+                             engine.current!.title.localizedCaseInsensitiveCompare(song.title) == .orderedSame && 
+                             engine.current!.artist.localizedCaseInsensitiveCompare(song.artist) == .orderedSame)
 
         HStack(spacing: 0) {
             // Track Number / Speaker icon

@@ -47,7 +47,7 @@ struct IslandView: View {
         case .hidden: return collapsedWidth
         case .hovered: return hoveredWidth
         case .welcome, .roomWelcome: return welcomeWidth
-        case .miniPlayer: return miniPlayerWidth
+        case .miniPlayer: return miniPlayerWidth + (isHoveringMiniPlayerControl ? 12 : 0)
         case .player: return playerWidth
         case .downloading: return downloadingWidth
         }
@@ -58,7 +58,7 @@ struct IslandView: View {
         case .hidden: return notchRegion
         case .hovered: return notchRegion + hoveredDropHeight
         case .welcome, .roomWelcome: return notchRegion + welcomeDropHeight
-        case .miniPlayer: return notchRegion + miniPlayerDropHeight
+        case .miniPlayer: return notchRegion + (isHoveringMiniPlayerControl ? 8 : 0)
         case .player: return notchRegion + playerDropHeight
         case .downloading: return notchRegion + downloadingDropHeight
         }
@@ -74,6 +74,39 @@ struct IslandView: View {
 
     private var currentTopConcaveRadius: CGFloat {
         return 8
+    }
+
+    private var shadowColor: Color {
+        switch state.mode {
+        case .hidden:
+            return .clear
+        case .hovered:
+            return Color.black.opacity(0.4)
+        case .miniPlayer:
+            return Color.black.opacity(isHoveringMiniPlayerControl ? 0.4 : 0.15)
+        case .player, .welcome, .roomWelcome, .downloading:
+            return Color.black.opacity(0.45)
+        }
+    }
+    
+    private var shadowRadius: CGFloat {
+        switch state.mode {
+        case .hidden: return 0
+        case .hovered: return 12
+        case .miniPlayer: return isHoveringMiniPlayerControl ? 12 : 4
+        case .player: return 20
+        case .welcome, .roomWelcome, .downloading: return 14
+        }
+    }
+
+    private var shadowY: CGFloat {
+        switch state.mode {
+        case .hidden: return 0
+        case .hovered: return 5
+        case .miniPlayer: return isHoveringMiniPlayerControl ? 5 : 2
+        case .player: return 8
+        case .welcome, .roomWelcome, .downloading: return 6
+        }
     }
 
     var body: some View {
@@ -99,7 +132,7 @@ struct IslandView: View {
                             .padding(.bottom, 10)
                     }
                 }
-                .overlay(alignment: .center) {
+                .overlay(alignment: .top) {
                     if state.mode == .miniPlayer {
                         miniPlayerView
                     }
@@ -123,6 +156,7 @@ struct IslandView: View {
                     }
                 }
             }
+            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
             .animation(
                 .spring(response: 0.6, dampingFraction: 0.75, blendDuration: 0.1),
                 value: state.mode
@@ -130,12 +164,8 @@ struct IslandView: View {
             .onChange(of: state.mode) { oldMode, newMode in
                 print("[IslandView] mode changed: \(oldMode) → \(newMode)")
                 if newMode == .player {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        if state.mode == .player {
-                            withAnimation(.easeIn(duration: 0.15)) {
-                                showPlayerContent = true
-                            }
-                        }
+                    withAnimation(.easeIn(duration: 0.15)) {
+                        showPlayerContent = true
                     }
                 } else {
                     withAnimation(.easeOut(duration: 0.05)) {
@@ -189,9 +219,13 @@ struct IslandView: View {
                     Button(action: {
                         engine.togglePlayPause()
                     }) {
-                        Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
+                        if engine.isLoading || engine.isBuffering {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                        }
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -327,8 +361,15 @@ struct IslandView: View {
                         .buttonStyle(.plain)
 
                         Button(action: { engine.togglePlayPause() }) {
-                            Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 24))
+                            ZStack {
+                                if engine.isLoading || engine.isBuffering {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 24))
+                                }
+                            }
+                            .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
 

@@ -212,7 +212,59 @@ export class RoomRepository {
       orderBy: { queueIndex: 'asc' },
       include: { uploader: { select: { name: true } } }
     });
-    return items.map((item) => this.mapQueueItem(item));
+
+    // Auto-purge any corrupted legacy items (e.g. truncated YouTube IDs < 11 chars)
+    const validItems: typeof items = [];
+    const corruptedIds: string[] = [];
+
+    for (const item of items) {
+      if (item.trackUrl) {
+        const m = item.trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?&]+)/);
+        if (m && m[1].length < 11) {
+          console.warn(`[RoomRepository] Auto-purging corrupted legacy queue item ${item.id} with truncated trackUrl: ${item.trackUrl}`);
+          corruptedIds.push(item.id);
+          continue;
+        }
+      }
+      validItems.push(item);
+    }
+
+    if (corruptedIds.length > 0) {
+      void prisma.roomQueueItem.deleteMany({
+        where: { id: { in: corruptedIds } }
+      }).catch(err => console.warn('[RoomRepository] Failed to delete corrupted queue items:', err));
+    }
+
+    const mapped = validItems.map((item) => this.mapQueueItem(item));
+
+    // Enrich with thumbnails from the Song catalog
+    if (mapped.length > 0) {
+      const titles = mapped.map(m => m.title);
+      const songs = await prisma.song.findMany({
+        where: { title: { in: titles } },
+        select: { title: true, artist: true, albumArt: true, youtubeThumbnail: true }
+      });
+      const songMap = new Map<string, { albumArt?: string | null; youtubeThumbnail?: string | null }>();
+      for (const s of songs) {
+        // Key by lowercase title+artist for matching
+        const key = `${s.title.toLowerCase()}::${(s.artist || '').toLowerCase()}`;
+        songMap.set(key, s);
+        // Also key by title only as fallback
+        if (!songMap.has(s.title.toLowerCase())) {
+          songMap.set(s.title.toLowerCase(), s);
+        }
+      }
+      for (const item of mapped) {
+        if (item.thumbnail) continue; // already has one
+        const exactKey = `${item.title.toLowerCase()}::${(item.artist || '').toLowerCase()}`;
+        const match = songMap.get(exactKey) || songMap.get(item.title.toLowerCase());
+        if (match) {
+          item.thumbnail = match.albumArt || match.youtubeThumbnail || undefined;
+        }
+      }
+    }
+
+    return mapped;
   }
 
   async getRoomFileNames(roomId: string): Promise<string[]> {
@@ -280,8 +332,18 @@ export class RoomRepository {
         });
       }
 
+      // Enrich with thumbnail from Song catalog
+      const mapped = this.mapQueueItem(created);
+      const song = await tx.song.findFirst({
+        where: { title: input.title, ...(input.artist ? { artist: input.artist } : {}) },
+        select: { albumArt: true, youtubeThumbnail: true }
+      });
+      if (song) {
+        mapped.thumbnail = song.albumArt || song.youtubeThumbnail || undefined;
+      }
+
       return {
-        item: this.mapQueueItem(created),
+        item: mapped,
         activated,
       };
     });
@@ -341,6 +403,12 @@ export class RoomRepository {
            }
         }
       }
+    });
+  }
+
+  async clearEntireQueue(roomId: string): Promise<void> {
+    await prisma.roomQueueItem.deleteMany({
+      where: { roomId }
     });
   }
 
@@ -412,7 +480,7 @@ export class RoomRepository {
       }
 
       if (!next) {
-        await tx.roomQueueItem.update({
+        await tx.roomQueueItem.updateMany({
           where: { id: current.id },
           data: { isCurrent: false },
         });
@@ -438,11 +506,11 @@ export class RoomRepository {
         });
       } else {
         await Promise.all([
-          tx.roomQueueItem.update({
+          tx.roomQueueItem.updateMany({
             where: { id: current.id },
             data: { isCurrent: false },
           }),
-          tx.roomQueueItem.update({
+          tx.roomQueueItem.updateMany({
             where: { id: next.id },
             data: { isCurrent: true },
           }),
@@ -478,11 +546,11 @@ export class RoomRepository {
       if (!prev) return undefined;
 
       await Promise.all([
-        tx.roomQueueItem.update({
+        tx.roomQueueItem.updateMany({
           where: { id: current.id },
           data: { isCurrent: false },
         }),
-        tx.roomQueueItem.update({
+        tx.roomQueueItem.updateMany({
           where: { id: prev.id },
           data: { isCurrent: true },
         }),
@@ -553,7 +621,7 @@ export class RoomRepository {
         data: { isCurrent: false },
       });
 
-      await tx.roomQueueItem.update({
+      await tx.roomQueueItem.updateMany({
         where: { id: target.id },
         data: { isCurrent: true },
       });
@@ -597,7 +665,7 @@ export class RoomRepository {
       await this.advanceQueue(roomId, item.trackUrl);
     }
 
-    await prisma.roomQueueItem.delete({ where: { id: itemId } });
+    await prisma.roomQueueItem.deleteMany({ where: { id: itemId } });
     return true;
   }
 

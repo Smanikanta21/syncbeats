@@ -120,6 +120,17 @@ final class RoomSocket {
 
     // MARK: - Transport (round-trips through the server)
 
+    func schedulePlayback(trackUrl: String, positionMs: Int = 0, startTime: Double? = nil) {
+        guard let id = roomId else { return }
+        let now = startTime ?? serverNowMs()
+        socket?.emit("playback:schedule", [
+            "roomId": id,
+            "trackUrl": trackUrl,
+            "positionMs": positionMs,
+            "startTime": now
+        ])
+    }
+
     func play() {
         guard let id = roomId else { return }
         socket?.emit("playback:play", ["roomId": id])
@@ -183,6 +194,14 @@ final class RoomSocket {
             Task { @MainActor in self?.applySnapshot(data.first) }
         }
 
+        sock.on("room:queueChanged") { [weak self] data, _ in
+            Task { @MainActor in
+                guard let dict = data.first as? [String: Any],
+                      let rawQueue = dict["queue"] as? [[String: Any]] else { return }
+                PlayerEngine.shared.updateRoomQueue(rawQueue)
+            }
+        }
+
         sock.on("room:participantJoined") { [weak self] data, _ in
             Task { @MainActor in
                 guard let dict = data.first as? [String: Any],
@@ -208,14 +227,23 @@ final class RoomSocket {
         sock.on("playback:schedule") { [weak self] data, _ in
             Task { @MainActor in
                 guard let self, let dict = data.first as? [String: Any] else { return }
-                let startEpoch = (dict["startEpoch"] as? NSNumber)?.doubleValue ?? 0
-                let fromPosition = (dict["fromPosition"] as? NSNumber)?.doubleValue ?? 0
+                let atEpoch = (dict["atEpoch"] as? NSNumber)?.doubleValue
+                    ?? (dict["startTime"] as? NSNumber)?.doubleValue
+                    ?? (dict["startEpoch"] as? NSNumber)?.doubleValue ?? 0
+                let fromPosition = (dict["fromPosition"] as? NSNumber)?.doubleValue
+                    ?? (((dict["positionMs"] as? NSNumber)?.doubleValue ?? 0) / 1000.0)
                 let trackUrl = dict["trackUrl"] as? String
+                let title = dict["title"] as? String
+                let artist = dict["artist"] as? String
+                let thumbnail = dict["thumbnail"] as? String
                 PlayerEngine.shared.applyRoomSchedule(
-                    startEpochMs: startEpoch,
+                    startEpochMs: atEpoch,
                     fromPositionSec: fromPosition,
                     trackUrl: trackUrl,
-                    clockOffsetMs: self.clockOffset
+                    clockOffsetMs: self.clockOffset,
+                    title: title,
+                    artist: artist,
+                    thumbnail: thumbnail
                 )
             }
         }
@@ -258,12 +286,13 @@ final class RoomSocket {
 
     private func emitJoin() {
         guard let id = roomId else { return }
+        let computerName = Host.current().localizedName ?? "Mac"
         var payload: [String: Any] = ["roomId": id, "isReady": true, "deviceId": DeviceIdentity.shared.id]
         if let user = currentUser {
-            payload["displayName"] = user.displayName
+            payload["displayName"] = "\(user.displayName)::\(computerName)"
             payload["userId"] = user.id
         } else {
-            payload["displayName"] = "Mac"
+            payload["displayName"] = "Guest::\(computerName)"
         }
         socket?.emit("room:join", payload)
     }

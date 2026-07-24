@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play } from "lucide-react";
+import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
 import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
 import { 
@@ -55,7 +55,7 @@ function cleanTitle(t: string) {
 
 function ytThumb(trackUrl: string | null | undefined) {
   if (!trackUrl) return null;
-  const m = trackUrl.match(/^ws-p2p:yt:([^_]+)_/);
+  const m = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
   return m ? `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg` : null;
 }
 
@@ -148,6 +148,16 @@ export function RoomQueue({
     }
   };
 
+  const handleResetRoom = async () => {
+    if (confirm("Reset Room? This will stop playback and clear the room queue completely.")) {
+      try {
+        await roomsApi.resetRoom(roomId);
+      } catch (err) {
+        console.error("Failed to reset room", err);
+      }
+    }
+  };
+
   const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
 
   // Find the actively dragged item for overlay
@@ -192,6 +202,13 @@ export function RoomQueue({
               <Trash2 className={cn('w-4', 'h-4')} />
             </button>
           )}
+          {/* Reset Room */}
+          <button onClick={handleResetRoom}
+            className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-amber-400', 'transition-colors')}
+            title="Reset Room (Clear Queue & State)"
+          >
+            <RotateCcw className={cn('w-4', 'h-4')} />
+          </button>
           {/* Add Song */}
           {onAddSong && (
             <button onClick={onAddSong}

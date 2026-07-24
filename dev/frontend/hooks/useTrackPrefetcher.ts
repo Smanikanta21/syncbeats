@@ -28,8 +28,13 @@ function saveSpeedEstimate(bps: number) {
 
 // ── Extract videoId from ws-p2p URL ───────────────────────────────────────────
 export function extractVideoId(trackUrl: string): string | null {
-  const m = trackUrl.match(/^ws-p2p:yt:([^_]+)_/);
-  return m ? m[1] : null;
+  if (!trackUrl) return null;
+  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) return ytMatch[1];
+  const paramMatch = trackUrl.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/);
+  if (paramMatch) return paramMatch[1];
+  const idMatch = trackUrl.match(/([a-zA-Z0-9_-]{11})/);
+  return idMatch ? idMatch[1] : null;
 }
 
 // ── State exposed to callers ──────────────────────────────────────────────────
@@ -123,7 +128,7 @@ export function useTrackPrefetcher({
     if (!videoId) {
        // If it's still 'youtube:XYZ' instead of 'ws-p2p:yt:'
        let parsedId = null;
-       const m = resolvedUrl.match(/^youtube:([^_]+)/);
+       const m = resolvedUrl.match(/^youtube:([a-zA-Z0-9_-]{11})/);
        if (m) parsedId = m[1];
        else return;
        
@@ -131,7 +136,7 @@ export function useTrackPrefetcher({
     }
 
     const finalVideoId = extractVideoId(resolvedUrl);
-    if (!finalVideoId) return;
+    if (!finalVideoId || finalVideoId.length < 11) return;
 
     const { getTrack, saveTrack } = await import("../lib/idb");
     const existing = await getTrack(resolvedUrl);

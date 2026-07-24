@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { getSocket } from '../lib/socket';
-import { roomsApi, RoomDetailsResponse } from '../lib/api';
+import { roomsApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
@@ -90,7 +90,22 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     if (trackUrl) {
       console.log("[DEBUG] getTrackTitle searching for url:", trackUrl);
       console.log("[DEBUG] queue urls:", queue.map(i => i.trackUrl));
-      const match = queue.find((item) => item.trackUrl === trackUrl);
+      
+      const extractId = (url: string): string | null => {
+        if (!url) return null;
+        const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
+        if (m) return m[1];
+        if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
+        return null;
+      };
+
+      const playingId = extractId(trackUrl);
+      const match = queue.find((item) => {
+        if (item.trackUrl === trackUrl) return true;
+        const itemId = extractId(item.trackUrl);
+        return playingId !== null && itemId !== null && playingId === itemId;
+      });
+
       if (match?.title) {
         console.log("[DEBUG] getTrackTitle found match:", match.title);
         return match.title;
@@ -362,6 +377,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         roomId, 
         displayName, 
         userId,
+        deviceId: getDeviceId(),
         isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
       });
       runNtpBurst();

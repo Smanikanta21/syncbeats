@@ -2,10 +2,16 @@ import SwiftUI
 
 struct NowPlayingBar: View {
     @Environment(\.colorScheme) var scheme
+    @Environment(AuthStore.self) var authStore
+    @Binding var showQueue: Bool
     @State private var engine = PlayerEngine.shared
     @State private var showStats = false
     @State private var isScrubbing = false
     @State private var scrubValue: Double = 0
+
+    @State private var isStartingRoom = false
+    @State private var showSignInReminder = false
+    let roomSocket = RoomSocket.shared
 
     private var track: PlayableTrack? { engine.current }
 
@@ -42,7 +48,7 @@ struct NowPlayingBar: View {
 
                     Button(action: { engine.togglePlayPause() }) {
                         ZStack {
-                            if engine.isLoading {
+                            if engine.isLoading || engine.isBuffering {
                                 ProgressView().controlSize(.small)
                             } else {
                                 Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
@@ -106,29 +112,101 @@ struct NowPlayingBar: View {
                 .frame(width: 20, height: 20)
                 .opacity(engine.isPlaying ? 1 : 0.3)
 
-                // Sync latency popover trigger
-                Button(action: { showStats.toggle() }) {
-                    Text("sync 14ms")
-                        .font(Theme.Fonts.mono(size: 10))
+                // Queue toggle button
+                Button(action: {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showQueue.toggle()
+                    }
+                }) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(showQueue ? Theme.Colors.primaryAccent(for: scheme) : Theme.Colors.textMuted(for: scheme))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Queue")
+
+                // SyncBeats Mode Controller Button
+                if let roomId = roomSocket.roomId {
+                    // Sync active state — clicking toggles stats popover
+                    Button(action: { showStats.toggle() }) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                            Text("sync \(roomSocket.latencyMs)ms")
+                                .font(Theme.Fonts.mono(size: 10))
+                        }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
                         .background(Color.green.opacity(0.12))
                         .foregroundColor(.green)
                         .cornerRadius(Theme.Radius.pillBadge)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showStats) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Network Synchronization")
-                            .font(.system(size: 12, weight: .bold))
-
-                        Text("Offset drift: 14 ms")
-                        Text("RTT Latency: 18 ms")
-                        Text("Jitter variance: 2.1 ms")
                     }
-                    .font(.caption)
-                    .padding()
-                    .frame(width: 180)
+                    .buttonStyle(.plain)
+                    .help("SyncBeats Active: View Stats / Disconnect")
+                    .popover(isPresented: $showStats) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("SyncBeats Active")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Room Code: \(roomId)")
+                                Text("Offset drift: \(Int(roomSocket.clockOffset)) ms")
+                                Text("RTT Latency: \(roomSocket.latencyMs) ms")
+                            }
+                            .font(Theme.Fonts.mono(size: 10))
+                            .foregroundColor(.secondary)
+                            
+                            Divider()
+                            
+                            Button(role: .destructive, action: {
+                                showStats = false
+                                roomSocket.leaveRoom()
+                            }) {
+                                Text("Leave Room")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                        .padding(12)
+                        .frame(width: 180)
+                    }
+                } else {
+                    // Sync inactive state — clicking starts default room / joins
+                    Button(action: {
+                        if isStartingRoom { return }
+                        toggleSyncMode()
+                    }) {
+                        HStack(spacing: 4) {
+                            if isStartingRoom {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .scaleEffect(0.6)
+                                    .frame(width: 10, height: 10)
+                            } else {
+                                Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .font(.system(size: 10))
+                            }
+                            Text(isStartingRoom ? "Syncing..." : "SyncBeats")
+                                .font(Theme.Fonts.body(size: 10).weight(.medium))
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(Theme.Colors.primaryAccent(for: scheme).opacity(0.12))
+                        .foregroundColor(Theme.Colors.primaryAccent(for: scheme))
+                        .cornerRadius(Theme.Radius.pillBadge)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Turn on SyncBeats Mode")
+                    .popover(isPresented: $showSignInReminder) {
+                        Text("Please sign in first to use SyncBeats mode.")
+                            .font(.system(size: 11))
+                            .padding(10)
+                    }
                 }
             }
             .frame(width: 200, alignment: .trailing)
@@ -171,6 +249,39 @@ struct NowPlayingBar: View {
         return base[i % base.count]
     }
 
+    private func toggleSyncMode() {
+        guard case let .signedIn(user) = authStore.state else {
+            showSignInReminder = true
+            return
+        }
+        
+        isStartingRoom = true
+        roomSocket.currentUser = (id: user.id, displayName: user.name)
+        
+        Task {
+            do {
+                struct DefaultRoomResponse: Decodable { let roomId: String }
+                struct EmptyBody: Encodable {}
+                let response: DefaultRoomResponse = try await APIClient.shared.post(path: "/rooms/default", body: EmptyBody())
+                
+                await MainActor.run {
+                    roomSocket.joinRoom(response.roomId)
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("RoomJoined"),
+                        object: nil,
+                        userInfo: ["roomId": response.roomId]
+                    )
+                    isStartingRoom = false
+                }
+            } catch {
+                print("[NowPlayingBar] Failed to auto-start room:", error)
+                await MainActor.run {
+                    isStartingRoom = false
+                }
+            }
+        }
+    }
+
     private static func fmt(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds > 0 else { return "0:00" }
         let t = Int(seconds)
@@ -179,6 +290,6 @@ struct NowPlayingBar: View {
 }
 
 #Preview {
-    NowPlayingBar()
+    NowPlayingBar(showQueue: .constant(false))
         .preferredColorScheme(.dark)
 }
