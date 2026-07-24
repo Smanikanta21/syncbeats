@@ -246,8 +246,55 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }, 50);
   }, []);
 
+  // ── Media Session & Background Keep-Alive Audio Engine ─────────────────────
+  const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
-    const unlock = () => { unlockAudio(); };
+    if (typeof window === "undefined") return;
+    if (!keepAliveAudioRef.current) {
+      const audio = new Audio();
+      // 0.1s silent WAV data URI
+      audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+      audio.loop = true;
+      audio.volume = 0.001; // Silent, non-zero to retain OS background audio privileges
+      keepAliveAudioRef.current = audio;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    if (isPlaying) {
+      keepAliveAudioRef.current?.play().catch(() => {});
+      navigator.mediaSession.playbackState = "playing";
+    } else {
+      keepAliveAudioRef.current?.pause();
+      navigator.mediaSession.playbackState = "paused";
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    if (trackTitle || trackUrl) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: trackTitle || "SyncBeats Track",
+          artist: trackArtist || "SyncBeats Room",
+          album: "SyncBeats",
+          artwork: [
+            { src: "/syncbeats-icon.svg", sizes: "512x512", type: "image/svg+xml" }
+          ]
+        });
+      } catch (e) {}
+    }
+  }, [trackTitle, trackArtist, trackUrl]);
+
+  useEffect(() => {
+    const unlock = () => { 
+      unlockAudio();
+      keepAliveAudioRef.current?.play().catch(() => {});
+    };
     document.addEventListener('touchstart', unlock, { passive: true });
     document.addEventListener('click', unlock, { passive: true });
     document.addEventListener('pointerdown', unlock, { passive: true });
