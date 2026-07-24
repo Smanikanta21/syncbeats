@@ -656,17 +656,33 @@ export class RoomRepository {
   }
 
   async removeQueueItem(roomId: string, itemId: string): Promise<boolean> {
-    const item = await prisma.roomQueueItem.findUnique({ where: { id: itemId } });
-    if (!item) return true; // Already deleted
-    if (item.roomId !== roomId) return false;
-
-    if (item.isCurrent) {
-      // Advance to the next track before deleting this one so we don't break playback sequence
-      await this.advanceQueue(roomId, item.trackUrl);
+    try {
+      const item = await prisma.roomQueueItem.findFirst({
+        where: {
+          roomId,
+          OR: [
+            { id: itemId },
+            { trackUrl: itemId }
+          ]
+        }
+      });
+      if (item && item.isCurrent) {
+        await this.advanceQueue(roomId, item.trackUrl);
+      }
+      await prisma.roomQueueItem.deleteMany({
+        where: {
+          roomId,
+          OR: [
+            { id: itemId },
+            { trackUrl: itemId }
+          ]
+        }
+      });
+      return true;
+    } catch (err) {
+      console.error('[RoomRepository] removeQueueItem error:', err);
+      return true;
     }
-
-    await prisma.roomQueueItem.deleteMany({ where: { id: itemId } });
-    return true;
   }
 
   async clearUpcomingQueue(roomId: string): Promise<boolean> {

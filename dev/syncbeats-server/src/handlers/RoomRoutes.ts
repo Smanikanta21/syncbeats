@@ -51,6 +51,32 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // GET /rooms/youtube/details?videoId=ID
+  router.get('/youtube/details', async (req: Request, res: Response) => {
+    try {
+      const { videoId } = req.query;
+      if (!videoId || typeof videoId !== 'string') {
+        res.status(400).json({ error: 'Missing videoId' });
+        return;
+      }
+      const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}&format=json`;
+      const response = await fetch(oembedUrl);
+      if (!response.ok) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+      const data: any = await response.json();
+      res.json({
+        title: data.title,
+        artist: data.author_name || 'YouTube',
+        thumbnail: data.thumbnail_url || `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg`,
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // GET /rooms/youtube-suggest
   router.get('/youtube/suggest', async (req: Request, res: Response) => {
     try {

@@ -95,7 +95,7 @@ async function request<T>(
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
       if (typeof window !== 'undefined') {
-        window.alert(`[API Error] ${errorMsg}`);
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message: `API Error: ${errorMsg}`, type: "error" } }));
       }
     }
     throw new ApiError(errorMsg, res.status);
@@ -268,6 +268,9 @@ export const usersApi = {
 };
 
 export const roomsApi = {
+  default: () =>
+    request<{ roomId: string; createdAt: string; isNew?: boolean }>('/rooms/default', { method: 'POST', body: '{}' }, true),
+
   create: () =>
     request<{ roomId: string; createdAt: string }>('/rooms', { method: 'POST', body: '{}' }, true),
 
@@ -318,6 +321,11 @@ export const roomsApi = {
   clearQueue: (roomId: string) =>
     request<any>(`/rooms/${roomId}/queue`, {
       method: 'DELETE',
+    }, true),
+
+  reset: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/reset`, {
+      method: 'POST',
     }, true),
 
   resetRoom: (roomId: string) =>

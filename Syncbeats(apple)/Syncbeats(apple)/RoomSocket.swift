@@ -120,15 +120,19 @@ final class RoomSocket {
 
     // MARK: - Transport (round-trips through the server)
 
-    func schedulePlayback(trackUrl: String, positionMs: Int = 0, startTime: Double? = nil) {
+    func schedulePlayback(trackUrl: String, positionMs: Int = 0, startTime: Double? = nil, title: String? = nil, artist: String? = nil, thumbnail: String? = nil) {
         guard let id = roomId else { return }
         let now = startTime ?? serverNowMs()
-        socket?.emit("playback:schedule", [
+        var payload: [String: Any] = [
             "roomId": id,
             "trackUrl": trackUrl,
             "positionMs": positionMs,
             "startTime": now
-        ])
+        ]
+        if let t = title { payload["title"] = t }
+        if let a = artist { payload["artist"] = a }
+        if let thumb = thumbnail { payload["thumbnail"] = thumb }
+        socket?.emit("playback:schedule", payload)
     }
 
     func play() {
@@ -156,9 +160,71 @@ final class RoomSocket {
         socket?.emit("playback:prev", ["roomId": id])
     }
 
+    func removeFromQueue(itemId: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:removeFromQueue", ["roomId": id, "itemId": itemId])
+        Task {
+            try? await APIClient.shared.deleteNoResponse(path: "/rooms/\(id)/queue/\(itemId)")
+        }
+    }
+
+    func resetRoom() {
+        guard let id = roomId else { return }
+        socket?.emit("room:reset", ["roomId": id])
+        Task {
+            struct EmptyBody: Encodable {}
+            try? await APIClient.shared.postNoResponse(path: "/rooms/\(id)/reset", body: EmptyBody())
+        }
+    }
+
     func setReady(_ ready: Bool) {
         guard let id = roomId else { return }
         socket?.emit("room:clientReady", ["roomId": id, "isReady": ready])
+    }
+
+    func notifyTrackEnded(trackUrl: String) {
+        guard let id = roomId else { return }
+        socket?.emit("playback:ended", ["roomId": id, "trackUrl": trackUrl])
+    }
+
+    func jumpToQueueItem(trackId: String) {
+        guard let id = roomId else { return }
+        socket?.emit("playback:jumpTo", ["roomId": id, "trackId": trackId])
+    }
+
+    func toggleShuffle(_ shuffle: Bool) {
+        guard let id = roomId else { return }
+        socket?.emit("room:toggleShuffle", ["roomId": id, "shuffle": shuffle])
+    }
+
+    func toggleRepeat(_ repeatMode: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:toggleRepeat", ["roomId": id, "repeatMode": repeatMode])
+    }
+
+    func approveJoin(targetSocketId: String, displayName: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:approveJoin", ["roomId": id, "targetSocketId": targetSocketId, "displayName": displayName])
+    }
+
+    func denyJoin(targetSocketId: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:denyJoin", ["roomId": id, "targetSocketId": targetSocketId])
+    }
+
+    func sendChat(message: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:chat", ["roomId": id, "message": message])
+    }
+
+    func sendReaction(emoji: String) {
+        guard let id = roomId else { return }
+        socket?.emit("room:reaction", ["roomId": id, "emoji": emoji])
+    }
+
+    func reportStats(latency: Double, jitter: Double) {
+        guard let id = roomId else { return }
+        socket?.emit("sync:stats", ["roomId": id, "latency": latency, "jitter": jitter])
     }
 
     /// Current server time estimate in ms (local Date + measured offset).
@@ -192,6 +258,13 @@ final class RoomSocket {
 
         sock.on("room:stateChanged") { [weak self] data, _ in
             Task { @MainActor in self?.applySnapshot(data.first) }
+        }
+
+        sock.on("room:reset") { [weak self] _, _ in
+            Task { @MainActor in
+                PlayerEngine.shared.resetForRoom()
+                PlayerEngine.shared.updateRoomQueue([])
+            }
         }
 
         sock.on("room:queueChanged") { [weak self] data, _ in
@@ -361,6 +434,7 @@ final class RoomSocket {
 
         if !rtts.isEmpty {
             latencyMs = Int(rtts.reduce(0, +) / Double(rtts.count))
+            reportStats(latency: Double(latencyMs), jitter: 0)
         }
     }
 

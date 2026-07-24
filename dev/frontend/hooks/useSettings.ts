@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { authApi } from "../lib/api";
 
@@ -59,6 +59,7 @@ const SETTINGS_STORAGE_KEY = "syncbeats_app_settings";
 export function useSettings() {
   const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS);
   const auth = useAuth();
+  const syncTimeoutRef = useRef<any>(null);
 
   // Load from local storage initially
   useEffect(() => {
@@ -141,12 +142,14 @@ export function useSettings() {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
     window.dispatchEvent(new Event("syncbeats-settings-updated"));
 
-    // Sync to backend if logged in
+    // Sync to backend if logged in (debounced to prevent high-frequency PATCH flooding)
     if (auth?.user) {
-      // Small fire-and-forget async update (debounce could be added here if needed)
-      authApi.updateSettings(newSettings).catch((err) => {
-        console.warn("Failed to sync settings to server:", err);
-      });
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = setTimeout(() => {
+        authApi.updateSettings(newSettings).catch((err) => {
+          console.warn("Failed to sync settings to server:", err);
+        });
+      }, 500);
     }
   };
 

@@ -131,9 +131,40 @@ final class PlayerEngine {
             print("[PlayerEngine] Guard failed — newQueue.isEmpty=\(newQueue.isEmpty), startAt=\(startAt), count=\(newQueue.count)")
             return
         }
+        if RoomSocket.shared.isInRoom {
+            let track = newQueue[startAt]
+            if let queueItemId = track.queueItemId {
+                print("[PlayerEngine] In room mode — jumping to queue item: \(queueItemId)")
+                RoomSocket.shared.jumpToQueueItem(trackId: queueItemId)
+            } else {
+                print("[PlayerEngine] In room mode — scheduling playback for: \(track.title)")
+                let thumb = track.artworkURL?.absoluteString ?? "https://i.ytimg.com/vi/\(track.id)/hqdefault.jpg"
+                RoomSocket.shared.schedulePlayback(
+                    trackUrl: "youtube:\(track.id)",
+                    title: track.title,
+                    artist: track.artist,
+                    thumbnail: thumb
+                )
+            }
+            return
+        }
         queue = newQueue
         index = startAt
         loadCurrent(autoPlay: true)
+    }
+
+    func removeFromLocalQueue(trackId: String) {
+        self.queue.removeAll { $0.id == trackId }
+        if self.current?.id == trackId {
+            if !self.queue.isEmpty {
+                self.current = self.queue[0]
+                loadCurrent(autoPlay: isPlaying)
+            } else {
+                self.current = nil
+                player.pause()
+                isPlaying = false
+            }
+        }
     }
 
     func togglePlayPause() {
@@ -162,6 +193,21 @@ final class PlayerEngine {
         print("[PlayerEngine] pause")
         player.pause()
         isPlaying = false
+    }
+
+    /// Stops playback and wipes all track/queue state. Called when a room:reset event arrives.
+    func resetForRoom() {
+        print("[PlayerEngine] resetForRoom — clearing all state")
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        queue        = []
+        index        = 0
+        current      = nil
+        isPlaying    = false
+        isLoading    = false
+        currentTime  = 0
+        duration     = 0
+        didPrefetchNext = false
     }
 
     func next() {
@@ -239,11 +285,21 @@ final class PlayerEngine {
         print("[PlayerEngine] Streaming URL: \(url.absoluteString)")
         let item = AVPlayerItem(url: url)
         observe(item)
+        currentLoadedURL = url   // mark as loaded so applyRoomSchedule skips re-loading
         player.replaceCurrentItem(with: item)
 
         if RoomSocket.shared.isInRoom {
-            print("[PlayerEngine] In room — scheduling playback via RoomSocket for trackUrl: \(url.absoluteString)")
-            RoomSocket.shared.schedulePlayback(trackUrl: url.absoluteString)
+            // Send canonical youtube:ID format — not the raw HTTP streaming URL —
+            // so all web/mobile clients can match it against queue items for the correct title.
+            let canonicalTrackUrl = "youtube:\(track.id)"
+            let thumb = finalArt?.absoluteString ?? "https://i.ytimg.com/vi/\(track.id)/hqdefault.jpg"
+            print("[PlayerEngine] In room — scheduling playback via RoomSocket for trackUrl: \(canonicalTrackUrl)")
+            RoomSocket.shared.schedulePlayback(
+                trackUrl: canonicalTrackUrl,
+                title: finalTitle,
+                artist: finalArtist,
+                thumbnail: thumb
+            )
         } else if autoPlay {
             player.play()
             isPlaying = true
@@ -264,6 +320,7 @@ final class PlayerEngine {
     // MARK: - Observation
 
     private func observe(_ item: AVPlayerItem) {
+        item.audioTimePitchAlgorithm = .timeDomain
         statusObservation?.invalidate()
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
@@ -331,7 +388,7 @@ final class PlayerEngine {
     /// Fire-and-forget prefetch request to the server so it starts downloading
     /// the next song's audio file in the background.
     private func prefetchTrack(_ track: PlayableTrack) {
-        let cleanId = extractIdFromTrackUrl(track.trackUrl.isEmpty ? track.id : track.trackUrl)
+        let cleanId = extractIdFromTrackUrl(track.id)
         guard !cleanId.isEmpty && cleanId.count >= 11 else { return }
         guard let url = URL(string: "\(streamBase)/search/youtube/prefetch") else { return }
 
@@ -355,8 +412,9 @@ final class PlayerEngine {
     private func handleTrackEnded() {
         print("[PlayerEngine] handleTrackEnded — canGoNext: \(canGoNext)")
         if RoomSocket.shared.isInRoom {
-            // In a room the server owns track advancement; tell it we ended.
-            RoomSocket.shared.nextTrack()
+            // In a room the server owns track advancement; notify it that this track ended.
+            let canonicalUrl = current.map { "youtube:\($0.id)" } ?? ""
+            RoomSocket.shared.notifyTrackEnded(trackUrl: canonicalUrl)
             return
         }
         if canGoNext {
@@ -382,7 +440,8 @@ final class PlayerEngine {
     private var driftTimer: Timer?
 
     /// Threshold beyond which we hard-seek to re-align with the server timeline.
-    private let driftHardSeekMs: Double = 120
+    private let driftHardSeekMs: Double = 3000
+    private var lastHardSeekTime: Date = .distantPast
 
     private var currentLoadedURL: URL? = nil
 
@@ -562,8 +621,11 @@ final class PlayerEngine {
         let artworkURL: URL? = {
             if let localArt = self.findLocalArtwork(for: cleanId) { return localArt }
             if let thumb = thumbnail, let url = URL(string: thumb) { return url }
+            if let match = self.queue.first(where: { $0.id == cleanId }), let art = match.artworkURL { return art }
             if let existing = self.current?.artworkURL { return existing }
-            if let match = self.queue.first(where: { $0.id == cleanId }) { return match.artworkURL }
+            if !cleanId.isEmpty && cleanId.count >= 11 {
+                return URL(string: "https://i.ytimg.com/vi/\(cleanId)/hqdefault.jpg")
+            }
             return nil
         }()
 
@@ -676,14 +738,27 @@ final class PlayerEngine {
             if let curItem = rawQueue.first(where: { ($0["isCurrent"] as? Bool) == true }) ?? rawQueue.first {
                 let curUrl = (curItem["trackUrl"] as? String) ?? ""
                 let cleanId = extractIdFromTrackUrl(curUrl)
-                let title = (curItem["title"] as? String) ?? "Unknown Track"
-                let artist = (curItem["artist"] as? String) ?? "Unknown Artist"
+                var title = (curItem["title"] as? String) ?? "Unknown Track"
+                var artist = (curItem["artist"] as? String) ?? "Unknown Artist"
                 let queueItemId = curItem["id"] as? String
+
+                // If rawQueue has generic placeholder title/artist, preserve existing valid metadata
+                let isTitlePlaceholder = title == "Unknown Track" || title == "Track" || title == "Room Audio"
+                let isArtistPlaceholder = artist == "Unknown Artist" || artist == "SyncBeats Room" || artist == ""
+                if isTitlePlaceholder, let curTitle = self.current?.title, curTitle != "Unknown Track" && curTitle != "Track" {
+                    title = curTitle
+                }
+                if isArtistPlaceholder, let curArtist = self.current?.artist, curArtist != "Unknown Artist" {
+                    artist = curArtist
+                }
                 
-                // Prioritize local artwork
+                // Prioritize local artwork first, then thumbnail string, then current artwork, then YouTube fallback
                 let localArt = findLocalArtwork(for: cleanId)
                 let thumbStr = curItem["thumbnail"] as? String
-                let thumbURL = localArt ?? (thumbStr != nil ? URL(string: thumbStr!) : nil)
+                let thumbURL = localArt
+                    ?? (thumbStr != nil ? URL(string: thumbStr!) : nil)
+                    ?? self.current?.artworkURL
+                    ?? (!cleanId.isEmpty && cleanId.count >= 11 ? URL(string: "https://i.ytimg.com/vi/\(cleanId)/hqdefault.jpg") : nil)
                 
                 self.current = PlayableTrack(id: cleanId, title: title, artist: artist, artworkURL: thumbURL, queueItemId: queueItemId)
             }
@@ -698,6 +773,20 @@ final class PlayerEngine {
                 title: self.current?.title,
                 artist: self.current?.artist,
                 thumbnail: self.current?.artworkURL?.absoluteString
+            )
+        } else if trackUrl == nil && self.current != nil && !self.current!.id.isEmpty {
+            // Room is fresh/empty, but Mac was ALREADY playing a track locally.
+            // Publish local track to the room so all room members immediately sync up!
+            let currentTrack = self.current!
+            let canonicalUrl = "youtube:\(currentTrack.id)"
+            let thumb = currentTrack.artworkURL?.absoluteString ?? "https://i.ytimg.com/vi/\(currentTrack.id)/hqdefault.jpg"
+            print("[PlayerEngine] Joined empty room while playing locally — scheduling track for room: '\(currentTrack.title)'")
+            RoomSocket.shared.schedulePlayback(
+                trackUrl: canonicalUrl,
+                positionMs: Int(self.currentTime * 1000),
+                title: currentTrack.title,
+                artist: currentTrack.artist,
+                thumbnail: thumb
             )
         } else {
             if let trackUrl, let resolvedURL = resolveAudioURL(from: trackUrl), resolvedURL != currentLoadedURL {
@@ -715,13 +804,14 @@ final class PlayerEngine {
     private func localSeek(to seconds: Double) {
         let clamped = max(0, min(seconds, duration > 0 ? duration : seconds))
         let target = CMTime(seconds: clamped, preferredTimescale: 600)
-        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+        player.seek(to: target, toleranceBefore: tol, toleranceAfter: tol)
         currentTime = clamped
     }
 
     private func startDriftLoop(clockOffsetMs: Double) {
         stopDriftLoop()
-        driftTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        driftTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.correctDrift() }
         }
     }
@@ -729,9 +819,10 @@ final class PlayerEngine {
     private func stopDriftLoop() {
         driftTimer?.invalidate()
         driftTimer = nil
+        player.rate = isPlaying ? 1.0 : 0.0
     }
 
-    /// Hard-seek back onto the shared timeline when local playback drifts too far.
+    /// Smoothly correct playback drift to match server timeline without jarring seeks.
     private func correctDrift() {
         guard roomIsPlaying, let epoch = roomStartEpochMs else { return }
         let serverNow = RoomSocket.shared.serverNowMs()
@@ -739,10 +830,26 @@ final class PlayerEngine {
         let expected = max(0, (serverNow - epoch) / 1000)
         let actual = currentTime
         guard actual >= 0 else { return }
-        let driftMs = abs(expected - actual) * 1000
+        let diffSec = expected - actual
+        let driftMs = abs(diffSec) * 1000
+
         if driftMs > driftHardSeekMs {
-            print("[PlayerEngine] ⏱️ drift \(Int(driftMs))ms > \(Int(driftHardSeekMs))ms — hard-seeking to \(expected)s")
+            print("[PlayerEngine] ⏱️ Large drift \(Int(driftMs))ms > \(Int(driftHardSeekMs))ms — hard-seeking to \(expected)s")
             localSeek(to: expected)
+            if isPlaying { player.rate = 1.0 }
+            return
+        }
+
+        // Soft drift correction: rate micro-adjustments for drift between 150ms and 1500ms
+        if driftMs > 150 && isPlaying {
+            let targetRate: Float = diffSec > 0 ? 1.02 : 0.98
+            if player.rate != targetRate {
+                player.rate = targetRate
+            }
+        } else if isPlaying {
+            if player.rate != 1.0 {
+                player.rate = 1.0
+            }
         }
     }
 }

@@ -29,11 +29,30 @@ export interface PublicUser {
   settings?:  any;
 }
 
+function cleanJsonPayload(data: any): any {
+  if (!data) return data;
+  if (typeof data === 'string') {
+    return data.replace(/\u0000/g, '');
+  }
+  if (typeof data === 'object') {
+    if (Array.isArray(data)) {
+      return data.map(cleanJsonPayload);
+    }
+    const clean: any = {};
+    for (const key of Object.keys(data)) {
+      clean[key.replace(/\u0000/g, '')] = cleanJsonPayload(data[key]);
+    }
+    return clean;
+  }
+  return data;
+}
+
 export class UserRepository {
   async updateSettings(userId: string, settings: any): Promise<PublicUser | null> {
+    const sanitized = cleanJsonPayload(settings);
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { settings },
+      data: { settings: sanitized },
     }) as any;
     return user ? this.toPublicUser(user) : null;
   }

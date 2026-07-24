@@ -15,13 +15,15 @@ function RoomPreview({
   midHue, 
   highHue, 
   brightness, 
-  contrast 
+  contrast,
+  onInteractionStateChange
 }: { 
   bassHue: number; 
   midHue: number; 
   highHue: number; 
   brightness: number; 
   contrast: number; 
+  onInteractionStateChange?: (interacting: boolean) => void;
 }) {
   const { settings, updateSettings } = useSettings();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,8 +53,18 @@ function RoomPreview({
   const startDrag = (band: 'sub' | 'bass' | 'lowMid' | 'mid' | 'upperMid' | 'high') => (e: React.PointerEvent) => {
     if (!containerRef.current) return;
     e.preventDefault();
+    e.stopPropagation();
+
+    const targetEl = e.currentTarget as HTMLElement;
+    try {
+      targetEl.setPointerCapture(e.pointerId);
+    } catch {}
+
+    onInteractionStateChange?.(true);
+
     const rect = containerRef.current.getBoundingClientRect();
     const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault();
       const xPct = Math.max(0, Math.min(100, ((moveEvent.clientX - rect.left) / rect.width) * 100));
       const yPct = Math.max(0, Math.min(100, ((moveEvent.clientY - rect.top) / rect.height) * 100));
       setLocalPositions(prev => ({
@@ -60,10 +72,17 @@ function RoomPreview({
         [band]: { x: Math.round(xPct), y: Math.round(yPct) }
       }));
     };
-    const handlePointerUp = () => {
+
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      try {
+        targetEl.releasePointerCapture(upEvent.pointerId);
+      } catch {}
+
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
-      
+
+      onInteractionStateChange?.(false);
+
       setLocalPositions(latest => {
         updateSettings({
           ambientPositions: latest
@@ -71,6 +90,7 @@ function RoomPreview({
         return latest;
       });
     };
+
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
   };
@@ -157,7 +177,7 @@ function RoomPreview({
   };
 
   return (
-    <div ref={containerRef} className={cn('w-full', 'h-[250px]', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/[0.08]', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'mb-6')}>
+    <div ref={containerRef} className={cn('w-full', 'h-[250px]', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/[0.08]', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'touch-none', 'mb-6')}>
       
       {/* Glowing Ambient Background Blobs */}
       {activeBands.map(band => {
@@ -179,7 +199,7 @@ function RoomPreview({
       })}
 
       {/* Interactive Drag Handles for Lights */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
+      <div className="absolute inset-0 z-20 pointer-events-none touch-none">
         {/* Helper instruction text */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 border border-white/10 rounded-full px-2.5 py-0.5 text-[7px] font-bold uppercase tracking-widest text-white/50">
           Drag nodes to move lights
@@ -193,7 +213,7 @@ function RoomPreview({
             <div
               key={`handle-${band}`}
               onPointerDown={startDrag(band)}
-              className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border bg-black/85 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing shadow-lg select-none"
+              className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border bg-black/85 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing shadow-lg select-none touch-none"
               style={{
                 left: `${pos.x}%`,
                 top: `${pos.y}%`,
@@ -516,7 +536,7 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
   const currentPalettes = PALETTES_BY_COUNT[activeLightCount] || PALETTES_BY_COUNT[3];
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'w-full')}>
+    <div className={cn('flex', 'flex-col', 'h-full', 'w-full', 'min-h-0')}>
       <div className={cn('flex', 'items-center', 'justify-between', 'px-2', 'pb-2', 'shrink-0')}>
         <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
         <button onClick={onClose} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/10', 'text-foreground/50', 'hover:text-foreground', 'transition-colors')}>
@@ -525,12 +545,8 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
       </div>
 
       <div 
-        className={cn('flex-1', 'overflow-y-auto', 'space-y-6', 'pr-2', 'custom-scrollbar', 'pb-10', 'mt-4')} 
+        className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'space-y-6', 'pr-2', 'custom-scrollbar', 'pb-10', 'mt-2', 'overscroll-contain')} 
         data-lenis-prevent="true"
-        onPointerDown={() => {
-          setIsInteracting(true);
-          onInteractionStateChange?.(true);
-        }}
       >
         
         {/* Gradient Editor */}
@@ -636,7 +652,13 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
             contrast={settings.ambientContrast}
           />
  
-          <div className="space-y-5">
+          <div 
+            className="space-y-5"
+            onPointerDown={() => {
+              setIsInteracting(true);
+              onInteractionStateChange?.(true);
+            }}
+          >
             {[
               { key: 'subHue' as const, label: 'Sub-Bass (Lows)', activeIf: [4, 5, 6] },
               { key: 'bassHue' as const, label: 'Bass (Lows)', activeIf: [3, 4, 5, 6] },

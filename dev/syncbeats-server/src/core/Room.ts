@@ -1,6 +1,6 @@
 import { EventEmitter }  from 'events';
 import { PlaybackState } from './PlaybackState';
-import { Participant, RoomSnapshot, TrackQueueItem, SpatialPosition } from '../types';
+import { Participant, RoomSnapshot, TrackQueueItem, SpatialPosition, ChatMessage } from '../types';
 
 function matchesTrackUrl(itemUrl: string, trackUrl: string | null): boolean {
   if (!trackUrl) return false;
@@ -8,7 +8,10 @@ function matchesTrackUrl(itemUrl: string, trackUrl: string | null): boolean {
   
   const extractId = (url: string): string | null => {
     if (!url) return null;
-    const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
+    const m = url.match(/[?&](?:videoId|songId|id)=([a-zA-Z0-9_-]+)/)
+      || url.match(/youtube:([a-zA-Z0-9_-]{11})/)
+      || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/)
+      || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
     if (m) return m[1];
     if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
     return null;
@@ -16,7 +19,21 @@ function matchesTrackUrl(itemUrl: string, trackUrl: string | null): boolean {
 
   const idA = extractId(itemUrl);
   const idB = extractId(trackUrl);
-  return idA !== null && idB !== null && idA === idB;
+  if (idA !== null && idB !== null && idA === idB) return true;
+
+  const getCleanPath = (u: string) => {
+    try {
+      if (u.startsWith('http://') || u.startsWith('https://')) {
+        const parsed = new URL(u);
+        return parsed.pathname + parsed.search;
+      }
+      return u;
+    } catch {
+      return u;
+    }
+  };
+
+  return getCleanPath(itemUrl) === getCleanPath(trackUrl);
 }
 
 export class Room extends EventEmitter {
@@ -27,6 +44,7 @@ export class Room extends EventEmitter {
   private participants: Map<string, Participant> = new Map();
   private queue:        TrackQueueItem[]       = [];
   private spatial:      Map<string, SpatialPosition> = new Map();
+  private chatHistory:  ChatMessage[]          = [];
   private snapshotTime: number                 = Date.now();
   private isPrivate:    boolean                = false;
   private shuffle:      boolean                = false;
@@ -40,6 +58,21 @@ export class Room extends EventEmitter {
 
   constructor(public readonly roomId: string) {
     super();
+  }
+
+  addChatMessage(msg: ChatMessage): void {
+    this.chatHistory.push(msg);
+    if (this.chatHistory.length > 100) {
+      this.chatHistory.shift();
+    }
+  }
+
+  getChatHistory(): ChatMessage[] {
+    return [...this.chatHistory];
+  }
+
+  clearChatHistory(): void {
+    this.chatHistory = [];
   }
   
   setParticipantVolume(socketId: string, volume: number): void {
@@ -99,6 +132,9 @@ export class Room extends EventEmitter {
     this.state = PlaybackState.PLAYING;
 
     const currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, this.trackUrl));
+    const ytMatch = this.trackUrl ? this.trackUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/) : null;
+    const ytId = ytMatch ? ytMatch[1] : null;
+    const fallbackThumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
 
     this.emit('schedule', {
       atEpoch,
@@ -107,7 +143,7 @@ export class Room extends EventEmitter {
       startEpoch: this.timeline.startEpoch,
       title: currentItem?.title || 'Unknown Track',
       artist: currentItem?.artist || 'Unknown Artist',
-      thumbnail: currentItem?.thumbnail || null,
+      thumbnail: currentItem?.thumbnail || fallbackThumb || null,
     });
     this.emit('stateChanged', this.snapshot());
   }
@@ -132,40 +168,118 @@ export class Room extends EventEmitter {
   }
   
   // Directly syncs the room state from a client-emitted playback:schedule event
-  syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string): void {
+  syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string, hintTitle?: string, hintArtist?: string, hintThumbnail?: string): void {
+    const isSameTrack = this.trackUrl === trackUrl;
     this.trackUrl = trackUrl;
-    this.timeline.isPlaying = true;
-    
-    // Ensure startEpoch has a minimum lead buffer of 1200ms so all devices have time to buffer before playback starts
-    const now = Date.now();
-    const MIN_LEAD_MS = 1200;
-    const targetEpoch = (!startEpoch || startEpoch < now + 200) ? (now + MIN_LEAD_MS) : Math.max(startEpoch, now + MIN_LEAD_MS);
-
-    this.timeline.startEpoch = targetEpoch - positionMs;
-    this.timeline.pauseOffset = positionMs / 1000;
-    this.state = PlaybackState.PLAYING;
     this.position = positionMs;
-    this.snapshotTime = Date.now();
-    this.pendingPlay = false;
-    
-    const currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, trackUrl));
+    this.timeline.pauseOffset = positionMs / 1000;
 
-    this.emit('schedule', {
-        // Mobile App Keys
-        positionMs: positionMs,
-        startTime: targetEpoch,
-        senderId: senderId,
-        // Web App Keys
-        atEpoch: targetEpoch,
-        fromPosition: positionMs / 1000,
-        startEpoch: this.timeline.startEpoch,
-        // Shared
+    const ytMatch = trackUrl ? trackUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/) : null;
+    const ytId = ytMatch ? ytMatch[1] : null;
+    const fallbackThumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
+    
+    const isGenericTitle = !hintTitle || hintTitle === 'Unknown Track' || hintTitle === 'Track' || hintTitle === 'Room Audio';
+    const isGenericArtist = !hintArtist || hintArtist === 'Unknown Artist' || hintArtist === 'SyncBeats Room' || hintArtist === '';
+
+    let resolvedTitle = hintTitle;
+    let resolvedArtist = hintArtist;
+
+    let currentItem = this.queue.find(item => item.isCurrent) || this.queue.find(item => matchesTrackUrl(item.trackUrl, trackUrl));
+
+    if (currentItem) {
+      if (isGenericTitle && currentItem.title && currentItem.title !== 'Unknown Track' && currentItem.title !== 'Track') {
+        resolvedTitle = currentItem.title;
+      } else if (!isGenericTitle && resolvedTitle) {
+        currentItem.title = resolvedTitle;
+      }
+      if (isGenericArtist && currentItem.artist && currentItem.artist !== 'Unknown Artist') {
+        resolvedArtist = currentItem.artist;
+      } else if (!isGenericArtist && resolvedArtist !== undefined) {
+        currentItem.artist = resolvedArtist;
+      }
+      if (hintThumbnail) {
+        currentItem.thumbnail = hintThumbnail;
+      }
+    }
+
+    if (ytId && (isGenericTitle || !resolvedTitle || resolvedTitle.startsWith('youtube:'))) {
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then((data: any) => {
+          if (data && data.title) {
+            const target = this.queue.find(q => matchesTrackUrl(q.trackUrl, trackUrl));
+            if (target) {
+              target.title = data.title;
+              if (data.author_name) target.artist = data.author_name;
+              if (data.thumbnail_url) target.thumbnail = data.thumbnail_url;
+              this.emit('queueChanged', this.queueSnapshot());
+              this.emit('stateChanged', this.snapshot());
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (!currentItem && trackUrl) {
+      this.queue = this.queue.map(item => ({ ...item, isCurrent: false }));
+      const newItem: TrackQueueItem = {
+        id: `auto_${Date.now()}_${Math.random().toString(36).substring(7)}`,
         trackUrl: trackUrl,
-        title: currentItem?.title || 'Unknown Track',
-        artist: currentItem?.artist || 'Unknown Artist',
-        thumbnail: currentItem?.thumbnail || null,
-    });
-    this.emit('stateChanged', this.snapshot());
+        title: resolvedTitle || 'Track',
+        artist: resolvedArtist || '',
+        thumbnail: hintThumbnail || fallbackThumb || undefined,
+        fileName: trackUrl.startsWith('youtube:') ? `youtube_${trackUrl.split(':')[1]}.yt` : 'track.mp3',
+        queueIndex: 0,
+        isCurrent: true,
+        addedBy: senderId || 'system',
+        createdAt: Date.now()
+      };
+      this.queue = [newItem, ...this.queue];
+      currentItem = newItem;
+      this.emit('queueChanged', this.queueSnapshot());
+    } else if (currentItem && !currentItem.isCurrent) {
+      this.queue = this.queue.map(item => ({ ...item, isCurrent: item.id === currentItem!.id }));
+      this.emit('queueChanged', this.queueSnapshot());
+    }
+
+    // Reset readiness for all participants if changing track so everyone buffers before play
+    if (!isSameTrack) {
+      for (const p of this.participants.values()) {
+        p.isReady = false;
+        p.isBlocked = false;
+      }
+    }
+
+    // Set 15-second safety timeout so lagging/disconnected devices don't block the room forever
+    if (this.readyTimeout) clearTimeout(this.readyTimeout);
+    this.readyTimeout = setTimeout(() => {
+      let changed = false;
+      for (const p of this.participants.values()) {
+        if (!p.isReady && !p.isBlocked) {
+          p.isBlocked = true;
+          changed = true;
+          console.log(`[Room ${this.roomId}] Participant ${p.socketId} timed out waiting for ready, marking as blocked.`);
+        }
+      }
+      if (changed) {
+        this.emit('stateChanged', this.snapshot());
+        if (this.pendingPlay && this.allReady()) {
+          this._startPlayback();
+        }
+      }
+    }, 15000);
+
+    if (!this.allReady()) {
+      console.log(`[Room ${this.roomId}] Not all participants ready for track ${trackUrl}, marking pendingPlay = true`);
+      this.pendingPlay = true;
+      this.timeline.isPlaying = false;
+      this.timeline.startEpoch = null;
+      this.state = PlaybackState.PAUSED;
+      this.snapshotTime = Date.now();
+      this.emit('stateChanged', this.snapshot());
+    } else {
+      this._startPlayback();
+    }
   }
 
   // Directly syncs the room state from a client-emitted playback:pause event
@@ -306,14 +420,49 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
+  removeQueueItem(itemId: string): void {
+    const target = this.queue.find(i => i.id === itemId || matchesTrackUrl(i.trackUrl, itemId));
+    if (!target) return;
+
+    const wasCurrent = target.isCurrent;
+    this.queue = this.queue.filter(i => i.id !== target.id);
+
+    if (wasCurrent) {
+      if (this.queue.length > 0) {
+        const next = this.queue[0];
+        next.isCurrent = true;
+        this.trackUrl = next.trackUrl;
+        this.position = 0;
+        this.timeline.pauseOffset = 0;
+        if (this.timeline.isPlaying) {
+          this._startPlayback();
+        } else {
+          this.emit('stateChanged', this.snapshot());
+        }
+      } else {
+        this.resetRoom();
+        return;
+      }
+    } else {
+      this.emit('queueChanged', this.queueSnapshot());
+      this.emit('stateChanged', this.snapshot());
+    }
+  }
+
   resetRoom(): void {
     this.queue = [];
+    this.chatHistory = [];
     this.trackUrl = null;
     this.position = 0;
     this.state = PlaybackState.IDLE;
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
     this.timeline.pauseOffset = 0;
+    this.pendingPlay = false;
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+      this.readyTimeout = null;
+    }
     for (const p of this.participants.values()) {
       p.isReady = false;
       p.isBlocked = false;

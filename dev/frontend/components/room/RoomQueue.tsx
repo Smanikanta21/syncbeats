@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
 import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
+import { ConfirmModal } from "../ConfirmModal";
 import { 
   DndContext, 
   closestCenter, 
@@ -138,24 +139,52 @@ export function RoomQueue({
     }
   };
 
-  const handleClearQueue = async () => {
-    if (confirm("Are you sure you want to clear the upcoming queue?")) {
-      try {
-        await roomsApi.clearQueue(roomId);
-      } catch (err) {
-        console.error("Failed to clear queue", err);
-      }
-    }
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    isDanger?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const handleClearQueue = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Clear Upcoming Queue",
+      message: "Are you sure you want to clear all upcoming songs in the queue?",
+      confirmText: "Clear Queue",
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await roomsApi.clearQueue(roomId);
+        } catch (err) {
+          console.error("Failed to clear queue", err);
+        }
+      },
+    });
   };
 
-  const handleResetRoom = async () => {
-    if (confirm("Reset Room? This will stop playback and clear the room queue completely.")) {
-      try {
-        await roomsApi.resetRoom(roomId);
-      } catch (err) {
-        console.error("Failed to reset room", err);
-      }
-    }
+  const handleResetRoom = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Reset Room",
+      message: "Are you sure you want to reset the room? This will stop playback and clear all queue items across all connected devices.",
+      confirmText: "Reset Room",
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await roomsApi.reset(roomId);
+        } catch (err) {
+          console.error("Failed to reset room", err);
+        }
+      },
+    });
   };
 
   const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
@@ -166,56 +195,73 @@ export function RoomQueue({
   return (
     <div className={cn('flex', 'flex-col', 'h-full', 'overflow-hidden')}>
       {/* Header Section */}
-      <div className={cn('flex', 'items-center', 'justify-between', 'px-3', 'pt-3', 'pb-2', 'shrink-0')}>
-        <div className={cn('flex', 'items-center', 'gap-2')}>
-          <Disc className={cn('w-4', 'h-4', 'text-foreground/50')} />
-          <h3 className={cn('text-sm', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/60')}>
+      <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
+        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+          <Disc className="w-3.5 h-3.5 text-foreground/50 shrink-0" />
+          <h3 className="text-xs font-black uppercase tracking-wider text-foreground/70 truncate">
             Queue
           </h3>
-          <span className={cn('text-xs', 'font-bold', 'text-foreground/30', 'ml-1')}>{optimisticQueue.length}</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-foreground/10 text-foreground/50 shrink-0">
+            {optimisticQueue.length}
+          </span>
         </div>
-        <div className={cn('flex', 'items-center', 'gap-1')}>
-          <button onClick={onToggleShuffle}
-            className={cn('p-2', 'rounded-lg', 'transition-colors', shuffle ? 'bg-foreground/10 text-foreground' : 'text-foreground/40 hover:text-foreground/70')}>
-            <Shuffle className={cn('w-4', 'h-4')} />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={onToggleShuffle}
+            className={cn(
+              "p-1.5 rounded-md transition-colors",
+              shuffle ? "bg-foreground/15 text-foreground font-bold" : "text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5"
+            )}
+            title="Shuffle Queue"
+          >
+            <Shuffle className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onToggleRepeat}
-            className={cn('p-2', 'rounded-lg', 'transition-colors', repeatMode !== 'off' ? 'bg-foreground/10 text-foreground' : 'text-foreground/40 hover:text-foreground/70')}>
-            <RepeatIcon className={cn('w-4', 'h-4')} />
+          <button
+            onClick={onToggleRepeat}
+            className={cn(
+              "p-1.5 rounded-md transition-colors",
+              repeatMode !== "off" ? "bg-foreground/15 text-foreground font-bold" : "text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5"
+            )}
+            title={`Repeat (${repeatMode})`}
+          >
+            <RepeatIcon className="w-3.5 h-3.5" />
           </button>
           {/* Spotify Import */}
           <button
             onClick={() => document.dispatchEvent(new CustomEvent("island:expand-spotify"))}
-            className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-[#1DB954]', 'transition-colors')}
+            className="p-1.5 rounded-md text-foreground/40 hover:text-[#1DB954] hover:bg-foreground/5 transition-colors"
             title="Import from Spotify"
           >
-            <svg viewBox="0 0 24 24" className={cn('w-4', 'h-4', 'fill-current')}>
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
             </svg>
           </button>
           {/* Clear Queue */}
           {draggableQueue.length > 0 && (
-            <button onClick={handleClearQueue}
-              className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-red-400', 'transition-colors')}
+            <button
+              onClick={handleClearQueue}
+              className="p-1.5 rounded-md text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Clear upcoming queue"
             >
-              <Trash2 className={cn('w-4', 'h-4')} />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
           {/* Reset Room */}
-          <button onClick={handleResetRoom}
-            className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-amber-400', 'transition-colors')}
+          <button
+            onClick={handleResetRoom}
+            className="p-1.5 rounded-md text-foreground/40 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
             title="Reset Room (Clear Queue & State)"
           >
-            <RotateCcw className={cn('w-4', 'h-4')} />
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
           {/* Add Song */}
           {onAddSong && (
-            <button onClick={onAddSong}
-              className={cn('p-2', 'rounded-lg', 'text-foreground/40', 'hover:text-foreground/70', 'transition-colors')}
+            <button
+              onClick={onAddSong}
+              className="p-1.5 rounded-md text-foreground/40 hover:text-foreground hover:bg-foreground/10 transition-colors"
               title="Add a song"
             >
-              <Plus className={cn('w-4', 'h-4')} />
+              <Plus className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -346,8 +392,15 @@ export function RoomQueue({
         </DndContext>
       )}
 
-
-
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        isDanger={confirmConfig.isDanger}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

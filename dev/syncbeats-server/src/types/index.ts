@@ -76,6 +76,13 @@ export interface PlaybackSchedulePayload {
   atEpoch: number;
 }
 
-export interface PlaybackPausePayload {
-  pauseOffset: number;
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  socketId: string;
+  userId?: string;
+  displayName: string;
+  message: string;
+  timestamp: number;
 }
+

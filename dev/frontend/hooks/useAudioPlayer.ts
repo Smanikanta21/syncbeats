@@ -747,6 +747,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
         setIsReady(true);
+        // Apply pending room schedule now that the buffer is ready
+        const pendingSched = pendingScheduleRef.current;
+        if (pendingSched) {
+          pendingScheduleRef.current = null;
+          const clockOffset = pendingSched.clockOffset;
+          const serverNow = Date.now() + clockOffset;
+          const elapsed = Math.max(0, (serverNow - pendingSched.payload.startEpoch) / 1000);
+          const adjustedPayload = {
+            ...pendingSched.payload,
+            atEpoch: Date.now() + clockOffset + 100,
+            fromPosition: elapsed,
+          };
+          scheduleStartRef.current?.(adjustedPayload, clockOffset);
+        }
       })
       .catch((err) => {
         console.error('[AudioPlayer] Deferred decode still failed:', err);
@@ -759,6 +773,24 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
     }
   }, [volume]);
+
+  // When the buffer finishes decoding (isReady flips true), apply any pending
+  // room schedule so synced playback starts automatically without another interaction.
+  useEffect(() => {
+    if (!isReady) return;
+    const pending = pendingScheduleRef.current;
+    if (!pending) return;
+    pendingScheduleRef.current = null;
+    const clockOffset = pending.clockOffset;
+    const serverNow = Date.now() + clockOffset;
+    const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
+    const adjustedPayload = {
+      ...pending.payload,
+      atEpoch: Date.now() + clockOffset + 100,
+      fromPosition: elapsed,
+    };
+    scheduleStartRef.current?.(adjustedPayload, clockOffset);
+  }, [isReady]);
 
   useEffect(() => {
     let intervalId: any;
@@ -778,36 +810,50 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
-    scheduleIdRef.current += 1;
-    const currentScheduleId = scheduleIdRef.current;
-
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
 
-    if (!audioCtxRef.current) return;
-    
-    let buffer = audioBufferRef.current;
-    if (!buffer && payload.trackUrl) {
-      if (fetchPromiseRef.current) {
-        buffer = await fetchPromiseRef.current;
-      }
-      
-      if (!buffer) {
-        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
-          ? `${getServerUrl()}/${payload.trackUrl}` 
-          : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
-        buffer = await fetchAndDecode(absoluteUrl);
-      }
+    if (!audioCtxRef.current) {
+      setupAudioGraph();
     }
 
-    if (scheduleIdRef.current !== currentScheduleId) return;
-
-    if (!buffer) return;
-
-    if (audioCtxRef.current.state === 'suspended') {
+    // If track URL differs from what's loaded, we can't play yet —
+    // save the schedule and let the fetch/decode pipeline apply it when ready.
+    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
+      console.log('[AudioPlayer] scheduleStart: trackUrl mismatch, saving pending');
       pendingScheduleRef.current = { payload, clockOffset };
       return;
     }
+
+    let buffer = audioBufferRef.current;
+    if (!buffer && payload.trackUrl) {
+      // Await the in-flight fetch if one exists (started by useEffect[trackUrl]).
+      if (fetchPromiseRef.current) {
+        buffer = await fetchPromiseRef.current;
+      }
+    }
+
+    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
+      console.log('[AudioPlayer] scheduleStart superseded by new trackUrl:', trackUrlRef.current, 'vs', payload.trackUrl);
+      return;
+    }
+
+    if (!buffer) {
+      // Buffer still unavailable — save pending schedule.
+      // Will be applied by isReady useEffect or unlockAudio once decode completes.
+      console.log('[AudioPlayer] scheduleStart: no buffer yet, saving pending schedule');
+      pendingScheduleRef.current = { payload, clockOffset };
+      return;
+    }
+
+    if (audioCtxRef.current?.state === 'suspended') {
+      console.log('[AudioPlayer] AudioContext suspended — saving pending schedule and attempting resume');
+      pendingScheduleRef.current = { payload, clockOffset };
+      audioCtxRef.current.resume().catch(() => {});
+      return;
+    }
+
+    if (!audioCtxRef.current) return;
 
     const localAtEpoch = payload.atEpoch - clockOffset;
     const msUntilStart = localAtEpoch - Date.now();

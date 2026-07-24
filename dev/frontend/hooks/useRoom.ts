@@ -37,6 +37,8 @@ interface UseRoomReturn {
   approveJoin:  (targetSocketId: string, displayName: string) => void;
   denyJoin:     (targetSocketId: string) => void;
   notifyHost:   () => void;
+  resetRoom:    () => void;
+  removeFromQueue: (itemId: string) => void;
   syncInFlightRef: React.MutableRefObject<boolean>;
   hasClockSync: React.MutableRefObject<boolean>;
   /** Current network quality tier for this device — updates reactively */
@@ -106,18 +108,23 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         return playingId !== null && itemId !== null && playingId === itemId;
       });
 
-      if (match?.title) {
+      if (match?.title && !match.title.startsWith('youtube:') && match.title !== 'Track') {
         console.log("[DEBUG] getTrackTitle found match:", match.title);
         return match.title;
       }
     }
     
     const currentQueueItem = queue.find((item) => item.isCurrent);
-    if (currentQueueItem?.title) return currentQueueItem.title;
+    if (currentQueueItem?.title && !currentQueueItem.title.startsWith('youtube:') && currentQueueItem.title !== 'Track') {
+      return currentQueueItem.title;
+    }
     
     if (!trackUrl) return "Unknown Track";
-    const fileName = trackUrl.split('/').pop() ?? '';
-    return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
+    const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
+    const fileName = clean.split('/').pop() ?? '';
+    const formatted = fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ');
+    if (formatted && !formatted.startsWith('youtube:')) return formatted;
+    return "SyncBeats Track";
   }, []);
 
   const loadAndSetTrack = useCallback(async (trackUrl: string | null | undefined, title: string) => {
@@ -400,6 +407,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      } else if (!snap.trackUrl) {
+        audioRef.current.clearTrack();
       }
     };
     socket.on('room:snapshot', handleSnapshot);
@@ -409,9 +418,23 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+      } else if (!snap.trackUrl) {
+        audioRef.current.clearTrack();
       }
     };
     socket.on('room:stateChanged', handleStateChanged);
+
+    const handleQueueChanged = (data: { queue: TrackQueueItem[] } | TrackQueueItem[]) => {
+      const newQueue = Array.isArray(data) ? data : data.queue;
+      setSnapshot(prev => prev ? { ...prev, queue: newQueue } : prev);
+    };
+    socket.on('room:queueChanged', handleQueueChanged);
+
+    const handleReset = () => {
+      audioRef.current.clearTrack();
+      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false } : prev);
+    };
+    socket.on('room:reset', handleReset);
 
     const handleParticipantJoined = (p: Participant) => {
       setParticipants(prev => prev.find(x => x.socketId === p.socketId) ? prev : [...prev, p]);
@@ -442,13 +465,15 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:trackSet', handleTrackSet);
 
-    const handleQueueChanged = ({ queue }: { queue: TrackQueueItem[] }) => {
+    const handleQueueChangedNew = ({ queue }: { queue: TrackQueueItem[] }) => {
       setSnapshot((prev) => prev ? { ...prev, queue } : prev);
 
       const newCurrentItem = queue.find((item) => item.isCurrent);
 
       if (queue.length === 0) {
-        audioRef.current.clearTrack();
+        if (!snapshotRef.current?.isPlaying && !audioRef.current.isPlaying) {
+          audioRef.current.clearTrack();
+        }
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
         if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
@@ -456,10 +481,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         }
       }
     };
-    socket.on('room:queueChanged', handleQueueChanged);
+    socket.on('room:queueChanged', handleQueueChangedNew);
 
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
-      setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING } : prev);
+      setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
+      if (payload.trackUrl && audioRef.current.trackUrl !== payload.trackUrl) {
+        loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
+      }
       audioRef.current.scheduleStart(payload, clockOffsetRef.current);
     };
     socket.on('playback:schedule', handleSchedule);
@@ -506,8 +534,17 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:hostChanged', handleHostChanged);
 
-    const handleDevicePing = ({ message, from }: { message: string, from: string }) => {
-      alert(message);
+    const handleRoomReset = () => {
+      audioRef.current.clearTrack();
+      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false, state: PlaybackState.IDLE, startEpoch: null, pauseOffset: 0 } : prev);
+      setIncomingTrack(null);
+    };
+    socket.on('room:reset', handleRoomReset);
+
+    const handleDevicePing = ({ message }: { message: string, from: string }) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message, type: "info" } }));
+      }
     };
     socket.on('device:ping', handleDevicePing);
 
@@ -532,6 +569,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:participantLeft', handleParticipantLeft);
       socket.off('room:trackSet', handleTrackSet);
       socket.off('room:queueChanged', handleQueueChanged);
+      socket.off('room:reset', handleReset);
       socket.off('playback:schedule', handleSchedule);
       socket.off('playback:pause', handlePause);
       socket.off('room:joinPendingApproval', handlePendingApproval);
@@ -640,5 +678,23 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
+  const removeFromQueue = useCallback(async (itemId: string) => {
+    socket.emit('room:removeFromQueue', { roomId, itemId });
+    try {
+      await roomsApi.removeFromQueue(roomId, itemId);
+    } catch (err) {
+      console.warn('[useRoom] removeFromQueue API error:', err);
+    }
+  }, [roomId, socket]);
+
+  const resetRoom = useCallback(async () => {
+    socket.emit('room:reset', { roomId });
+    try {
+      await roomsApi.reset(roomId);
+    } catch (err) {
+      console.warn('[useRoom] resetRoom API error:', err);
+    }
+  }, [roomId, socket]);
+
+  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }

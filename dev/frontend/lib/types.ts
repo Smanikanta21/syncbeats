@@ -75,6 +75,8 @@ export interface PlaybackSchedulePayload {
   startEpoch: number;
   fromPosition: number;
   trackUrl?: string;
+  title?: string;
+  artist?: string;
 }
 
 export interface PlaybackPausePayload {

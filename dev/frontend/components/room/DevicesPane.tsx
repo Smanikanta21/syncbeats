@@ -7,6 +7,7 @@ import {
   ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
+import { devicesApi, type Device } from "../../lib/api";
 
 interface DevicesPaneProps {
   participants: Participant[];
@@ -71,6 +72,53 @@ function parseParticipantNames(p: Participant) {
     userName,
     deviceName,
   };
+}
+
+function formatLastSeen(dateStr?: string | null): string {
+  if (!dateStr) return "Offline";
+  const date = new Date(dateStr);
+  const diffMs = Date.now() - date.getTime();
+  if (isNaN(diffMs)) return "Offline";
+  if (diffMs < 60_000) return "Active just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `Last seen ${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Last seen ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Last seen ${days}d ago`;
+}
+
+function OfflineDeviceCard({ device }: { device: Device }) {
+  const DevIcon = getDeviceIcon(device.name, device.user_agent ?? undefined);
+  const lastSeenStr = formatLastSeen(device.last_seen_at);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 0.65, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      className="rounded-xl border border-foreground/[0.05] bg-foreground/[0.02] px-3 py-2.5 flex items-center justify-between gap-3 transition-opacity duration-200"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-foreground/5 text-foreground/40">
+          <DevIcon className="w-4 h-4" />
+          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-foreground/20 rounded-full border border-background" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-foreground/60 truncate">{device.name}</span>
+          </div>
+          <span className="text-[10px] font-semibold text-foreground/35 block mt-0.5">{lastSeenStr}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-foreground/5 border border-foreground/10 shrink-0">
+        <span className="text-[9px] font-black uppercase tracking-wider text-foreground/40">Offline</span>
+      </div>
+    </motion.div>
+  );
 }
 
 function DeviceCard({
@@ -248,16 +296,28 @@ interface UserGroup {
   userName: string;
   isHost: boolean;
   isMe: boolean;
-  participants: Participant[];
+  activeParticipants: Participant[];
+  offlineDevices: Device[];
 }
 
 export function DevicesPane({
   participants, mySocketId, hostId, myUserId, isHost,
   deviceSyncProgress, onVolumeChange,
 }: DevicesPaneProps) {
+  const [accountDevices, setAccountDevices] = useState<Device[]>([]);
+
+  useEffect(() => {
+    devicesApi.mine()
+      .then(({ devices }) => {
+        setAccountDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')));
+      })
+      .catch(() => {});
+  }, []);
+
   const userGroups = useMemo(() => {
     const map = new Map<string, UserGroup>();
 
+    // 1. Group active room participants
     participants.forEach(p => {
       const { userName } = parseParticipantNames(p);
       const key = p.userId ? `user_${p.userId}` : `name_${userName.toLowerCase()}`;
@@ -269,7 +329,8 @@ export function DevicesPane({
           userName,
           isHost: false,
           isMe: false,
-          participants: [],
+          activeParticipants: [],
+          offlineDevices: [],
         };
         map.set(key, group);
       }
@@ -281,11 +342,49 @@ export function DevicesPane({
         group.isMe = true;
       }
 
-      group.participants.push(p);
+      group.activeParticipants.push(p);
     });
 
+    // 2. Reconcile account devices with my user group
+    if (accountDevices.length > 0) {
+      const myKey = myUserId ? `user_${myUserId}` : Array.from(map.keys()).find(k => map.get(k)?.isMe);
+      const myUserName = myKey ? map.get(myKey)?.userName ?? "Your Devices" : "Your Account Devices";
+      const targetKey = myKey || "my_account_devices";
+
+      let myGroup = map.get(targetKey);
+      if (!myGroup) {
+        myGroup = {
+          key: targetKey,
+          userName: myUserName,
+          isHost: isHost,
+          isMe: true,
+          activeParticipants: [],
+          offlineDevices: [],
+        };
+        map.set(targetKey, myGroup);
+      }
+
+      const activeDevNames = new Set(
+        myGroup.activeParticipants.map(p => parseParticipantNames(p).deviceName.toLowerCase().trim())
+      );
+
+      accountDevices.forEach(d => {
+        const dNameLower = (d.name || "").toLowerCase().trim();
+        const isInRoom = activeDevNames.has(dNameLower) ||
+          myGroup?.activeParticipants.some(p => p.outputDeviceName?.toLowerCase().trim() === dNameLower);
+
+        if (!isInRoom) {
+          myGroup?.offlineDevices.push(d);
+        }
+      });
+    }
+
     return Array.from(map.values());
-  }, [participants, hostId, myUserId, mySocketId]);
+  }, [participants, accountDevices, hostId, myUserId, mySocketId, isHost]);
+
+  const totalDeviceCount = useMemo(() => {
+    return userGroups.reduce((acc, g) => acc + g.activeParticipants.length + g.offlineDevices.length, 0);
+  }, [userGroups]);
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -294,13 +393,13 @@ export function DevicesPane({
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-foreground/60" />
           <span className="text-xs font-black uppercase tracking-widest text-foreground/50">
-            Devices
+            Account Devices
           </span>
         </div>
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-            {participants.length} {participants.length === 1 ? "device" : "devices"}
+            {participants.length} online
           </span>
         </div>
       </div>
@@ -313,37 +412,39 @@ export function DevicesPane({
         <AnimatePresence>
           {userGroups.map(group => {
             const initials = group.userName.slice(0, 2).toUpperCase();
+            const groupTotal = group.activeParticipants.length + group.offlineDevices.length;
 
             return (
               <div key={group.key} className="space-y-1.5">
                 {/* User Header */}
-                <div className="flex items-center justify-between px-1 text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black ${
+                <div className="flex items-center justify-between px-1 text-xs gap-2 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 ${
                       group.isMe ? "bg-foreground/20 text-foreground" : "bg-foreground/10 text-foreground/70"
                     }`}>
                       {initials}
                     </div>
-                    <span className="font-bold text-foreground/90">{group.userName}</span>
+                    <span className="font-bold text-foreground/90 truncate whitespace-nowrap">{group.userName}</span>
                     {group.isHost && (
-                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md">
+                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md shrink-0 whitespace-nowrap">
                         Host
                       </span>
                     )}
                     {group.isMe && (
-                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase">
+                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase shrink-0 whitespace-nowrap">
                         (You)
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] font-semibold text-foreground/40">
-                    {group.participants.length} {group.participants.length === 1 ? "device" : "devices"}
+                  <span className="text-[10px] font-semibold text-foreground/40 shrink-0 whitespace-nowrap ml-1">
+                    {groupTotal} {groupTotal === 1 ? "device" : "devices"}
                   </span>
                 </div>
 
                 {/* Devices belonging to this User */}
                 <div className="space-y-1.5 pl-2 border-l border-foreground/10">
-                  {group.participants.map(p => {
+                  {/* Active devices in room */}
+                  {group.activeParticipants.map(p => {
                     const isMe = p.socketId === mySocketId;
                     const isThisHost = (p.userId && p.userId === hostId) || p.socketId === hostId;
                     const progress = deviceSyncProgress[p.socketId] ?? 0;
@@ -359,15 +460,20 @@ export function DevicesPane({
                       />
                     );
                   })}
+
+                  {/* Offline account devices */}
+                  {group.offlineDevices.map(d => (
+                    <OfflineDeviceCard key={d.id} device={d} />
+                  ))}
                 </div>
               </div>
             );
           })}
         </AnimatePresence>
 
-        {participants.length === 0 && (
+        {totalDeviceCount === 0 && (
           <div className="text-center text-foreground/20 text-xs py-8">
-            No participants yet
+            No devices found
           </div>
         )}
       </div>

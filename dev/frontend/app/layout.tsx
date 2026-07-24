@@ -11,6 +11,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Toaster } from "sonner";
 import SmoothScrolling from "../components/SmoothScrolling";
 import Preloader from "../components/Preloader";
+import { ToastProvider } from "../components/ToastProvider";
 import { VisualizerProvider } from "../context/VisualizerContext";
 
 const geistSans = Geist({
@@ -221,7 +222,9 @@ export default function RootLayout({
             <AuthProvider>
               <AudioProvider>
                 <VisualizerProvider>
-                  <div className="relative z-10 w-full">{children}</div>
+                  <ToastProvider>
+                    <div className="relative z-10 w-full">{children}</div>
+                  </ToastProvider>
                 </VisualizerProvider>
               </AudioProvider>
             </AuthProvider>

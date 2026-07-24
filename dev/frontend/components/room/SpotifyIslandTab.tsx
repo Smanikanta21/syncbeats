@@ -6,6 +6,8 @@ import { useUpload } from "../../context/UploadContext";
 import { Trash2, Disc, Play, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+import { ConfirmModal } from "../ConfirmModal";
+
 const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
 interface ImportedPlaylist {
@@ -143,28 +145,49 @@ export function SpotifyIslandTab({
     }
   };
 
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
   const handleDeletePlaylist = async (playlist: ImportedPlaylist) => {
     if (!token) return;
-    
-    if (playlist.tracks.length > 0) {
-      const confirmDelete = window.confirm(`This playlist has ${playlist.tracks.length} songs. Are you sure you want to delete it?`);
-      if (!confirmDelete) return;
-    }
 
-    try {
-      const r = await fetch(`${SERVER}/spotify/my-playlists/${playlist.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (r.ok) {
-        setImported(prev => prev.filter(p => p.id !== playlist.id));
-      } else {
-        throw new Error("Failed to delete");
+    const performDelete = async () => {
+      try {
+        const r = await fetch(`${SERVER}/spotify/my-playlists/${playlist.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (r.ok) {
+          setImported(prev => prev.filter(p => p.id !== playlist.id));
+          window.dispatchEvent(new CustomEvent("toast", { detail: { message: "Playlist deleted successfully", type: "success" } }));
+        } else {
+          throw new Error("Failed to delete");
+        }
+      } catch (e) {
+        console.error("Delete error", e);
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message: "Failed to delete playlist.", type: "error" } }));
       }
-    } catch (e) {
-      console.error("Delete error", e);
-      alert("Failed to delete playlist.");
+    };
+
+    if (playlist.tracks.length > 0) {
+      setConfirmConfig({
+        isOpen: true,
+        title: "Delete Playlist",
+        message: `This playlist has ${playlist.tracks.length} songs. Are you sure you want to delete it?`,
+        onConfirm: performDelete,
+      });
+    } else {
+      await performDelete();
     }
   };
 
@@ -341,6 +364,14 @@ export function SpotifyIslandTab({
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

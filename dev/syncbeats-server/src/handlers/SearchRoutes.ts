@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
+import play from 'play-dl';
 import prisma from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 
@@ -356,7 +357,18 @@ export async function downloadAudio(rawInput: string): Promise<string> {
         return 'yt-dlp';
       })();
 
-      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', finalOutputFile, url]);
+      const ytDlpArgs = [
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '--extractor-args', 'youtube:player_client=android,web,tv',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        '--referer', 'https://www.youtube.com/',
+        '--no-playlist',
+        '-o', finalOutputFile,
+        url
+      ];
+
+      console.log(`[Search] Spawning yt-dlp with args:`, ytDlpArgs);
+      const ytDlp = spawn(ytDlpPath, ytDlpArgs);
 
       ytDlp.stdout.on('data', (data: any) => {
         console.log(`[Search-ytdlp-stdout]: ${data.toString().trim()}`);
@@ -370,17 +382,42 @@ export async function downloadAudio(rawInput: string): Promise<string> {
         inFlightDownloads.delete(cleanId);
         if (targetYoutubeId !== cleanId) inFlightDownloads.delete(targetYoutubeId);
 
-        if (code === 0 && fs.existsSync(finalOutputFile)) {
+        // Find file (finalOutputFile or any extension with targetYoutubeId)
+        let downloadedFile = fs.existsSync(finalOutputFile) ? finalOutputFile : null;
+        if (!downloadedFile) {
           try {
-            fs.chmodSync(finalOutputFile, 0o600);
-            console.log(`[Search] Secured file permissions (0600) for: ${finalOutputFile}`);
+            const files = fs.readdirSync(tmpDir);
+            const found = files.find((f: string) => f.startsWith(targetYoutubeId));
+            if (found) downloadedFile = path.join(tmpDir, found);
+          } catch (e) {}
+        }
+
+        if (code === 0 && downloadedFile && fs.existsSync(downloadedFile)) {
+          try {
+            fs.chmodSync(downloadedFile, 0o600);
+            console.log(`[Search] Secured file permissions (0600) for: ${downloadedFile}`);
           } catch (err) {
             console.warn('[Search] Failed to set secure permissions:', err);
           }
-          resolve(finalOutputFile);
+          resolve(downloadedFile);
         } else {
-          console.error(`[Search] yt-dlp error: exited with code ${code}`);
-          reject(new Error(`yt-dlp exited with code ${code}`));
+          console.warn(`[Search] yt-dlp exited with code ${code}. Trying play-dl fallback stream...`);
+          play.stream(url).then((streamRes: any) => {
+            const outStream = fs.createWriteStream(finalOutputFile);
+            streamRes.stream.pipe(outStream);
+            outStream.on('finish', () => {
+              try { fs.chmodSync(finalOutputFile, 0o600); } catch (e) {}
+              console.log(`[Search] play-dl fallback download succeeded for: ${finalOutputFile}`);
+              resolve(finalOutputFile);
+            });
+            outStream.on('error', (err: any) => {
+              console.error(`[Search] play-dl stream pipe failed:`, err);
+              reject(new Error(`yt-dlp exited with code ${code} & play-dl failed`));
+            });
+          }).catch((playErr: any) => {
+            console.error(`[Search] play-dl fallback failed:`, playErr);
+            reject(new Error(`yt-dlp exited with code ${code}`));
+          });
         }
       });
 

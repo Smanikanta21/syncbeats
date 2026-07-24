@@ -4,17 +4,21 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
+import Link from "next/link";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
 import { RoomVisualizer } from "./RoomVisualizer";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
+import { RoomChat } from "./RoomChat";
 import { EmojiReactions } from "./EmojiReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
 import { SettingsPanel } from "../SettingsPanel";
+import { ProfileModal } from "../ProfileModal";
+import { ThemeToggle } from "../ThemeToggle";
 import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
@@ -42,19 +46,18 @@ interface RoomDashboardProps {
     isPlaying: boolean;
     isReady: boolean;
     hasTrack: boolean;
-    trackTitle: string;
-    trackUrl: string | null;
-    error: string | null;
-    downloadProgress: number;
-    duration: number;
-    volume: number;
-    getRawAudioData: () => Uint8Array | null;
-    eqGains: number[];
-    setEqBand: (index: number, gain: number) => void;
-    setVolume: (v: number | ((prev: number) => number)) => void;
-    getVolume?: () => number;
-    toggleMute?: () => number;
-    unlockAudio: () => void;
+    trackTitle: string | null;
+    trackArtist?: string | null;
+    coverUrl?: string | null;
+    trackUrl?: string | null;
+    error?: string | null;
+    downloadProgress?: number;
+    duration?: number;
+    currentTime?: number;
+    volume?: number;
+    isMuted?: boolean;
+    audioUnlocked?: boolean;
+    [key: string]: any;
   };
 
   // Orbit speed
@@ -68,7 +71,7 @@ interface RoomDashboardProps {
   onPrev: () => void;
   onSeek: (secs: number) => void;
   onTogglePrivate?: () => void;
-  onLeave: () => void;
+  onLeave?: () => void;
   onSetParticipantVolume?: (socketId: string, vol: number) => void;
   onAddSong?: () => void;
   spatialParticipants?: any[];
@@ -76,7 +79,7 @@ interface RoomDashboardProps {
   onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
 }
 
-type MobileTab = "spatial" | "playing" | "devices" | "queue";
+type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
 
 // Glass card wrapper
 function GlassCard({ children, className = "", style, isPlaying }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
@@ -111,16 +114,17 @@ function VisualsModal({
     const el = backdropRef.current;
     if (!el) return;
 
-    // Non-passive listeners at capture phase — this runs BEFORE Lenis's window
-    // listener fires, so stopPropagation() prevents Lenis from ever seeing the event.
-    const stop = (e: Event) => e.stopPropagation();
+    // Prevent scrolling behind modal on mobile/touch devices
+    const block = (e: TouchEvent | WheelEvent) => {
+      e.stopPropagation();
+    };
 
-    el.addEventListener("wheel",     stop, { capture: true, passive: false });
-    el.addEventListener("touchmove", stop, { capture: true, passive: false });
+    el.addEventListener("wheel", block, { capture: true, passive: false });
+    el.addEventListener("touchmove", block, { capture: true, passive: false });
 
     return () => {
-      el.removeEventListener("wheel",     stop, { capture: true });
-      el.removeEventListener("touchmove", stop, { capture: true });
+      el.removeEventListener("wheel", block, { capture: true });
+      el.removeEventListener("touchmove", block, { capture: true });
     };
   }, []);
 
@@ -167,8 +171,16 @@ export function RoomDashboard({
 }: RoomDashboardProps) {
   const { settings, updateSettings } = useSettings();
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  useEffect(() => {
+    const handleOpenProfile = () => setShowProfileModal(true);
+    window.addEventListener("open-profile-modal", handleOpenProfile);
+    return () => window.removeEventListener("open-profile-modal", handleOpenProfile);
+  }, []);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
+  const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
   const [queueOpen, setQueueOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -222,13 +234,15 @@ export function RoomDashboard({
       if (angle < 0) angle += 360;
 
       // Radial positions relative to bottom-right trigger (180 deg to 270 deg)
-      if (angle >= 247.5 && angle < 310) {
+      if (angle >= 265 || angle < 10) {
+        setActiveHoverId("chat");
+      } else if (angle >= 242.5 && angle < 265) {
         setActiveHoverId("queue");
-      } else if (angle >= 225 && angle < 247.5) {
+      } else if (angle >= 220 && angle < 242.5) {
         setActiveHoverId("devices");
-      } else if (angle >= 202.5 && angle < 225) {
+      } else if (angle >= 195 && angle < 220) {
         setActiveHoverId("playing");
-      } else if (angle >= 140 && angle < 202.5) {
+      } else if (angle >= 135 && angle < 195) {
         setActiveHoverId("spatial");
       } else {
         setActiveHoverId(null);
@@ -256,13 +270,15 @@ export function RoomDashboard({
         let angle = Math.atan2(dy, dx) * (180 / Math.PI);
         if (angle < 0) angle += 360;
 
-        if (angle >= 247.5 && angle < 310) {
+        if (angle >= 265 || angle < 10) {
+          setActiveHoverId("chat");
+        } else if (angle >= 242.5 && angle < 265) {
           setActiveHoverId("queue");
-        } else if (angle >= 225 && angle < 247.5) {
+        } else if (angle >= 220 && angle < 242.5) {
           setActiveHoverId("devices");
-        } else if (angle >= 202.5 && angle < 225) {
+        } else if (angle >= 195 && angle < 220) {
           setActiveHoverId("playing");
-        } else if (angle >= 140 && angle < 202.5) {
+        } else if (angle >= 135 && angle < 195) {
           setActiveHoverId("spatial");
         } else {
           setActiveHoverId(null);
@@ -285,10 +301,11 @@ export function RoomDashboard({
   }, [isHolding, activeHoverId]);
 
   const positions = {
-    spatial: { x: -95, y: 0 },
-    playing: { x: -82, y: -48 },
-    devices: { x: -48, y: -82 },
-    queue: { x: 0, y: -95 },
+    spatial: { x: -105, y: 0 },
+    playing: { x: -88, y: -45 },
+    devices: { x: -55, y: -80 },
+    queue: { x: -12, y: -98 },
+    chat: { x: 30, y: -102 },
   };
 
   const queue = snapshot?.queue ?? [];
@@ -323,6 +340,7 @@ export function RoomDashboard({
     { id: "playing", icon: Activity, label: "Visualizer" },
     { id: "devices", icon: Users, label: "Devices" },
     { id: "queue", icon: LayoutGrid, label: "Queue" },
+    { id: "chat", icon: MessageSquare, label: "Chat" },
   ];
 
   return (
@@ -336,26 +354,23 @@ export function RoomDashboard({
       <FullscreenPrompt />
       {/* ── Desktop Layout (md+) ───────────────────────────────────────────── */}
       <div className="hidden md:flex flex-1 min-h-0 p-4 pt-20 gap-3">
-        {/* Main Left Area */}
-        <div className="flex-1 flex flex-col min-w-0 gap-3">
-          {/* Top: Devices & Spatial */}
-          <div className="flex-1 min-h-0 flex gap-3">
+        {/* Left Column: Devices (Full Height) */}
+        <GlassCard className="w-80 shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+          <DevicesPane
+            participants={participants}
+            mySocketId={mySocketId}
+            hostId={hostId}
+            myUserId={myUserId}
+            isHost={isHost}
+            deviceSyncProgress={deviceSyncProgress}
+            onVolumeChange={onSetParticipantVolume}
+          />
+        </GlassCard>
 
-          {/* Left: Devices */}
-          <GlassCard className="w-72 shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
-            <DevicesPane
-              participants={participants}
-              mySocketId={mySocketId}
-              hostId={hostId}
-              myUserId={myUserId}
-              isHost={isHost}
-              deviceSyncProgress={deviceSyncProgress}
-              onVolumeChange={onSetParticipantVolume}
-            />
-          </GlassCard>
-
-          {/* Center: Spatial Audio */}
-          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+        {/* Center Column: Spatial (Top) + EQ/Visualizer (Bottom) */}
+        <div className="flex-1 flex flex-col min-w-0 gap-3 min-h-0">
+          {/* Top: Spatial Audio */}
+          <GlassCard className="flex-1 min-h-0 p-4 flex flex-col" isPlaying={isPlaying}>
             <SpatialPanel
               myDeviceId={mySocketId ?? ""}
               spatialDevices={spatialDevices}
@@ -372,18 +387,9 @@ export function RoomDashboard({
               allow8DSolo={allow8DSolo}
             />
           </GlassCard>
-        </div>
 
-        {/* Bottom: Chat + EQ */}
-        <div className="flex gap-3 shrink-0">
-          <GlassCard className="w-80 shrink-0 p-4 flex flex-col" style={{ height: "320px" } as any} isPlaying={isPlaying}>
-            <div className="mb-2 shrink-0 flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-widest font-black text-white/25">Chat & React</span>
-            </div>
-            <EmojiReactions roomId={roomId} />
-          </GlassCard>
-
-          <GlassCard className="flex-1 min-w-0 p-4 flex flex-col min-h-0" style={{ height: "320px" } as any} isPlaying={isPlaying}>
+          {/* Bottom: EQ + Visualizer */}
+          <GlassCard className="h-[280px] shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
             <div className="flex-[3] min-h-0 flex flex-col">
               <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} onOpenVisuals={() => setShowVisualsPanel(true)} />
             </div>
@@ -396,7 +402,6 @@ export function RoomDashboard({
             </div>
           </GlassCard>
         </div>
-      </div>
 
       {/* Right Sidebar: Room Details + Queue */}
       <GlassCard className="w-80 shrink-0 flex flex-col min-h-0 p-3 gap-3" isPlaying={isPlaying}>
@@ -425,12 +430,14 @@ export function RoomDashboard({
                     </button>
                   )}
                   <button 
-                    onClick={onLeave}
-                    className="text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase transition-colors bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                    title="Leave Room"
+                    onClick={() => setShowProfileModal(true)}
+                    className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20"
+                    title="View Profile"
                   >
-                    Leave
+                    <User className="w-3 h-3" />
+                    Profile
                   </button>
+                  <ThemeToggle size="sm" />
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -477,20 +484,58 @@ export function RoomDashboard({
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col mt-2">
-              <RoomQueue
-                queue={queue}
-                isHost={isHost}
-                roomId={roomId}
-                isPlaying={audio.isPlaying}
-                onTrackSelect={handleTrackSelect}
-                onAddSong={onAddSong}
-                onRemoveTrack={id => roomsApi.removeFromQueue(roomId, id).catch(console.error)}
-                shuffle={snapshot?.shuffle ?? false}
-                repeatMode={snapshot?.repeatMode ?? "off"}
-                onToggleShuffle={toggleShuffle}
-                onToggleRepeat={toggleRepeat}
-              />
+            {/* Desktop Right Sidebar Segment Selector */}
+            <div className="flex items-center bg-foreground/5 p-1 rounded-xl border border-foreground/10 shrink-0">
+              <button
+                onClick={() => setDesktopRightTab("queue")}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5",
+                  desktopRightTab === "queue"
+                    ? "bg-foreground text-background shadow-md"
+                    : "text-foreground/60 hover:text-foreground"
+                )}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Queue ({queue.length})
+              </button>
+              <button
+                onClick={() => setDesktopRightTab("chat")}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5",
+                  desktopRightTab === "chat"
+                    ? "bg-foreground text-background shadow-md"
+                    : "text-foreground/60 hover:text-foreground"
+                )}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Chat
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 flex flex-col">
+              {desktopRightTab === "queue" ? (
+                <RoomQueue
+                  queue={queue}
+                  isHost={isHost}
+                  roomId={roomId}
+                  isPlaying={audio.isPlaying}
+                  onTrackSelect={handleTrackSelect}
+                  onAddSong={onAddSong}
+                  onRemoveTrack={id => roomsApi.removeFromQueue(roomId, id).catch(console.error)}
+                  shuffle={snapshot?.shuffle ?? false}
+                  repeatMode={snapshot?.repeatMode ?? "off"}
+                  onToggleShuffle={toggleShuffle}
+                  onToggleRepeat={toggleRepeat}
+                />
+              ) : (
+                <RoomChat
+                  roomId={roomId}
+                  mySocketId={mySocketId}
+                  myUserId={myUserId}
+                  participants={participants}
+                  className="h-full w-full border-none shadow-none bg-transparent"
+                />
+              )}
             </div>
           </GlassCard>
       </div>
@@ -543,6 +588,7 @@ export function RoomDashboard({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {isHost && (
               <button 
                 onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
@@ -553,10 +599,11 @@ export function RoomDashboard({
               </button>
             )}
             <button 
-              onClick={onLeave}
-              className="text-[9px] px-3 py-1 rounded-full font-bold uppercase transition-colors bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              onClick={() => setShowProfileModal(true)}
+              className="text-[9px] px-3 py-1 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20"
             >
-              Leave
+              <User className="w-3 h-3" />
+              Profile
             </button>
           </div>
         </div>
@@ -638,6 +685,18 @@ export function RoomDashboard({
               </GlassCard>
             </motion.div>
           )}
+          {mobileTab === "chat" && (
+            <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex-1 min-h-0 px-2">
+              <RoomChat
+                roomId={roomId}
+                mySocketId={mySocketId}
+                myUserId={myUserId}
+                participants={participants}
+                className="h-full w-full"
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 
@@ -714,15 +773,33 @@ export function RoomDashboard({
               transition: "transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), width 0.15s, height 0.15s"
             }}
           >
-            <motion.div
-              animate={{ rotate: menuOpen ? 135 : 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            >
-              {mobileTab === "spatial" && <Radio className="w-6 h-6 text-white" />}
-              {mobileTab === "playing" && <Activity className="w-6 h-6 text-white" />}
-              {mobileTab === "devices" && <Users className="w-6 h-6 text-white" />}
-              {mobileTab === "queue" && <LayoutGrid className="w-6 h-6 text-white" />}
-            </motion.div>
+            <AnimatePresence mode="wait" initial={false}>
+              {menuOpen ? (
+                <motion.div
+                  key="close-x"
+                  initial={{ rotate: -90, scale: 0.7, opacity: 0 }}
+                  animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                  exit={{ rotate: 90, scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                >
+                  <X className="w-6 h-6 text-white" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="tab-icon"
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                >
+                  {mobileTab === "spatial" && <Radio className="w-6 h-6 text-white" />}
+                  {mobileTab === "playing" && <Activity className="w-6 h-6 text-white" />}
+                  {mobileTab === "devices" && <Users className="w-6 h-6 text-white" />}
+                  {mobileTab === "queue" && <LayoutGrid className="w-6 h-6 text-white" />}
+                  {mobileTab === "chat" && <MessageSquare className="w-6 h-6 text-white" />}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </button>
         </div>
       </div>
@@ -755,6 +832,11 @@ export function RoomDashboard({
           onClose={() => setShowVisualsPanel(false)}
         />
       )}
+
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
     </div>
   );
 }

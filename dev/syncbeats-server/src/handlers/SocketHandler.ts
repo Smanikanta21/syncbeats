@@ -1,15 +1,15 @@
-// handlers/SocketHandler.ts — command dispatcher
-
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
+import { UserRepository } from '../auth/UserRepository';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem, ChatMessage
 } from '../types';
 
 export class SocketHandler {
   private nextDebounce = new Map<string, number>();
+  private userRepo: UserRepository = new UserRepository();
 
   constructor(
     private io:          Server,
@@ -101,8 +101,8 @@ export class SocketHandler {
         // Disconnect from previous room if any to prevent ghosts
         this.roomManager.handleDisconnect(socket.id);
 
-        // Load from DB if fresh
-        if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
+        // Load from DB if fresh or if queue in memory is empty
+        if (room.getQueue().length === 0 || (!room.getTrackUrl() && room.getParticipantCount() === 0)) {
           const [dbRoom, queue] = await Promise.all([
             this.roomRepo.findById(roomId),
             this.roomRepo.getQueue(roomId),
@@ -115,6 +115,8 @@ export class SocketHandler {
               positionMs:    dbRoom.position_ms,
               queue,
             });
+          } else if (queue.length > 0) {
+            room.syncQueue(queue, queue.find(q => q.isCurrent)?.id ?? null);
           }
         }
 
@@ -153,6 +155,7 @@ export class SocketHandler {
           socket.join(roomId);
           this.roomManager.trackSocket(socket.id, roomId);
           socket.emit('room:snapshot', room.snapshot());
+          socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
           return;
         }
 
@@ -160,6 +163,7 @@ export class SocketHandler {
         this.roomManager.trackSocket(socket.id, roomId);
         room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
+        socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
@@ -273,11 +277,11 @@ export class SocketHandler {
 
     // ── Playback — any participant can control ────────────────────────────
 
-    socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string }) => {
+    socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId, title, artist, thumbnail }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string, title?: string, artist?: string, thumbnail?: string }) => {
       try {
         const room = this.roomManager.get(roomId);
         if (!room) return;
-        room.syncSchedule(trackUrl, positionMs, startTime, senderId);
+        room.syncSchedule(trackUrl, positionMs, startTime, senderId, title, artist, thumbnail);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -330,6 +334,23 @@ export class SocketHandler {
         if (next) room.play(socket.id);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
+      }
+    });
+
+    socket.on('room:reset', async ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (room) {
+        await this.roomRepo.clearEntireQueue(roomId).catch(() => {});
+        room.resetRoom();
+        this.io.to(roomId).emit('room:reset', { roomId });
+      }
+    });
+
+    socket.on('room:removeFromQueue', async ({ roomId, itemId }: { roomId: string; itemId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (room) {
+        await this.roomRepo.removeQueueItem(roomId, itemId).catch(() => {});
+        room.removeQueueItem(itemId);
       }
     });
 
@@ -479,19 +500,44 @@ export class SocketHandler {
     });
 
     // Chat & Reactions
-    socket.on('room:chat', ({ roomId, message }: { roomId: string, message: string }) => {
+    socket.on('room:chat', async ({ roomId, message }: { roomId: string, message: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room) return;
+      const text = message?.trim();
+      if (!text) return;
+
       const p = room.snapshot().participants.find(p => p.socketId === socket.id);
-      if (!p) return;
-      
-      this.io.to(roomId).emit('room:chat', {
+      const userId = socket.data.userId || p?.userId;
+      let userDisplayName = p ? p.displayName : 'Guest';
+
+      if (userId) {
+        try {
+          const user = await this.userRepo.findById(userId);
+          if (user && user.name) {
+            userDisplayName = user.name;
+          }
+        } catch (e) {}
+      }
+
+      const chatMsg: ChatMessage = {
         id: crypto.randomUUID(),
+        roomId,
         socketId: socket.id,
-        displayName: p.displayName,
-        message,
+        userId: userId || undefined,
+        displayName: userDisplayName,
+        message: text,
         timestamp: Date.now()
-      });
+      };
+
+      room.addChatMessage(chatMsg);
+
+      this.io.to(roomId).emit('room:chat', chatMsg);
+    });
+
+    socket.on('room:get_chat_history', ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
     });
 
     socket.on('room:reaction', ({ roomId, emoji }: { roomId: string, emoji: string }) => {

@@ -308,15 +308,11 @@ struct QueueSidePanel: View {
     }
 
     private func removeTrack(_ track: PlayableTrack) {
-        guard let roomId = RoomSocket.shared.roomId,
-              let itemId = track.queueItemId else { return }
-        
-        Task {
-            do {
-                try await APIClient.shared.deleteNoResponse(path: "/rooms/\(roomId)/queue/\(itemId)")
-            } catch {
-                print("[QueueSidePanel] Failed to remove track from queue:", error)
-            }
+        let targetId = track.queueItemId ?? track.id
+        if RoomSocket.shared.roomId != nil {
+            RoomSocket.shared.removeFromQueue(itemId: targetId)
+        } else {
+            PlayerEngine.shared.removeFromLocalQueue(trackId: track.id)
         }
     }
 }

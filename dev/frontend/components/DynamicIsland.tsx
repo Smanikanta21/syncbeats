@@ -6,7 +6,7 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
   Loader2, CheckCircle2, AlertCircle, AlertTriangle, RotateCcw, Play as Youtube, Activity,
   ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
-  Wifi, Radio, Volume2, VolumeX, UserPlus, Send
+  Wifi, Radio, Volume2, VolumeX, UserPlus, Send, User
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -246,7 +246,7 @@ const SyncProgressBar = ({
 
   const progress = incomingTrack
     ? incomingTrack.progress
-    : (hasTrack && !isReady)
+    : !isReady
     ? downloadProgress
     : hasSync
     ? avgSync
@@ -256,7 +256,7 @@ const SyncProgressBar = ({
     ? "Receiving"
     : isStuck
     ? "Stuck (0%) • Tap to skip"
-    : (hasTrack && !isReady)
+    : !isReady
     ? "Buffering"
     : hasSync && avgSync < 100
     ? "Syncing"
@@ -437,9 +437,10 @@ const PlayerTab = ({
             : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
-            <button onClick={e => { e.stopPropagation(); window.location.href = "/hub"; }}
-              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-[#FF0000]/20 group">
-              <LogOut className="w-4 h-4 text-[#FF0000]/80 group-hover:text-[#FF0000] transition-colors" />
+            <button onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
+              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-white/20 group"
+              title="Your Profile">
+              <User className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
             </button>
           )}
         </div>
@@ -1302,7 +1303,7 @@ export function DynamicIsland() {
             {isProfile ? (
               <Link href="/hub" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
             ) : (
-              <Link href="/profile" className="flex items-center gap-3 cursor-pointer group outline-none">
+              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className="flex items-center gap-3 cursor-pointer group outline-none">
                 <div className="text-right hidden sm:block">
                   <div className="text-sm font-bold text-foreground">{displayName}</div>
                   <div className="text-xs font-semibold text-foreground/40">{user?.email ?? ""}</div>
@@ -1310,7 +1311,7 @@ export function DynamicIsland() {
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border-2 border-transparent glass-panel group-active:scale-95 transition-all shadow-md">
                   <span className="text-xs sm:text-sm font-black text-foreground">{initials}</span>
                 </div>
-              </Link>
+              </div>
             )}
           </div>
         </div>

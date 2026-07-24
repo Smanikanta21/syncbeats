@@ -14,6 +14,8 @@ if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
   };
 }
 
+import { runCelestialTransition } from "../components/ThemeToggle";
+
 function ThemeSync() {
   const { setTheme } = useTheme();
   React.useEffect(() => {
@@ -21,17 +23,29 @@ function ThemeSync() {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "theme" && e.newValue) {
         document.documentElement.setAttribute("data-theme", e.newValue);
-        setTheme(e.newValue);
+        setTimeout(() => setTheme(e.newValue!), 0);
       }
     };
     window.addEventListener("storage", handleStorage);
 
-    // 2. Listen to BroadcastChannel for instant sync
+    // 2. Listen to BroadcastChannel for instant multi-tab sync with animation
     const channel = new BroadcastChannel("theme-sync");
     channel.onmessage = (e) => {
       if (e.data && e.data.theme) {
-        document.documentElement.setAttribute("data-theme", e.data.theme);
-        setTheme(e.data.theme);
+        const nextTheme = e.data.theme;
+        const x = e.data.x ?? window.innerWidth / 2;
+        const y = e.data.y ?? window.innerHeight / 2;
+
+        runCelestialTransition(
+          x,
+          y,
+          nextTheme === "dark",
+          () => {
+            document.documentElement.setAttribute("data-theme", nextTheme);
+            setTimeout(() => setTheme(nextTheme), 0);
+          },
+          () => {}
+        );
       }
     };
 
@@ -52,7 +66,6 @@ export function ThemeProvider({
       attribute="data-theme" 
       defaultTheme="light" 
       enableSystem
-      disableTransitionOnChange
       {...props}
     >
       <ThemeSync />
