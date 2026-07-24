@@ -13,6 +13,7 @@ import SmoothScrolling from "../components/SmoothScrolling";
 import Preloader from "../components/Preloader";
 import { ToastProvider } from "../components/ToastProvider";
 import { VisualizerProvider } from "../context/VisualizerContext";
+import { IOSHomeScreenPrompt } from "../components/IOSHomeScreenPrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -223,6 +224,7 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <Preloader />
+          <IOSHomeScreenPrompt />
           <ThemeProvider>
             <AuthProvider>
               <AudioProvider>
