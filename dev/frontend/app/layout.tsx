@@ -89,10 +89,16 @@ export const metadata: Metadata = {
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
   },
+  manifest: "/manifest.json",
   icons: {
-    icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
-    shortcut: "/syncbeats-icon.svg",
-    apple: "/syncbeats-icon.svg",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/syncbeats-icon.svg", type: "image/svg+xml" }
+    ],
+    shortcut: "/apple-touch-icon.png",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ],
   },
   applicationName: "SyncBeats",
   authors: [{ name: "SyncBeats", url: BASE_URL }],
