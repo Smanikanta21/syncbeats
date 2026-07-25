@@ -153,7 +153,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   const handleLeave = useCallback(() => {
     leave();
-    router.push("/hub");
+    router.push("/");
   }, [leave, router]);
 
 

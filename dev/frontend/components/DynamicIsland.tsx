@@ -781,6 +781,7 @@ const RadialNavigatorPillContent = ({
     else if (snappedItem.iconName === "Users") IconComponent = Users;
     else if (snappedItem.iconName === "LayoutGrid") IconComponent = LayoutGrid;
     else if (snappedItem.iconName === "MessageSquare") IconComponent = MessageSquare;
+    else if (snappedItem.iconName === "LogOut") IconComponent = LogOut;
   }
 
   return (

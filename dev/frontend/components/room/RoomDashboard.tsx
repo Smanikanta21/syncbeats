@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useSettings } from "../../hooks/useSettings";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
@@ -180,7 +181,7 @@ export function RoomDashboard({
     return () => window.removeEventListener("open-profile-modal", handleOpenProfile);
   }, []);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("queue");
   const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
   const [queueOpen, setQueueOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -196,10 +197,12 @@ export function RoomDashboard({
   }, [isHost, roomId]);
 
   const handleTogglePrivate = useCallback(() => {
-    if (!snapshot) return;
-    getSocket().emit("room:setPrivate", { roomId, isPrivate: !isPrivate });
-    onTogglePrivate?.();
-  }, [snapshot, roomId, isPrivate, onTogglePrivate]);
+    if (onTogglePrivate) {
+      onTogglePrivate();
+    } else {
+      getSocket().emit("room:togglePrivate", { roomId, isPrivate: !isPrivate });
+    }
+  }, [roomId, isPrivate, onTogglePrivate]);
 
   const toggleShuffle = useCallback(() => {
     getSocket().emit("room:toggleShuffle", { roomId, shuffle: true });
@@ -289,10 +292,11 @@ export function RoomDashboard({
                       Invite
                     </button>
                   )}
-                  {isHost && onTogglePrivate && (
+                  {isHost && (
                     <button 
-                      onClick={onTogglePrivate}
+                      onClick={handleTogglePrivate}
                       className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
+                      title={isPrivate ? "Click to make room public" : "Click to make room private"}
                     >
                       {isPrivate ? 'Private' : 'Public'}
                     </button>
@@ -459,6 +463,15 @@ export function RoomDashboard({
             <ThemeToggle />
             {isHost && (
               <button 
+                onClick={handleTogglePrivate}
+                className={`text-[9px] px-2.5 py-1 rounded-full font-bold uppercase transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
+                title={isPrivate ? "Click to make room public" : "Click to make room private"}
+              >
+                {isPrivate ? 'Private' : 'Public'}
+              </button>
+            )}
+            {isHost && (
+              <button 
                 onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
                 className="text-[9px] px-2.5 py-1 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
               >
@@ -572,6 +585,7 @@ export function RoomDashboard({
       <MobileRadialNavigator
         activeTab={mobileTab}
         onSelectTab={setMobileTab}
+        onLeaveRoom={onLeave || (() => { if (typeof window !== "undefined") window.location.href = "/"; })}
       />
 
       {showQR && (

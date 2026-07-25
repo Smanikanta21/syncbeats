@@ -8,7 +8,7 @@ import {
   Users,
   LayoutGrid,
   MessageSquare,
-  Compass,
+  LogOut,
   X,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -16,7 +16,7 @@ import { cn } from "../../lib/utils";
 export type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
 
 export interface MenuItem {
-  id: MobileTab;
+  id: MobileTab | "leave";
   label: string;
   sublabel: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -35,8 +35,8 @@ export const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: "playing",
-    label: "Visuals & EQ",
-    sublabel: "Visualizer & Equalizer",
+    label: "Visuals",
+    sublabel: "Visualizer & EQ",
     icon: Activity,
     iconName: "Activity",
     color: "from-purple-500 to-indigo-500",
@@ -65,17 +65,27 @@ export const MENU_ITEMS: MenuItem[] = [
     iconName: "MessageSquare",
     color: "from-pink-500 to-rose-500",
   },
+  {
+    id: "leave",
+    label: "Leave",
+    sublabel: "Exit Room",
+    icon: LogOut,
+    iconName: "LogOut",
+    color: "from-red-500 to-rose-600",
+  },
 ];
 
 interface MobileRadialNavigatorProps {
   activeTab: MobileTab;
   onSelectTab: (tabId: MobileTab) => void;
+  onLeaveRoom?: () => void;
   className?: string;
 }
 
 export function MobileRadialNavigator({
   activeTab,
   onSelectTab,
+  onLeaveRoom,
   className,
 }: MobileRadialNavigatorProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -140,14 +150,28 @@ export function MobileRadialNavigator({
     };
   }, []);
 
-  // Arc angles for 5 items in bottom-right semi-circle:
-  // Spanning from 95° (pointing straight up) to 185° (pointing left)
+  // Arc angles for 6 items in bottom-right quarter circle:
+  // Spanning from 90° (pointing straight up) to 180° (pointing left)
   const getItemArcAngle = useCallback((index: number, total: number) => {
-    const startAngle = 95;  // vertical up
-    const endAngle = 185;   // horizontal left
+    const startAngle = 92;  // vertical up
+    const endAngle = 182;   // horizontal left
     const step = (endAngle - startAngle) / Math.max(total - 1, 1);
     return startAngle + index * step;
   }, []);
+
+  // Select item action
+  const handleItemSelect = useCallback((item: MenuItem) => {
+    setMenuOpen(false);
+    if (item.id === "leave") {
+      if (onLeaveRoom) {
+        onLeaveRoom();
+      } else if (typeof window !== "undefined") {
+        window.location.href = "/";
+      }
+    } else {
+      onSelectTab(item.id);
+    }
+  }, [onLeaveRoom, onSelectTab, setMenuOpen]);
 
   // High precision magnetic snap evaluation logic
   const processPoint = useCallback(
@@ -159,8 +183,8 @@ export function MobileRadialNavigator({
 
       setThumbPos({ x: clientX, y: clientY });
 
-      // If thumb is within 25px deadzone of button center
-      if (distance < 25) {
+      // If thumb is within 20px deadzone of button center
+      if (distance < 20) {
         updateSnappedIndex(null);
         return;
       }
@@ -185,12 +209,12 @@ export function MobileRadialNavigator({
         }
       });
 
-      // Magnetic snap threshold: within 32° angular delta & 30px to 240px radial distance
+      // Magnetic snap threshold: within 28° angular delta & 25px to 220px radial distance
       if (
         closestIdx !== null &&
-        minAngularDiff <= 32 &&
-        distance >= 30 &&
-        distance <= 240
+        minAngularDiff <= 28 &&
+        distance >= 25 &&
+        distance <= 220
       ) {
         updateSnappedIndex(closestIdx);
 
@@ -199,7 +223,7 @@ export function MobileRadialNavigator({
           lastHapticIndexRef.current = closestIdx;
           if (typeof window !== "undefined" && navigator.vibrate) {
             try {
-              navigator.vibrate(18);
+              navigator.vibrate(14);
             } catch {}
           }
         }
@@ -274,11 +298,16 @@ export function MobileRadialNavigator({
     dragStartPosRef.current = { x: e.clientX, y: e.clientY };
     isDraggingRef.current = true;
 
-    setMenuOpen(true);
-    processPoint(e.clientX, e.clientY);
+    // Toggle menu state immediately on click/press
+    const nextState = !isOpenRef.current;
+    setMenuOpen(nextState);
+
+    if (nextState) {
+      processPoint(e.clientX, e.clientY);
+    }
   };
 
-  // Pointer Move on Trigger Button (captured via setPointerCapture)
+  // Pointer Move on Trigger Button
   const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!isDraggingRef.current && !isOpenRef.current) return;
     e.preventDefault();
@@ -305,7 +334,6 @@ export function MobileRadialNavigator({
 
     const currentSnapped = snappedIndexRef.current;
 
-    // Reset state & notifying Dynamic Island to close overlay IMMEDIATELY
     isDraggingRef.current = false;
     centerCoordRef.current = null;
     snappedIndexRef.current = null;
@@ -315,13 +343,8 @@ export function MobileRadialNavigator({
 
     if (currentSnapped !== null && MENU_ITEMS[currentSnapped]) {
       // Released over a snapped item -> select that tab!
-      onSelectTab(MENU_ITEMS[currentSnapped].id);
-      setMenuOpen(false);
-    } else if (dragDistance < 12) {
-      // Tap gesture without dragging -> toggle menu open/close
-      const nextOpen = !isOpenRef.current;
-      setMenuOpen(nextOpen);
-    } else {
+      handleItemSelect(MENU_ITEMS[currentSnapped]);
+    } else if (dragDistance > 12) {
       // Dragged into space outside any item -> close menu
       setMenuOpen(false);
     }
@@ -349,34 +372,34 @@ export function MobileRadialNavigator({
 
   return (
     <>
-      {/* ── Floating Trigger Button (Bottom-Right Ergonomic Thumb Target) ── */}
-      <div className={cn("fixed bottom-6 right-6 z-50 md:hidden select-none", className)}>
+      {/* ── Floating Trigger Button (Compact w-12 h-12 Ergonomic Thumb Target) ── */}
+      <div className={cn("fixed bottom-5 right-5 z-50 md:hidden select-none", className)}>
         <motion.button
           ref={triggerRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
-          whileTap={{ scale: 0.92 }}
+          whileTap={{ scale: 0.90 }}
           className={cn(
-            "relative w-15 h-15 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-md border transition-all duration-200 touch-none cursor-pointer",
+            "relative w-12 h-12 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-md border transition-all duration-200 touch-none cursor-pointer",
             isOpen
-              ? "bg-primary text-primary-foreground border-white/40 ring-4 ring-primary/40 scale-110 shadow-[0_0_30px_rgba(168,85,247,0.6)]"
+              ? "bg-primary text-primary-foreground border-white/40 ring-4 ring-primary/40 scale-105 shadow-[0_0_25px_rgba(168,85,247,0.6)]"
               : "bg-background/90 dark:bg-black/90 text-foreground border-foreground/15 hover:bg-background"
           )}
           style={{ touchAction: "none", willChange: "transform, opacity" }}
           aria-label="Mobile Magnetic Radial Menu Navigator"
         >
-          <AnimatePresence>
+          <AnimatePresence mode="wait">
             {isOpen ? (
               <motion.div
                 key="open"
                 initial={{ rotate: -90, opacity: 0 }}
                 animate={{ rotate: 0, opacity: 1 }}
                 exit={{ rotate: 90, opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.12 }}
               >
-                <X className="w-7 h-7 text-white" />
+                <X className="w-5 h-5 text-white" />
               </motion.div>
             ) : (
               <motion.div
@@ -384,34 +407,35 @@ export function MobileRadialNavigator({
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.12 }}
                 className="flex flex-col items-center justify-center"
               >
-                <ActiveIcon className="w-7 h-7 text-primary" />
+                <ActiveIcon className="w-5 h-5 text-primary" />
               </motion.div>
             )}
           </AnimatePresence>
 
           {/* Glowing pulse ring indicator */}
           {!isOpen && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4">
+            <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-primary border-2 border-background"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-primary border-2 border-background"></span>
             </span>
           )}
         </motion.button>
       </div>
 
-      {/* ── Semi-Circle Radial Menu & Magnetic Overlay ── */}
+      {/* ── Semi-Circle Radial Menu & Backdrop Overlay ── */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             className="fixed inset-0 z-40 md:hidden pointer-events-auto bg-black/50 backdrop-blur-sm select-none touch-none"
             style={{ touchAction: "none", willChange: "opacity" }}
+            onClick={() => setMenuOpen(false)}
             onPointerDown={() => setMenuOpen(false)}
           >
             {/* Magnetic Connector Line to Active Thumb */}
@@ -421,7 +445,7 @@ export function MobileRadialNavigator({
                   (() => {
                     const angle = getItemArcAngle(snappedIndex, MENU_ITEMS.length);
                     const rad = (angle * Math.PI) / 180;
-                    const radius = 130;
+                    const radius = 110;
                     const targetX = center.x + radius * Math.cos(rad);
                     const targetY = center.y - radius * Math.sin(rad);
 
@@ -433,17 +457,17 @@ export function MobileRadialNavigator({
                           x2={targetX}
                           y2={targetY}
                           stroke="var(--primary, #a855f7)"
-                          strokeWidth="3.5"
-                          strokeDasharray="6 4"
+                          strokeWidth="3"
+                          strokeDasharray="5 3"
                           className="animate-pulse"
                         />
                         <circle
                           cx={thumbPos.x}
                           cy={thumbPos.y}
-                          r="16"
+                          r="14"
                           fill="rgba(168, 85, 247, 0.25)"
                           stroke="var(--primary, #a855f7)"
-                          strokeWidth="2.5"
+                          strokeWidth="2"
                         />
                       </>
                     );
@@ -452,7 +476,7 @@ export function MobileRadialNavigator({
                   <circle
                     cx={thumbPos.x}
                     cy={thumbPos.y}
-                    r="10"
+                    r="8"
                     fill="rgba(255, 255, 255, 0.2)"
                     stroke="rgba(255, 255, 255, 0.5)"
                     strokeWidth="1.5"
@@ -461,12 +485,12 @@ export function MobileRadialNavigator({
               </svg>
             )}
 
-            {/* Arc Items Rendered in Semi-Circle Layout */}
+            {/* Arc Items Rendered in Compact 110px Semi-Circle Arc */}
             <div className="absolute inset-0 pointer-events-none">
               {MENU_ITEMS.map((item, idx) => {
                 const angle = getItemArcAngle(idx, MENU_ITEMS.length);
                 const rad = (angle * Math.PI) / 180;
-                const radius = 130; // radial distance from center
+                const radius = 110; // compact radial distance from center
 
                 const posX = center.x + radius * Math.cos(rad);
                 const posY = center.y - radius * Math.sin(rad);
@@ -474,9 +498,7 @@ export function MobileRadialNavigator({
                 const isSnapped = snappedIndex === idx;
                 const isActiveTab = activeTab === item.id;
                 const Icon = item.icon;
-
-                // Ultra snappy collapse stagger on exit
-                const exitDelay = (MENU_ITEMS.length - 1 - idx) * 0.01;
+                const isLeave = item.id === "leave";
 
                 return (
                   <motion.div
@@ -484,57 +506,52 @@ export function MobileRadialNavigator({
                     initial={{
                       opacity: 0,
                       scale: 0.2,
-                      x: center.x - 28,
-                      y: center.y - 28,
+                      x: center.x - 20,
+                      y: center.y - 20,
                     }}
                     animate={{
                       opacity: 1,
-                      scale: isSnapped ? 1.38 : isActiveTab ? 1.15 : 1,
-                      x: posX - 28,
-                      y: posY - 28,
+                      scale: isSnapped ? 1.30 : isActiveTab ? 1.10 : 1,
+                      x: posX - 20,
+                      y: posY - 20,
                     }}
                     exit={{
                       opacity: 0,
-                      scale: 0.1,
-                      x: center.x - 28,
-                      y: center.y - 28,
-                      transition: {
-                        type: "spring",
-                        stiffness: 500,
-                        damping: 32,
-                        mass: 0.5,
-                        delay: exitDelay,
-                      },
+                      scale: 0.2,
+                      x: center.x - 20,
+                      y: center.y - 20,
                     }}
                     transition={{
                       type: "spring",
-                      stiffness: 480,
+                      stiffness: 550,
                       damping: 28,
-                      mass: 0.6,
-                      delay: idx * 0.015,
+                      mass: 0.4,
                     }}
                     style={{ willChange: "transform, opacity" }}
                     className={cn(
-                      "absolute w-14 h-14 rounded-full flex flex-col items-center justify-center border-none shadow-2xl backdrop-blur-md transition-all duration-150 pointer-events-auto cursor-pointer select-none",
-                      isSnapped
-                        ? "bg-primary text-primary-foreground ring-4 ring-primary/50 shadow-[0_0_35px_rgba(168,85,247,0.8)] z-30"
+                      "absolute w-10 h-10 rounded-full flex flex-col items-center justify-center border-none shadow-xl backdrop-blur-md transition-all duration-150 pointer-events-auto cursor-pointer select-none",
+                      isLeave
+                        ? "bg-red-500/90 text-white shadow-[0_0_20px_rgba(239,68,68,0.6)]"
+                        : isSnapped
+                        ? "bg-primary text-primary-foreground ring-4 ring-primary/50 shadow-[0_0_30px_rgba(168,85,247,0.8)] z-30"
                         : isActiveTab
                         ? "bg-foreground text-background ring-2 ring-primary/40"
                         : "bg-background/90 dark:bg-black/90 text-foreground hover:bg-background"
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectTab(item.id);
-                      setMenuOpen(false);
+                      handleItemSelect(item);
                     }}
                   >
-                    <Icon className="w-6 h-6" />
+                    <Icon className="w-4 h-4" />
 
                     {/* Item label under icon */}
                     <span
                       className={cn(
-                        "absolute -bottom-6 text-[9px] font-black uppercase tracking-wider whitespace-nowrap px-2 py-0.5 rounded-full backdrop-blur-md transition-all duration-150 pointer-events-none",
-                        isSnapped
+                        "absolute -bottom-5 text-[8px] font-extrabold uppercase tracking-wider whitespace-nowrap px-1.5 py-0.5 rounded-full backdrop-blur-md transition-all duration-150 pointer-events-none",
+                        isLeave
+                          ? "bg-red-600 text-white opacity-100 shadow-md"
+                          : isSnapped
                           ? "bg-primary text-white opacity-100 scale-110 shadow-lg"
                           : "bg-background/90 text-foreground/80 opacity-90"
                       )}
