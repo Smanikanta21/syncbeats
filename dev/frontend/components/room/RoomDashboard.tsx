@@ -213,7 +213,7 @@ export function RoomDashboard({
 
   return (
     <div 
-      className="fixed inset-0 flex flex-col overflow-hidden select-none h-[100dvh]" 
+      className="fixed inset-0 flex flex-col overflow-hidden select-none w-full h-full" 
       style={{ 
         paddingTop: "max(env(safe-area-inset-top), 4px)", 
         paddingBottom: "max(env(safe-area-inset-bottom), 4px)" 
@@ -409,7 +409,7 @@ export function RoomDashboard({
       </div>
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
-      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-14 pb-2 px-1">
+      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-1">
         {/* Mobile Header */}
         <div className="flex items-center justify-between px-3 pb-2.5 border-b border-foreground/5 mb-2 shrink-0">
           <div className="flex flex-col">
@@ -478,7 +478,7 @@ export function RoomDashboard({
         <AnimatePresence mode="wait">
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2">
+              className="flex-1 min-h-0 px-2 flex flex-col">
               <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <SpatialPanel
                   myDeviceId={mySocketId ?? ""}
@@ -500,7 +500,7 @@ export function RoomDashboard({
           )}
           {mobileTab === "playing" && (
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2">
+              className="flex-1 min-h-0 px-2 flex flex-col">
               <div className="h-full flex flex-col gap-2 min-h-0">
                 <GlassCard className="flex-[3] p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
                   <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} onOpenVisuals={() => setShowVisualsPanel(true)} />
@@ -516,7 +516,7 @@ export function RoomDashboard({
           )}
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2">
+              className="flex-1 min-h-0 px-2 flex flex-col">
               <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
@@ -555,7 +555,7 @@ export function RoomDashboard({
           )}
           {mobileTab === "chat" && (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2">
+              className="flex-1 min-h-0 px-2 flex flex-col">
               <RoomChat
                 roomId={roomId}
                 mySocketId={mySocketId}

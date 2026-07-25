@@ -367,9 +367,17 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     document.addEventListener('ytBufferEnd', handleYtBufferEnd);
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        correctDrift();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       clearInterval(driftInterval);
       document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []); // paramsRef is a stable ref, correctDrift is a closure — intentional empty dep
 

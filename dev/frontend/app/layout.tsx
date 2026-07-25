@@ -14,6 +14,7 @@ import Preloader from "../components/Preloader";
 import { ToastProvider } from "../components/ToastProvider";
 import { VisualizerProvider } from "../context/VisualizerContext";
 import { IOSHomeScreenPrompt } from "../components/IOSHomeScreenPrompt";
+import { cn } from "@/lib/utils";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -201,24 +202,24 @@ export default function RootLayout({
 
 
 
-      <body className="transition-colors duration-300 bg-background text-foreground">
+      <body className={cn('transition-colors', 'duration-300', 'bg-background', 'text-foreground')}>
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
-        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className={cn('fixed', 'inset-0', 'pointer-events-none', 'z-0', 'overflow-hidden')}>
           
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
-          <div className="hidden md:block absolute inset-0">
-            <div id="ambient-bass"   className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-violet-600/10 dark:bg-violet-900/20 blur-[120px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-mid"    className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] bg-emerald-500/10 dark:bg-emerald-900/20 blur-[150px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-treble" className="absolute bottom-[-20%] left-[20%] w-[70vw] h-[70vw] bg-blue-500/10 dark:bg-blue-900/20 blur-[130px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+          <div className={cn('hidden', 'md:block', 'absolute', 'inset-0')}>
+            <div id="ambient-bass"   className={cn('absolute', 'top-[-10%]', 'left-[-10%]', 'w-[50vw]', 'h-[50vw]', 'bg-violet-600/10', 'dark:bg-violet-900/20', 'blur-[120px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+            <div id="ambient-mid"    className={cn('absolute', 'top-[20%]', 'right-[-20%]', 'w-[60vw]', 'h-[60vw]', 'bg-emerald-500/10', 'dark:bg-emerald-900/20', 'blur-[150px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+            <div id="ambient-treble" className={cn('absolute', 'bottom-[-20%]', 'left-[20%]', 'w-[70vw]', 'h-[70vw]', 'bg-blue-500/10', 'dark:bg-blue-900/20', 'blur-[130px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+            <div className={cn('absolute', 'inset-0', 'opacity-[0.015]', 'dark:opacity-[0.03]')} style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 
           {/* MOBILE LAYER (Optimized, lightweight) */}
-          <div className="block md:hidden absolute inset-0">
-            <div className="absolute top-[-10%] left-[-10%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-violet-600/15 dark:from-violet-900/25 to-transparent mix-blend-screen animate-pulse duration-[16000ms] will-change-transform" />
-            <div className="absolute top-[20%] right-[-20%] w-[80vw] h-[80vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-emerald-500/15 dark:from-emerald-900/25 to-transparent mix-blend-screen animate-pulse duration-[24000ms] delay-1000 will-change-transform" />
-            <div className="absolute bottom-[-20%] left-[20%] w-[90vw] h-[90vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-blue-500/15 dark:from-blue-900/25 to-transparent mix-blend-screen animate-pulse duration-[20000ms] delay-500 will-change-transform" />
-            <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.08]" style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
+          <div className={cn('block', 'md:hidden', 'absolute', 'inset-0')}>
+            <div className={cn('absolute', 'top-[-10%]', 'left-[-10%]', 'w-[70vw]', 'h-[70vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-violet-600/15', 'dark:from-violet-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[16000ms]', 'will-change-transform')} />
+            <div className={cn('absolute', 'top-[20%]', 'right-[-20%]', 'w-[80vw]', 'h-[80vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-emerald-500/15', 'dark:from-emerald-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[24000ms]', 'delay-1000', 'will-change-transform')} />
+            <div className={cn('absolute', 'bottom-[-20%]', 'left-[20%]', 'w-[90vw]', 'h-[90vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-blue-500/15', 'dark:from-blue-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[20000ms]', 'delay-500', 'will-change-transform')} />
+            <div className={cn('absolute', 'inset-0', 'opacity-[0.05]', 'dark:opacity-[0.08]')} style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
           </div>
 
         </div>
@@ -230,7 +231,7 @@ export default function RootLayout({
               <AudioProvider>
                 <VisualizerProvider>
                   <ToastProvider>
-                    <div className="relative z-10 w-full">{children}</div>
+                    <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
                   </ToastProvider>
                 </VisualizerProvider>
               </AudioProvider>

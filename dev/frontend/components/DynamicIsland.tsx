@@ -23,6 +23,8 @@ import { useSyncInfo } from "../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
 import { SpotifyIslandTab } from "./room/SpotifyIslandTab";
 import { SearchTab } from "./room/SearchTab";
+import { useSettings } from "../hooks/useSettings";
+import { cn } from "../lib/utils";
 
 // ─────────────────────────────────────────────────────────
 // Constants
@@ -691,7 +693,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
 // ─────────────────────────────────────────────────────────
 
 const RoomPill = ({
-  effectivePlaying, trackTitle, trackUrl, isRoom, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback
+  effectivePlaying, trackTitle, trackUrl, isRoom, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback, showAlbumArt = true
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -702,6 +704,7 @@ const RoomPill = ({
   seekIndicator: { amount: number; text: string } | null;
   volIndicator: { amount: number; text: string } | null;
   onTogglePlayback: () => void;
+  showAlbumArt?: boolean;
 }) => {
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
 
@@ -727,7 +730,7 @@ const RoomPill = ({
     <div className="absolute inset-0 flex items-center px-2 gap-2">
       {/* Tiny thumbnail or disc */}
       <div className="w-7 h-7 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-white/10">
-        {thumbUrl
+        {showAlbumArt && thumbUrl
           ? <img src={thumbUrl} className="w-full h-full object-cover" />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
@@ -953,10 +956,21 @@ export function DynamicIsland() {
   const hasTrack = audio.hasTrack;
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
   const [isHoverLocked, setIsHoverLocked] = useState(false);
+  const { settings } = useSettings();
+  const islandCustomizer = settings.islandCustomizer || { glowColor: "violet", autoShrinkDelaySec: 6, showAlbumArt: true };
+
+  const glowClassMap = {
+    violet: "border border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.45)]",
+    cyan: "border border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.45)]",
+    emerald: "border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
+    amber: "border border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
+    dark: "border border-white/[0.08] shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
+    none: "border-none shadow-none",
+  };
+  const currentGlowClass = glowClassMap[islandCustomizer.glowColor || "violet"] || glowClassMap.violet;
 
   // ── Island state machine
   // In room: pill / extended / expanded
-  // Outside room: just compact / expanded (legacy)
   const [islandState, setIslandState] = useState<IslandState>("pill");
   const [isExpanded, setIsExpanded] = useState(false); // non-room
   const islandRef = useRef<HTMLDivElement>(null);
@@ -1449,7 +1463,10 @@ export function DynamicIsland() {
           } else {
             setIslandState("extended");
             if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-            shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), 6000);
+            const delaySec = islandCustomizer.autoShrinkDelaySec ?? 6;
+            if (delaySec > 0) {
+              shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), delaySec * 1000);
+            }
           }
         } else if (islandState === "extended") {
           setIslandState("pill");
@@ -1469,7 +1486,12 @@ export function DynamicIsland() {
         onClick={() => setIslandState("pill")}
       />
 
-      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none">
+      <div 
+        className="fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none"
+        style={{
+          top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+        }}
+      >
         <motion.div
           ref={islandRef}
           onPointerDown={e => { handlePointerDown_room(); resetInactivityTimer(); }}
@@ -1545,7 +1567,7 @@ export function DynamicIsland() {
             transform: "translateZ(0)",
             maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
           }}
-          className="pointer-events-auto shadow-[0_30px_60px_rgba(0,0,0,0.6)] border border-white/[0.08] select-none"
+          className={cn("pointer-events-auto select-none transition-all duration-300", currentGlowClass)}
         >
           {/* Temporary Radial Navigator Gesture Overlay */}
           <AnimatePresence>
@@ -1584,6 +1606,7 @@ export function DynamicIsland() {
                   seekIndicator={seekIndicator}
                   volIndicator={volIndicator}
                   onTogglePlayback={handleToggle}
+                  showAlbumArt={islandCustomizer.showAlbumArt}
                 />
               </motion.div>
             )}

@@ -12,7 +12,7 @@ import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { downloadAudio } from './SearchRoutes';
+import { streamYoutubeAudio } from './SearchRoutes';
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -635,14 +635,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Resolving YouTube audio for video: ${videoId}`);
-      const filePath = await downloadAudio(videoId);
-      
-      if (!res.headersSent) {
-        res.setHeader('Content-Type', 'audio/x-m4a');
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-        res.sendFile(filePath);
-      }
+      console.log(`[Proxy] Live memory streaming audio for YouTube video: ${videoId}`);
+      await streamYoutubeAudio(videoId, req, res);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('Truncated YouTube ID')) {

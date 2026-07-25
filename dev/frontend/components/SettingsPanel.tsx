@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Sliders, Palette, Zap, Save, RefreshCw, Check } from "lucide-react";
+import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { cn } from "../lib/utils";
@@ -791,6 +791,147 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
               </div>
             </div>
           </section>
+        )}
+
+        {!onlyVisuals && (
+          <>
+            {/* Screen Awake Feature */}
+            <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
+              <div className={cn('flex', 'items-center', 'justify-between', 'mb-3')}>
+                <div className={cn('flex', 'items-center', 'gap-2')}>
+                  <Sun className={cn('w-5', 'h-5', 'text-amber-400')} />
+                  <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Screen & Display</h3>
+                </div>
+                {settings.keepScreenAwake && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    Awake Active
+                  </span>
+                )}
+              </div>
+              <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
+                Keep your device screen awake during room listening sessions to prevent browser audio throttling and tab sleep.
+              </p>
+
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-foreground">Keep Screen Awake</span>
+                  <span className="text-[10px] text-foreground/40">Uses Web Screen Wake Lock API</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ keepScreenAwake: !settings.keepScreenAwake })}
+                  className={cn(
+                    "relative w-12 h-6 rounded-full transition-colors duration-200 border border-foreground/10 cursor-pointer p-0.5",
+                    settings.keepScreenAwake ? "bg-amber-500 border-amber-400" : "bg-foreground/10"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-4 h-4 rounded-full bg-white transition-transform duration-200 shadow-md",
+                      settings.keepScreenAwake ? "translate-x-6" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+            </section>
+
+            {/* Dynamic Island Customizer Section */}
+            <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
+              <div className={cn('flex', 'items-center', 'gap-2', 'mb-3')}>
+                <Radio className={cn('w-5', 'h-5', 'text-purple-400')} />
+                <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Dynamic Island Customizer</h3>
+              </div>
+              <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
+                Customize the glow theme, artwork display, and auto-shrink behavior of your Dynamic Island player.
+              </p>
+
+              <div className="space-y-4">
+                {/* Glow Accent Theme */}
+                <div>
+                  <label className={cn('text-[10px]', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/40', 'block', 'mb-2')}>Glow Accent Theme</label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {[
+                      { id: "violet", label: "Violet", color: "bg-purple-500" },
+                      { id: "cyan", label: "Cyan", color: "bg-cyan-500" },
+                      { id: "emerald", label: "Emerald", color: "bg-emerald-500" },
+                      { id: "amber", label: "Amber", color: "bg-amber-500" },
+                      { id: "dark", label: "Dark", color: "bg-zinc-700" },
+                      { id: "none", label: "None", color: "bg-black border border-white/20" },
+                    ].map((theme) => (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => updateSettings({
+                          islandCustomizer: { ...settings.islandCustomizer, glowColor: theme.id as any }
+                        })}
+                        className={cn(
+                          'py-2 px-1 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1 transition-all border cursor-pointer',
+                          settings.islandCustomizer?.glowColor === theme.id
+                            ? 'bg-foreground text-background border-foreground shadow-sm scale-105'
+                            : 'bg-foreground/[0.03] text-foreground/70 border-foreground/5 hover:bg-foreground/10'
+                        )}
+                      >
+                        <div className={cn('w-3 h-3 rounded-full', theme.color)} />
+                        {theme.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Auto-Shrink Delay */}
+                <div>
+                  <label className={cn('text-[10px]', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/40', 'block', 'mb-2')}>Auto-Shrink Delay</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { sec: 3, label: "3s Fast" },
+                      { sec: 6, label: "6s Default" },
+                      { sec: 10, label: "10s Relaxed" },
+                      { sec: 0, label: "Never" },
+                    ].map((option) => (
+                      <button
+                        key={option.sec}
+                        type="button"
+                        onClick={() => updateSettings({
+                          islandCustomizer: { ...settings.islandCustomizer, autoShrinkDelaySec: option.sec }
+                        })}
+                        className={cn(
+                          'py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer',
+                          settings.islandCustomizer?.autoShrinkDelaySec === option.sec
+                            ? 'bg-foreground text-background border-foreground shadow-sm scale-105'
+                            : 'bg-foreground/[0.03] text-foreground/70 border-foreground/5 hover:bg-foreground/10'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Show Album Art Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
+                  <span className="text-xs font-bold text-foreground">Show Album Artwork Thumbnail</span>
+                  <button
+                    type="button"
+                    onClick={() => updateSettings({
+                      islandCustomizer: { ...settings.islandCustomizer, showAlbumArt: !settings.islandCustomizer?.showAlbumArt }
+                    })}
+                    className={cn(
+                      "relative w-12 h-6 rounded-full transition-colors duration-200 border border-foreground/10 cursor-pointer p-0.5",
+                      settings.islandCustomizer?.showAlbumArt ? "bg-purple-500 border-purple-400" : "bg-foreground/10"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "w-4 h-4 rounded-full bg-white transition-transform duration-200 shadow-md",
+                        settings.islandCustomizer?.showAlbumArt ? "translate-x-6" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+            </section>
+          </>
         )}
 
       </div>

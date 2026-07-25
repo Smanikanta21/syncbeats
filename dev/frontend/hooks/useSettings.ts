@@ -2,9 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { authApi } from "../lib/api";
 
+export interface IslandCustomizerSettings {
+  glowColor: "violet" | "cyan" | "emerald" | "amber" | "dark" | "none";
+  autoShrinkDelaySec: number; // 3, 6, 10, or 0 (0 means never shrink)
+  showAlbumArt: boolean;
+}
+
 export interface AppSettings {
   audioLatencyOffsetMs: number;
   syncAggressiveness: "high" | "saver";
+  keepScreenAwake: boolean; // Screen Awake Feature (Wake Lock API)
+  islandCustomizer: IslandCustomizerSettings; // Dynamic Island Customizer
   ambientColors: {
     subHue: number;
     bassHue: number;
@@ -31,6 +39,12 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   audioLatencyOffsetMs: 0,
   syncAggressiveness: "high",
+  keepScreenAwake: true,
+  islandCustomizer: {
+    glowColor: "violet",
+    autoShrinkDelaySec: 6,
+    showAlbumArt: true,
+  },
   ambientColors: {
     subHue: 320,
     bassHue: 0,
@@ -56,17 +70,62 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const SETTINGS_STORAGE_KEY = "syncbeats_app_settings";
 
+// Custom hook to request Screen Wake Lock API when enabled
+export function useScreenAwake(enabled: boolean = true) {
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined" || !("wakeLock" in navigator)) return;
+
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request("screen");
+      } catch (err) {
+        // Wake lock request failed (e.g. low power mode or battery saver)
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && enabled) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [enabled]);
+}
+
 export function useSettings() {
   const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS);
   const auth = useAuth();
   const syncTimeoutRef = useRef<any>(null);
+
+  // Automatically keep screen awake if enabled in settings
+  useScreenAwake(settings.keepScreenAwake);
 
   // Load from local storage initially
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (stored) {
-        setSettingsState({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
+        const parsed = JSON.parse(stored);
+        setSettingsState({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          islandCustomizer: {
+            ...DEFAULT_SETTINGS.islandCustomizer,
+            ...(parsed.islandCustomizer || {}),
+          },
+        });
       }
     } catch {
       // ignore
@@ -74,7 +133,15 @@ export function useSettings() {
 
     const handleStorage = (e: StorageEvent) => {
       if (e.key === SETTINGS_STORAGE_KEY && e.newValue) {
-        setSettingsState({ ...DEFAULT_SETTINGS, ...JSON.parse(e.newValue) });
+        const parsed = JSON.parse(e.newValue);
+        setSettingsState({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          islandCustomizer: {
+            ...DEFAULT_SETTINGS.islandCustomizer,
+            ...(parsed.islandCustomizer || {}),
+          },
+        });
       }
     };
     
@@ -83,7 +150,15 @@ export function useSettings() {
       try {
         const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
         if (stored) {
-          setSettingsState({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
+          const parsed = JSON.parse(stored);
+          setSettingsState({
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            islandCustomizer: {
+              ...DEFAULT_SETTINGS.islandCustomizer,
+              ...(parsed.islandCustomizer || {}),
+            },
+          });
         }
       } catch {}
     };
@@ -109,7 +184,10 @@ export function useSettings() {
           setSettingsState((prev) => ({
             ...prev,
             ...dbSettings,
-            // Ensure nested objects merge properly
+            islandCustomizer: {
+              ...prev.islandCustomizer,
+              ...(dbSettings.islandCustomizer || {}),
+            },
             ambientColors: {
               ...prev.ambientColors,
               ...(dbSettings.ambientColors || {}),
@@ -130,7 +208,9 @@ export function useSettings() {
     const newSettings = {
       ...settings,
       ...updates,
-      // Ensure nested updates merge correctly
+      islandCustomizer: updates.islandCustomizer
+        ? { ...settings.islandCustomizer, ...updates.islandCustomizer }
+        : settings.islandCustomizer,
       ambientColors: updates.ambientColors 
         ? { ...settings.ambientColors, ...updates.ambientColors }
         : settings.ambientColors,
