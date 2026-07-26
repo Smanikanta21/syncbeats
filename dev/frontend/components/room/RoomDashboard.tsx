@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSettings } from "../../hooks/useSettings";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
-import Link from "next/link";
+import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
   LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X
 } from "lucide-react";
@@ -190,6 +190,56 @@ export function RoomDashboard({
   const queue = snapshot?.queue ?? [];
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
   const isRoomReady = participants.every(p => p.isReady);
+
+  const lastExtractedTrackRef = useRef<string | null>(null);
+
+  // Dynamically extract 2 colors from album art when in Auto gradient mode
+  // and wire them into ambientColors so the blobs beat with the extracted palette
+  useEffect(() => {
+    const coverUrl = getTrackThumbnailUrl(currentQueueItem);
+    const trackKey = currentQueueItem ? `${currentQueueItem.id}_${coverUrl}` : null;
+    
+    if (!coverUrl || !trackKey) return;
+    if ((settings.gradientSettings?.mode || "auto") !== "auto") return;
+
+    if (lastExtractedTrackRef.current === trackKey) return;
+    lastExtractedTrackRef.current = trackKey;
+
+    console.log("[SyncBeats] Active track playing! Auto extracting Spotify album art colors from:", coverUrl);
+
+    extractTwoColorsFromImage(coverUrl).then(([c1, c2]) => {
+      // Convert hex colors → 6-band hue map for the ambient light blobs
+      const newHues = colorsToAmbientHues(c1, c2);
+
+      console.log("[SyncBeats] Auto Extracted Album Art Colors:", c1, c2, "→ Hues:", newHues);
+
+      updateSettings({
+        gradientSettings: {
+          ...(settings.gradientSettings || { mode: "auto", nodes: [] }),
+          extractedColors: [c1, c2],
+          nodes: [
+            { id: "node-1", color: c1, position: 0 },
+            { id: "node-2", color: c2, position: 100 },
+          ],
+        },
+        // Wire the extracted hues directly into the ambient blob system
+        ambientColors: newHues,
+        // Ensure visuals are enabled and bright enough to actually see the colors
+        ambientEnabled: true,
+        ambientBrightness: Math.max(settings.ambientBrightness ?? 100, 110),
+        ambientContrast: Math.max(settings.ambientContrast ?? 100, 110),
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentQueueItem?.id, 
+    currentQueueItem?.trackUrl, 
+    currentQueueItem?.title, 
+    currentQueueItem?.coverUrl, 
+    currentQueueItem?.thumbnail, 
+    settings.gradientSettings?.mode, 
+    isPlaying
+  ]);
 
   const handleTrackSelect = useCallback((item: typeof queue[0]) => {
     if (!isHost) return;

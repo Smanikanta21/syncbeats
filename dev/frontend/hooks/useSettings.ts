@@ -8,11 +8,24 @@ export interface IslandCustomizerSettings {
   showAlbumArt: boolean;
 }
 
+export interface GradientNode {
+  id: string;
+  color: string;
+  position: number;
+}
+
+export interface GradientSettings {
+  mode: "auto" | "manual";
+  nodes: GradientNode[];
+  extractedColors: [string, string];
+}
+
 export interface AppSettings {
   audioLatencyOffsetMs: number;
   syncAggressiveness: "high" | "saver";
   keepScreenAwake: boolean; // Screen Awake Feature (Wake Lock API)
   islandCustomizer: IslandCustomizerSettings; // Dynamic Island Customizer
+  gradientSettings: GradientSettings; // Dynamic Album Art Gradient & Custom Node Editor
   ambientColors: {
     subHue: number;
     bassHue: number;
@@ -44,6 +57,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     glowColor: "violet",
     autoShrinkDelaySec: 6,
     showAlbumArt: true,
+  },
+  gradientSettings: {
+    mode: "auto",
+    nodes: [
+      { id: "node-1", color: "#8b5cf6", position: 0 },
+      { id: "node-2", color: "#3b82f6", position: 100 },
+    ],
+    extractedColors: ["#8b5cf6", "#3b82f6"],
   },
   ambientColors: {
     subHue: 320,
@@ -188,6 +209,10 @@ export function useSettings() {
               ...prev.islandCustomizer,
               ...(dbSettings.islandCustomizer || {}),
             },
+            gradientSettings: {
+              ...prev.gradientSettings,
+              ...(dbSettings.gradientSettings || {}),
+            },
             ambientColors: {
               ...prev.ambientColors,
               ...(dbSettings.ambientColors || {}),
@@ -211,6 +236,9 @@ export function useSettings() {
       islandCustomizer: updates.islandCustomizer
         ? { ...settings.islandCustomizer, ...updates.islandCustomizer }
         : settings.islandCustomizer,
+      gradientSettings: updates.gradientSettings
+        ? { ...settings.gradientSettings, ...updates.gradientSettings }
+        : settings.gradientSettings,
       ambientColors: updates.ambientColors 
         ? { ...settings.ambientColors, ...updates.ambientColors }
         : settings.ambientColors,

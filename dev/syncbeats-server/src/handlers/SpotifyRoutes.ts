@@ -438,9 +438,9 @@ export function createSpotifyRoutes(): Router {
     );
     
     if (emptyBridgedPlaylists.length > 0) {
-      await prisma.playlist.deleteMany({
-        where: { id: { in: emptyBridgedPlaylists.map(p => p.id) } }
-      });
+      for (const p of emptyBridgedPlaylists) {
+        await prisma.playlist.delete({ where: { id: p.id } }).catch(() => {});
+      }
       console.log(`[SpotifyRoutes] Cleaned up ${emptyBridgedPlaylists.length} empty imported playlists for user ${req.user.sub}`);
     }
 

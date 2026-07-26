@@ -42,6 +42,8 @@ export interface TrackQueueItem {
   isCurrent:  boolean;
   addedBy:    string;
   addedByName?: string;
+  thumbnail?: string;
+  coverUrl?:  string;
   createdAt:  number;
   sizeBytes?: number; // used for smart prefetch timing
 }

@@ -100,6 +100,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]); // 60, 230, 910, 3600, 14000 Hz
 
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const mediaElSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const streamingAudioElRef = useRef<HTMLAudioElement | null>(null);
+
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const trackUrlRef = useRef<string | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
@@ -126,6 +129,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     analyserNodeRef.current = audioCtxRef.current.createAnalyser();
     analyserNodeRef.current.fftSize = 512;
     analyserNodeRef.current.smoothingTimeConstant = 0.25;
+
+    // Initialize streaming audio element with crossOrigin = "anonymous" to prevent Web Audio silence trap
+    if (typeof window !== 'undefined' && !streamingAudioElRef.current) {
+      const audioEl = new Audio();
+      audioEl.crossOrigin = "anonymous";
+      streamingAudioElRef.current = audioEl;
+    }
+
+    // Connect HTMLAudioElement into Web Audio graph (ONLY ONCE per lifecycle to prevent InvalidStateError)
+    if (streamingAudioElRef.current && gainNodeRef.current && !mediaElSourceRef.current) {
+      try {
+        mediaElSourceRef.current = audioCtxRef.current.createMediaElementSource(streamingAudioElRef.current);
+        mediaElSourceRef.current.connect(gainNodeRef.current);
+      } catch (err) {
+        console.warn("[AudioPlayer] MediaElementSource initialization warning:", err);
+      }
+    }
 
     // Create 5-band EQ with proper shelf/peak types
     const freqs = [60, 230, 910, 3600, 14000];
@@ -166,6 +186,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       } catch (e) {}
       sourceNodeRef.current.disconnect();
       sourceNodeRef.current = null;
+    }
+    if (streamingAudioElRef.current) {
+      try {
+        streamingAudioElRef.current.pause();
+      } catch (e) {}
     }
   }, []);
 
@@ -635,28 +660,49 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             throw new Error(`Corrupted YouTube track ID. Please tap Reset Room or skip track.`);
           }
           const roomId = window.location.pathname.split('/').pop();
-          const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
-          const response = await fetch(fetchUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
-          }
-          const contentLength = response.headers.get('content-length');
-          if (contentLength) {
-            const total = parseInt(contentLength, 10);
+          const { getCachedYouTubeTrack, cacheYouTubeTrack } = await import('../lib/idb');
+
+          // Check IDB v2 first!
+          const cachedBlob = await getCachedYouTubeTrack(videoId);
+          if (cachedBlob) {
+            console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
+            setDownloadProgress(100);
+            if (streamingAudioElRef.current) {
+              streamingAudioElRef.current.src = URL.createObjectURL(cachedBlob);
+            }
+            arrayBuffer = await cachedBlob.arrayBuffer();
+          } else {
+            console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
+            const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+            
+            // Assign src immediately for Instant Playback!
+            if (streamingAudioElRef.current) {
+              streamingAudioElRef.current.src = fetchUrl;
+            }
+
+            // Concurrently fetch stream bytes in background to stash to IDB
+            const response = await fetch(fetchUrl);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
+            }
+            const contentLength = response.headers.get('content-length');
+            const total = contentLength ? parseInt(contentLength, 10) : 0;
             let loaded = 0;
             const reader = response.body!.getReader();
-            const chunks = [];
+            const chunks: Uint8Array[] = [];
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               chunks.push(value);
               loaded += value.length;
-              const pct = Math.round((loaded / total) * 100);
-              setDownloadProgress(pct);
-              const { getSocket } = require('../lib/socket');
-              const socket = getSocket();
-              const roomId = window.location.pathname.split('/').pop();
-              if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+              if (total > 0) {
+                const pct = Math.round((loaded / total) * 100);
+                setDownloadProgress(pct);
+                const { getSocket } = require('../lib/socket');
+                const socket = getSocket();
+                const roomId = window.location.pathname.split('/').pop();
+                if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+              }
             }
             const concat = new Uint8Array(loaded);
             let offset = 0;
@@ -665,6 +711,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               offset += chunk.length;
             }
             arrayBuffer = concat.buffer;
+
+            // Stash to IDB asynchronously
+            const stashedBlob = new Blob([arrayBuffer], { type: 'audio/mp4' });
+            cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
+              console.warn('[AudioPlayer] Background stash to IDB warning:', err);
+            });
           }
         } else {
           let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
@@ -722,7 +774,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
         } catch (decodeErr) {
           console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
-          setError("Corrupted audio file received from proxy. Please try another track.");
+          setError("Playback Error: Failed to decode audio. Track may be blocked or corrupted.");
+          setIsBuffering(false);
+          setIsReady(false);
           pendingArrayBufferRef.current = arrayBuffer;
           
           if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {

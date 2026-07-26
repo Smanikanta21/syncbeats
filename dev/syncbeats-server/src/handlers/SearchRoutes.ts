@@ -5,6 +5,8 @@ import play from 'play-dl';
 import prisma from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 
+const youtubeUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
 export function createSearchRoutes(): Router {
   const router = Router();
 
@@ -41,6 +43,33 @@ export function createSearchRoutes(): Router {
     } catch (err) {
       console.error('[Search] Local song search failed:', err);
       res.status(500).json({ error: 'Failed to perform local search' });
+    }
+  });
+
+  // Image CORS proxy for album art color extraction
+  router.get('/proxy-image', async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      if (!imageUrl || !imageUrl.startsWith('http')) {
+        res.status(400).send('Invalid image URL');
+        return;
+      }
+
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        res.status(response.status).send('Failed to fetch image');
+        return;
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err) {
+      res.status(500).send('Proxy error');
     }
   });
 
@@ -241,15 +270,53 @@ export function extractYoutubeIdOrSongId(input: string): string {
   return cleaned.trim();
 }
 
+async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
+  const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+  const { spawn } = require('child_process');
+  
+  const attempt = (extraArgs: string[]): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const args = [
+        '-g',
+        '--no-warnings',
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        ...extraArgs,
+        watchUrl
+      ];
+      const child = spawn(ytDlpPath, args);
+      let stdout = '';
+      
+      child.stdout.on('data', (d: any) => { stdout += d.toString(); });
+      
+      child.on('close', (code: number) => {
+        if (code === 0 && stdout.trim().startsWith('http')) {
+          const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+          resolve(lines[0] || null);
+        } else {
+          resolve(null);
+        }
+      });
+      child.on('error', () => resolve(null));
+    });
+  };
+
+  let url = await attempt(['--extractor-args', 'youtube:player_client=android,web']);
+  if (url) return url;
+
+  url = await attempt(['--extractor-args', 'youtube:player_client=ios,mweb']);
+  if (url) return url;
+
+  url = await attempt([]);
+  return url;
+}
+
 export async function streamYoutubeAudio(rawInput: string, req: any, res: any): Promise<void> {
   const cleanId = extractYoutubeIdOrSongId(rawInput);
-  if (!cleanId) throw new Error('Invalid input for audio download');
-
-  if (cleanId.length < 11) {
-    throw new Error(`Truncated YouTube ID '${cleanId}' from an earlier session. Please remove this song from the queue and re-add it.`);
+  if (!cleanId || cleanId.length < 5) {
+    if (!res.headersSent) res.status(400).json({ error: `Truncated YouTube ID: ${rawInput}` });
+    return;
   }
 
-  const { spawn } = require('child_process');
   const path = require('path');
   const fs = require('fs');
 
@@ -282,9 +349,6 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     console.warn('[Search] DB lookup failed, falling back to direct stream:', dbErr);
   }
 
-  const url = `https://www.youtube.com/watch?v=${targetYoutubeId}`;
-  console.log(`[Search] Streaming audio directly via yt-dlp stdout (zero disk storage): ${url}`);
-
   const ytDlpPath = (() => {
     const paths = [
       path.resolve(__dirname, '../../yt-dlp'),
@@ -294,44 +358,85 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
       path.resolve(process.cwd(), 'dev/syncbeats-server/bin/yt-dlp')
     ];
     for (const p of paths) {
-      if (fs.existsSync(p)) {
-        return p;
-      }
+      if (fs.existsSync(p)) return p;
     }
     return 'yt-dlp';
   })();
 
-  const ytDlpArgs = [
-    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-    '--extractor-args', 'youtube:player_client=android,web,tv',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    '--referer', 'https://www.youtube.com/',
-    '--no-playlist',
-    '-o', '-', // Output directly to stdout - ZERO DISK STORAGE
-    url
-  ];
-
-  res.setHeader('Content-Type', 'audio/x-m4a');
-  res.setHeader('Content-Disposition', `inline; filename="${targetYoutubeId}.m4a"`);
-
-  const ytDlp = spawn(ytDlpPath, ytDlpArgs);
-  ytDlp.stdout.pipe(res);
-
-  ytDlp.stderr.on('data', (data: Buffer) => {
-    const str = data.toString().trim();
-    if (str.includes('ERROR:')) {
-      console.error(`[Search-ytdlp-stderr]: ${str}`);
+  let directAudioUrl: string | null = null;
+  const cachedUrlEntry = youtubeUrlCache.get(targetYoutubeId);
+  if (cachedUrlEntry && Date.now() < cachedUrlEntry.expiresAt) {
+    console.log(`[Search] In-memory CDN URL cache HIT for YouTube video: ${targetYoutubeId}`);
+    directAudioUrl = cachedUrlEntry.url;
+  } else {
+    console.log(`[Search] Resolving direct audio stream for YouTube video: ${targetYoutubeId}`);
+    directAudioUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
+    if (directAudioUrl) {
+      // Cache URL for 15 minutes to handle dual-fetch (audio element + background stash) instantly
+      youtubeUrlCache.set(targetYoutubeId, {
+        url: directAudioUrl,
+        expiresAt: Date.now() + 15 * 60 * 1000
+      });
     }
-  });
+  }
 
-  ytDlp.on('error', (err: any) => {
-    console.error('[Search] yt-dlp spawn error:', err);
+  if (!directAudioUrl) {
+    console.error(`[Search] Failed to resolve audio stream for YouTube video: ${targetYoutubeId}`);
+    res.status(404).json({ error: `YouTube track unavailable or restricted: ${targetYoutubeId}` });
+    return;
+  }
+
+  console.log(`[Search] Streaming audio via fast direct CDN proxy: ${targetYoutubeId}`);
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range as string;
+    }
+
+    const audioResp = await fetch(directAudioUrl, { headers });
+    if (!audioResp.ok && audioResp.status !== 206) {
+      res.status(audioResp.status).json({ error: `GoogleVideo CDN returned HTTP ${audioResp.status}` });
+      return;
+    }
+
+    res.status(audioResp.status);
+    const contentType = audioResp.headers.get('content-type') || 'audio/mp4';
+    const contentLength = audioResp.headers.get('content-length');
+    const contentRange = audioResp.headers.get('content-range');
+
+    res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Disposition', `inline; filename="${targetYoutubeId}.m4a"`);
+
+    if (audioResp.body) {
+      const reader = audioResp.body.getReader();
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!res.writableEnded) {
+              res.write(Buffer.from(value));
+            }
+          }
+          if (!res.writableEnded) res.end();
+        } catch (pumpErr) {
+          if (!res.writableEnded) res.end();
+        }
+      };
+      pump();
+    } else {
+      res.end();
+    }
+  } catch (streamErr) {
+    console.error('[Search] Stream proxy error:', streamErr);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Audio stream failed' });
+      res.status(500).json({ error: 'Failed to stream audio file' });
     }
-  });
-
-  req.on('close', () => {
-    try { ytDlp.kill(); } catch (e) {}
-  });
+  }
 }

@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { roomsApi, historyApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image } from "lucide-react";
+import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface SearchTabProps {
@@ -13,6 +13,8 @@ interface SearchTabProps {
   initialMode: "youtube" | "spotify" | null;
   onBack: () => void;
   onResultsCountChange: (count: number) => void;
+  onModeChange?: (mode: "youtube" | "spotify" | null) => void;
+  onLoadingStateChange?: (isLoading: boolean) => void;
   isSearchOnly?: boolean;
   onSuccess?: () => void;
   onPlaylistViewChange?: (isViewing: boolean) => void;
@@ -20,13 +22,17 @@ interface SearchTabProps {
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
-export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, isSearchOnly, onSuccess, onPlaylistViewChange }: SearchTabProps) {
+export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   // YouTube State
   const [ytResults, setYtResults] = useState<any[]>([]);
@@ -74,25 +80,56 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     setSelectedIndex(0);
     setDownloadError(null);
     setSpError(null);
-  }, [mode]);
+    onModeChange?.(mode);
+  }, [mode, onModeChange]);
+
+  const displayedSpotifyPlaylists = mode === "spotify" && !selectedPlaylistId
+    ? (query.trim() 
+        ? mySpotifyPlaylists.filter(p => p.name?.toLowerCase().includes(query.trim().toLowerCase()) || p.description?.toLowerCase().includes(query.trim().toLowerCase()) || p.tracks?.some((t: any) => t.song?.title?.toLowerCase().includes(query.trim().toLowerCase())))
+        : mySpotifyPlaylists)
+    : [];
 
   useEffect(() => {
-    if (!query.trim() || mode === "spotify") {
+    if (!query.trim()) {
       setYtSuggestions([]);
+      setYtResults([]);
+      setSpResults([]);
+      setDbResults([]);
+      setShowSuggestions(false);
       setSelectedIndex(0);
     }
 
-    if (mode === "spotify" && !query.trim()) {
-      setLoadingPlaylists(true);
-      roomsApi.getUserSpotifyPlaylists().then(data => {
-        setMySpotifyPlaylists(data);
-      }).finally(() => {
-        setLoadingPlaylists(false);
-      });
+    if (mode === "spotify") {
+      if (!query.trim()) {
+        setSpResults([]);
+        if (!mySpotifyPlaylists.length) {
+          setLoadingPlaylists(true);
+          roomsApi.getUserSpotifyPlaylists().then(data => {
+            setMySpotifyPlaylists(data);
+          }).finally(() => {
+            setLoadingPlaylists(false);
+          });
+        }
+        return;
+      }
+
+      const isUrl = query.trim().startsWith("http") || query.trim().startsWith("spotify:");
+      if (!isUrl) {
+        setIsSearching(true);
+        const timer = setTimeout(async () => {
+          try {
+            const spRes = await roomsApi.searchSpotifyPlaylists(query.trim()).catch(() => []);
+            setSpResults(spRes);
+          } catch (err) { } finally {
+            setIsSearching(false);
+          }
+        }, 150);
+        return () => clearTimeout(timer);
+      }
       return;
     }
 
-    if (!query.trim() || mode === "spotify") return;
+    if (!query.trim()) return;
 
     const timer = setTimeout(async () => {
       try {
@@ -104,26 +141,33 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     return () => clearTimeout(timer);
   }, [query, mode]);
 
+  const isLoading = (mode !== "spotify" && isSearching) || loadingPlaylists || loadingPlaylist || importing || enqueuing !== null;
+
+  useEffect(() => {
+    onLoadingStateChange?.(isLoading);
+  }, [isLoading, onLoadingStateChange]);
+
   useEffect(() => {
     onPlaylistViewChange?.(!!selectedPlaylistId);
   }, [selectedPlaylistId, onPlaylistViewChange]);
 
   useEffect(() => {
-    if (isSearching) { onResultsCountChange(1); return; }
     let total = 0;
     if (mode === "spotify") {
       if (selectedPlaylistId) {
-        if (selectedPlaylistData) {
-          total = selectedPlaylistData.tracks?.length || 0;
-        }
+        total = selectedPlaylistData?.tracks?.length || 1;
       } else {
-        total = mySpotifyPlaylists.length;
+        total = displayedSpotifyPlaylists.length + spResults.length;
       }
     } else {
-      total = (showSuggestions && ytSuggestions.length > 0 ? ytSuggestions.length : ytResults.length) + spResults.length + dbResults.length + uploadQueue.length;
+      if (!query.trim()) {
+        total = 0;
+      } else {
+        total = (showSuggestions && ytSuggestions.length > 0 ? ytSuggestions.length : ytResults.length) + spResults.length + dbResults.length + uploadQueue.length;
+      }
     }
     onResultsCountChange(total);
-  }, [isSearching, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, dbResults.length, uploadQueue.length, mySpotifyPlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, loadingPlaylist, selectedPlaylistData]);
+  }, [isSearching, loadingPlaylists, loadingPlaylist, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, dbResults.length, uploadQueue.length, mySpotifyPlaylists.length, displayedSpotifyPlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, selectedPlaylistData]);
 
   const performSearch = async (q: string) => {
     if (!q.trim()) return;
@@ -147,8 +191,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
       }
       catch (err) { console.error(err); } finally { setIsSearching(false); }
     } else if (mode === "spotify") {
-      setIsSearching(false);
-      handleSpotifyImport(q);
+      const isUrl = q.trim().startsWith("http") || q.trim().startsWith("spotify:");
+      if (isUrl) {
+        setIsSearching(false);
+        handleSpotifyImport(q);
+      } else {
+        try {
+          const spRes = await roomsApi.searchSpotifyPlaylists(q).catch(() => []);
+          setSpResults(spRes);
+        } catch (err) { console.error(err); } finally { setIsSearching(false); }
+      }
     } else {
       // Global Search
       try {
@@ -301,7 +353,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (mode === "spotify") {
-        handleSpotifyImport(query);
+        const isUrl = query.trim().startsWith("http") || query.trim().startsWith("spotify:");
+        if (isUrl) {
+          handleSpotifyImport(query);
+        } else if (displayedSpotifyPlaylists.length > 0) {
+          handlePlaylistClick(displayedSpotifyPlaylists[0].id);
+        }
       } else if (showSuggestions && ytSuggestions.length > 0) {
         const s = ytSuggestions[selectedIndex];
         if (s) { setQuery(s); performSearch(s); }
@@ -327,14 +384,28 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
     <div className={`relative flex flex-col w-full max-h-[400px] ${containerPadding}`}>
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
-          <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors', 'shrink-0', 'mt-0.5')}>
+          <button 
+            type="button"
+            onClick={e => { 
+              e.preventDefault();
+              e.stopPropagation(); 
+              if (selectedPlaylistId) {
+                setSelectedPlaylistId(null);
+                setSelectedPlaylistData(null);
+              } else {
+                onBack?.();
+              }
+            }} 
+            className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'active:bg-white/20', 'text-white/70', 'hover:text-white', 'transition-colors', 'shrink-0', 'mt-0.5', 'cursor-pointer', 'touch-manipulation', 'z-50')}
+            title="Back"
+          >
             <ChevronLeft className={cn('w-6', 'h-6')} />
           </button>
         )}
         <div className={cn('flex-1', 'relative', 'h-full')}>
           <input
             value={query}
-            onChange={e => { setQuery(e.target.value); if (mode !== "spotify") setShowSuggestions(true); }}
+            onChange={e => { setQuery(e.target.value); setSpError(null); if (mode !== "spotify") setShowSuggestions(true); }}
             onKeyDown={handleKeyDown}
             onClick={e => { e.stopPropagation(); if (mode !== "spotify") setShowSuggestions(true); }}
             onFocus={() => { if (mode !== "spotify") setShowSuggestions(true); }}
@@ -447,11 +518,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
             data-lenis-prevent="true"
             onClick={e => e.stopPropagation()}>
 
-            {isSearching ? (
-              <div className={cn('flex-1', 'flex', 'items-center', 'justify-center', 'min-h-[37.5px]', 'h-full')}>
-                <Loader2 className={cn('w-8', 'h-8', 'text-white/50', 'animate-spin')} />
-              </div>
-            ) : showSuggestions && ytSuggestions.length > 0 ? (
+            {showSuggestions && ytSuggestions.length > 0 ? (
               ytSuggestions.map((s, idx) => (
                 <div key={idx} onMouseDown={e => { e.preventDefault(); setQuery(s); performSearch(s); }}
                   onMouseEnter={() => setSelectedIndex(idx)}
@@ -497,7 +564,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
                 ))}
 
                 {/* My Spotify Playlists */}
-                {mode === "spotify" && !query.trim() && !selectedPlaylistId && mySpotifyPlaylists.map((r, idx) => (
+                {displayedSpotifyPlaylists.map((r, idx) => (
                   <div key={r.id}
                     onClick={() => handlePlaylistClick(r.id)}
                     className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'hover:bg-white/10', 'transition-all', 'duration-300', 'group', 'shrink-0', 'cursor-pointer')}>
@@ -514,6 +581,23 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                       </div>
                       <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
+                      {(() => {
+                        const term = query.trim().toLowerCase();
+                        if (!term) return null;
+                        const matchedTracks = r.tracks?.filter((t: any) => t.song?.title?.toLowerCase().includes(term) || t.song?.artist?.toLowerCase().includes(term)) || [];
+                        if (matchedTracks.length === 0) return null;
+                        const firstSong = matchedTracks[0].song;
+                        return (
+                          <div className="text-emerald-400 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md w-fit max-w-full">
+                            <Music className="w-3 h-3 shrink-0 text-emerald-400 opacity-90" />
+                            <span className="truncate">
+                              Contains <span className="text-white font-bold">{firstSong?.title}</span>
+                              {firstSong?.artist ? ` • ${firstSong.artist}` : ""}
+                              {matchedTracks.length > 1 ? ` (+${matchedTracks.length - 1} more)` : ""}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
@@ -532,10 +616,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
                 {mode === "spotify" && !query.trim() && selectedPlaylistId && (
                   <div className={cn('flex', 'flex-col', 'gap-2')}>
                     <button
-                      onClick={() => { setSelectedPlaylistId(null); setSelectedPlaylistData(null); }}
-                      className={cn('flex', 'items-center', 'gap-2', 'text-white/50', 'hover:text-white', 'transition-colors', 'py-2', 'text-sm', 'sticky', 'top-0', 'bg-black', 'z-10')}
+                      type="button"
+                      onClick={e => { 
+                        e.preventDefault();
+                        e.stopPropagation(); 
+                        setSelectedPlaylistId(null); 
+                        setSelectedPlaylistData(null); 
+                      }}
+                      className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-2.5', 'px-1', 'text-sm', 'font-semibold', 'sticky', 'top-0', 'bg-black/90', 'backdrop-blur-md', 'z-30', 'cursor-pointer', 'touch-manipulation')}
                     >
-                      <ChevronLeft className={cn('w-4', 'h-4')} /> Back to Playlists
+                      <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
                     </button>
 
                     {selectedPlaylistData && (
@@ -622,17 +712,21 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, i
                               duration: song.duration
                             };
                             const isAdded = addedSongs.has(mappedSong.url);
+                            const isMatch = !!(query.trim() && (song.title?.toLowerCase().includes(query.trim().toLowerCase()) || song.artist?.toLowerCase().includes(query.trim().toLowerCase())));
 
                             return (
                               <div key={`${track.id}-${idx}`}
                                 className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'transition-all', 'duration-300', 'group', 'shrink-0', 'animate-in', 'fade-in', 'slide-in-from-bottom-2',
-                                  isAdded ? 'bg-green-500/20 border border-green-500/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
+                                  isAdded ? 'bg-green-500/20 border border-green-500/30' : (isMatch ? 'bg-emerald-500/15 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)]' : 'bg-white/5 border border-transparent hover:bg-white/10')
                                 )}
                                 style={{ animationFillMode: 'both', animationDelay: `${Math.min(idx * 30, 500)}ms` }}
                               >
                                 <img src={song.youtubeThumbnail} loading="eager" decoding="sync" className={cn('w-12', 'h-10', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
                                 <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
-                                  <div className={cn('text-white', 'text-sm', 'font-medium', 'truncate')}>{song.title}</div>
+                                  <div className={cn('text-white', 'text-sm', 'font-medium', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                                    {song.title}
+                                    {isMatch && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0">Matches search</span>}
+                                  </div>
                                   <div className={cn('text-white/50', 'text-[10px]', 'truncate')}>{song.artist}</div>
                                 </div>
                                 <button onClick={() => !isAdded && handlePlay(mappedSong)} disabled={enqueuing === mappedSong.url || isAdded}

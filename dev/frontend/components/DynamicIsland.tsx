@@ -39,9 +39,9 @@ const SPRING = {
 
 const SHAPE_SPRING = {
   type: "spring" as const,
-  stiffness: 420,
+  stiffness: 240,
   damping: 28,
-  mass: 0.5,
+  mass: 0.8,
 };
 
 const COMPACT_WIDTH = 130;
@@ -210,8 +210,8 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
   }, [isPlaying, audio, isVisible]);
 
   return (
-    <div className="w-[80%] mx-auto mt-0.5 h-0.75 bg-white/20 rounded-full overflow-hidden shrink-0">
-      <div ref={barRef} className="h-full bg-white/80 rounded-full"
+    <div className={cn('w-[80%]', 'mx-auto', 'mt-0.5', 'h-0.75', 'bg-white/20', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
+      <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
         style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
     </div>
   );
@@ -271,15 +271,15 @@ const SyncProgressBar = ({
     : "from-emerald-500 to-emerald-400";
 
   return (
-    <div className="flex flex-col justify-center gap-1 w-full">
-      <div className="flex items-center justify-between">
+    <div className={cn('flex', 'flex-col', 'justify-center', 'gap-1', 'w-full')}>
+      <div className={cn('flex', 'items-center', 'justify-between')}>
         <span className={`text-[9px] font-black uppercase tracking-widest ${isStuck ? "text-amber-400 flex items-center gap-1" : "text-white/40"}`}>
-          {isStuck && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0 animate-bounce" />}
+          {isStuck && <AlertTriangle className={cn('w-3', 'h-3', 'text-amber-400', 'shrink-0', 'animate-bounce')} />}
           {label}
         </span>
         <span className={`text-[10px] font-black ${isStuck ? "text-amber-400 font-bold" : "text-white/60"}`}>{progress}%</span>
       </div>
-      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+      <div className={cn('w-full', 'h-1.5', 'rounded-full', 'bg-white/10', 'overflow-hidden')}>
         <div
           ref={barRef}
           className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`}
@@ -326,21 +326,21 @@ const RealtimeProgressBar = ({
   }, [isPlaying, duration, audio, isVisible]);
 
   return (
-    <div className="flex items-center gap-3 w-full mt-2">
-      <span ref={leftTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
-      <div className="relative flex-1 h-8 flex items-center cursor-pointer group"
+    <div className={cn('flex', 'items-center', 'gap-3', 'w-full', 'mt-2')}>
+      <span ref={leftTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-right', 'select-none', 'pointer-events-none')}>0:00</span>
+      <div className={cn('relative', 'flex-1', 'h-8', 'flex', 'items-center', 'cursor-pointer', 'group')}
         onClick={e => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
           const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(p * duration);
         }}>
-        <div className="absolute w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <div ref={barRef} className="h-full bg-white/80 rounded-full" style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
+        <div className={cn('absolute', 'w-full', 'h-1.5', 'rounded-full', 'bg-white/10', 'overflow-hidden')}>
+          <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')} style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
         </div>
-        <div ref={handleRef} className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: "-6px" }} />
+        <div ref={handleRef} className={cn('absolute', 'w-3', 'h-3', 'rounded-full', 'bg-white', 'shadow-lg', 'opacity-0', 'group-hover:opacity-100', 'transition-opacity')} style={{ left: "-6px" }} />
       </div>
-      <span ref={rightTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
+      <span ref={rightTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-left', 'select-none', 'pointer-events-none')}>-0:00</span>
     </div>
   );
 };
@@ -374,19 +374,19 @@ const PlayerTab = ({
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
-    <div className="relative w-full flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10 gap-6">
+    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'justify-evenly', 'px-5', 'sm:px-8', 'py-8', 'sm:py-10', 'gap-6')}>
       {/* Track header */}
-      <div className="flex items-start gap-3 sm:gap-4 w-full">
+      <div className={cn('flex', 'items-start', 'gap-3', 'sm:gap-4', 'w-full')}>
         <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
           thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
         }`}>
           {thumbnailUrl
-            ? <img src={thumbnailUrl} className="w-full h-full object-cover" />
-            : <span className="text-xl font-black text-white/80">{trackInitials}</span>}
+            ? <img src={thumbnailUrl} className={cn('w-full', 'h-full', 'object-cover')} />
+            : <span className={cn('text-xl', 'font-black', 'text-white/80')}>{trackInitials}</span>}
         </div>
 
-        <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
-          <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
+        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pt-1')}>
+          <div className={cn('font-bold', 'text-white', 'text-[18px]', 'truncate', 'leading-tight', 'tracking-tight')}>
             {cleanTrackTitle(trackTitle)}
           </div>
           <div
@@ -396,7 +396,7 @@ const PlayerTab = ({
             onClick={e => { if (error) { e.stopPropagation(); setShowErrorDetails(p => !p); } }}
           >
             {error ? (
-              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed • Tap for info</span>
+              <span className={cn('flex', 'items-center', 'gap-1')}><AlertCircle className={cn('w-3.5', 'h-3.5')} /> Failed • Tap for info</span>
             ) : isReady && !isRoomReady ? "Syncing to peers…"
               : isReady ? "Ready to play"
               : `Buffering… ${downloadProgress}%`}
@@ -405,25 +405,25 @@ const PlayerTab = ({
           <AnimatePresence>
             {error && showErrorDetails && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] text-[#FF0000]/90 mt-2">
-                  <p className="font-bold mb-1">Track Transfer Failed</p>
+                <div className={cn('bg-[#FF0000]/10', 'border', 'border-[#FF0000]/20', 'rounded-lg', 'p-2.5', 'text-[11px]', 'text-[#FF0000]/90', 'mt-2')}>
+                  <p className={cn('font-bold', 'mb-1')}>Track Transfer Failed</p>
                   <p className="opacity-80">{error}</p>
                 </div>
               </motion.div>
             )}
             {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-2">
-                <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1" data-lenis-prevent="true">
+                <div className={cn('flex', 'items-center', 'gap-2', 'flex-wrap', 'max-h-12', 'overflow-y-auto', 'custom-scrollbar', 'pr-1')} data-lenis-prevent="true">
                   {loadingParticipants.map((p: any) => {
                     const progress = deviceSyncProgress[p.socketId] || 0;
                     return (
-                      <div key={p.socketId} className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5">
-                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                        <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">{p.displayName}</span>
-                        <div className="w-12 h-1.5 bg-black/40 rounded-full overflow-hidden shrink-0">
-                          <div className="h-full bg-white/80 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+                      <div key={p.socketId} className={cn('flex', 'items-center', 'gap-2', 'bg-white/10', 'rounded-full', 'pl-2.5', 'pr-3', 'py-1.5')}>
+                        <Loader2 className={cn('w-3', 'h-3', 'text-white/50', 'animate-spin', 'shrink-0')} />
+                        <span className={cn('text-[10px]', 'font-bold', 'text-white/70', 'uppercase', 'tracking-widest', 'whitespace-nowrap')}>{p.displayName}</span>
+                        <div className={cn('w-12', 'h-1.5', 'bg-black/40', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
+                          <div className={cn('h-full', 'bg-white/80', 'rounded-full', 'transition-all', 'duration-300')} style={{ width: `${progress}%` }} />
                         </div>
-                        <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
+                        <span className={cn('text-[9px]', 'font-black', 'text-white/40', 'tabular-nums')}>{progress}%</span>
                       </div>
                     );
                   })}
@@ -433,16 +433,16 @@ const PlayerTab = ({
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
-          {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
-            : !isReady || !isRoomReady ? <Loader2 className="w-5 h-5 text-white/50 animate-spin" />
+        <div className={cn('flex', 'items-center', 'gap-4', 'shrink-0', 'pr-1', 'pt-1')}>
+          {error ? <AlertCircle className={cn('w-5', 'h-5', 'text-[#FF0000]/80')} />
+            : !isReady || !isRoomReady ? <Loader2 className={cn('w-5', 'h-5', 'text-white/50', 'animate-spin')} />
             : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
             <button onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
-              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-white/20 group"
+              className={cn('p-1.5', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'bg-white/5', 'hover:bg-white/20', 'group')}
               title="Your Profile">
-              <User className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
+              <User className={cn('w-4', 'h-4', 'text-white/80', 'group-hover:text-white', 'transition-colors')} />
             </button>
           )}
         </div>
@@ -451,38 +451,38 @@ const PlayerTab = ({
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
       {/* Controls */}
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-2">
-          <button onClick={e => { e.stopPropagation(); onTabChange("network"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+      <div className={cn('flex', 'items-center', 'justify-between', 'w-full')}>
+        <div className={cn('flex', 'items-center', 'gap-2')}>
+          <button onClick={e => { e.stopPropagation(); onTabChange("network"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+            <Activity className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
           </button>
           {isRoom && isHost && isPrivate && (
-            <button onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative">
-              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+            <button onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'relative')}>
+              <Users className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
               {pendingRequestsCount > 0 && (
-                <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background animate-pulse" />
+                <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-3', 'bg-red-500', 'rounded-full', 'border-2', 'border-background', 'animate-pulse')} />
               )}
             </button>
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-6 sm:gap-10">
-          <button onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <SkipBack className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
+        <div className={cn('flex', 'items-center', 'justify-center', 'gap-6', 'sm:gap-10')}>
+          <button onClick={e => { e.stopPropagation(); onPrev(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+            <SkipBack className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
           </button>
-          <button onClick={e => { e.stopPropagation(); onToggle(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+          <button onClick={e => { e.stopPropagation(); onToggle(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             {effectivePlaying
-              ? <Pause className="w-9 h-9 sm:w-10 sm:h-10 text-white" fill="currentColor" />
-              : <Play className="w-9 h-9 sm:w-10 sm:h-10 ml-1 text-white" fill="currentColor" />}
+              ? <Pause className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'text-white')} fill="currentColor" />
+              : <Play className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'ml-1', 'text-white')} fill="currentColor" />}
           </button>
-          <button onClick={e => { e.stopPropagation(); onNext(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <SkipForward className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
+          <button onClick={e => { e.stopPropagation(); onNext(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+            <SkipForward className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
           </button>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button onClick={e => { e.stopPropagation(); onTabChange("search"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <Search className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
+        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
+          <button onClick={e => { e.stopPropagation(); onTabChange("search"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+            <Search className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
           </button>
         </div>
       </div>
@@ -499,44 +499,44 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
   const maxLat = Math.max(...history.map((h: any) => h.latency), 100);
 
   return (
-    <div className="relative w-full flex flex-col p-4 sm:p-6 pb-2">
-      {/* Header */}     <div className="flex items-center gap-3 mb-6 shrink-0">
-        <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors">
-          <ChevronLeft className="w-6 h-6" />
+    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'p-4', 'sm:p-6', 'pb-2')}>
+      {/* Header */}     <div className={cn('flex', 'items-center', 'gap-3', 'mb-6', 'shrink-0')}>
+        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors')}>
+          <ChevronLeft className={cn('w-6', 'h-6')} />
         </button>
-        <h3 className="text-white font-bold tracking-widest uppercase">Network Health</h3>
+        <h3 className={cn('text-white', 'font-bold', 'tracking-widest', 'uppercase')}>Network Health</h3>
       </div>
-      <div className="flex-1 flex flex-col gap-4">
-        <div className="flex justify-between items-end">
-          <div className="flex flex-col">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Latency</span>
-            <span className="text-white font-black text-3xl" style={{ color: qualityColor(netStats.quality) }}>
-              {Math.round(netStats.latency || 0)}<span className="text-lg text-white/50 ml-1">ms</span>
+      <div className={cn('flex-1', 'flex', 'flex-col', 'gap-4')}>
+        <div className={cn('flex', 'justify-between', 'items-end')}>
+          <div className={cn('flex', 'flex-col')}>
+            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Latency</span>
+            <span className={cn('text-white', 'font-black', 'text-3xl')} style={{ color: qualityColor(netStats.quality) }}>
+              {Math.round(netStats.latency || 0)}<span className={cn('text-lg', 'text-white/50', 'ml-1')}>ms</span>
             </span>
           </div>
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Jitter</span>
-            <span className="text-white font-bold text-xl">{Math.round(netStats.jitter || 0)}ms</span>
+          <div className={cn('flex', 'flex-col', 'items-end', 'gap-0.5')}>
+            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Jitter</span>
+            <span className={cn('text-white', 'font-bold', 'text-xl')}>{Math.round(netStats.jitter || 0)}ms</span>
           </div>
         </div>
-        <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-0.5">
+        <div className={cn('w-full', 'h-24', 'bg-white/5', 'rounded-xl', 'border', 'border-white/10', 'p-2', 'flex', 'items-end', 'gap-0.5')}>
           {history.slice(-40).map((s: any, i: number) => {
             const hPct = Math.max(5, (s.latency / maxLat) * 100);
-            return <div key={i} className="flex-1 bg-white/40 rounded-sm transition-all duration-300" style={{ height: `${hPct}%` }} />;
+            return <div key={i} className={cn('flex-1', 'bg-white/40', 'rounded-sm', 'transition-all', 'duration-300')} style={{ height: `${hPct}%` }} />;
           })}
         </div>
-        <div className="mt-4 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Sync Correction</span>
-            <span className="text-white font-bold text-sm">{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
+        <div className={cn('mt-4', 'flex', 'flex-col', 'gap-2')}>
+          <div className={cn('flex', 'justify-between', 'items-center')}>
+            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Sync Correction</span>
+            <span className={cn('text-white', 'font-bold', 'text-sm')}>{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
           <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
             onChange={e => audio.setManualLatency(Number(e.target.value))}
-            className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer"
+            className={cn('w-full', 'h-2', 'rounded-full', 'appearance-none', 'outline-none', 'bg-white/20', 'cursor-pointer')}
             style={{ background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)` }} />
-          <div className="flex items-center justify-between mt-1">
-            <p className="text-[10px] text-white/40">Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
-            <button onClick={() => audio.setManualLatency(0)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors">Auto Sync</button>
+          <div className={cn('flex', 'items-center', 'justify-between', 'mt-1')}>
+            <p className={cn('text-[10px]', 'text-white/40')}>Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
+            <button onClick={() => audio.setManualLatency(0)} className={cn('px-2', 'py-1', 'rounded', 'bg-white/10', 'hover:bg-white/20', 'text-[10px]', 'font-bold', 'text-white', 'transition-colors')}>Auto Sync</button>
           </div>
         </div>
       </div>
@@ -584,16 +584,16 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
   };
 
   return (
-    <div className="flex flex-col h-full text-white pt-2 pb-4">
-      <div className="flex items-center gap-3 px-6 mb-4 shrink-0">
-        <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
-          <ChevronLeft className="w-5 h-5 text-white/50" />
+    <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-2', 'pb-4')}>
+      <div className={cn('flex', 'items-center', 'gap-3', 'px-6', 'mb-4', 'shrink-0')}>
+        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
+          <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
         </button>
-        <span className="text-sm font-bold uppercase tracking-widest text-white/50">Invite Friends</span>
+        <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Invite Friends</span>
       </div>
-      <div className="px-6 flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="relative mb-4 shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+      <div className={cn('px-6', 'flex-1', 'flex', 'flex-col', 'min-h-0', 'overflow-hidden')}>
+        <div className={cn('relative', 'mb-4', 'shrink-0')}>
+          <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-white/40')} />
           <input
             type="text"
             value={query}
@@ -607,46 +607,46 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
               }
             }}
             placeholder="Search name or email..."
-            className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
+            className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-2', 'pl-10', 'pr-4', 'text-sm', 'text-white', 'placeholder-white/30', 'focus:outline-none', 'focus:border-white/30')}
           />
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2 pointer-events-auto">
+        <div className={cn('flex-1', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
           {loading ? (
-            <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-white/40" /></div>
+            <div className={cn('flex', 'justify-center', 'p-4')}><Loader2 className={cn('w-5', 'h-5', 'animate-spin', 'text-white/40')} /></div>
           ) : results.length > 0 ? (
             results.map((u: any) => (
-              <div key={u.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="flex flex-col min-w-0">
-                  <span className="font-bold text-sm truncate">{u.name}</span>
-                  <span className="text-xs text-white/40 truncate">{u.email}</span>
+              <div key={u.id} className={cn('flex', 'items-center', 'justify-between', 'p-3', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
+                <div className={cn('flex', 'flex-col', 'min-w-0')}>
+                  <span className={cn('font-bold', 'text-sm', 'truncate')}>{u.name}</span>
+                  <span className={cn('text-xs', 'text-white/40', 'truncate')}>{u.email}</span>
                 </div>
                 <button
                   onClick={() => handleInvite(u)}
                   disabled={inviting === u.id}
-                  className="px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50"
+                  className={cn('px-4', 'py-1.5', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50')}
                 >
-                  {inviting === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Invite"}
+                  {inviting === u.id ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : "Invite"}
                 </button>
               </div>
             ))
           ) : query.includes("@") ? (
-            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 mt-2">
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs text-white/40 mb-1">Invite via email</span>
-                <span className="font-bold text-sm truncate">{query}</span>
+            <div className={cn('flex', 'items-center', 'justify-between', 'p-3', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5', 'mt-2')}>
+              <div className={cn('flex', 'flex-col', 'min-w-0')}>
+                <span className={cn('text-xs', 'text-white/40', 'mb-1')}>Invite via email</span>
+                <span className={cn('font-bold', 'text-sm', 'truncate')}>{query}</span>
               </div>
               <button
                 onClick={() => handleInvite(undefined, query)}
                 disabled={inviting === query}
-                className="px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
+                className={cn('px-4', 'py-1.5', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50', 'flex', 'items-center', 'gap-1')}
               >
-                {inviting === query ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Send className="w-3 h-3"/> Send</>}
+                {inviting === query ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : <><Send className={cn('w-3', 'h-3')}/> Send</>}
               </button>
             </div>
           ) : query.length > 0 ? (
-            <div className="text-center text-white/40 text-sm mt-4">No users found. Type a full email to invite via email.</div>
+            <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-4')}>No users found. Type a full email to invite via email.</div>
           ) : (
-            <div className="text-center text-white/40 text-sm mt-4">Search for friends to invite</div>
+            <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-4')}>Search for friends to invite</div>
           )}
         </div>
       </div>
@@ -664,23 +664,23 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
   onDeny: (id: string) => void;
   onBack: () => void;
 }) => (
-  <div className="flex flex-col h-full text-white pt-2 pb-4">
-    <div className="flex items-center justify-between px-6 mb-4">
-      <button onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
-        <ChevronLeft className="w-5 h-5 text-white/50" />
+  <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-2', 'pb-4')}>
+    <div className={cn('flex', 'items-center', 'justify-between', 'px-6', 'mb-4')}>
+      <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
+        <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
       </button>
-      <span className="text-sm font-bold uppercase tracking-widest text-white/50">Join Requests ({requests.length})</span>
+      <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Join Requests ({requests.length})</span>
       <div className="w-9" />
     </div>
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto" data-lenis-prevent="true">
+    <div className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'px-6', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')} data-lenis-prevent="true">
       {requests.length === 0 ? (
-        <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
+        <div className={cn('text-center', 'text-white/40', 'text-xs', 'mt-10')}>No pending requests</div>
       ) : requests.map(req => (
-        <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
-          <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30 transition-colors">Deny</button>
-            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className="px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors">Approve</button>
+        <div key={req.socketId} className={cn('flex', 'items-center', 'justify-between', 'p-3', 'rounded-2xl', 'bg-white/5', 'border', 'border-white/10')}>
+          <span className={cn('font-semibold', 'text-sm', 'truncate', 'pr-2')}>{req.displayName}</span>
+          <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
+            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'hover:bg-red-500/30', 'transition-colors')}>Deny</button>
+            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-emerald-500', 'text-white', 'text-xs', 'font-bold', 'hover:bg-emerald-600', 'transition-colors')}>Approve</button>
           </div>
         </div>
       ))}
@@ -711,54 +711,54 @@ const RoomPill = ({
   if (isSyncing) {
     // While buffering just show a subtle spinner — pill is in transit to extended anyway
     return (
-      <div className="absolute inset-0 flex items-center justify-center gap-2">
-        <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
+      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2')}>
+        <Loader2 className={cn('w-3.5', 'h-3.5', 'text-white/50', 'animate-spin')} />
       </div>
     );
   }
 
   if (!hasTrack) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center gap-2 px-3 group">
-        <Search className="w-3.5 h-3.5 text-white/50 group-hover:text-white transition-colors" />
-        <span className="text-[11px] font-bold text-white/50 group-hover:text-white transition-colors">Search</span>
+      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2', 'px-3', 'group')}>
+        <Search className={cn('w-3.5', 'h-3.5', 'text-white/50', 'group-hover:text-white', 'transition-colors')} />
+        <span className={cn('text-[11px]', 'font-bold', 'text-white/50', 'group-hover:text-white', 'transition-colors')}>Search</span>
       </div>
     );
   }
 
   return (
-    <div className="absolute inset-0 flex items-center px-2 gap-2">
+    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-2', 'gap-2')}>
       {/* Tiny thumbnail or disc */}
-      <div className="w-7 h-7 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-white/10">
+      <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
         {showAlbumArt && thumbUrl
-          ? <img src={thumbUrl} className="w-full h-full object-cover" />
+          ? <img src={thumbUrl} className={cn('w-full', 'h-full', 'object-cover')} />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
       {/* Dynamic Right Side: Seek | EQ | Pause */}
       <div 
-        className="flex items-center gap-1 flex-1 justify-center pr-1 cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
+        className={cn('flex', 'items-center', 'gap-1', 'flex-1', 'justify-center', 'pr-1', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
         onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         {volIndicator ? (
           <>
-            {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5 text-white" /> : <VolumeX className="w-3.5 h-3.5 text-white" />}
-            <span className="text-[10px] font-black text-white">{volIndicator.text}</span>
+            {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <VolumeX className={cn('w-3.5', 'h-3.5', 'text-white')} />}
+            <span className={cn('text-[10px]', 'font-black', 'text-white')}>{volIndicator.text}</span>
           </>
         ) : seekIndicator ? (
           <>
-            {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5 text-white" /> : <Rewind className="w-3.5 h-3.5 text-white" />}
-            <span className="text-[10px] font-black text-white">{seekIndicator.text}</span>
+            {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <Rewind className={cn('w-3.5', 'h-3.5', 'text-white')} />}
+            <span className={cn('text-[10px]', 'font-black', 'text-white')}>{seekIndicator.text}</span>
           </>
         ) : isSyncing ? (
-          <div className="flex items-center gap-1.5 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
-            <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
-            <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Buffering</span>
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-amber-500/20', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-amber-500/30')}>
+            <Loader2 className={cn('w-3', 'h-3', 'text-amber-400', 'animate-spin', 'shrink-0')} />
+            <span className={cn('text-[9px]', 'font-black', 'text-amber-400', 'uppercase', 'tracking-widest')}>Buffering</span>
           </div>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
-          <Play className="w-4 h-4 text-white/80 fill-white/80" />
+          <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80')} />
         )}
       </div>
     </div>
@@ -785,16 +785,16 @@ const RadialNavigatorPillContent = ({
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-between px-3 gap-2.5 bg-black rounded-full select-none border-none">
-      <div className="flex items-center gap-2.5 min-w-0 flex-1 px-1">
-        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2.5', 'bg-black', 'rounded-full', 'select-none', 'border-none')}>
+      <div className={cn('flex', 'items-center', 'gap-2.5', 'min-w-0', 'flex-1', 'px-1')}>
+        <div className={cn('w-7', 'h-7', 'rounded-full', 'bg-white/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
           <IconComponent className={`w-4 h-4 text-white ${!snappedItem ? "animate-spin-slow" : ""}`} />
         </div>
-        <div className="flex flex-col justify-center min-w-0">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-white truncate leading-tight">
+        <div className={cn('flex', 'flex-col', 'justify-center', 'min-w-0')}>
+          <span className={cn('text-[11px]', 'font-bold', 'uppercase', 'tracking-wider', 'text-white', 'truncate', 'leading-tight')}>
             {snappedItem ? snappedItem.label : "Hold & Drag"}
           </span>
-          <span className="text-[9px] font-semibold text-white/50 truncate leading-tight">
+          <span className={cn('text-[9px]', 'font-semibold', 'text-white/50', 'truncate', 'leading-tight')}>
             {snappedItem ? "Release thumb to open" : "Move toward an icon to snap"}
           </span>
         </div>
@@ -812,7 +812,7 @@ const RoomExtendedPill = ({
   effectivePlaying, trackTitle, trackUrl, isReady,
   downloadProgress, deviceSyncProgress, participants, incomingTrack,
   pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback,
-  prefetchProgress, prefetchTitle, isPrefetching, isStuck,
+  prefetchProgress, prefetchTitle, isPrefetching, isStuck, onNextTrack,
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -833,11 +833,37 @@ const RoomExtendedPill = ({
   prefetchTitle: string | null;
   isPrefetching: boolean;
   isStuck?: boolean;
+  onNextTrack?: () => void;
 }) => {
+  const audio = useAudio();
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
   const title = cleanTrackTitle(trackTitle);
 
-  // Determine if syncing is happening (only if a track exists or incoming transfer is active)
+  // If there's an active audio error (decoding failed / blocked track), display error alert in Dynamic Island
+  if (audio.error) {
+    return (
+      <div 
+        className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3.5', 'gap-2', 'bg-red-950/90', 'border', 'border-red-500/50', 'rounded-full', 'text-red-200', 'cursor-pointer', 'pointer-events-auto', 'shadow-[0_0_25px_rgba(239,68,68,0.5)]')}
+        onClick={() => onNextTrack?.()}
+        title="Playback Error. Tap to skip track."
+      >
+        <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0', 'flex-1')}>
+          <AlertCircle className={cn('w-4', 'h-4', 'text-red-400', 'shrink-0', 'animate-bounce')} />
+          <span className={cn('text-[10px]', 'font-bold', 'text-red-200', 'truncate')}>
+            {audio.error}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onNextTrack?.(); }}
+          className={cn('px-2.5', 'py-1', 'rounded-full', 'bg-red-500/30', 'hover:bg-red-500/50', 'text-[10px]', 'font-black', 'text-red-100', 'flex', 'items-center', 'gap-1', 'shrink-0', 'transition-all', 'border', 'border-red-400/30')}
+        >
+          Skip <SkipForward className={cn('w-3', 'h-3')} />
+        </button>
+      </div>
+    );
+  }
+
   const hasTrack = !!trackUrl || !!trackTitle;
   const progresses = Object.values(deviceSyncProgress);
   const isSyncing = (hasTrack && !isReady) || incomingTrack != null || (hasTrack && progresses.some(p => p < 100));
@@ -845,11 +871,11 @@ const RoomExtendedPill = ({
   if (isSyncing) {
     // ── Syncing / buffering: full-width progress bar, no track info, no player
     return (
-      <div className="absolute inset-0 flex items-center px-4 gap-3">
+      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-4', 'gap-3')}>
         {/* Spinner icon */}
         <Loader2 className={`w-4 h-4 shrink-0 ${isStuck ? "text-amber-400" : "text-white/50 animate-spin"}`} />
         {/* Full-width progress */}
-        <div className="flex-1 min-w-0">
+        <div className={cn('flex-1', 'min-w-0')}>
           <SyncProgressBar
             downloadProgress={downloadProgress}
             deviceSyncProgress={deviceSyncProgress}
@@ -865,19 +891,19 @@ const RoomExtendedPill = ({
 
   return (
     <>
-      <div className="absolute inset-0 flex items-stretch px-2 gap-2">
+      <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-2', 'gap-2')}>
       {/* LEFT half: track info + playback progress */}
-      <div className="flex items-center gap-2 flex-1 min-w-0 py-1.5">
+      <div className={cn('flex', 'items-center', 'gap-2', 'flex-1', 'min-w-0', 'py-1.5')}>
         {/* Thumbnail */}
-        <div className="w-7 h-7 rounded-lg shrink-0 overflow-hidden bg-white/10 flex items-center justify-center">
+        <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
           {thumbUrl
-            ? <img src={thumbUrl} className="w-full h-full object-cover" />
+            ? <img src={thumbUrl} className={cn('w-full', 'h-full', 'object-cover')} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
         {/* Title + progress line */}
-        <div className="flex flex-col justify-center flex-1 min-w-0">
-          <div className="text-white text-[11px] font-semibold truncate leading-tight">
+        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0')}>
+          <div className={cn('text-white', 'text-[11px]', 'font-semibold', 'truncate', 'leading-tight')}>
             {title.split(/\s+/).slice(0, 5).join(" ")}
           </div>
           <CompactProgressBar isPlaying={effectivePlaying} isVisible />
@@ -885,24 +911,24 @@ const RoomExtendedPill = ({
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
         <div 
-          className="flex items-center gap-1 shrink-0 px-2 rounded-full py-0.5 mr-1 cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
+          className={cn('flex', 'items-center', 'gap-1', 'shrink-0', 'px-2', 'rounded-full', 'py-0.5', 'mr-1', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
           onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           {volIndicator ? (
-            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
-              {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              <span className="text-[10px] font-black">{volIndicator.text}</span>
+            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
+              {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5')} /> : <VolumeX className={cn('w-3.5', 'h-3.5')} />}
+              <span className={cn('text-[10px]', 'font-black')}>{volIndicator.text}</span>
             </div>
           ) : seekIndicator ? (
-            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
-              {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5" /> : <Rewind className="w-3.5 h-3.5" />}
-              <span className="text-[10px] font-black">{seekIndicator.text}</span>
+            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
+              {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5')} /> : <Rewind className={cn('w-3.5', 'h-3.5')} />}
+              <span className={cn('text-[10px]', 'font-black')}>{seekIndicator.text}</span>
             </div>
           ) : effectivePlaying ? (
             <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
           ) : (
-            <Play className="w-4 h-4 text-white/80 fill-white/80 shrink-0 mx-1" />
+            <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80', 'shrink-0', 'mx-1')} />
           )}
         </div>
       </div>
@@ -911,14 +937,14 @@ const RoomExtendedPill = ({
       {isHost && isPrivate && pendingRequestsCount > 0 && (
         <>
           {/* Divider */}
-          <div className="w-px bg-white/10 self-stretch my-1.5 shrink-0" />
-          <div className="flex items-center py-1.5 px-1 shrink-0">
+          <div className={cn('w-px', 'bg-white/10', 'self-stretch', 'my-1.5', 'shrink-0')} />
+          <div className={cn('flex', 'items-center', 'py-1.5', 'px-1', 'shrink-0')}>
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onRequestsClick(); }}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-[10px] font-black pointer-events-auto whitespace-nowrap"
+              className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-1', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'transition-colors', 'text-[10px]', 'font-black', 'pointer-events-auto', 'whitespace-nowrap')}
             >
-              <Users className="w-3 h-3" />
+              <Users className={cn('w-3', 'h-3')} />
               {pendingRequestsCount} pending
             </button>
           </div>
@@ -927,9 +953,9 @@ const RoomExtendedPill = ({
       </div>
       {/* Prefetch progress bar — thin strip at very bottom */}
       {isPrefetching && prefetchTitle && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-full overflow-hidden bg-white/5 pointer-events-none">
+        <div className={cn('absolute', 'bottom-0', 'left-0', 'right-0', 'h-[2px]', 'rounded-b-full', 'overflow-hidden', 'bg-white/5', 'pointer-events-none')}>
           <div
-            className="h-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-500"
+            className={cn('h-full', 'bg-gradient-to-r', 'from-violet-500', 'to-blue-500', 'transition-all', 'duration-500')}
             style={{ width: `${prefetchProgress}%` }}
           />
         </div>
@@ -960,6 +986,19 @@ export function DynamicIsland() {
   const { settings } = useSettings();
   const islandCustomizer = settings.islandCustomizer || { glowColor: "violet", autoShrinkDelaySec: 6, showAlbumArt: true };
 
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+
+  const activeGlowKey = (!islandCustomizer.glowColor || islandCustomizer.glowColor === "none") ? "violet" : islandCustomizer.glowColor;
+  const glowHexMap: Record<string, string> = {
+    violet: "#a855f7",
+    cyan: "#06b6d4",
+    emerald: "#10b981",
+    amber: "#f59e0b",
+    dark: "#a855f7",
+    none: "#a855f7",
+  };
+  const activeGlowColorHex = glowHexMap[activeGlowKey] || "#a855f7";
+
   const glowClassMap = {
     violet: "border border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.45)]",
     cyan: "border border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.45)]",
@@ -968,7 +1007,9 @@ export function DynamicIsland() {
     dark: "border border-white/[0.08] shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
     none: "border-none shadow-none",
   };
-  const currentGlowClass = glowClassMap[islandCustomizer.glowColor || "violet"] || glowClassMap.violet;
+  const currentGlowClass = isSearchLoading 
+    ? "border border-white/10"
+    : (glowClassMap[islandCustomizer.glowColor || "violet"] || glowClassMap.violet);
 
   // ── Island state machine
   // In room: pill / extended / expanded
@@ -981,6 +1022,7 @@ export function DynamicIsland() {
 
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
   const [initialSearchMode, setInitialSearchMode] = useState<"youtube" | "spotify" | null>(null);
+  const [activeSearchMode, setActiveSearchMode] = useState<"youtube" | "spotify" | null | undefined>(undefined);
   const [slideDir, setSlideDir] = useState(1);
   const [ytResultsCount, setYtResultsCount] = useState(0);
   const [seekIndicator, setSeekIndicator] = useState<{ amount: number; text: string } | null>(null);
@@ -1128,6 +1170,7 @@ export function DynamicIsland() {
   useEffect(() => {
     const handleExpandAdd = () => {
       setInitialSearchMode("youtube");
+      setActiveSearchMode("youtube");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
@@ -1136,6 +1179,7 @@ export function DynamicIsland() {
     };
     const handleExpandSpotify = () => {
       setInitialSearchMode("spotify");
+      setActiveSearchMode("spotify");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
@@ -1356,29 +1400,29 @@ export function DynamicIsland() {
       : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
 
     return (
-      <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
-          <Link href="/hub" className="flex items-center gap-2 sm:gap-3 group">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
-              <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
+      <div className={cn('fixed', 'top-4', 'sm:top-6', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}>
+        <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
+          <Link href="/hub" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
+            <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>
+              <Disc className={cn('w-4', 'h-4', 'sm:w-5', 'sm:h-5', 'text-foreground/70', 'animate-[spin_5s_linear_infinite]')} />
             </div>
-            <span className="text-base sm:text-lg font-black tracking-widest text-foreground transition-opacity hover:opacity-80">
+            <span className={cn('text-base', 'sm:text-lg', 'font-black', 'tracking-widest', 'text-foreground', 'transition-opacity', 'hover:opacity-80')}>
               SYNC<span className="text-foreground/50">BEATS</span>
             </span>
           </Link>
-          <div className="flex items-center gap-3 sm:gap-5">
+          <div className={cn('flex', 'items-center', 'gap-3', 'sm:gap-5')}>
             <ThemeToggle />
-            <div className="w-px h-6 bg-foreground/10 hidden sm:block" />
+            <div className={cn('w-px', 'h-6', 'bg-foreground/10', 'hidden', 'sm:block')} />
             {isProfile ? (
-              <Link href="/hub" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
+              <Link href="/hub" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
             ) : (
-              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className="flex items-center gap-3 cursor-pointer group outline-none">
-                <div className="text-right hidden sm:block">
-                  <div className="text-sm font-bold text-foreground">{displayName}</div>
-                  <div className="text-xs font-semibold text-foreground/40">{user?.email ?? ""}</div>
+              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className={cn('flex', 'items-center', 'gap-3', 'cursor-pointer', 'group', 'outline-none')}>
+                <div className={cn('text-right', 'hidden', 'sm:block')}>
+                  <div className={cn('text-sm', 'font-bold', 'text-foreground')}>{displayName}</div>
+                  <div className={cn('text-xs', 'font-semibold', 'text-foreground/40')}>{user?.email ?? ""}</div>
                 </div>
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border-2 border-transparent glass-panel group-active:scale-95 transition-all shadow-md">
-                  <span className="text-xs sm:text-sm font-black text-foreground">{initials}</span>
+                <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'flex', 'items-center', 'justify-center', 'border-2', 'border-transparent', 'glass-panel', 'group-active:scale-95', 'transition-all', 'shadow-md')}>
+                  <span className={cn('text-xs', 'sm:text-sm', 'font-black', 'text-foreground')}>{initials}</span>
                 </div>
               </div>
             )}
@@ -1402,9 +1446,19 @@ export function DynamicIsland() {
   // Extended dimensions (iOS live-activity style)
   const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
-  let expandedHeight: number | "auto" = "auto";
-  
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
+
+  const searchHeight = isViewingPlaylist ? 560 : (ytResultsCount > 0 ? 480 : 120);
+
+  const expandedHeightMap: Record<IslandTab, number> = {
+    player: 280,
+    network: 350,
+    search: searchHeight,
+    requests: 280,
+    deviceInfo: 380,
+    invite: 380,
+  };
+  const expandedHeight = expandedHeightMap[activeTab] || 320;
 
   // Current animated dimensions
   // When radial navigator active: expand to 265px
@@ -1418,7 +1472,7 @@ export function DynamicIsland() {
     ? (isSyncingNow ? syncingExtendedWidth : extendedWidth)
     : pillWidth;
   const currentHeight = isExpanded_room ? expandedHeight : pillHeight;
-  const currentRadius = isExpanded_room ? 44 : pillHeight / 2;
+  const currentRadius = isExpanded_room ? 36 : pillHeight / 2;
 
   const handlePointerDown_room = () => {
     resetInactivityTimer();
@@ -1480,7 +1534,7 @@ export function DynamicIsland() {
     <>
       {/* Backdrop */}
       <motion.div
-        className="fixed inset-0 z-40 pointer-events-none"
+        className={cn('fixed', 'inset-0', 'z-40', 'pointer-events-none')}
         animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
         transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
         style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
@@ -1488,7 +1542,7 @@ export function DynamicIsland() {
       />
 
       <div 
-        className="fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center pointer-events-none"
+        className={cn('fixed', 'left-1/2', '-translate-x-1/2', 'z-[100]', 'flex', 'flex-col', 'items-center', 'pointer-events-none')}
         style={{
           top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}
@@ -1541,9 +1595,9 @@ export function DynamicIsland() {
           onDoubleClick={e => { e.preventDefault(); handleToggle(); }}
           initial={false}
           transition={{
-            width: { ...SHAPE_SPRING },
-            height: { ...SHAPE_SPRING },
-            borderRadius: { ...SPRING, stiffness: 200 },
+            width: SHAPE_SPRING,
+            height: SHAPE_SPRING,
+            borderRadius: SHAPE_SPRING,
             scale: { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
           }}
           animate={
@@ -1568,8 +1622,44 @@ export function DynamicIsland() {
             transform: "translateZ(0)",
             maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
           }}
-          className={cn("pointer-events-auto select-none transition-all duration-300", currentGlowClass)}
+          className={cn("pointer-events-auto select-none", currentGlowClass)}
         >
+          {/* Rotating Border Light Beam with Trailing Glow */}
+          <AnimatePresence>
+            {isSearchLoading && (
+              <motion.div
+                key="rotating-border-trail"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className={cn('absolute', '-inset-[1px]', 'pointer-events-none', 'z-[45]', 'rounded-[inherit]', 'overflow-hidden', 'p-[2px]')}
+                style={{
+                  WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+                  WebkitMaskComposite: "xor",
+                  maskComposite: "exclude",
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
+                  className={cn('w-[300%]', 'h-[300%]', '-top-[100%]', '-left-[100%]', 'absolute')}
+                  style={{
+                    background: `conic-gradient(from 0deg at 50% 50%, 
+                      transparent 0deg, 
+                      transparent 220deg, 
+                      ${activeGlowColorHex}22 260deg, 
+                      ${activeGlowColorHex}99 320deg, 
+                      ${activeGlowColorHex} 355deg, 
+                      transparent 360deg
+                    )`,
+                    filter: `drop-shadow(0 0 6px ${activeGlowColorHex}) drop-shadow(0 0 14px ${activeGlowColorHex})`,
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Temporary Radial Navigator Gesture Overlay */}
           <AnimatePresence>
             {radialSnapInfo?.isOpen && (
@@ -1579,7 +1669,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute inset-0 z-30 bg-black rounded-full"
+                className={cn('absolute', 'inset-0', 'z-30', 'bg-black', 'rounded-full')}
               >
                 <RadialNavigatorPillContent snappedItem={radialSnapInfo.snappedItem} />
               </motion.div>
@@ -1595,7 +1685,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="absolute inset-0"
+                className={cn('absolute', 'inset-0')}
               >
                 <RoomPill
                   effectivePlaying={effectivePlaying}
@@ -1622,7 +1712,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, delay: 0.05 }}
-                className="absolute inset-0"
+                className={cn('absolute', 'inset-0')}
               >
                 <RoomExtendedPill
                   effectivePlaying={effectivePlaying}
@@ -1644,6 +1734,7 @@ export function DynamicIsland() {
                   prefetchTitle={prefetch.nextTrackTitle}
                   isPrefetching={prefetch.isPrefetching}
                   isStuck={isBufferingStuck}
+                  onNextTrack={nextTrack}
                 />
               </motion.div>
             )}
@@ -1663,7 +1754,7 @@ export function DynamicIsland() {
           >
             <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
               {activeTab === "player" && (
-                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
+                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
                   <PlayerTab
                     effectivePlaying={effectivePlaying}
                     trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
@@ -1692,17 +1783,19 @@ export function DynamicIsland() {
                 </motion.div>
               )}
               {activeTab === "network" && (
-                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
+                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
                   <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                 </motion.div>
               )}
               {activeTab === "search" && (
-                <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
+                <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
                   <SearchTab 
                     roomId={roomId!} 
                     initialMode={initialSearchMode}
                     onBack={() => setActiveTab("player")} 
                     onResultsCountChange={setYtResultsCount} 
+                    onModeChange={setActiveSearchMode}
+                    onLoadingStateChange={setIsSearchLoading}
                     isSearchOnly={false} 
                     onPlaylistViewChange={setIsViewingPlaylist}
                     onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
@@ -1710,12 +1803,12 @@ export function DynamicIsland() {
                 </motion.div>
               )}
               {(activeTab === "deviceInfo" || activeTab === "invite") && (
-                <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative flex-1 min-h-0 flex flex-col">
+                <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
                   <InviteTab onBack={() => setActiveTab("player")} roomId={roomId || ''} />
                 </motion.div>
               )}
               {activeTab === "requests" && (
-                <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
+                <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'h-auto')}>
                   <RequestsTab
                     requests={pendingRequests || []}
                     onApprove={(id: any, name: any) => {
@@ -1734,7 +1827,7 @@ export function DynamicIsland() {
           </motion.div>
 
           {/* Gloss overlay */}
-          <div className="absolute inset-0 rounded-[inherit] pointer-events-none"
+          <div className={cn('absolute', 'inset-0', 'rounded-[inherit]', 'pointer-events-none')}
             style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%)" }} />
         </motion.div>
 
@@ -1747,12 +1840,12 @@ export function DynamicIsland() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.96 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="mt-2 pointer-events-none"
+              className={cn('mt-2', 'pointer-events-none')}
             >
-              <div className="flex items-center gap-2 bg-black/80 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 shadow-xl">
+              <div className={cn('flex', 'items-center', 'gap-2', 'bg-black/80', 'backdrop-blur-md', 'border', 'border-white/10', 'rounded-full', 'px-3', 'py-1.5', 'shadow-xl')}>
                 {/* Spinning download icon */}
-                <div className="relative w-3.5 h-3.5 shrink-0">
-                  <svg viewBox="0 0 14 14" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                <div className={cn('relative', 'w-3.5', 'h-3.5', 'shrink-0')}>
+                  <svg viewBox="0 0 14 14" className={cn('w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
                     <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
                     <circle
                       cx="7" cy="7" r="5.5" fill="none"
@@ -1764,10 +1857,10 @@ export function DynamicIsland() {
                     />
                   </svg>
                 </div>
-                <span className="text-[10px] font-semibold text-white/60 truncate max-w-[140px]">
+                <span className={cn('text-[10px]', 'font-semibold', 'text-white/60', 'truncate', 'max-w-[140px]')}>
                   Loading <span className="text-white/90">{prefetch.nextTrackTitle.split(/\s+/).slice(0, 4).join(" ")}</span>
                 </span>
-                <span className="text-[9px] font-black text-violet-400 shrink-0">{prefetch.nextTrackProgress}%</span>
+                <span className={cn('text-[9px]', 'font-black', 'text-violet-400', 'shrink-0')}>{prefetch.nextTrackProgress}%</span>
               </div>
             </motion.div>
           )}

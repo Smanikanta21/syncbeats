@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles } from "lucide-react";
-import { useSettings } from "../hooks/useSettings";
+import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2 } from "lucide-react";
+import { useSettings, GradientNode } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { cn } from "../lib/utils";
 
@@ -551,168 +551,235 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
         
         {/* Gradient Editor */}
         <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
-          <div className={cn('flex', 'items-center', 'gap-2', 'mb-4')}>
-            <Palette className={cn('w-5', 'h-5', 'text-foreground/70')} />
-            <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Gradient Editor</h3>
+          <div className={cn('flex', 'items-center', 'justify-between', 'mb-4')}>
+            <div className={cn('flex', 'items-center', 'gap-2')}>
+              <Palette className={cn('w-5', 'h-5', 'text-foreground/70')} />
+              <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Gradient Editor</h3>
+            </div>
+            {/* Auto vs Manual Mode Switcher */}
+            <div className="flex bg-foreground/10 p-1 rounded-full border border-foreground/10">
+              <button
+                type="button"
+                onClick={() => updateSettings({
+                  gradientSettings: { ...(settings.gradientSettings || { nodes: [], extractedColors: ["#8b5cf6", "#3b82f6"] }), mode: "auto" }
+                })}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5',
+                  (settings.gradientSettings?.mode || "auto") === "auto"
+                    ? 'bg-foreground text-background shadow-sm'
+                    : 'text-foreground/60 hover:text-foreground'
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSettings({
+                  gradientSettings: { ...(settings.gradientSettings || { nodes: [], extractedColors: ["#8b5cf6", "#3b82f6"] }), mode: "manual" }
+                })}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5',
+                  settings.gradientSettings?.mode === "manual"
+                    ? 'bg-foreground text-background shadow-sm'
+                    : 'text-foreground/60 hover:text-foreground'
+                )}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Manual
+              </button>
+            </div>
           </div>
+
           <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
-            Customize the ambient background glow that pulses to the beat of the music.
+            {(settings.gradientSettings?.mode || "auto") === "auto"
+              ? "Dynamically extracts 2 dominant colors from the current playing track's cover art."
+              : "Customize gradient nodes, pick custom colors, and adjust position stops."}
           </p>
 
-          <div className={cn('flex', 'flex-wrap', 'gap-2', 'mb-4')}>
-            {currentPalettes.map((palette) => {
-              const isActive = JSON.stringify(settings.ambientColors) === JSON.stringify(palette.colors);
-              return (
-                <button 
-                  key={palette.name}
-                  onClick={() => updateSettings({
-                    ambientColors: palette.colors,
-                    ambientBrightness: palette.brightness,
-                    ambientContrast: palette.contrast
-                  })}
-                  className={cn(
-                    'px-3', 'py-1.5', 'rounded-full', 'border', 'text-xs', 'font-bold', 'transition-all',
-                    isActive 
-                      ? 'bg-foreground text-background border-foreground shadow-sm scale-[1.02]' 
-                      : 'bg-foreground/5 hover:bg-foreground/10 border-foreground/10 text-foreground/70'
-                  )}
-                >
-                  {palette.name}
-                </button>
-              );
-            })}
+          {/* Live Gradient Preview Bar */}
+          <div className="mb-5">
+            <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1.5">Live Gradient Preview</div>
+            <div 
+              className="w-full h-12 rounded-2xl border border-foreground/15 shadow-inner transition-all duration-500 relative overflow-hidden"
+              style={{
+                background: (settings.gradientSettings?.mode || "auto") === "auto"
+                  ? `linear-gradient(90deg, ${settings.gradientSettings?.extractedColors?.[0] || "#8b5cf6"} 0%, ${settings.gradientSettings?.extractedColors?.[1] || "#3b82f6"} 100%)`
+                  : `linear-gradient(90deg, ${(settings.gradientSettings?.nodes || [{ color: "#8b5cf6", position: 0 }, { color: "#3b82f6", position: 100 }]).map(n => `${n.color} ${n.position}%`).join(', ')})`
+              }}
+            />
           </div>
 
-          {/* Light Count Selector */}
-          <div className="mb-6 p-4 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
-            <label className={cn('text-[10px]', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/40', 'block', 'mb-2')}>Light Blobs Count</label>
-            <div className="flex gap-1.5">
-              {[3, 4, 5, 6].map(count => (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => {
-                    const presetPositions = {
-                      3: {
-                        sub: { x: 50, y: 15 },
-                        bass: { x: 30, y: 35 },
-                        lowMid: { x: 20, y: 75 },
-                        mid: { x: 70, y: 35 },
-                        upperMid: { x: 80, y: 75 },
-                        high: { x: 50, y: 75 }
-                      },
-                      4: {
-                        sub: { x: 50, y: 15 },
-                        bass: { x: 18, y: 50 },
-                        lowMid: { x: 20, y: 75 },
-                        mid: { x: 82, y: 50 },
-                        upperMid: { x: 80, y: 75 },
-                        high: { x: 50, y: 85 }
-                      },
-                      5: {
-                        sub: { x: 50, y: 15 },
-                        bass: { x: 18, y: 45 },
-                        lowMid: { x: 20, y: 75 },
-                        mid: { x: 82, y: 45 },
-                        upperMid: { x: 72, y: 75 },
-                        high: { x: 28, y: 75 }
-                      },
-                      6: {
-                        sub: { x: 50, y: 15 },
-                        bass: { x: 18, y: 38 },
-                        lowMid: { x: 18, y: 68 },
-                        mid: { x: 82, y: 38 },
-                        upperMid: { x: 82, y: 68 },
-                        high: { x: 50, y: 85 }
-                      }
-                    }[count as 3 | 4 | 5 | 6];
-                    updateSettings({ 
-                      activeLightCount: count,
-                      ambientPositions: presetPositions
-                    });
-                  }}
-                  className={cn(
-                    'flex-1', 'py-1.5', 'rounded-xl', 'text-xs', 'font-bold', 'transition-all', 'border',
-                    (settings.activeLightCount || 3) === count 
-                      ? 'bg-foreground text-background border-foreground shadow-sm scale-[1.02]' 
-                      : 'bg-foreground/[0.03] text-foreground/60 border-foreground/5 hover:bg-foreground/10'
-                  )}
-                >
-                  {count} Lights
-                </button>
-              ))}
-            </div>
-          </div>
- 
-          <RoomPreview 
-            bassHue={settings.ambientColors.bassHue}
-            midHue={settings.ambientColors.midHue}
-            highHue={settings.ambientColors.highHue}
-            brightness={settings.ambientBrightness}
-            contrast={settings.ambientContrast}
-          />
- 
-          <div 
-            className="space-y-5"
-            onPointerDown={() => {
-              setIsInteracting(true);
-              onInteractionStateChange?.(true);
-            }}
-          >
-            {[
-              { key: 'subHue' as const, label: 'Sub-Bass (Lows)', activeIf: [4, 5, 6] },
-              { key: 'bassHue' as const, label: 'Bass (Lows)', activeIf: [3, 4, 5, 6] },
-              { key: 'lowMidHue' as const, label: 'Low Mids', activeIf: [6] },
-              { key: 'midHue' as const, label: 'Mids', activeIf: [3, 4, 5, 6] },
-              { key: 'upperMidHue' as const, label: 'Upper Mids', activeIf: [5, 6] },
-              { key: 'highHue' as const, label: 'Treble (Highs)', activeIf: [3, 4, 5, 6] },
-            ]
-              .filter(ctrl => ctrl.activeIf.includes(settings.activeLightCount || 3))
-              .map(ctrl => {
-                const value = settings.ambientColors[ctrl.key] ?? 0;
-                return (
-                  <div key={ctrl.key}>
-                    <div className={cn('flex', 'justify-between', 'mb-1')}>
-                      <label className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>{ctrl.label}</label>
-                      <span className={cn('text-xs', 'font-medium')} style={{ color: `hsl(${value}, 80%, 50%)` }}>{value}°</span>
-                    </div>
-                    <input 
-                      type="range" min="0" max="360" value={value} 
-                      onChange={(e) => updateSettings({ ambientColors: { ...settings.ambientColors, [ctrl.key]: Number(e.target.value) } })}
-                      className="w-full"
-                      style={{ accentColor: `hsl(${value}, 80%, 50%)` }}
-                    />
+          {/* AUTO MODE DISPLAY */}
+          {(settings.gradientSettings?.mode || "auto") === "auto" && (
+            <div className="p-4 rounded-2xl bg-foreground/[0.03] border border-foreground/5 mb-5 space-y-3">
+              <div className="flex items-center justify-between text-xs text-foreground/70 font-semibold">
+                <span>Extracted Album Art Swatches (2 Nodes)</span>
+                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Dynamic</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-foreground/5 border border-foreground/10">
+                  <div 
+                    className="w-7 h-7 rounded-lg shadow-sm border border-foreground/20 shrink-0" 
+                    style={{ background: settings.gradientSettings?.extractedColors?.[0] || "#8b5cf6" }} 
+                  />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-foreground/40">Node 1 (Primary)</span>
+                    <span className="text-xs font-mono font-bold text-foreground truncate">{settings.gradientSettings?.extractedColors?.[0] || "#8b5cf6"}</span>
                   </div>
-                );
-              })}
-            <div className={cn('pt-4', 'border-t', 'border-foreground/5')}>
-              <div className={cn('flex', 'justify-between', 'mb-1')}>
-                <label className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Brightness</label>
-                <span className={cn('text-xs', 'font-medium')}>{settings.ambientBrightness}%</span>
+                </div>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-foreground/5 border border-foreground/10">
+                  <div 
+                    className="w-7 h-7 rounded-lg shadow-sm border border-foreground/20 shrink-0" 
+                    style={{ background: settings.gradientSettings?.extractedColors?.[1] || "#3b82f6" }} 
+                  />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-foreground/40">Node 2 (Accent)</span>
+                    <span className="text-xs font-mono font-bold text-foreground truncate">{settings.gradientSettings?.extractedColors?.[1] || "#3b82f6"}</span>
+                  </div>
+                </div>
               </div>
-              <input 
-                type="range" min="10" max="200" value={settings.ambientBrightness} 
-                onChange={(e) => updateSettings({ ambientBrightness: Number(e.target.value) })}
-                className={cn('w-full', 'accent-white')}
-              />
             </div>
+          )}
 
-            <div>
-              <div className={cn('flex', 'justify-between', 'mb-1')}>
-                <label className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Contrast</label>
-                <span className={cn('text-xs', 'font-medium')}>{settings.ambientContrast}%</span>
+          {/* MANUAL MODE NODE EDITOR */}
+          {settings.gradientSettings?.mode === "manual" && (
+            <div className="space-y-4 mb-5">
+              {/* Quick Node Count Presets */}
+              <div className="p-3 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Node Count Presets</label>
+                <div className="flex gap-1.5">
+                  {[2, 3, 4, 5].map((count) => {
+                    const currentNodes = settings.gradientSettings?.nodes || [];
+                    const isActive = currentNodes.length === count;
+                    return (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => {
+                          const baseColors = ["#8b5cf6", "#3b82f6", "#ec4899", "#10b981", "#f59e0b"];
+                          const newNodes: GradientNode[] = Array.from({ length: count }, (_, idx) => ({
+                            id: `node-${idx + 1}`,
+                            color: currentNodes[idx]?.color || baseColors[idx % baseColors.length],
+                            position: Math.round((idx / (count - 1)) * 100),
+                          }));
+                          updateSettings({
+                            gradientSettings: {
+                              ...settings.gradientSettings,
+                              nodes: newNodes,
+                            },
+                          });
+                        }}
+                        className={cn(
+                          'flex-1 py-1.5 rounded-xl text-xs font-bold transition-all border',
+                          isActive
+                            ? 'bg-foreground text-background border-foreground shadow-sm scale-[1.02]'
+                            : 'bg-foreground/[0.03] text-foreground/60 border-foreground/5 hover:bg-foreground/10'
+                        )}
+                      >
+                        {count} Nodes
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <input 
-                type="range" min="10" max="200" value={settings.ambientContrast} 
-                onChange={(e) => updateSettings({ ambientContrast: Number(e.target.value) })}
-                className={cn('w-full', 'accent-white')}
-              />
+
+              {/* Node List Editor */}
+              <div className="space-y-2">
+                {(settings.gradientSettings?.nodes || []).map((node, idx) => (
+                  <div key={node.id} className="flex items-center gap-3 p-3 rounded-2xl bg-foreground/[0.03] border border-foreground/10">
+                    <label className="relative w-8 h-8 rounded-xl shadow-sm border border-foreground/20 cursor-pointer overflow-hidden shrink-0" style={{ background: node.color }}>
+                      <input
+                        type="color"
+                        value={node.color}
+                        onChange={(e) => {
+                          const updated = (settings.gradientSettings?.nodes || []).map((n) =>
+                            n.id === node.id ? { ...n, color: e.target.value } : n
+                          );
+                          updateSettings({
+                            gradientSettings: { ...settings.gradientSettings, nodes: updated },
+                          });
+                        }}
+                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                      />
+                    </label>
+                    <div className="flex-1 flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-foreground">Node {idx + 1}</span>
+                        <span className="font-mono text-[10px] text-foreground/50">{node.position}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={node.position}
+                        onChange={(e) => {
+                          const updated = (settings.gradientSettings?.nodes || []).map((n) =>
+                            n.id === node.id ? { ...n, position: Number(e.target.value) } : n
+                          );
+                          updateSettings({
+                            gradientSettings: { ...settings.gradientSettings, nodes: updated },
+                          });
+                        }}
+                        className="w-full accent-primary h-1.5 rounded-lg cursor-pointer bg-foreground/10"
+                      />
+                    </div>
+                    {(settings.gradientSettings?.nodes || []).length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (settings.gradientSettings?.nodes || []).filter((n) => n.id !== node.id);
+                          updateSettings({
+                            gradientSettings: { ...settings.gradientSettings, nodes: updated },
+                          });
+                        }}
+                        className="p-1.5 rounded-lg text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete Node"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {(settings.gradientSettings?.nodes || []).length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentNodes = settings.gradientSettings?.nodes || [];
+                      const newNode: GradientNode = {
+                        id: `node-${Date.now()}`,
+                        color: "#ec4899",
+                        position: 50,
+                      };
+                      updateSettings({
+                        gradientSettings: {
+                          ...settings.gradientSettings,
+                          nodes: [...currentNodes, newNode].sort((a, b) => a.position - b.position),
+                        },
+                      });
+                    }}
+                    className="w-full py-2.5 rounded-2xl border border-dashed border-foreground/20 text-xs font-bold text-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-all flex items-center justify-center gap-1.5 mt-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Gradient Node
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className={cn('flex', 'gap-2', 'mt-6')}>
             <button 
               onClick={() => updateSettings({
+                gradientSettings: {
+                  mode: "auto",
+                  nodes: [
+                    { id: "node-1", color: "#8b5cf6", position: 0 },
+                    { id: "node-2", color: "#3b82f6", position: 100 },
+                  ],
+                  extractedColors: ["#8b5cf6", "#3b82f6"],
+                },
                 ambientColors: { subHue: 320, bassHue: 0, lowMidHue: 40, midHue: 120, upperMidHue: 200, highHue: 280 },
                 ambientBrightness: 100,
                 ambientContrast: 100

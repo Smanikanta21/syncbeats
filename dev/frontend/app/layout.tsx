@@ -231,7 +231,7 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <Preloader />
-          <IOSHomeScreenPrompt />
+          {/* <IOSHomeScreenPrompt /> */}
           <ThemeProvider>
             <AuthProvider>
               <AudioProvider>
