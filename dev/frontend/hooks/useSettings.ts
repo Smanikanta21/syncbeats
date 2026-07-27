@@ -51,7 +51,7 @@ export interface AppSettings {
   showDebugAudio?: boolean;
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   audioLatencyOffsetMs: 0,
   syncAggressiveness: "high",
   keepScreenAwake: true,

@@ -41,30 +41,48 @@ export class DeviceRepository {
       });
 
       if (sameAgentDevice) {
-        const reused = await prisma.device.update({
-          where: { id: sameAgentDevice.id },
-          data: {
-            deviceKey,
-            lastSeenAt: new Date(),
-            userAgent: normalizedUserAgent,
-          },
-        });
-        return { device: this.mapDevice(reused), created: false };
+        try {
+          const reused = await prisma.device.update({
+            where: { id: sameAgentDevice.id },
+            data: {
+              deviceKey,
+              lastSeenAt: new Date(),
+              userAgent: normalizedUserAgent,
+            },
+          });
+          return { device: this.mapDevice(reused), created: false };
+        } catch (e: any) {
+          if (e?.code === 'P2002') {
+            const found = await prisma.device.findUnique({
+              where: { userId_deviceKey: { userId, deviceKey } }
+            });
+            if (found) return { device: this.mapDevice(found), created: false };
+          }
+        }
       }
     }
 
     const defaultName = this.buildDefaultDeviceName(ownerName, userAgent);
 
-    const created = await prisma.device.create({
-      data: {
-        userId,
-        deviceKey,
-        name: defaultName,
-        userAgent: normalizedUserAgent,
+    try {
+      const created = await prisma.device.create({
+        data: {
+          userId,
+          deviceKey,
+          name: defaultName,
+          userAgent: normalizedUserAgent,
+        }
+      });
+      return { device: this.mapDevice(created), created: true };
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        const found = await prisma.device.findUnique({
+          where: { userId_deviceKey: { userId, deviceKey } }
+        });
+        if (found) return { device: this.mapDevice(found), created: false };
       }
-    });
-
-    return { device: this.mapDevice(created), created: true };
+      throw e;
+    }
   }
 
   async listByUser(userId: string): Promise<PublicDevice[]> {

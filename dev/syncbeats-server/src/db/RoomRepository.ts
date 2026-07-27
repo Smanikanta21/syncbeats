@@ -202,10 +202,14 @@ export class RoomRepository {
   }
 
   async recordParticipantLeave(roomId: string, socketId: string): Promise<void> {
-    await prisma.roomParticipant.updateMany({
-      where: { roomId, socketId },
-      data: { leftAt: new Date() }
-    });
+    try {
+      await prisma.roomParticipant.updateMany({
+        where: { roomId, socketId },
+        data: { leftAt: new Date() }
+      });
+    } catch (e: any) {
+      console.warn(`[RoomRepo] Failed to record leave for socket ${socketId}:`, e?.message || e);
+    }
   }
 
   async getQueue(roomId: string): Promise<TrackQueueItem[]> {

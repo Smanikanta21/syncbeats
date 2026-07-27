@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { roomsApi, historyApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music } from "lucide-react";
+import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface SearchTabProps {
@@ -18,11 +18,13 @@ interface SearchTabProps {
   isSearchOnly?: boolean;
   onSuccess?: () => void;
   onPlaylistViewChange?: (isViewing: boolean) => void;
+  onImportingStateChange?: (isImporting: boolean) => void;
+  onHasContentChange?: (hasContent: boolean) => void;
 }
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
-export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange }: SearchTabProps) {
+export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -53,13 +55,27 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [importing, setImporting] = useState(false);
   const [spError, setSpError] = useState<string | null>(null);
+  const [importStage, setImportStage] = useState<"scraping" | "indexing" | "enriching" | "done">("scraping");
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStats, setImportStats] = useState<{ total: number; playlistName?: string; playlistId?: string; coverUrl?: string }>({ total: 0 });
 
   // Playlist Edit/Delete State
   const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null);
+  const [isDeletingPlaylist, setIsDeletingPlaylist] = useState(false);
   const [isEditingPlaylist, setIsEditingPlaylist] = useState(false);
   const [editName, setEditName] = useState("");
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
+  const [isFixingMetadata, setIsFixingMetadata] = useState(false);
+
+  useEffect(() => {
+    onImportingStateChange?.(importing);
+  }, [importing, onImportingStateChange]);
+
+  useEffect(() => {
+    const hasContent = !!(spError || downloadError || query.includes("spotify.com/playlist/"));
+    onHasContentChange?.(hasContent);
+  }, [spError, downloadError, query, onHasContentChange]);
 
   // Upload State
   const [uploadQueue, setUploadQueue] = useState<{ id: string, name: string, status: "pending" | "uploading" | "done" | "error" }[]>([]);
@@ -224,18 +240,78 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
     setImporting(true);
     setSpError(null);
+    setImportStage("scraping");
+    setImportProgress(15);
+    setImportStats({ total: 0 });
+
+    upload.setActiveImport({
+      playlistName: "Imported Playlist",
+      progress: 15,
+      stage: "scraping",
+      totalTracks: 0,
+      isImporting: true,
+    });
+
+    const progressTimer = setInterval(() => {
+      setImportProgress(prev => {
+        const next = prev < 40 ? prev + 5 : prev < 80 ? prev + 2 : prev < 95 ? prev + 0.5 : prev;
+        upload.setActiveImport(curr => curr ? { ...curr, progress: Math.min(98, next) } : null);
+        return next;
+      });
+    }, 300);
+
     try {
+      setTimeout(() => {
+        setImportStage("indexing");
+        upload.setActiveImport(curr => curr ? { ...curr, stage: "indexing" } : null);
+      }, 1200);
+
+      setTimeout(() => {
+        setImportStage("enriching");
+        upload.setActiveImport(curr => curr ? { ...curr, stage: "enriching" } : null);
+      }, 2800);
+
       const r = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/bridge/import`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: url, playlistName: "Imported Playlist" }),
+        body: JSON.stringify({ playlistUrl: url }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.details || data.error || "Failed to import playlist.");
+      
+      clearInterval(progressTimer);
+      setImportProgress(100);
+      setImportStage("done");
+      const finalStats = {
+        total: data.totalTracks || data.trackCount || 0,
+        playlistName: data.playlistName || "Spotify Playlist",
+        playlistId: data.playlistId,
+        coverUrl: data.coverUrl,
+      };
+      setImportStats(finalStats);
+
+      upload.setActiveImport({
+        playlistId: data.playlistId,
+        playlistName: data.playlistName || "Spotify Playlist",
+        progress: 100,
+        stage: "done",
+        totalTracks: data.totalTracks || data.trackCount || 0,
+        isImporting: false,
+      });
+
+      // Refetch user's playlists so the new playlist is listed immediately
+      try {
+        const plRes = await roomsApi.getUserSpotifyPlaylists();
+        if (plRes && Array.isArray(plRes)) {
+          setMySpotifyPlaylists(plRes);
+        }
+      } catch (plErr) {}
+
       setQuery("");
       onSuccess?.();
-      onBack(); // close search on success
     } catch (err: any) {
+      clearInterval(progressTimer);
+      upload.setActiveImport(null);
       const errMsg = err.message || "Something went wrong during import.";
       if (errMsg.toLowerCase().includes("invalid spotify data structure") || errMsg.toLowerCase().includes("could not extract spotify playlist")) {
         setSpError("Private playlists cannot be imported. Make it public first.");
@@ -243,6 +319,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         setSpError(errMsg);
       }
     } finally {
+      clearInterval(progressTimer);
       setImporting(false);
     }
   };
@@ -278,7 +355,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   };
 
   const confirmDeletePlaylist = async () => {
-    if (!playlistToDelete) return;
+    if (!playlistToDelete || isDeletingPlaylist) return;
+    setIsDeletingPlaylist(true);
     try {
       await roomsApi.deletePlaylist(playlistToDelete);
       setMySpotifyPlaylists(prev => prev.filter(p => p.id !== playlistToDelete));
@@ -287,8 +365,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         setSelectedPlaylistData(null);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to delete playlist", err);
     } finally {
+      setIsDeletingPlaylist(false);
       setPlaylistToDelete(null);
     }
   };
@@ -324,7 +403,38 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     reader.readAsDataURL(file);
   };
 
+  const handleFixPlaylistMetadata = async (playlistIdToFix?: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const targetId = playlistIdToFix || selectedPlaylistId;
+    if (!targetId || isFixingMetadata || !token) return;
+    setIsFixingMetadata(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/playlists/${targetId}/enrich`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.playlist) {
+        if (selectedPlaylistId === targetId) {
+          setSelectedPlaylistData(data.playlist);
+        }
+        setMySpotifyPlaylists(prev => prev.map(p => p.id === targetId ? { ...p, coverUrl: data.playlist.coverUrl || p.coverUrl } : p));
+      }
+    } catch (err) {
+      console.error("Failed to fix metadata", err);
+    } finally {
+      setIsFixingMetadata(false);
+    }
+  };
+
   const handlePlay = async (result: any) => {
+    if (addedSongs.has(result.url)) {
+      setDownloadError("Song already exists in the queue!");
+      return;
+    }
     setEnqueuing(result.url); setDownloadError(null);
     try {
       let videoId = "";
@@ -381,7 +491,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   };
 
   return (
-    <div className={`relative flex flex-col w-full max-h-[400px] ${containerPadding}`}>
+    <div className={`relative flex flex-col w-full h-full min-h-0 flex-1 ${containerPadding}`}>
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
           <button 
@@ -502,12 +612,102 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         </motion.div>
       )}
 
-      {importing && (
-        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-          className={cn('flex', 'items-center', 'justify-center', 'gap-2', 'text-white/70', 'text-sm', 'mb-3')}>
-          <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> Importing Spotify Playlist...
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {importing && (
+          <motion.div
+            initial={{ opacity: 0, y: 15, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -15, scale: 0.95 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="p-5 rounded-3xl bg-gradient-to-br from-cyan-500/15 via-black/90 to-purple-500/20 border border-cyan-500/30 shadow-[0_0_30px_rgba(6,182,212,0.2)] backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
+          >
+            {/* Ambient Pulsing Background Aura */}
+            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-purple-500/20 blur-3xl animate-pulse pointer-events-none" />
+
+            {/* Header Info */}
+            <div className="flex items-center justify-between mb-3 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0 shadow-lg">
+                  {importStage === "done" ? <CheckCircle2 className="w-6 h-6 text-cyan-400" /> : <Loader2 className="w-5 h-5 animate-spin" />}
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white flex items-center gap-2">
+                    <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Spotify Playlist"}"` : "Importing Spotify Playlist"}</span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 uppercase tracking-widest">
+                      {importStage === "done" ? "SUCCESS" : "ACTIVE STAGE"}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-white/80 mt-0.5">
+                    {importStage === "scraping" && "Stage 1/3: 🔍 Extracting tracks & metadata..."}
+                    {importStage === "indexing" && "Stage 2/3: 💾 Building catalog & checking duplicates..."}
+                    {importStage === "enriching" && "Stage 3/3: 🎨 Fetching 600x600 artwork & audio streams..."}
+                    {importStage === "done" && `🎉 ${importStats.total} Songs successfully imported into "${importStats.playlistName || "Playlist"}"!`}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xl font-black text-cyan-400 font-mono tracking-wider ml-2">
+                {Math.round(importProgress)}%
+              </span>
+            </div>
+
+            {/* Animated Glowing Progress Bar */}
+            <div className="w-full h-3.5 rounded-full bg-white/10 overflow-hidden relative border border-white/15 p-0.5 z-10 shadow-inner">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-violet-500 to-purple-500 relative"
+                initial={{ width: "0%" }}
+                animate={{ width: `${importProgress}%` }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                {/* Glowing head light */}
+                <div className="absolute top-0 right-0 w-3 h-full bg-white rounded-full shadow-[0_0_12px_#06b6d4] animate-ping opacity-75" />
+              </motion.div>
+            </div>
+
+            {/* Completion Actions or Stage Footer */}
+            {importStage === "done" && importStats.playlistId ? (
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/10 relative z-10">
+                <button
+                  onClick={() => {
+                    if (importStats.playlistId) {
+                      handlePlaylistClick(importStats.playlistId);
+                      setImporting(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all active:scale-95 flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+                >
+                  <Music className="w-4 h-4" /> View Playlist ({importStats.total} Tracks)
+                </button>
+                <button
+                  onClick={() => {
+                    if (importStats.playlistId) {
+                      handleSpotifyEnqueue(importStats.playlistId);
+                      setImporting(false);
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 border border-white/10"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" /> Play All
+                </button>
+                <button
+                  onClick={() => setImporting(false)}
+                  className="ml-auto px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-xs font-bold transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between mt-3 text-[11px] text-white/60 relative z-10">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                  <span>{importStats.total ? `${importStats.total} Tracks Processed` : "Scanning playlist items..."}</span>
+                </div>
+                <span className="text-white/40 italic">Auto-resumes on network dropout</span>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {!isCentered && (
@@ -564,53 +764,92 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 ))}
 
                 {/* My Spotify Playlists */}
-                {displayedSpotifyPlaylists.map((r, idx) => (
-                  <div key={r.id}
-                    onClick={() => handlePlaylistClick(r.id)}
-                    className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'hover:bg-white/10', 'transition-all', 'duration-300', 'group', 'shrink-0', 'cursor-pointer')}>
-                    {r.coverUrl ? (
-                      <img src={r.coverUrl} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                    ) : (
-                      <div className={cn('w-14', 'h-14', 'rounded-lg', 'bg-black/50', 'shrink-0', 'flex', 'items-center', 'justify-center')}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
-                      </div>
-                    )}
-                    <div className={cn('space-y-1', 'min-w-0', 'flex-1')}>
-                      <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
-                        {r.name}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
-                      </div>
-                      <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
-                      {(() => {
-                        const term = query.trim().toLowerCase();
-                        if (!term) return null;
-                        const matchedTracks = r.tracks?.filter((t: any) => t.song?.title?.toLowerCase().includes(term) || t.song?.artist?.toLowerCase().includes(term)) || [];
-                        if (matchedTracks.length === 0) return null;
-                        const firstSong = matchedTracks[0].song;
-                        return (
-                          <div className="text-emerald-400 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md w-fit max-w-full">
-                            <Music className="w-3 h-3 shrink-0 text-emerald-400 opacity-90" />
-                            <span className="truncate">
-                              Contains <span className="text-white font-bold">{firstSong?.title}</span>
-                              {firstSong?.artist ? ` • ${firstSong.artist}` : ""}
-                              {matchedTracks.length > 1 ? ` (+${matchedTracks.length - 1} more)` : ""}
-                            </span>
+                {displayedSpotifyPlaylists.map((r, idx) => {
+                  const isThisPlaylistImporting = !!(
+                    upload.activeImport?.isImporting && (
+                      upload.activeImport?.playlistId === r.id ||
+                      upload.activeImport?.playlistName?.toLowerCase() === r.name?.toLowerCase()
+                    )
+                  );
+
+                  return (
+                    <div key={r.id}
+                      onClick={() => handlePlaylistClick(r.id)}
+                      className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'relative', 'overflow-hidden',
+                        isThisPlaylistImporting 
+                          ? 'bg-cyan-950/40 border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.2)]' 
+                          : 'bg-white/5 border border-transparent hover:bg-white/10',
+                        'transition-all', 'duration-300', 'group', 'shrink-0', 'cursor-pointer')}
+                    >
+                      {/* Background Fill Progress Bar */}
+                      {isThisPlaylistImporting && (
+                        <motion.div
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-600/30 via-violet-500/25 to-purple-600/30 z-0 pointer-events-none border-r border-cyan-400/50"
+                          initial={{ width: "0%" }}
+                          animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                        >
+                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_10px_#06b6d4] animate-pulse" />
+                        </motion.div>
+                      )}
+
+                      {r.coverUrl ? (
+                        <img src={r.coverUrl} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0', 'relative', 'z-10')} />
+                      ) : (
+                        <div className={cn('w-14', 'h-14', 'rounded-lg', 'bg-black/50', 'shrink-0', 'flex', 'items-center', 'justify-center', 'relative', 'z-10')}>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
+                        </div>
+                      )}
+                      <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'relative', 'z-10')}>
+                        <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                          {r.name}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
+                        </div>
+                        <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
+                        {isThisPlaylistImporting && (
+                          <div className="text-cyan-300 text-xs font-extrabold truncate flex items-center gap-1.5 mt-1 bg-cyan-500/20 border border-cyan-500/30 px-2 py-0.5 rounded-md w-fit max-w-full shadow-md">
+                            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-cyan-400" />
+                            <span>Importing & Enriching ({Math.round(upload.activeImport?.progress ?? 0)}%)</span>
                           </div>
-                        );
-                      })()}
+                        )}
+                        {(() => {
+                          const term = query.trim().toLowerCase();
+                          if (!term) return null;
+                          const matchedTracks = r.tracks?.filter((t: any) => t.song?.title?.toLowerCase().includes(term) || t.song?.artist?.toLowerCase().includes(term)) || [];
+                          if (matchedTracks.length === 0) return null;
+                          const firstSong = matchedTracks[0].song;
+                          return (
+                            <div className="text-emerald-400 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md w-fit max-w-full">
+                              <Music className="w-3 h-3 shrink-0 text-emerald-400 opacity-90" />
+                              <span className="truncate">
+                                Contains <span className="text-white font-bold">{firstSong?.title}</span>
+                                {firstSong?.artist ? ` • ${firstSong.artist}` : ""}
+                                {matchedTracks.length > 1 ? ` (+${matchedTracks.length - 1} more)` : ""}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <button onClick={(e) => handleFixPlaylistMetadata(r.id, e)}
+                        disabled={isFixingMetadata}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-emerald-500/10', 'hover:bg-emerald-500/20', 'text-emerald-400', 'border', 'border-emerald-500/20', 'active:scale-90', 'transition-all', 'hidden', 'group-hover:flex', 'relative', 'z-10')}
+                        title="Fix & refetch missing artwork and metadata">
+                        <Sparkles className={cn('w-4', 'h-4', isFixingMetadata && 'animate-spin')} />
+                      </button>
+
+                      <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/5', 'hover:bg-red-500/20', 'text-white/50', 'hover:text-red-400', 'active:scale-90', 'transition-all', 'sm:hidden', 'group-hover:flex', 'relative', 'z-10')}>
+                        <Trash2 className={cn('w-4', 'h-4')} />
+                      </button>
+
+                      <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10')}>
+                        <Play className={cn('w-5', 'h-5', 'ml-0.5')} />
+                      </button>
                     </div>
-
-                    <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
-                      className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/5', 'hover:bg-red-500/20', 'text-white/50', 'hover:text-red-400', 'active:scale-90', 'transition-all', 'sm:hidden', 'group-hover:flex')}>
-                      <Trash2 className={cn('w-4', 'h-4')} />
-                    </button>
-
-                    <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
-                      className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all')}>
-                      <Play className={cn('w-5', 'h-5', 'ml-0.5')} />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Playlist Info Drill-down View */}
                 {mode === "spotify" && !query.trim() && selectedPlaylistId && (
@@ -689,10 +928,19 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                 </button>
                               )}
                               {!isEditingPlaylist && (
-                                <button onClick={(e) => handleDeletePlaylist(selectedPlaylistData.id, e)}
-                                  className={cn('h-8', 'w-8', 'bg-white/10', 'hover:bg-red-500/20', 'text-white', 'hover:text-red-400', 'rounded-full', 'flex', 'items-center', 'justify-center', 'active:scale-95', 'transition-all')}>
-                                  <Trash2 className={cn('w-4', 'h-4')} />
-                                </button>
+                                <>
+                                  <button onClick={(e) => handleFixPlaylistMetadata(selectedPlaylistData.id, e)}
+                                    disabled={isFixingMetadata}
+                                    className={cn('h-8', 'px-3', 'bg-emerald-500/20', 'hover:bg-emerald-500/30', 'border', 'border-emerald-500/30', 'text-emerald-300', 'text-xs', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-1.5', 'active:scale-95', 'transition-all')}
+                                    title="Refetch missing album art, artist names, and YouTube links">
+                                    <Sparkles className={cn('w-3.5', 'h-3.5', isFixingMetadata && 'animate-spin')} />
+                                    <span>{isFixingMetadata ? 'Refetching...' : 'Fix Missing Info'}</span>
+                                  </button>
+                                  <button onClick={(e) => handleDeletePlaylist(selectedPlaylistData.id, e)}
+                                    className={cn('h-8', 'w-8', 'bg-white/10', 'hover:bg-red-500/20', 'text-white', 'hover:text-red-400', 'rounded-full', 'flex', 'items-center', 'justify-center', 'active:scale-95', 'transition-all')}>
+                                    <Trash2 className={cn('w-4', 'h-4')} />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -811,7 +1059,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className={cn('absolute', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'bg-black/60', 'backdrop-blur-sm', 'p-4')}
-            onClick={(e) => { e.stopPropagation(); setPlaylistToDelete(null); }}
+            onClick={(e) => { e.stopPropagation(); if (!isDeletingPlaylist) setPlaylistToDelete(null); }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 10 }}
@@ -821,23 +1069,36 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               className={cn('bg-[#1A1A1A]', 'border', 'border-white/10', 'rounded-2xl', 'p-6', 'max-w-sm', 'w-full', 'shadow-2xl', 'flex', 'flex-col', 'items-center', 'text-center', 'gap-4')}
             >
               <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-red-500/20', 'flex', 'items-center', 'justify-center', 'text-red-400', 'mb-2')}>
-                <Trash2 className={cn('w-6', 'h-6')} />
+                {isDeletingPlaylist ? <Loader2 className="w-6 h-6 animate-spin text-red-400" /> : <Trash2 className={cn('w-6', 'h-6')} />}
               </div>
-              <h3 className={cn('text-white', 'font-bold', 'text-lg')}>Delete Playlist?</h3>
-              <p className={cn('text-white/60', 'text-sm')}>Are you sure you want to delete this playlist entirely? This action cannot be undone.</p>
+              <h3 className={cn('text-white', 'font-bold', 'text-lg')}>
+                {isDeletingPlaylist ? "Deleting Playlist..." : "Delete Playlist?"}
+              </h3>
+              <p className={cn('text-white/60', 'text-sm')}>
+                {isDeletingPlaylist ? "Removing playlist catalog and cached tracks..." : "Are you sure you want to delete this playlist entirely? This action cannot be undone."}
+              </p>
 
               <div className={cn('flex', 'items-center', 'gap-3', 'w-full', 'mt-2')}>
                 <button
-                  onClick={() => setPlaylistToDelete(null)}
-                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-white/10', 'hover:bg-white/15', 'text-white', 'font-medium', 'transition-colors')}
+                  onClick={() => !isDeletingPlaylist && setPlaylistToDelete(null)}
+                  disabled={isDeletingPlaylist}
+                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-white/10', 'hover:bg-white/15', 'text-white', 'font-medium', 'transition-colors', 'disabled:opacity-50', 'disabled:cursor-not-allowed')}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDeletePlaylist}
-                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-red-500', 'hover:bg-red-600', 'text-white', 'font-medium', 'transition-colors')}
+                  disabled={isDeletingPlaylist}
+                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-red-500', 'hover:bg-red-600', 'text-white', 'font-medium', 'transition-colors', 'flex', 'items-center', 'justify-center', 'gap-2', 'disabled:opacity-75', 'disabled:cursor-not-allowed')}
                 >
-                  Delete
+                  {isDeletingPlaylist ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Delete</span>
+                  )}
                 </button>
               </div>
             </motion.div>

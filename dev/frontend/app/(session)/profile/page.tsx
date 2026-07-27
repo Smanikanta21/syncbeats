@@ -178,9 +178,9 @@ export default function ProfilePage() {
   return (
     <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'flex', 'flex-col', 'items-center', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>
       
-      {/* ── Top Header Navigation Wrapper with Top Blur Mask ──────────── */}
-      <div className="sticky top-0 z-30 w-full flex justify-center pt-3 pb-3 mb-6 bg-background/50 dark:bg-black/50 backdrop-blur-2xl transition-all">
-        <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/80 dark:bg-black/80 backdrop-blur-3xl border border-foreground/20 dark:border-white/15 shadow-[0_20px_60px_rgba(0,0,0,0.6)] shadow-black/50 transition-all">
+      {/* ── Top Header Navigation Bar (Floating Capsule) ───────────────── */}
+      <div className="sticky top-0 z-30 w-full flex justify-center pt-4 pb-4 mb-4 bg-transparent pointer-events-none">
+        <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/80 dark:bg-black/80 backdrop-blur-3xl border border-foreground/15 dark:border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.4)] pointer-events-auto transition-all">
           <button
             onClick={() => router.back()}
             className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group"

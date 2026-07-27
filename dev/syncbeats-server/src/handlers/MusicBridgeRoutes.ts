@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { MusicBridgeService } from '../services/MusicBridgeService';
 import { requireAuth } from '../auth/authMiddleware';
-import prisma from '../db/prisma';
+import prisma, { sanitizeNullBytes } from '../db/prisma';
 import ytSearch from 'yt-search';
 import play from 'play-dl';
 
@@ -14,8 +14,8 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
     const video = r.videos?.[0];
     if (video?.videoId) {
       return {
-        youtubeId: video.videoId,
-        thumbnail: video.thumbnail || `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`,
+        youtubeId: sanitizeNullBytes(video.videoId),
+        thumbnail: sanitizeNullBytes(video.thumbnail || `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`),
       };
     }
   } catch (e) {
@@ -50,8 +50,8 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
           const item = data?.contents?.[0]?.video;
           if (item?.videoId) {
             return {
-              youtubeId: item.videoId,
-              thumbnail: item.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
+              youtubeId: sanitizeNullBytes(item.videoId),
+              thumbnail: sanitizeNullBytes(item.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`),
             };
           }
         }
@@ -69,8 +69,8 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
     if (ytResult.length > 0) {
       const video = ytResult[0];
       return {
-        youtubeId: video.id || '',
-        thumbnail: video.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${video.id}/hqdefault.jpg`,
+        youtubeId: sanitizeNullBytes(video.id || ''),
+        thumbnail: sanitizeNullBytes(video.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${video.id}/hqdefault.jpg`),
       };
     }
     return null;
@@ -85,7 +85,7 @@ async function fetchTrackArtwork(spotifyId: string): Promise<string | null> {
     const res = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${spotifyId}`);
     if (!res.ok) return null;
     const data: any = await res.json();
-    return data.thumbnail_url || null;
+    return data.thumbnail_url ? sanitizeNullBytes(data.thumbnail_url) : null;
   } catch {
     return null;
   }
@@ -111,6 +111,30 @@ async function backfillTrackArtwork(songs: { songId: string; spotifyId?: string 
   }
 }
 
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const isNetErr =
+        err?.code === 'ENETUNREACH' ||
+        err?.code === 'EADDRNOTAVAIL' ||
+        err?.message?.includes('read EADDRNOTAVAIL') ||
+        err?.message?.includes('connect ENETUNREACH') ||
+        err?.message?.includes('Connection terminated');
+      if (isNetErr && attempt < retries) {
+        console.warn(`[DB Retry] Connection dropped (${err.code || err.message}). Retrying attempt ${attempt}/${retries} in ${delayMs * attempt}ms...`);
+        await new Promise((r) => setTimeout(r, delayMs * attempt));
+      } else {
+        throw err;
+      }
+    }
+  }
+  return fn();
+}
+
 // Enrich songs with album name + high-res artwork via the free iTunes Search API.
 // Runs as a background task after import response is sent.
 async function enrichFromItunes(
@@ -133,35 +157,35 @@ async function enrichFromItunes(
         const result = data.results?.[0];
         if (!result) return;
 
-        const album = result.collectionName || null;
+        const album = result.collectionName ? sanitizeNullBytes(result.collectionName) : null;
         const artworkUrl = result.artworkUrl100
-          ? result.artworkUrl100.replace('100x100', '600x600')
+          ? sanitizeNullBytes(result.artworkUrl100.replace('100x100', '600x600'))
           : null;
         const duration = result.trackTimeMillis
           ? Math.round(result.trackTimeMillis / 1000)
           : undefined;
-        const resolvedArtist = result.artistName || null;
+        const resolvedArtist = result.artistName ? sanitizeNullBytes(result.artistName) : null;
 
-        // Update the Song record
-        await prisma.song.update({
+        // Update the Song record with DB retry
+        await withDbRetry(() => prisma.song.update({
           where: { id: s.songId },
-          data: {
+          data: sanitizeNullBytes({
             ...(album ? { album } : {}),
             ...(artworkUrl ? { albumArt: artworkUrl } : {}),
             ...(duration ? { duration } : {}),
             ...(hasUnknownArtist && resolvedArtist ? { artist: resolvedArtist } : {}),
-          },
-        });
+          }),
+        }));
 
-        // Also update PlaylistTrack thumbnails & artist for this playlist
+        // Also update PlaylistTrack thumbnails & artist for this playlist with DB retry
         if (artworkUrl || (hasUnknownArtist && resolvedArtist)) {
-          await prisma.playlistTrack.updateMany({
+          await withDbRetry(() => prisma.playlistTrack.updateMany({
             where: { songId: s.songId },
-            data: {
+            data: sanitizeNullBytes({
               ...(artworkUrl ? { thumbnail: artworkUrl } : {}),
               ...(hasUnknownArtist && resolvedArtist ? { artist: resolvedArtist } : {}),
-            },
-          });
+            }),
+          }));
         }
 
         enriched++;
@@ -189,23 +213,26 @@ async function resolveYouTubeIds(
       const result = await matchToYouTubeFallback(s.title, s.artist);
       if (!result?.youtubeId) continue;
 
+      const youtubeId = sanitizeNullBytes(result.youtubeId);
+      const thumbnail = sanitizeNullBytes(result.thumbnail);
+
       // Update Song catalog
       await prisma.song.update({
         where: { id: s.songId },
-        data: {
-          youtubeId:        result.youtubeId,
-          youtubeThumbnail: result.thumbnail,
+        data: sanitizeNullBytes({
+          youtubeId,
+          youtubeThumbnail: thumbnail,
           resolvedAt:       new Date(),
-        },
+        }),
       });
 
       // Update all PlaylistTracks referencing this song in this playlist
       await prisma.playlistTrack.updateMany({
         where: { songId: s.songId, playlistId },
-        data: {
-          youtubeId: result.youtubeId,
-          thumbnail: result.thumbnail,
-        },
+        data: sanitizeNullBytes({
+          youtubeId,
+          thumbnail,
+        }),
       });
 
       resolved++;
@@ -249,21 +276,62 @@ export function createMusicBridgeRoutes(): Router {
         return;
       }
 
-      const playlistName = req.body.playlistName || name || 'Imported Spotify Playlist';
+      const cleanStr = (s: any): string => {
+        if (!s || typeof s !== 'string') return '';
+        return s.replace(/\0/g, '').replace(/\u0000/g, '').replace(/\\u0000/g, '').replace(/\x00/g, '').trim();
+      };
 
-      // 2. Batch pre-check: find ALL songs that already exist in our DB
-      //    This avoids N individual upsert round-trips for repeat imports.
-      const spotifyIds = tracks.map((t: any) => t.spotifyTrackId).filter(Boolean);
-      const titleArtistPairs = tracks.map((t: any) => ({ title: t.title, artist: t.artist }));
+      const userProvidedName = cleanStr(req.body.playlistName);
+      const scrapedPlaylistName = cleanStr(name);
+      const playlistName = (userProvidedName && userProvidedName !== 'Imported Playlist' && userProvidedName !== 'Imported Spotify Playlist')
+        ? userProvidedName
+        : (scrapedPlaylistName || 'Imported Spotify Playlist');
 
-      const existingSongs = await prisma.song.findMany({
-        where: {
-          OR: [
-            ...(spotifyIds.length > 0 ? [{ spotifyId: { in: spotifyIds } }] : []),
-            ...titleArtistPairs.map((p: any) => ({ title: p.title, artist: p.artist })),
-          ],
-        },
-      });
+      // Sanitize all scraped tracks first to strip null bytes
+      const sanitizedTracks = tracks.map((t: any) => ({
+        title: cleanStr(t.title) || 'Unknown Track',
+        artist: cleanStr(t.artist) || 'Unknown Artist',
+        album: cleanStr(t.album) || null,
+        artworkUrl: cleanStr(t.artworkUrl) || null,
+        spotifyTrackId: cleanStr(t.spotifyTrackId) || null,
+        duration_ms: t.duration_ms,
+      }));
+
+      // 2. Batch pre-check: find ALL songs that already exist in our DB safely in chunks
+      const existingSongs: any[] = [];
+      const spotifyIds = sanitizedTracks.map((t: any) => t.spotifyTrackId).filter(Boolean);
+
+      // A. Query by spotifyId in chunks of 50
+      for (let i = 0; i < spotifyIds.length; i += 50) {
+        const chunk = spotifyIds.slice(i, i + 50);
+        try {
+          const res = await prisma.song.findMany({
+            where: { spotifyId: { in: chunk } },
+          });
+          existingSongs.push(...res);
+        } catch (err) {
+          console.warn('[Import] spotifyId pre-check chunk failed:', err);
+        }
+      }
+
+      // B. Query remaining non-spotifyId tracks by (title, artist) in chunks of 20
+      const remainingTracks = sanitizedTracks.filter(
+        (t: any) => !t.spotifyTrackId || !existingSongs.some((s) => s.spotifyId === t.spotifyTrackId)
+      );
+
+      for (let i = 0; i < remainingTracks.length; i += 20) {
+        const chunk = remainingTracks.slice(i, i + 20);
+        try {
+          const res = await prisma.song.findMany({
+            where: {
+              OR: chunk.map((t: any) => ({ title: t.title, artist: t.artist })),
+            },
+          });
+          existingSongs.push(...res);
+        } catch (err) {
+          console.warn('[Import] title/artist pre-check chunk failed:', err);
+        }
+      }
 
       // Build fast lookup maps
       const bySpotifyId = new Map<string, typeof existingSongs[0]>();
@@ -273,17 +341,17 @@ export function createMusicBridgeRoutes(): Router {
         byTitleArtist.set(`${s.title}|||${s.artist}`.toLowerCase(), s);
       }
 
-      console.log(`[Import] Found ${existingSongs.length} existing songs in DB (of ${tracks.length} total)`);
+      console.log(`[Import] Found ${existingSongs.length} existing songs in DB (of ${sanitizedTracks.length} total)`);
 
       // 3. Create the playlist in DB
       const playlist = await prisma.playlist.create({
-        data: {
+        data: sanitizeNullBytes({
           userId:     req.user.sub,
           name:       playlistName,
-          coverUrl:   coverUrl,
+          coverUrl:   cleanStr(coverUrl) || null,
           sourceType: 'SPOTIFY_BRIDGE',
-          sourceId:   playlistUrl,
-        },
+          sourceId:   cleanStr(playlistUrl),
+        }),
       });
 
       // 4. Process each track: reuse existing Song or create new one, then link via PlaylistTrack
@@ -291,8 +359,8 @@ export function createMusicBridgeRoutes(): Router {
       const needsEnrichment: { songId: string; title: string; artist: string; spotifyId?: string }[] = [];
       const playlistTrackData: any[] = [];
 
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
+      for (let i = 0; i < sanitizedTracks.length; i++) {
+        const track = sanitizedTracks[i];
         const key = `${track.title}|||${track.artist}`.toLowerCase();
 
         // Try to find existing song
@@ -308,24 +376,45 @@ export function createMusicBridgeRoutes(): Router {
             }).catch(() => {});
           }
         } else {
-          // New song — create it
-          song = await prisma.song.create({
-            data: {
-              title:     track.title,
-              artist:    track.artist,
-              albumArt:  track.artworkUrl || null,
-              album:     track.album || null,
-              spotifyId: track.spotifyTrackId || null,
-              duration:  track.duration_ms ? Math.round(track.duration_ms / 1000) : null,
-            },
-          });
-          // New songs always need enrichment
-          needsEnrichment.push({
-            songId: song.id,
-            title: track.title,
-            artist: track.artist,
-            spotifyId: track.spotifyTrackId,
-          });
+          // New song — create it with fallback safety
+          try {
+            song = await prisma.song.create({
+              data: sanitizeNullBytes({
+                title:     track.title,
+                artist:    track.artist,
+                albumArt:  track.artworkUrl || null,
+                album:     track.album || null,
+                spotifyId: track.spotifyTrackId || null,
+                duration:  track.duration_ms ? Math.round(track.duration_ms / 1000) : null,
+              }),
+            });
+            needsEnrichment.push({
+              songId: song.id,
+              title: track.title,
+              artist: track.artist,
+              spotifyId: track.spotifyTrackId || undefined,
+            });
+          } catch (createErr: any) {
+            const existing = await prisma.song.findFirst({
+              where: { title: track.title, artist: track.artist },
+            }).catch(() => null);
+
+            if (existing) {
+              song = existing;
+            } else {
+              song = await prisma.song.create({
+                data: sanitizeNullBytes({
+                  title:  track.title,
+                  artist: track.artist,
+                }),
+              }).catch(() => null);
+            }
+          }
+
+          if (song) {
+            byTitleArtist.set(key, song);
+            if (song.spotifyId) bySpotifyId.set(song.spotifyId, song);
+          }
         }
 
         // Queue for YouTube resolution if missing
@@ -333,32 +422,42 @@ export function createMusicBridgeRoutes(): Router {
           needsYouTube.push({ songId: song.id, title: song.title, artist: song.artist });
         }
 
-        // Queue for enrichment if album is missing (even for existing songs)
-        if (!song.album) {
+        // Queue for enrichment if album or albumArt is missing (even for existing songs)
+        if (!song.album || !song.albumArt) {
           const alreadyQueued = needsEnrichment.some(e => e.songId === song!.id);
           if (!alreadyQueued) {
             needsEnrichment.push({
               songId: song.id,
               title: song.title,
               artist: song.artist,
-              spotifyId: song.spotifyId || track.spotifyTrackId,
+              spotifyId: (song.spotifyId || track.spotifyTrackId) || undefined,
             });
           }
         }
 
-        playlistTrackData.push({
+        playlistTrackData.push(sanitizeNullBytes({
           playlistId: playlist.id,
           songId:     song.id,
           youtubeId:  song.youtubeId || '',
           title:      song.title,
           artist:     song.artist,
-          thumbnail:  song.youtubeThumbnail || song.albumArt || null,
+          thumbnail:  song.youtubeThumbnail || song.albumArt || track.artworkUrl || null,
           position:   i,
-        });
+        }));
       }
 
-      // 5. Batch insert all PlaylistTracks in one query
-      await prisma.playlistTrack.createMany({ data: playlistTrackData });
+      // 5. Batch insert all PlaylistTracks in chunks of 50 with individual row fallback
+      for (let i = 0; i < playlistTrackData.length; i += 50) {
+        const chunk = playlistTrackData.slice(i, i + 50);
+        try {
+          await prisma.playlistTrack.createMany({ data: chunk });
+        } catch (chunkErr) {
+          console.warn(`[Import] Bulk playlistTrack insert chunk ${i} failed, falling back to individual inserts:`, chunkErr);
+          for (const item of chunk) {
+            await prisma.playlistTrack.create({ data: item }).catch(() => {});
+          }
+        }
+      }
 
       const elapsed = Date.now() - t0;
       const reused = tracks.length - needsEnrichment.filter(e => !existingSongs.find(s => s.id === e.songId)).length;
@@ -367,6 +466,8 @@ export function createMusicBridgeRoutes(): Router {
       res.status(200).json({
         ok:          true,
         playlistId:  playlist.id,
+        playlistName: playlist.name,
+        coverUrl:    playlist.coverUrl,
         totalTracks: tracks.length,
         reusedFromDB: existingSongs.length,
         elapsed,
@@ -452,29 +553,25 @@ export function createMusicBridgeRoutes(): Router {
               }
             }
 
-            // Fallback: search Spotify embed for the track
+            // Fallback 2: iTunes Search API (free, high-res 600x600 artwork)
             if (!artUrl) {
-              const q = encodeURIComponent(`${song.artist} ${song.title}`);
-              const searchUrl = `https://open.spotify.com/oembed?url=https://open.spotify.com/search/${q}`;
-              // oEmbed doesn't support search URLs, so use the embed search page instead
-              const embedRes = await fetch(`https://open.spotify.com/embed/track/${song.spotifyId || ''}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-              });
-              if (embedRes.ok) {
-                const html = await embedRes.text();
-                const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.+?)<\/script>/);
-                if (m) {
-                  const nd = JSON.parse(m[1]);
-                  const entity = nd?.props?.pageProps?.state?.data?.entity;
-                  if (entity?.coverArt?.sources?.[0]?.url) {
-                    artUrl = entity.coverArt.sources[0].url;
+              try {
+                const hasUnknown = !song.artist || song.artist === 'Unknown' || song.artist === 'Unknown Artist';
+                const q = encodeURIComponent(hasUnknown ? song.title : `${song.artist} ${song.title}`);
+                const itRes = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
+                if (itRes.ok) {
+                  const itData: any = await itRes.json();
+                  const itTrack = itData.results?.[0];
+                  if (itTrack?.artworkUrl100) {
+                    artUrl = itTrack.artworkUrl100.replace('100x100', '600x600');
                   }
                 }
-              }
+              } catch (itErr) {}
             }
 
             if (artUrl) {
               await prisma.song.update({ where: { id: song.id }, data: { albumArt: artUrl } });
+              await prisma.playlistTrack.updateMany({ where: { songId: song.id }, data: { thumbnail: artUrl } });
               updated++;
               console.log(`[Backfill] ✓ ${song.title} — ${song.artist}`);
             }

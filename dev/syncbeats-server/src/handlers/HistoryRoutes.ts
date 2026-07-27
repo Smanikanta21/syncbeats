@@ -4,6 +4,8 @@ import { PrismaClient } from '@prisma/client';
 export function createHistoryRoutes(prisma: PrismaClient): Router {
   const router = Router();
 
+  const cleanStr = (s: any): string => (typeof s === 'string' ? s.replace(/\0/g, '').replace(/\u0000/g, '').trim() : '');
+
   // POST /history/listen
   router.post('/listen', async (req, res) => {
     const { userId, youtubeId, title, artist, thumbnail } = req.body;
@@ -15,11 +17,11 @@ export function createHistoryRoutes(prisma: PrismaClient): Router {
     try {
       const entry = await prisma.listenHistory.create({
         data: {
-          userId,
-          youtubeId,
-          title,
-          artist,
-          thumbnail
+          userId: cleanStr(userId),
+          youtubeId: cleanStr(youtubeId),
+          title: cleanStr(title),
+          artist: cleanStr(artist) || null,
+          thumbnail: cleanStr(thumbnail) || null
         }
       });
       res.json({ success: true, entry });
@@ -40,8 +42,8 @@ export function createHistoryRoutes(prisma: PrismaClient): Router {
     try {
       const entry = await prisma.searchHistory.create({
         data: {
-          userId,
-          query
+          userId: cleanStr(userId),
+          query: cleanStr(query)
         }
       });
       res.json({ success: true, entry });

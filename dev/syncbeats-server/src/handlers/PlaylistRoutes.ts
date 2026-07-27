@@ -138,6 +138,114 @@ router.delete('/:id/tracks/:trackId', requireAuth, async (req: any, res: any) =>
   }
 });
 
+// POST /api/playlists/:id/enrich - Refetch missing album art, artist names, and metadata for all tracks in a playlist
+router.post('/:id/enrich', requireAuth, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.sub;
+
+    const playlist = await prisma.playlist.findFirst({
+      where: { id, userId },
+      include: {
+        tracks: {
+          orderBy: { position: 'asc' },
+          include: { song: true }
+        }
+      }
+    });
+
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist not found.' });
+    }
+
+    console.log(`[PlaylistEnrich] Refetching metadata & artwork for playlist ${id} (${playlist.tracks.length} tracks)...`);
+    let updatedCount = 0;
+
+    const BATCH = 5;
+    for (let i = 0; i < playlist.tracks.length; i += BATCH) {
+      const batch = playlist.tracks.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (track) => {
+        try {
+          const song = track.song;
+          const currentTitle = song?.title || track.title;
+          const currentArtist = song?.artist || track.artist || 'Unknown';
+          const hasUnknownArtist = !currentArtist || currentArtist === 'Unknown' || currentArtist === 'Unknown Artist';
+
+          // Query iTunes Search API to fetch 600x600 artwork, artist name, and album title
+          const q = encodeURIComponent(hasUnknownArtist ? currentTitle : `${currentArtist} ${currentTitle}`);
+          const itRes = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
+          
+          let newArt: string | null = null;
+          let newArtist: string | null = null;
+          let newAlbum: string | null = null;
+
+          if (itRes.ok) {
+            const itData: any = await itRes.json();
+            const result = itData.results?.[0];
+            if (result) {
+              if (result.artworkUrl100) {
+                newArt = result.artworkUrl100.replace('100x100', '600x600');
+              }
+              if (result.artistName) newArtist = result.artistName;
+              if (result.collectionName) newAlbum = result.collectionName;
+            }
+          }
+
+          // If song record exists, update it
+          if (song) {
+            await prisma.song.update({
+              where: { id: song.id },
+              data: {
+                ...(newArt ? { albumArt: newArt } : {}),
+                ...(newArtist && hasUnknownArtist ? { artist: newArtist } : {}),
+                ...(newAlbum ? { album: newAlbum } : {}),
+              }
+            }).catch(() => {});
+          }
+
+          // Update PlaylistTrack record
+          await prisma.playlistTrack.update({
+            where: { id: track.id },
+            data: {
+              ...(newArt || !track.thumbnail ? { thumbnail: newArt || track.thumbnail || playlist.coverUrl || null } : {}),
+              ...(newArtist && hasUnknownArtist ? { artist: newArtist } : {}),
+            }
+          }).catch(() => {});
+
+          updatedCount++;
+        } catch (e) {
+          console.warn(`[PlaylistEnrich] Track enrich failed for ${track.title}:`, e);
+        }
+      }));
+    }
+
+    // Fetch refreshed playlist with updated tracks
+    const refreshed = await prisma.playlist.findFirst({
+      where: { id, userId },
+      include: {
+        tracks: {
+          orderBy: { position: 'asc' },
+          include: { song: true }
+        }
+      }
+    });
+
+    const enrichedPlaylist = {
+      ...refreshed,
+      tracks: refreshed?.tracks.map(t => ({
+        ...t,
+        resolvedYoutubeId: t.song?.youtubeId || (t.youtubeId !== '' ? t.youtubeId : null),
+        resolvedThumbnail: t.song?.youtubeThumbnail || t.song?.albumArt || t.thumbnail || refreshed.coverUrl || null,
+      })) ?? []
+    };
+
+    res.json({ ok: true, playlist: enrichedPlaylist, updatedCount });
+  } catch (error) {
+    console.error('[PlaylistRoutes] Enrich error:', error);
+    res.status(500).json({ error: 'Failed to enrich playlist' });
+  }
+});
+
 // GET /api/playlists - List the user's playlists with track counts
 router.get('/', requireAuth, async (req: any, res: any) => {
   try {
@@ -166,21 +274,35 @@ async function addTrackToPlaylist(
   playlistId: string,
   body: { youtubeId?: string; title: string; artist?: string; thumbnail?: string; duration?: number }
 ) {
-  const song = await prisma.song.upsert({
-    where: { title_artist: { title: body.title, artist: body.artist || 'Unknown' } },
-    update: {
-      ...(body.youtubeId ? { youtubeId: body.youtubeId } : {}),
-      ...(body.thumbnail ? { youtubeThumbnail: body.thumbnail } : {}),
-      ...(body.duration ? { duration: Math.round(body.duration) } : {}),
-    },
-    create: {
-      title: body.title,
-      artist: body.artist || 'Unknown',
-      youtubeId: body.youtubeId || null,
-      youtubeThumbnail: body.thumbnail || null,
-      duration: body.duration ? Math.round(body.duration) : null,
-    },
-  });
+  const cleanStr = (s: any): string => (typeof s === 'string' ? s.replace(/\0/g, '').replace(/\u0000/g, '').trim() : '');
+  const cleanTitle = cleanStr(body.title) || 'Unknown Track';
+  const cleanArtist = cleanStr(body.artist) || 'Unknown';
+
+  let song: any;
+  try {
+    song = await prisma.song.upsert({
+      where: { title_artist: { title: cleanTitle, artist: cleanArtist } },
+      update: {
+        ...(body.youtubeId ? { youtubeId: cleanStr(body.youtubeId) } : {}),
+        ...(body.thumbnail ? { youtubeThumbnail: cleanStr(body.thumbnail) } : {}),
+        ...(body.duration ? { duration: Math.round(body.duration) } : {}),
+      },
+      create: {
+        title: cleanTitle,
+        artist: cleanArtist,
+        youtubeId: cleanStr(body.youtubeId) || null,
+        youtubeThumbnail: cleanStr(body.thumbnail) || null,
+        duration: body.duration ? Math.round(body.duration) : null,
+      },
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2002') {
+      song = await prisma.song.findFirst({
+        where: { title: cleanTitle, artist: cleanArtist }
+      });
+    }
+    if (!song) throw e;
+  }
 
   const last = await prisma.playlistTrack.findFirst({
     where: { playlistId },
@@ -192,10 +314,10 @@ async function addTrackToPlaylist(
     data: {
       playlistId,
       songId: song.id,
-      youtubeId: body.youtubeId || song.youtubeId || '',
+      youtubeId: cleanStr(body.youtubeId) || song.youtubeId || '',
       title: song.title,
       artist: song.artist,
-      thumbnail: body.thumbnail || song.youtubeThumbnail || song.albumArt || null,
+      thumbnail: cleanStr(body.thumbnail) || song.youtubeThumbnail || song.albumArt || null,
       position: (last?.position ?? -1) + 1,
     },
   });

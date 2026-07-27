@@ -690,6 +690,14 @@ export function RoomDashboard({
         </div>
       )}
 
+      {showVisualsPanel && (
+        <VisualsModal
+          onClose={() => setShowVisualsPanel(false)}
+          isVisualsInteracting={isVisualsInteracting}
+          setIsVisualsInteracting={setIsVisualsInteracting}
+        />
+      )}
+
       {/* Sleek, Minimal Room Activity Notification Pill (No Emojis, No Toasts) */}
       <AnimatePresence>
         {activityNotification && (

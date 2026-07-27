@@ -21,10 +21,21 @@ interface TransferState {
   progress: number;
 }
 
+export interface PlaylistImportState {
+  playlistId?: string;
+  playlistName?: string;
+  progress: number;
+  stage: "scraping" | "indexing" | "enriching" | "done";
+  totalTracks: number;
+  isImporting: boolean;
+}
+
 interface UploadCtx {
   isDragging:       boolean;
   isUploading:      boolean;
   uploadProgress:   number;
+  activeImport:     PlaylistImportState | null;
+  setActiveImport:  (state: PlaylistImportState | null | ((prev: PlaylistImportState | null) => PlaylistImportState | null)) => void;
   setIsDragging:    (v: boolean) => void;
   uploadFile:       (file: File, roomId: string, customTrackUrl?: string, artist?: string) => Promise<UploadResult>;
   downloadYoutubeToP2P: (roomId: string, videoId: string, title: string, artist?: string) => Promise<void>;
@@ -38,6 +49,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
   const [isUploading,    setIsUploading]    = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [activeImport,   setActiveImport]   = useState<PlaylistImportState | null>(null);
   const [activeTransfers] = useState<Record<string, TransferState>>({});
 
   // 1. Seed Local File via WebSockets
@@ -181,6 +193,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       isDragging,
       isUploading,
       uploadProgress,
+      activeImport,
+      setActiveImport,
       setIsDragging,
       uploadFile,
       downloadYoutubeToP2P,

@@ -14,8 +14,11 @@ const globalForPrisma = globalThis as unknown as { _prisma?: PrismaClient };
 export function sanitizeNullBytes(val: any): any {
   if (val === null || val === undefined) return val;
   if (typeof val === 'string') {
-    if (!val.includes('\0')) return val;
-    return val.replace(/\0/g, '');
+    return val
+      .replace(/\0/g, '')
+      .replace(/\u0000/g, '')
+      .replace(/\\u0000/g, '')
+      .replace(/\x00/g, '');
   }
   if (typeof val === 'number' || typeof val === 'boolean') return val;
   if (val instanceof Date) return val;
@@ -45,8 +48,10 @@ function createPrismaClient() {
   const pool = new Pool({
     connectionString,
     max: 20,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
   });
 
   // Discard corrupted/errored connections from the pool so they don't

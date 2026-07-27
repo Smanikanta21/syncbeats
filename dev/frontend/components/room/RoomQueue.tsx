@@ -94,7 +94,17 @@ export function RoomQueue({
       const added = incoming.filter(id => !knownIdsRef.current.has(id));
       if (added.length > 0) {
         setNewIds(new Set(added));
-        setTimeout(() => setNewIds(new Set()), 1000);
+        setTimeout(() => setNewIds(new Set()), 1200);
+
+        // Auto-scroll queue container to show newly added song
+        if (scrollRef.current) {
+          setTimeout(() => {
+            scrollRef.current?.scrollTo({
+              top: scrollRef.current.scrollHeight,
+              behavior: "smooth"
+            });
+          }, 150);
+        }
       }
       knownIdsRef.current = new Set(incoming);
       setOptimisticQueue(queue);
@@ -154,7 +164,11 @@ export function RoomQueue({
     onConfirm: () => {},
   });
 
+  const [isClearing, setIsClearing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
   const handleClearQueue = () => {
+    if (isClearing) return;
     setConfirmConfig({
       isOpen: true,
       title: "Clear Upcoming Queue",
@@ -162,16 +176,22 @@ export function RoomQueue({
       confirmText: "Clear Queue",
       isDanger: true,
       onConfirm: async () => {
+        if (isClearing) return;
+        setIsClearing(true);
         try {
           await roomsApi.clearQueue(roomId);
+          await new Promise(r => setTimeout(r, 600));
         } catch (err) {
           console.error("Failed to clear queue", err);
+        } finally {
+          setIsClearing(false);
         }
       },
     });
   };
 
   const handleResetRoom = () => {
+    if (isResetting) return;
     setConfirmConfig({
       isOpen: true,
       title: "Reset Room",
@@ -179,10 +199,15 @@ export function RoomQueue({
       confirmText: "Reset Room",
       isDanger: true,
       onConfirm: async () => {
+        if (isResetting) return;
+        setIsResetting(true);
         try {
           await roomsApi.reset(roomId);
+          await new Promise(r => setTimeout(r, 600));
         } catch (err) {
           console.error("Failed to reset room", err);
+        } finally {
+          setIsResetting(false);
         }
       },
     });
@@ -237,23 +262,41 @@ export function RoomQueue({
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
             </svg>
           </button>
-          {/* Clear Queue */}
+          {/* Clear Queue (Single Click Lock + Halfway Load Animation) */}
           {draggableQueue.length > 0 && (
             <button
+              disabled={isClearing}
               onClick={handleClearQueue}
-              className="p-1.5 rounded-md text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              className={cn(
+                "p-1.5 rounded-md text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors",
+                isClearing && "opacity-50 cursor-not-allowed text-red-400"
+              )}
               title="Clear upcoming queue"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <motion.div
+                animate={isClearing ? { rotate: 180, scale: 0.85 } : { rotate: 0, scale: 1 }}
+                transition={{ duration: 0.4, ease: "easeInOut" }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </motion.div>
             </button>
           )}
-          {/* Reset Room */}
+          {/* Reset Room (Single Click Lock + Halfway Rotate Load Animation) */}
           <button
+            disabled={isResetting}
             onClick={handleResetRoom}
-            className="p-1.5 rounded-md text-foreground/40 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+            className={cn(
+              "p-1.5 rounded-md text-foreground/40 hover:text-amber-400 hover:bg-amber-500/10 transition-colors",
+              isResetting && "opacity-50 cursor-not-allowed text-amber-400"
+            )}
             title="Reset Room (Clear Queue & State)"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <motion.div
+              animate={isResetting ? { rotate: -180, scale: 0.85 } : { rotate: 0, scale: 1 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </motion.div>
           </button>
           {/* Add Song */}
           {onAddSong && (

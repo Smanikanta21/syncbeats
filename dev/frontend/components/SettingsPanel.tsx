@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2 } from "lucide-react";
-import { useSettings, GradientNode } from "../hooks/useSettings";
+import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useSettings, GradientNode, DEFAULT_SETTINGS } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { cn } from "../lib/utils";
 
 interface SettingsPanelProps {
-  onClose: () => void;
+  onClose?: () => void;
   onlyVisuals?: boolean;
   onInteractionStateChange?: (interacting: boolean) => void;
 }
@@ -366,7 +367,7 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
   const handleCloseAttempt = () => {
     if (isDirty) {
       setShowUnsavedPrompt(true);
-    } else {
+    } else if (onClose) {
       onClose();
     }
   };
@@ -398,6 +399,10 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleRestoreDefaults = () => {
+    updateSettings(DEFAULT_SETTINGS);
   };
   
   const PALETTES_BY_COUNT: Record<number, { name: string; colors: any; brightness: number; contrast: number; }[]> = {
@@ -535,9 +540,69 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
   const currentPalettes = PALETTES_BY_COUNT[activeLightCount] || PALETTES_BY_COUNT[3];
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'w-full', 'min-h-0')}>
-      <div className={cn('flex', 'items-center', 'justify-between', 'px-2', 'pb-2', 'shrink-0')}>
-        <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+    <div className={cn('flex', 'flex-col', 'h-full', 'w-full', 'min-h-0', 'relative')}>
+      {/* ── Sticky App Settings Header Bar with Floating Dialogue Box ── */}
+      <div className={cn('sticky', 'top-0', 'z-40', 'w-full', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'py-3', 'px-4', 'mb-3', 'rounded-3xl', 'border', 'border-foreground/15', 'shadow-2xl', 'flex', 'items-center', 'justify-between', 'transition-all')}>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
+          <h2 className={cn('text-xl', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* ── Conditional Unsaved Changes Floating Dialogue Capsule ── */}
+          <AnimatePresence>
+            {isDirty && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: -8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-foreground/10 dark:bg-white/10 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-2xl shrink-0"
+              >
+                <span className="hidden md:inline-block text-[10px] font-black uppercase tracking-wider text-amber-400 animate-pulse mr-1">
+                  Unsaved Changes
+                </span>
+
+                {/* Default Settings Button */}
+                <button
+                  onClick={handleRestoreDefaults}
+                  className="px-2.5 py-1.5 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground font-bold text-xs transition-all active:scale-95 border border-foreground/15 flex items-center gap-1.5 shrink-0"
+                  title="Reset to default system settings"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-foreground/70" />
+                  <span className="hidden sm:inline">Default Settings</span>
+                </button>
+
+                {/* Save Changes Button */}
+                <button
+                  onClick={handleSaveToCloud}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all active:scale-95 border border-emerald-400/30 flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 shrink-0"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : saveSuccess ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSaving ? "Saving..." : saveSuccess ? "Saved!" : "Save Changes"}</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={handleCloseAttempt}
+              className="p-2 rounded-full hover:bg-foreground/10 active:bg-foreground/20 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div 

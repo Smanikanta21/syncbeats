@@ -237,6 +237,7 @@ const SyncProgressBar = ({
   isReady: boolean;
   isStuck?: boolean;
 }) => {
+  const upload = useUpload();
   const barRef = useRef<HTMLDivElement>(null);
 
   // Compute overall sync progress
@@ -246,7 +247,9 @@ const SyncProgressBar = ({
     ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length)
     : 0;
 
-  const progress = incomingTrack
+  const progress = upload.isUploading
+    ? (upload.uploadProgress || 10)
+    : incomingTrack
     ? incomingTrack.progress
     : !isReady
     ? downloadProgress
@@ -254,21 +257,21 @@ const SyncProgressBar = ({
     ? avgSync
     : 100;
 
-  const label = incomingTrack
-    ? "Receiving"
+  const label = upload.isUploading
+    ? "Downloading Song"
+    : incomingTrack
+    ? (incomingTrack.title ? `Receiving "${incomingTrack.title.substring(0, 18)}..."` : "Receiving Track")
     : isStuck
     ? "Stuck (0%) • Tap to skip"
     : !isReady
-    ? "Buffering"
+    ? "Downloading Track"
     : hasSync && avgSync < 100
-    ? "Syncing"
+    ? "Syncing Devices"
     : "Synced";
 
   const color = isStuck
     ? "from-amber-600 to-red-500 animate-pulse"
-    : progress < 50 ? "from-amber-500 to-amber-400"
-    : progress < 90 ? "from-sky-500 to-sky-400"
-    : "from-emerald-500 to-emerald-400";
+    : "from-cyan-500 via-violet-500 to-purple-500";
 
   return (
     <div className={cn('flex', 'flex-col', 'justify-center', 'gap-1', 'w-full')}>
@@ -836,6 +839,7 @@ const RoomExtendedPill = ({
   onNextTrack?: () => void;
 }) => {
   const audio = useAudio();
+  const upload = useUpload();
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
   const title = cleanTrackTitle(trackTitle);
 
@@ -866,7 +870,7 @@ const RoomExtendedPill = ({
 
   const hasTrack = !!trackUrl || !!trackTitle;
   const progresses = Object.values(deviceSyncProgress);
-  const isSyncing = (hasTrack && !isReady) || incomingTrack != null || (hasTrack && progresses.some(p => p < 100));
+  const isSyncing = (hasTrack && !isReady) || incomingTrack != null || upload.isUploading || (hasTrack && progresses.some(p => p < 100));
 
   if (isSyncing) {
     // ── Syncing / buffering: full-width progress bar, no track info, no player
@@ -1031,6 +1035,8 @@ export function DynamicIsland() {
   const volTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [forceShowDetails, setForceShowDetails] = useState(false);
   const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
+  const [isImportingPlaylist, setIsImportingPlaylist] = useState(false);
+  const [hasSearchContent, setHasSearchContent] = useState(false);
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
@@ -1438,7 +1444,18 @@ export function DynamicIsland() {
   const isExtended_room = islandState === "extended";
 
   // Compute syncing flag first — used both for dimensions and handlers
-  const isSyncingNow = isRoom && (incomingTrack != null || (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100))));
+  const isSyncingNow = isRoom && (
+    incomingTrack != null ||
+    upload.isUploading ||
+    (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100)))
+  );
+
+  // Auto-extend island to show downloading progress bar whenever a song is downloading/buffering
+  useEffect(() => {
+    if (isSyncingNow && islandState === "pill") {
+      setIslandState("extended");
+    }
+  }, [isSyncingNow, islandState]);
 
   // Pill dimensions
   const pillWidth = hasTrack ? 120 : 86;
@@ -1448,7 +1465,13 @@ export function DynamicIsland() {
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
-  const searchHeight = isViewingPlaylist ? 560 : (ytResultsCount > 0 ? 480 : 120);
+  const searchHeight = isViewingPlaylist 
+    ? 560 
+    : (isImportingPlaylist || upload.activeImport?.isImporting) 
+    ? 440 
+    : hasSearchContent 
+    ? 360 
+    : (ytResultsCount > 0 ? 480 : 200);
 
   const expandedHeightMap: Record<IslandTab, number> = {
     player: 280,
@@ -1463,7 +1486,7 @@ export function DynamicIsland() {
   // Current animated dimensions
   // When radial navigator active: expand to 265px
   // When syncing: use a compact width (spinner + progress bar only, no track info)
-  const syncingExtendedWidth = Math.min(280, (windowWidth > 0 ? windowWidth : 320) - 32);
+  const syncingExtendedWidth = Math.min(340, (windowWidth > 0 ? windowWidth : 380) - 32);
   const currentWidth = radialSnapInfo?.isOpen
     ? Math.min(265, (windowWidth > 0 ? windowWidth : 320) - 32)
     : isExpanded_room
@@ -1504,7 +1527,8 @@ export function DynamicIsland() {
       // Block all expansion while syncing
       if (isSyncingNow) return;
       const nowTime = Date.now();
-      if (nowTime - lastTapRef.current < 500) {
+      // Restrict double-tap toggle to pill & extended states only (never when expanded)
+      if (islandState !== "expanded" && nowTime - lastTapRef.current < 500) {
         handleToggle();
         lastTapRef.current = 0;
       } else {
@@ -1592,7 +1616,12 @@ export function DynamicIsland() {
           }}
           onPointerLeave={() => { handlePointerUp_room(); resetInactivityTimer(); }}
           onPointerMove={resetInactivityTimer}
-          onDoubleClick={e => { e.preventDefault(); handleToggle(); }}
+          onDoubleClick={e => {
+            e.preventDefault();
+            if (islandState === "pill" || islandState === "extended") {
+              handleToggle();
+            }
+          }}
           initial={false}
           transition={{
             width: SHAPE_SPRING,
@@ -1741,90 +1770,93 @@ export function DynamicIsland() {
           </AnimatePresence>
 
           {/* Expanded content */}
-          <motion.div
-            className={`w-full pointer-events-none flex-1 min-h-0 flex flex-col`}
-            animate={{ opacity: isExpanded_room ? 1 : 0, scale: isExpanded_room ? 1 : 0.97, filter: isExpanded_room ? "blur(0px)" : "blur(6px)" }}
-            transition={{ opacity: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, filter: { duration: 0.25, delay: isExpanded_room ? 0.08 : 0 }, scale: { ...SPRING, stiffness: 200 } }}
-            style={{ 
-              position: isExpanded_room ? "relative" : "absolute",
-              top: 0, left: 0,
-              zIndex: isExpanded_room ? 1 : 0, 
-              pointerEvents: isExpanded_room ? "auto" : "none" 
-            }}
-          >
-            <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
-              {activeTab === "player" && (
-                <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
-                  <PlayerTab
-                    effectivePlaying={effectivePlaying}
-                    trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
-                    trackUrl={audio.trackUrl}
-                    isReady={audio.isReady}
-                    error={audio.error}
-                    downloadProgress={incomingTrack ? incomingTrack.progress : audio.downloadProgress}
-                    audio={audio}
-                    deviceSyncProgress={deviceSyncProgress}
-                    progress={displayProgress}
-                    displayTime={displayTime}
-                    duration={audio.duration}
-                    hasTrack={hasTrack}
-                    onToggle={handleToggle}
-                    onNext={handleNext}
-                    onPrev={handlePrev}
-                    onSeek={handleSeek}
-                    onTabChange={handleTabChange}
-                    isRoom={isRoom}
-                    roomParticipants={roomParticipants}
-                    pendingRequestsCount={pendingRequests?.length || 0}
-                    isHost={isHost}
-                    isPrivate={isPrivate}
-                    isVisible={isExpanded_room}
-                  />
-                </motion.div>
-              )}
-              {activeTab === "network" && (
-                <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
-                  <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
-                </motion.div>
-              )}
-              {activeTab === "search" && (
-                <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
-                  <SearchTab 
-                    roomId={roomId!} 
-                    initialMode={initialSearchMode}
-                    onBack={() => setActiveTab("player")} 
-                    onResultsCountChange={setYtResultsCount} 
-                    onModeChange={setActiveSearchMode}
-                    onLoadingStateChange={setIsSearchLoading}
-                    isSearchOnly={false} 
-                    onPlaylistViewChange={setIsViewingPlaylist}
-                    onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
-                  />
-                </motion.div>
-              )}
-              {(activeTab === "deviceInfo" || activeTab === "invite") && (
-                <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
-                  <InviteTab onBack={() => setActiveTab("player")} roomId={roomId || ''} />
-                </motion.div>
-              )}
-              {activeTab === "requests" && (
-                <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'h-auto')}>
-                  <RequestsTab
-                    requests={pendingRequests || []}
-                    onApprove={(id: any, name: any) => {
-                      document.dispatchEvent(new CustomEvent("room:action-approve", { detail: { socketId: id, displayName: name } }));
-                      if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
-                    }}
-                    onDeny={(id: any) => {
-                      document.dispatchEvent(new CustomEvent("room:action-deny", { detail: { socketId: id } }));
-                      if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
-                    }}
-                    onBack={() => setIslandState("pill")}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+          <AnimatePresence>
+            {isExpanded_room && (
+              <motion.div
+                key="expanded-tab-container"
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={{ opacity: { duration: 0.2 }, scale: { ...SPRING, stiffness: 200 } }}
+                className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col', 'pointer-events-auto')}
+              >
+                <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
+                  {activeTab === "player" && (
+                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                      <PlayerTab
+                        effectivePlaying={effectivePlaying}
+                        trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
+                        trackUrl={audio.trackUrl}
+                        isReady={audio.isReady}
+                        error={audio.error}
+                        downloadProgress={incomingTrack ? incomingTrack.progress : audio.downloadProgress}
+                        audio={audio}
+                        deviceSyncProgress={deviceSyncProgress}
+                        progress={displayProgress}
+                        displayTime={displayTime}
+                        duration={audio.duration}
+                        hasTrack={hasTrack}
+                        onToggle={handleToggle}
+                        onNext={handleNext}
+                        onPrev={handlePrev}
+                        onSeek={handleSeek}
+                        onTabChange={handleTabChange}
+                        isRoom={isRoom}
+                        roomParticipants={roomParticipants}
+                        pendingRequestsCount={pendingRequests?.length || 0}
+                        isHost={isHost}
+                        isPrivate={isPrivate}
+                        isVisible={isExpanded_room}
+                      />
+                    </motion.div>
+                  )}
+                  {activeTab === "network" && (
+                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                      <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
+                    </motion.div>
+                  )}
+                  {activeTab === "search" && (
+                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                      <SearchTab 
+                        roomId={roomId!} 
+                        initialMode={initialSearchMode}
+                        onBack={() => setActiveTab("player")} 
+                        onResultsCountChange={setYtResultsCount} 
+                        onModeChange={setActiveSearchMode}
+                        onLoadingStateChange={setIsSearchLoading}
+                        isSearchOnly={false} 
+                        onPlaylistViewChange={setIsViewingPlaylist}
+                        onImportingStateChange={setIsImportingPlaylist}
+                        onHasContentChange={setHasSearchContent}
+                        onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
+                      />
+                    </motion.div>
+                  )}
+                  {(activeTab === "deviceInfo" || activeTab === "invite") && (
+                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                      <InviteTab onBack={() => setActiveTab("player")} roomId={roomId || ''} />
+                    </motion.div>
+                  )}
+                  {activeTab === "requests" && (
+                    <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'h-auto')}>
+                      <RequestsTab
+                        requests={pendingRequests || []}
+                        onApprove={(id: any, name: any) => {
+                          document.dispatchEvent(new CustomEvent("room:action-approve", { detail: { socketId: id, displayName: name } }));
+                          if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
+                        }}
+                        onDeny={(id: any) => {
+                          document.dispatchEvent(new CustomEvent("room:action-deny", { detail: { socketId: id } }));
+                          if ((pendingRequests?.length || 0) <= 1) setIslandState("pill");
+                        }}
+                        onBack={() => setIslandState("pill")}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Gloss overlay */}
           <div className={cn('absolute', 'inset-0', 'rounded-[inherit]', 'pointer-events-none')}

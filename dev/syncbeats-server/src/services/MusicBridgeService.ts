@@ -12,14 +12,56 @@ export interface TrackMetadata {
   album?: string;
 }
 
+// ── In-memory token cache so we don't re-request on every pagination page ──
+let _cachedSpotifyToken: string | null = null;
+let _cachedSpotifyTokenExpiry = 0;
+
+async function getSpotifyApiToken(): Promise<string | null> {
+  // Return cached token if still valid (with 60s buffer)
+  if (_cachedSpotifyToken && Date.now() < _cachedSpotifyTokenExpiry - 60_000) {
+    return _cachedSpotifyToken;
+  }
+
+  // Use Spotify Client Credentials Flow — FREE, no Spotify Premium required.
+  // This grants read-only access to public playlists and tracks.
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+
+  if (clientId && clientSecret) {
+    try {
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'grant_type=client_credentials',
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data.access_token) {
+          console.log('[MusicBridge] Got Spotify Client Credentials token (expires in', data.expires_in, 's)');
+          _cachedSpotifyToken = data.access_token;
+          _cachedSpotifyTokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+          return _cachedSpotifyToken;
+        }
+      } else {
+        const err: any = await res.json().catch(() => ({}));
+        console.warn('[MusicBridge] Spotify Client Credentials failed:', err?.error_description || res.status);
+      }
+    } catch (e: any) {
+      console.warn('[MusicBridge] Spotify Client Credentials error:', e?.message || e);
+    }
+  }
+
+  return null;
+}
+
 export class MusicBridgeService {
   /**
-   * Extracts playlist tracks from a public Spotify URL without needing an API key.
-   * This uses scraping behind the scenes, parsing the Spotify embed page.
-   *
-   * 
-   * @param playlistUrl A public Spotify playlist URL (e.g. https://open.spotify.com/playlist/...)
-   * @returns Object with playlist name, cover, and tracks
+   * Extracts playlist tracks from a public Spotify URL.
+   * Uses Spotify Web API with full pagination to fetch ALL tracks (unlimited 500+ / 1000+ tracks).
    */
   static async getPlaylistMetadata(playlistUrl: string): Promise<{ name: string, coverUrl: string, tracks: TrackMetadata[] }> {
     try {
@@ -28,8 +70,111 @@ export class MusicBridgeService {
       if (!match) {
         throw new Error('Invalid Spotify playlist URL.');
       }
-      
-      console.log(`[MusicBridge] Fetching Spotify metadata via public scraping...`);
+      const spotifyPlaylistId = match[1];
+
+      // ── Method A: Official Spotify Web API with unlimited pagination + retry backoff ──
+      const token = await getSpotifyApiToken();
+      if (token) {
+        try {
+          console.log(`[MusicBridge] Fetching playlist ${spotifyPlaylistId} via Spotify API (with retry backoff)...`);
+
+          // Helper: fetch with up to `maxAttempts` retries on 5xx errors
+          const fetchWithRetry = async (url: string, maxAttempts = 5): Promise<any> => {
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+              if (res.ok) return await res.json();
+              if (res.status === 429) {
+                // Rate limited — honour Retry-After header
+                const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+                console.warn(`[MusicBridge] Rate limited (429). Waiting ${retryAfter}s before retry...`);
+                await new Promise(r => setTimeout(r, retryAfter * 1000));
+                continue;
+              }
+              if (res.status >= 500 && attempt < maxAttempts) {
+                const delay = Math.min(2 ** attempt * 500, 10_000); // 1s, 2s, 4s, 8s, max 10s
+                console.warn(`[MusicBridge] Spotify ${res.status} on attempt ${attempt}/${maxAttempts}. Retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+              }
+              // Non-retriable error or exhausted retries
+              console.warn(`[MusicBridge] Spotify returned ${res.status} for ${url}`);
+              return null;
+            }
+            return null;
+          };
+
+          // Fetch playlist metadata — try with market=IN first (helps with large Indian playlists),
+          // then fallback to no market param
+          let metaData: any = null;
+          for (const market of ['IN', 'US', '']) {
+            const marketParam = market ? `?fields=name,images&market=${market}` : '?fields=name,images';
+            metaData = await fetchWithRetry(`https://api.spotify.com/v1/playlists/${spotifyPlaylistId}${marketParam}`);
+            if (metaData?.name) break;
+          }
+
+          if (metaData?.name) {
+            const name = metaData.name || 'Imported Spotify Playlist';
+            const coverUrl = metaData.images?.[0]?.url || '';
+            const allTracks: TrackMetadata[] = [];
+
+            // Try each market until tracks endpoint responds
+            let firstPageData: any = null;
+            let workingMarket = '';
+            for (const market of ['IN', 'US', '']) {
+              const marketParam = market ? `&market=${market}` : '';
+              firstPageData = await fetchWithRetry(
+                `https://api.spotify.com/v1/playlists/${spotifyPlaylistId}/tracks?limit=100&offset=0${marketParam}`
+              );
+              if (firstPageData?.items) { workingMarket = market; break; }
+            }
+
+            if (firstPageData?.items) {
+              // Process first page
+              const processPage = (pageData: any) => {
+                for (const item of (pageData.items || [])) {
+                  const t = item?.track;
+                  if (!t || !t.name) continue;
+                  const artistName = t.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist';
+                  const trackArt = t.album?.images?.[0]?.url || coverUrl || '';
+                  allTracks.push({
+                    title: t.name,
+                    artist: artistName,
+                    duration_ms: t.duration_ms || 0,
+                    artworkUrl: trackArt,
+                    spotifyTrackId: t.id || undefined,
+                    album: t.album?.name || undefined,
+                  });
+                }
+              };
+
+              processPage(firstPageData);
+
+              // Paginate remaining pages
+              let nextUrl: string | null = firstPageData.next || null;
+              while (nextUrl) {
+                // Append market param if the working URL doesn't already have it
+                if (workingMarket && !nextUrl.includes('market=')) {
+                  nextUrl += `&market=${workingMarket}`;
+                }
+                const pageData = await fetchWithRetry(nextUrl);
+                if (!pageData?.items) break;
+                processPage(pageData);
+                nextUrl = pageData.next || null;
+              }
+            }
+
+            if (allTracks.length > 0) {
+              console.log(`[MusicBridge] Successfully fetched ALL ${allTracks.length} tracks via Spotify API pagination!`);
+              return { name, coverUrl, tracks: allTracks };
+            }
+          }
+        } catch (apiErr: any) {
+          console.warn('[MusicBridge] Spotify API pagination failed, falling back to embed scraper:', apiErr?.message || apiErr);
+        }
+      }
+
+      // ── Method B: Fallback Embed Scraper
+      console.log(`[MusicBridge] Fetching Spotify metadata via public embed scraper...`);
       
       const spotify = require('spotify-url-info')(fetch);
       
@@ -46,13 +191,15 @@ export class MusicBridgeService {
           artistName = t.artists;
         }
 
+        const trackArt = t.coverUrl || t.cover || t.image || t.images?.[0]?.url || t.album?.images?.[0]?.url || preview.image || '';
+
         return {
           title: t.name,
           artist: artistName,
           duration_ms: t.duration || 0,
-          artworkUrl: preview.image || '',
+          artworkUrl: trackArt,
           spotifyTrackId: t.uri ? t.uri.replace('spotify:track:', '') : undefined,
-          album: undefined, // spotify-url-info doesn't easily expose album name in getTracks
+          album: t.album?.name || undefined,
         };
       });
 

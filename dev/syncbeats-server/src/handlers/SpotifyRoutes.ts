@@ -390,9 +390,29 @@ export function createSpotifyRoutes(): Router {
         }
       }
 
-      // Bulk-insert only successfully matched tracks
-      const toInsert = matched.filter(t => t.youtubeId);
-      await prisma.playlistTrack.createMany({ data: toInsert });
+      // Bulk-insert only successfully matched tracks with sanitization and chunked fallback
+      const cleanStr = (s: any): string => (typeof s === 'string' ? s.replace(/\0/g, '').replace(/\u0000/g, '').trim() : '');
+      const toInsert = matched
+        .filter(t => t.youtubeId)
+        .map(t => ({
+          ...t,
+          title: cleanStr(t.title) || 'Unknown Track',
+          artist: cleanStr(t.artist) || 'Unknown Artist',
+          thumbnail: cleanStr(t.thumbnail) || null,
+          youtubeId: cleanStr(t.youtubeId)
+        }));
+
+      for (let i = 0; i < toInsert.length; i += 50) {
+        const chunk = toInsert.slice(i, i + 50);
+        try {
+          await prisma.playlistTrack.createMany({ data: chunk });
+        } catch (chunkErr) {
+          console.warn(`[Spotify] Bulk insert chunk ${i} failed, falling back to individual inserts:`, chunkErr);
+          for (const item of chunk) {
+            await prisma.playlistTrack.create({ data: item }).catch(() => {});
+          }
+        }
+      }
 
       res.json({
         ok:           true,
