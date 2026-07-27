@@ -43,6 +43,7 @@ interface RoomQueueProps {
   repeatMode: "off" | "all" | "track";
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
+  jumpingTrackId?: string | null;
 }
 
 function cleanTitle(t: string) {
@@ -62,7 +63,7 @@ function ytThumb(trackUrl: string | null | undefined) {
 
 export function RoomQueue({
   queue, isHost, roomId, onTrackSelect, onAddSong, onRemoveTrack, isPlaying = false,
-  shuffle, repeatMode, onToggleShuffle, onToggleRepeat
+  shuffle, repeatMode, onToggleShuffle, onToggleRepeat, jumpingTrackId
 }: RoomQueueProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -311,6 +312,7 @@ export function RoomQueue({
                     onRemoveTrack={onRemoveTrack!}
                     disableDrag={true}
                     isHistory={true}
+                    isJumping={jumpingTrackId === item.id}
                   />
                 ))}
               </div>
@@ -338,6 +340,7 @@ export function RoomQueue({
                 onTrackSelect={onTrackSelect!}
                 onRemoveTrack={onRemoveTrack!}
                 disableDrag={true}
+                isJumping={false}
               />
             )}
 
@@ -358,6 +361,7 @@ export function RoomQueue({
                   onRemoveTrack={onRemoveTrack!}
                   disableDrag={false}
                   isNew={newIds.has(item.id)}
+                  isJumping={jumpingTrackId === item.id}
                 />
               ))}
             </SortableContext>

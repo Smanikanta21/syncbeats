@@ -1,7 +1,8 @@
 // db/RoomRepository.ts — Prisma-based implementation
 
-import prisma from './prisma';
+import prisma, { sanitizeNullBytes } from './prisma';
 import { Participant, TrackQueueItem } from '../types';
+import { sanitizeString } from '../auth/UserRepository';
 
 export interface RoomRow {
   id: string;
@@ -160,6 +161,7 @@ export class RoomRepository {
   }
 
   async recordParticipantJoin(roomId: string, userId: string, socketId: string, displayName: string): Promise<void> {
+    const cleanDisplayName = sanitizeString(displayName);
     // Ensure the room exists in the DB first (since some rooms like personal_room are created on the fly)
     await prisma.room.upsert({
       where: { id: roomId },
@@ -179,12 +181,12 @@ export class RoomRepository {
         roomId,
         userId,
         socketId,
-        displayName,
+        displayName: cleanDisplayName,
         joinedAt: new Date(),
       },
       update: {
         socketId,
-        displayName,
+        displayName: cleanDisplayName,
         leftAt: null,
       }
     });
@@ -303,16 +305,21 @@ export class RoomRepository {
 
     const queueIndex = (last?.queueIndex ?? -1) + 1;
     const activated = !current;
+    const cleanTrackUrl = sanitizeString(input.trackUrl);
+    const cleanTitle = sanitizeString(input.title);
+    const cleanArtist = input.artist ? sanitizeString(input.artist) : undefined;
+    const cleanFileName = sanitizeString(input.fileName);
+    const cleanMimeType = sanitizeString(input.mimeType);
 
     const created = await prisma.roomQueueItem.create({
       data: {
         roomId,
         uploaderUserId,
-        trackUrl: input.trackUrl,
-        title: input.title,
-        artist: input.artist,
-        fileName: input.fileName,
-        mimeType: input.mimeType,
+        trackUrl: cleanTrackUrl,
+        title: cleanTitle,
+        artist: cleanArtist,
+        fileName: cleanFileName,
+        mimeType: cleanMimeType,
         sizeBytes: BigInt(input.sizeBytes),
         queueIndex,
         isCurrent: activated,
@@ -324,7 +331,7 @@ export class RoomRepository {
       await prisma.room.update({
         where: { id: roomId },
         data: {
-          trackUrl: input.trackUrl,
+          trackUrl: cleanTrackUrl,
           playbackState: 'PAUSED',
           positionMs: 0n,
         },
@@ -407,159 +414,148 @@ export class RoomRepository {
   }
 
   async advanceQueue(roomId: string, expectedCurrentTrackUrl?: string): Promise<TrackQueueItem | null | undefined> {
-    return prisma.$transaction(async (tx) => {
-      const current = await tx.roomQueueItem.findFirst({
-        where: { roomId, isCurrent: true },
-        orderBy: { queueIndex: 'asc' },
-      });
-
-      if (expectedCurrentTrackUrl !== undefined && current && current.trackUrl !== expectedCurrentTrackUrl) {
-        return undefined;
-      }
-
-      if (!current) {
-        await tx.room.update({
-          where: { id: roomId },
-          data: {
-            trackUrl: null,
-            playbackState: 'IDLE',
-            positionMs: 0n,
-          },
-        });
-        return expectedCurrentTrackUrl !== undefined ? undefined : null;
-      }
-
-      const room = await tx.room.findUnique({ where: { id: roomId }, select: { shuffle: true, repeatMode: true } });
-      const shuffle = room?.shuffle ?? false;
-      const repeatMode = room?.repeatMode ?? "off";
-
-      if (repeatMode === "track") {
-        await tx.room.update({
-          where: { id: roomId },
-          data: {
-            playbackState: 'PLAYING',
-            positionMs: 0n,
-          },
-        });
-        return this.mapQueueItem({ ...current, isCurrent: true, uploader: undefined as any }); 
-        // Note: uploader info might be missing but isCurrent logic typically just updates position
-      }
-
-      let next: any = null;
-
-      if (shuffle) {
-        // Pick a random track from the queue that is NOT the current track
-        const allItems = await tx.roomQueueItem.findMany({
-          where: { roomId, id: { not: current.id } },
-          include: { uploader: { select: { name: true } } }
-        });
-        if (allItems.length > 0) {
-          next = allItems[Math.floor(Math.random() * allItems.length)];
-        }
-      } else {
-        next = await tx.roomQueueItem.findFirst({
-          where: { roomId, queueIndex: { gt: current.queueIndex } },
-          orderBy: { queueIndex: 'asc' },
-          include: { uploader: { select: { name: true } } }
-        });
-      }
-
-      // If no next track, and repeatAll is enabled, loop back to the first track
-      if (!next && repeatMode === "all") {
-        next = await tx.roomQueueItem.findFirst({
-          where: { roomId },
-          orderBy: { queueIndex: 'asc' },
-          include: { uploader: { select: { name: true } } }
-        });
-      }
-
-      if (!next) {
-        await tx.roomQueueItem.updateMany({
-          where: { id: current.id },
-          data: { isCurrent: false },
-        });
-        await tx.room.update({
-          where: { id: roomId },
-          data: {
-            trackUrl: null,
-            playbackState: 'IDLE',
-            positionMs: 0n,
-          },
-        });
-        return null;
-      }
-
-      if (current.id === next.id) {
-        await tx.room.update({
-          where: { id: roomId },
-          data: {
-            trackUrl: next.trackUrl,
-            playbackState: 'PAUSED',
-            positionMs: 0n,
-          },
-        });
-      } else {
-        await Promise.all([
-          tx.roomQueueItem.updateMany({
-            where: { id: current.id },
-            data: { isCurrent: false },
-          }),
-          tx.roomQueueItem.updateMany({
-            where: { id: next.id },
-            data: { isCurrent: true },
-          }),
-          tx.room.update({
-            where: { id: roomId },
-            data: {
-              trackUrl: next.trackUrl,
-              playbackState: 'PAUSED',
-              positionMs: 0n,
-            },
-          }),
-        ]);
-      }
-
-      return this.mapQueueItem({ ...next, isCurrent: true });
+    const current = await prisma.roomQueueItem.findFirst({
+      where: { roomId, isCurrent: true },
+      orderBy: { queueIndex: 'asc' },
     });
+
+    if (expectedCurrentTrackUrl !== undefined && current && current.trackUrl !== expectedCurrentTrackUrl) {
+      return undefined;
+    }
+
+    if (!current) {
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          trackUrl: null,
+          playbackState: 'IDLE',
+          positionMs: 0n,
+        },
+      });
+      return expectedCurrentTrackUrl !== undefined ? undefined : null;
+    }
+
+    const room = await prisma.room.findUnique({ where: { id: roomId }, select: { shuffle: true, repeatMode: true } });
+    const shuffle = room?.shuffle ?? false;
+    const repeatMode = room?.repeatMode ?? "off";
+
+    if (repeatMode === "track") {
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          playbackState: 'PLAYING',
+          positionMs: 0n,
+        },
+      });
+      return this.mapQueueItem({ ...current, isCurrent: true, uploader: undefined as any }); 
+    }
+
+    let next: any = null;
+
+    if (shuffle) {
+      const allItems = await prisma.roomQueueItem.findMany({
+        where: { roomId, id: { not: current.id } },
+        include: { uploader: { select: { name: true } } }
+      });
+      if (allItems.length > 0) {
+        next = allItems[Math.floor(Math.random() * allItems.length)];
+      }
+    } else {
+      next = await prisma.roomQueueItem.findFirst({
+        where: { roomId, queueIndex: { gt: current.queueIndex } },
+        orderBy: { queueIndex: 'asc' },
+        include: { uploader: { select: { name: true } } }
+      });
+    }
+
+    if (!next && repeatMode === "all") {
+      next = await prisma.roomQueueItem.findFirst({
+        where: { roomId },
+        orderBy: { queueIndex: 'asc' },
+        include: { uploader: { select: { name: true } } }
+      });
+    }
+
+    if (!next) {
+      await prisma.roomQueueItem.updateMany({
+        where: { id: current.id },
+        data: { isCurrent: false },
+      });
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          trackUrl: null,
+          playbackState: 'IDLE',
+          positionMs: 0n,
+        },
+      });
+      return null;
+    }
+
+    if (current.id === next.id) {
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          trackUrl: sanitizeNullBytes(next.trackUrl),
+          playbackState: 'PAUSED',
+          positionMs: 0n,
+        },
+      });
+    } else {
+      await prisma.roomQueueItem.updateMany({
+        where: { id: current.id },
+        data: { isCurrent: false },
+      });
+      await prisma.roomQueueItem.updateMany({
+        where: { id: next.id },
+        data: { isCurrent: true },
+      });
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          trackUrl: sanitizeNullBytes(next.trackUrl),
+          playbackState: 'PAUSED',
+          positionMs: 0n,
+        },
+      });
+    }
+
+    return this.mapQueueItem({ ...next, isCurrent: true });
   }
 
   async prevQueue(roomId: string): Promise<TrackQueueItem | null | undefined> {
-    return prisma.$transaction(async (tx) => {
-      const current = await tx.roomQueueItem.findFirst({
-        where: { roomId, isCurrent: true },
-      });
-
-      if (!current) return undefined;
-
-      const prev = await tx.roomQueueItem.findFirst({
-        where: { roomId, queueIndex: { lt: current.queueIndex } },
-        orderBy: { queueIndex: 'desc' },
-        include: { uploader: { select: { name: true } } }
-      });
-
-      if (!prev) return undefined;
-
-      await Promise.all([
-        tx.roomQueueItem.updateMany({
-          where: { id: current.id },
-          data: { isCurrent: false },
-        }),
-        tx.roomQueueItem.updateMany({
-          where: { id: prev.id },
-          data: { isCurrent: true },
-        }),
-        tx.room.update({
-          where: { id: roomId },
-          data: {
-            trackUrl: prev.trackUrl,
-            playbackState: 'PAUSED',
-            positionMs: 0n,
-          },
-        }),
-      ]);
-
-      return this.mapQueueItem({ ...prev, isCurrent: true });
+    const current = await prisma.roomQueueItem.findFirst({
+      where: { roomId, isCurrent: true },
     });
+
+    if (!current) return undefined;
+
+    const prev = await prisma.roomQueueItem.findFirst({
+      where: { roomId, queueIndex: { lt: current.queueIndex } },
+      orderBy: { queueIndex: 'desc' },
+      include: { uploader: { select: { name: true } } }
+    });
+
+    if (!prev) return undefined;
+
+    await prisma.roomQueueItem.updateMany({
+      where: { id: current.id },
+      data: { isCurrent: false },
+    });
+    await prisma.roomQueueItem.updateMany({
+      where: { id: prev.id },
+      data: { isCurrent: true },
+    });
+    await prisma.room.update({
+      where: { id: roomId },
+      data: {
+        trackUrl: sanitizeNullBytes(prev.trackUrl),
+        playbackState: 'PAUSED',
+        positionMs: 0n,
+      },
+    });
+
+    return this.mapQueueItem({ ...prev, isCurrent: true });
   }
 
   async jumpToQueueItem(roomId: string, itemId: string): Promise<TrackQueueItem | null> {
@@ -571,59 +567,23 @@ export class RoomRepository {
 
       if (!target || target.roomId !== roomId) return null;
 
-      const queueItems = await tx.roomQueueItem.findMany({
-        where: { roomId },
-        orderBy: { queueIndex: 'asc' },
-      });
-
-      const oldCurrentIdx = queueItems.findIndex(i => i.isCurrent);
-      const targetIdx = queueItems.findIndex(i => i.id === itemId);
-
-      if (oldCurrentIdx !== -1 && targetIdx !== -1 && targetIdx !== oldCurrentIdx) {
-        // Reorder in memory
-        const [movingItem] = queueItems.splice(targetIdx, 1);
-        const insertIdx = targetIdx > oldCurrentIdx ? oldCurrentIdx + 1 : oldCurrentIdx;
-        queueItems.splice(insertIdx, 0, movingItem);
-
-        const minIdx = Math.min(targetIdx, insertIdx);
-        const maxIdx = Math.max(targetIdx, insertIdx);
-        const affectedItems = queueItems.slice(minIdx, maxIdx + 1);
-
-        // Update to negative values first to prevent constraint violations
-        for (let i = 0; i < affectedItems.length; i++) {
-          const item = affectedItems[i];
-          const newQueueIdx = minIdx + i;
-          await tx.roomQueueItem.update({
-            where: { id: item.id },
-            data: { queueIndex: -(newQueueIdx + 1) }
-          });
-        }
-
-        // Assign the final correct indices
-        for (let i = 0; i < affectedItems.length; i++) {
-          const item = affectedItems[i];
-          const newQueueIdx = minIdx + i;
-          await tx.roomQueueItem.update({
-            where: { id: item.id },
-            data: { queueIndex: newQueueIdx }
-          });
-        }
-      }
-
+      // Clear the old current track
       await tx.roomQueueItem.updateMany({
         where: { roomId, isCurrent: true },
         data: { isCurrent: false },
       });
 
-      await tx.roomQueueItem.updateMany({
-        where: { id: target.id },
+      // Set the new current track
+      await tx.roomQueueItem.update({
+        where: { id: itemId },
         data: { isCurrent: true },
       });
 
+      // Update the room's trackUrl and reset position
       await tx.room.update({
         where: { id: roomId },
         data: {
-          trackUrl: target.trackUrl,
+          trackUrl: sanitizeNullBytes(target.trackUrl),
           playbackState: 'PAUSED',
           positionMs: 0n,
         },
@@ -631,7 +591,7 @@ export class RoomRepository {
 
       return this.mapQueueItem({ ...target, isCurrent: true });
     }, {
-      timeout: 15000
+      timeout: 8000
     });
   }
 

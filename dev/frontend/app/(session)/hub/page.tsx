@@ -49,19 +49,25 @@ export default function HubPage() {
   const [isRenamingDevice, setIsRenamingDevice] = useState(false);
 
   useEffect(() => {
+    const timeoutTimer = setTimeout(() => {
+      console.warn('[Hub] Room redirection timed out');
+      setRedirecting(false);
+    }, 8000);
+
     roomsApi.default()
       .then(res => {
+        clearTimeout(timeoutTimer);
         router.replace(`/room/${res.roomId}`);
       })
       .catch(err => {
+        clearTimeout(timeoutTimer);
         console.error('[Hub] Failed to get default room:', err);
         setRedirecting(false);
       });
+
+    return () => clearTimeout(timeoutTimer);
   }, [router]);
 
-  if (redirecting) {
-    return <FullscreenLoader isVisible={true} message="Connecting to room..." />;
-  }
   const [showScanner, setShowScanner] = useState(false);
   const [scanStatus, setScanStatus] = useState<"idle" | "starting" | "scanning" | "success" | "error">("idle");
   const [scanError, setScanError] = useState<string | null>(null);
@@ -372,6 +378,10 @@ export default function HubPage() {
       setIsRenamingDevice(false);
     }
   };
+
+  if (redirecting) {
+    return <FullscreenLoader isVisible={true} message="Connecting to room..." />;
+  }
 
   return (
     <div className={cn('min-h-screen', 'relative', 'px-4', 'sm:px-6', 'lg:px-8', 'z-0', 'bg-transparent', 'text-foreground', 'transition-colors', 'duration-300')}>

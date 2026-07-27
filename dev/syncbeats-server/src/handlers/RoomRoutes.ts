@@ -558,7 +558,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
           const oembedRes = await fetch(oembedUrl);
           if (oembedRes.ok) {
             const data = await oembedRes.json() as { title?: string };
-            if (data.title) title = data.title;
+            // Sanitize: external APIs can return strings with null bytes (0x00)
+            if (data.title) title = data.title.replace(/\0/g, '').trim() || title;
           }
         } catch (e) {
           console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);

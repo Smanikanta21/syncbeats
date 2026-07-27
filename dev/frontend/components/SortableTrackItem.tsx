@@ -43,6 +43,7 @@ export interface TrackItemRowProps {
   isHistory?: boolean;
   isNew?: boolean;
   isDragging?: boolean;
+  isJumping?: boolean;
   style?: React.CSSProperties;
   dragHandleProps?: any;
   setNodeRef?: (node: HTMLElement | null) => void;
@@ -51,7 +52,7 @@ export interface TrackItemRowProps {
 export function TrackItemRow({
   item, idx, isCurrent, isPlaying, isHovered, isHost,
   onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag, isHistory, isNew,
-  isDragging, style, dragHandleProps, setNodeRef
+  isDragging, isJumping, style, dragHandleProps, setNodeRef
 }: TrackItemRowProps) {
   const thumb = ytThumb(item.trackUrl);
 
@@ -96,7 +97,13 @@ export function TrackItemRow({
 
       {/* Track number / playing indicator */}
       <div className={`w-5 shrink-0 flex items-center justify-center ${(!isHost || disableDrag) ? "ml-1" : ""}`}>
-        {isCurrent ? (
+        {isJumping ? (
+          <motion.div
+            className="w-4 h-4 rounded-full border-2 border-foreground/30 border-t-foreground"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+          />
+        ) : isCurrent ? (
           <div className="flex gap-[2px] h-4 items-end">
             {isPlaying ? (
               <>
@@ -191,6 +198,7 @@ export interface SortableTrackItemProps {
   disableDrag?: boolean;
   isHistory?: boolean;
   isNew?: boolean;
+  isJumping?: boolean;
 }
 
 export function SortableTrackItem(props: SortableTrackItemProps) {

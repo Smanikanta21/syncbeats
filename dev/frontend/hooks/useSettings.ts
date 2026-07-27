@@ -12,12 +12,13 @@ export interface GradientNode {
   id: string;
   color: string;
   position: number;
+  x?: number;
+  y?: number;
 }
 
 export interface GradientSettings {
-  mode: "auto" | "manual";
+  presetName?: string;
   nodes: GradientNode[];
-  extractedColors: [string, string];
 }
 
 export interface AppSettings {
@@ -25,7 +26,7 @@ export interface AppSettings {
   syncAggressiveness: "high" | "saver";
   keepScreenAwake: boolean; // Screen Awake Feature (Wake Lock API)
   islandCustomizer: IslandCustomizerSettings; // Dynamic Island Customizer
-  gradientSettings: GradientSettings; // Dynamic Album Art Gradient & Custom Node Editor
+  gradientSettings: GradientSettings; // Custom Gradient & Theme Color Palette
   ambientColors: {
     subHue: number;
     bassHue: number;
@@ -47,6 +48,7 @@ export interface AppSettings {
   activeLightCount?: number;
   reducedMotion: boolean;
   ambientEnabled?: boolean;
+  showDebugAudio?: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -59,12 +61,12 @@ const DEFAULT_SETTINGS: AppSettings = {
     showAlbumArt: true,
   },
   gradientSettings: {
-    mode: "auto",
+    presetName: "Cyber Neon",
     nodes: [
       { id: "node-1", color: "#8b5cf6", position: 0 },
-      { id: "node-2", color: "#3b82f6", position: 100 },
+      { id: "node-2", color: "#ec4899", position: 50 },
+      { id: "node-3", color: "#3b82f6", position: 100 },
     ],
-    extractedColors: ["#8b5cf6", "#3b82f6"],
   },
   ambientColors: {
     subHue: 320,
@@ -87,6 +89,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   activeLightCount: 3,
   reducedMotion: false,
   ambientEnabled: true,
+  showDebugAudio: false,
 };
 
 const SETTINGS_STORAGE_KEY = "syncbeats_app_settings";
@@ -129,6 +132,8 @@ export function useSettings() {
   const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS);
   const auth = useAuth();
   const syncTimeoutRef = useRef<any>(null);
+  // Flag to suppress the custom event handler reacting to our own dispatches
+  const isInternalUpdateRef = useRef(false);
 
   // Automatically keep screen awake if enabled in settings
   useScreenAwake(settings.keepScreenAwake);
@@ -166,8 +171,9 @@ export function useSettings() {
       }
     };
     
-    // Custom event for intra-tab updates
+    // Custom event for intra-tab updates (skip if dispatched by our own updateSettings)
     const handleCustomEvent = () => {
+      if (isInternalUpdateRef.current) return;
       try {
         const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
         if (stored) {
@@ -193,6 +199,11 @@ export function useSettings() {
     };
   }, []);
 
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   // Sync settings with the database user object when it changes (e.g. on login or save)
   useEffect(() => {
     if (auth?.user?.settings) {
@@ -202,32 +213,36 @@ export function useSettings() {
           : auth.user.settings;
         
         if (dbSettings && typeof dbSettings === "object") {
-          setSettingsState((prev) => ({
-            ...prev,
+          const currentStr = JSON.stringify(settingsRef.current);
+          const merged = {
+            ...settingsRef.current,
             ...dbSettings,
             islandCustomizer: {
-              ...prev.islandCustomizer,
+              ...settingsRef.current.islandCustomizer,
               ...(dbSettings.islandCustomizer || {}),
             },
             gradientSettings: {
-              ...prev.gradientSettings,
+              ...settingsRef.current.gradientSettings,
               ...(dbSettings.gradientSettings || {}),
             },
             ambientColors: {
-              ...prev.ambientColors,
+              ...settingsRef.current.ambientColors,
               ...(dbSettings.ambientColors || {}),
             },
             ambientPositions: {
-              ...prev.ambientPositions,
+              ...settingsRef.current.ambientPositions,
               ...(dbSettings.ambientPositions || {}),
             },
-          }));
+          };
+          if (JSON.stringify(merged) !== currentStr) {
+            setSettingsState(merged);
+          }
         }
       } catch (e) {
         console.warn("Failed to parse DB settings", e);
       }
     }
-  }, [auth?.user]);
+  }, [auth?.user?.settings]);
 
   const updateSettings = (updates: Partial<AppSettings>) => {
     const newSettings = {
@@ -248,16 +263,27 @@ export function useSettings() {
     };
     setSettingsState(newSettings);
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+    // Mark this as an internal update so our own custom event handler ignores it
+    isInternalUpdateRef.current = true;
     window.dispatchEvent(new Event("syncbeats-settings-updated"));
+    // Reset after microtask so only our handler is skipped, not future cross-tab events
+    setTimeout(() => { isInternalUpdateRef.current = false; }, 0);
 
     // Sync to backend if logged in (debounced to prevent high-frequency PATCH flooding)
+    // Note: we call authApi directly — NOT AuthContext.updateSettings — to avoid setUser re-render
     if (auth?.user) {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
-        authApi.updateSettings(newSettings).catch((err) => {
-          console.warn("Failed to sync settings to server:", err);
-        });
-      }, 500);
+        authApi.updateSettings(newSettings)
+          .then(() => {
+            // Keep auth.user.settings in sync so the DB-merge effect never
+            // overwrites local state with stale login-time data.
+            auth.patchUserSettings(newSettings);
+          })
+          .catch((err) => {
+            console.warn("Failed to sync settings to server:", err);
+          });
+      }, 1500);
     }
   };
 

@@ -69,6 +69,16 @@ export class ApiError extends Error {
   }
 }
 
+let lastServerErrorDispatch = 0;
+
+function notifyServerError(message: string) {
+  const now = Date.now();
+  if (typeof window !== 'undefined' && now - lastServerErrorDispatch > 10000) {
+    lastServerErrorDispatch = now;
+    window.dispatchEvent(new CustomEvent("syncbeats-server-error", { detail: { message } }));
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -84,7 +94,14 @@ async function request<T>(
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...options, headers });
+  } catch (err: any) {
+    notifyServerError("Cannot reach SyncBeats Server");
+    throw new ApiError("Cannot reach SyncBeats Server. Please check your network connection.", 0);
+  }
+
   let data;
   try {
     data = await res.json();
@@ -92,6 +109,9 @@ async function request<T>(
     data = {};
   }
   if (!res.ok) {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      notifyServerError("SyncBeats Server is temporarily unavailable");
+    }
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
       if (typeof window !== 'undefined') {

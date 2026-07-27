@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X, Plus
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -19,7 +19,6 @@ import { EmojiReactions } from "./EmojiReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
 import { MobileRadialNavigator } from "./MobileRadialNavigator";
 import { SettingsPanel } from "../SettingsPanel";
-import { ProfileModal } from "../ProfileModal";
 import { ThemeToggle } from "../ThemeToggle";
 import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
@@ -142,7 +141,7 @@ function VisualsModal({
           exit={{ opacity: 0, scale: 0.92, y: 15 }}
           transition={{ type: "spring", damping: 24, stiffness: 220 }}
           className={cn(
-            "w-full max-w-lg h-[80vh] p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-[32px] relative z-10 pointer-events-auto overflow-hidden transition-all duration-300 border",
+            "w-full max-w-2xl md:max-w-3xl h-[85vh] md:h-[82vh] max-h-[780px] p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-[32px] relative z-10 pointer-events-auto overflow-hidden transition-all duration-300 border",
             isVisualsInteracting
               ? "bg-background/5 dark:bg-black/10 backdrop-blur-[2px] border-foreground/5 dark:border-white/5 opacity-25 scale-95"
               : "bg-background/90 dark:bg-black/85 backdrop-blur-2xl border-foreground/[0.08] dark:border-white/10"
@@ -171,21 +170,66 @@ export function RoomDashboard({
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
+  const router = useRouter();
   const { settings, updateSettings } = useSettings();
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-
-  useEffect(() => {
-    const handleOpenProfile = () => setShowProfileModal(true);
-    window.addEventListener("open-profile-modal", handleOpenProfile);
-    return () => window.removeEventListener("open-profile-modal", handleOpenProfile);
-  }, []);
+  const openProfilePage = useCallback(() => router.push('/profile'), [router]);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("queue");
   const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activityNotification, setActivityNotification] = useState<{ id: number; text: string; type: "join" | "leave" } | null>(null);
+
+  // Listen for room join/leave activity to display clean floating activity pill (no toasts, no emojis)
+  useEffect(() => {
+    const handleActivity = (e: CustomEvent<{ type: "join" | "leave"; displayName: string }>) => {
+      const { type, displayName } = e.detail || {};
+      if (!displayName) return;
+
+      const nameParts = displayName.split("::");
+      const userName = nameParts[0]?.trim() || "Someone";
+      const deviceName = nameParts.length > 1 ? nameParts[1]?.trim() : undefined;
+
+      const actionText = type === "join" ? "joined the room" : "left the room";
+      const text = deviceName ? `${userName} (${deviceName}) ${actionText}` : `${userName} ${actionText}`;
+
+      const id = Date.now();
+      setActivityNotification({ id, text, type });
+
+      setTimeout(() => {
+        setActivityNotification((curr) => (curr?.id === id ? null : curr));
+      }, 3500);
+    };
+
+    window.addEventListener("syncbeats:room-activity" as any, handleActivity as any);
+    return () => window.removeEventListener("syncbeats:room-activity" as any, handleActivity as any);
+  }, []);
+
+  // Clear unread chat count when chat tab becomes active
+  useEffect(() => {
+    if (desktopRightTab === "chat" || mobileTab === "chat") {
+      setUnreadChatCount(0);
+    }
+  }, [desktopRightTab, mobileTab]);
+
+  // Listen for incoming chat messages to increment unread counter & wobble
+  useEffect(() => {
+    const socket = getSocket();
+    const handleIncomingChat = (msg: { socketId?: string; userId?: string }) => {
+      const isFromMe = (mySocketId && msg.socketId === mySocketId) || (myUserId && msg.userId === myUserId);
+      if (!isFromMe) {
+        setUnreadChatCount((prev) => prev + 1);
+      }
+    };
+
+    socket.on("room:chat", handleIncomingChat);
+    return () => {
+      socket.off("room:chat", handleIncomingChat);
+    };
+  }, [mySocketId, myUserId]);
 
   const queue = snapshot?.queue ?? [];
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
@@ -193,57 +237,23 @@ export function RoomDashboard({
 
   const lastExtractedTrackRef = useRef<string | null>(null);
 
-  // Dynamically extract 2 colors from album art when in Auto gradient mode
-  // and wire them into ambientColors so the blobs beat with the extracted palette
+  // Clear jump loading state when the queue actually updates from server
+  const prevQueueRef = useRef(queue);
   useEffect(() => {
-    const coverUrl = getTrackThumbnailUrl(currentQueueItem);
-    const trackKey = currentQueueItem ? `${currentQueueItem.id}_${coverUrl}` : null;
-    
-    if (!coverUrl || !trackKey) return;
-    if ((settings.gradientSettings?.mode || "auto") !== "auto") return;
-
-    if (lastExtractedTrackRef.current === trackKey) return;
-    lastExtractedTrackRef.current = trackKey;
-
-    console.log("[SyncBeats] Active track playing! Auto extracting Spotify album art colors from:", coverUrl);
-
-    extractTwoColorsFromImage(coverUrl).then(([c1, c2]) => {
-      // Convert hex colors → 6-band hue map for the ambient light blobs
-      const newHues = colorsToAmbientHues(c1, c2);
-
-      console.log("[SyncBeats] Auto Extracted Album Art Colors:", c1, c2, "→ Hues:", newHues);
-
-      updateSettings({
-        gradientSettings: {
-          ...(settings.gradientSettings || { mode: "auto", nodes: [] }),
-          extractedColors: [c1, c2],
-          nodes: [
-            { id: "node-1", color: c1, position: 0 },
-            { id: "node-2", color: c2, position: 100 },
-          ],
-        },
-        // Wire the extracted hues directly into the ambient blob system
-        ambientColors: newHues,
-        // Ensure visuals are enabled and bright enough to actually see the colors
-        ambientEnabled: true,
-        ambientBrightness: Math.max(settings.ambientBrightness ?? 100, 110),
-        ambientContrast: Math.max(settings.ambientContrast ?? 100, 110),
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    currentQueueItem?.id, 
-    currentQueueItem?.trackUrl, 
-    currentQueueItem?.title, 
-    currentQueueItem?.coverUrl, 
-    currentQueueItem?.thumbnail, 
-    settings.gradientSettings?.mode, 
-    isPlaying
-  ]);
+    const prevCurrentId = prevQueueRef.current.find(q => q.isCurrent)?.id;
+    const newCurrentId = queue.find(q => q.isCurrent)?.id;
+    if (jumpingTrackId && (newCurrentId === jumpingTrackId || newCurrentId !== prevCurrentId)) {
+      setJumpingTrackId(null);
+    }
+    prevQueueRef.current = queue;
+  }, [queue, jumpingTrackId]);
 
   const handleTrackSelect = useCallback((item: typeof queue[0]) => {
     if (!isHost) return;
+    setJumpingTrackId(item.id);
     getSocket().emit("playback:jumpTo", { roomId, trackId: item.id });
+    // Safety timeout — clear loading state if server never responds
+    setTimeout(() => setJumpingTrackId(null), 8000);
   }, [isHost, roomId]);
 
   const handleTogglePrivate = useCallback(() => {
@@ -335,11 +345,10 @@ export function RoomDashboard({
                   {isHost && (
                     <button 
                       onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-                      className="text-[9px] px-2 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                      title="Invite Friends"
+                      className="p-1 rounded-full font-bold transition-colors bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 flex items-center justify-center"
+                      title="Invite Friends (+)"
                     >
-                      <UserPlus className="w-3 h-3" />
-                      Invite
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   )}
                   {isHost && (
@@ -352,7 +361,7 @@ export function RoomDashboard({
                     </button>
                   )}
                   <button 
-                    onClick={() => setShowProfileModal(true)}
+                    onClick={openProfilePage}
                     className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20"
                     title="View Profile"
                   >
@@ -420,18 +429,38 @@ export function RoomDashboard({
                 <LayoutGrid className="w-3.5 h-3.5" />
                 Queue ({queue.length})
               </button>
-              <button
-                onClick={() => setDesktopRightTab("chat")}
+              <motion.button
+                onClick={() => {
+                  setDesktopRightTab("chat");
+                  setUnreadChatCount(0);
+                }}
+                animate={unreadChatCount > 0 && desktopRightTab !== "chat" ? {
+                  rotate: [0, -10, 10, -8, 8, -4, 4, 0],
+                  scale: [1, 1.1, 0.96, 1.06, 1],
+                  transition: { duration: 0.75, repeat: Infinity, repeatDelay: 2 }
+                } : { rotate: 0, scale: 1 }}
                 className={cn(
-                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5",
+                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative overflow-visible",
                   desktopRightTab === "chat"
                     ? "bg-foreground text-background shadow-md"
-                    : "text-foreground/60 hover:text-foreground"
+                    : unreadChatCount > 0
+                      ? "text-pink-500 hover:text-pink-400 bg-pink-500/10 border border-pink-500/30"
+                      : "text-foreground/60 hover:text-foreground"
                 )}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                Chat
-              </button>
+                <span>Chat</span>
+                {unreadChatCount > 0 && desktopRightTab !== "chat" && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [1, 1.25, 1] }}
+                    transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
+                    className="ml-1 px-1.5 py-0.2 text-[10px] font-black bg-pink-500 text-white rounded-full shadow-sm"
+                  >
+                    {unreadChatCount}
+                  </motion.span>
+                )}
+              </motion.button>
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col">
@@ -448,6 +477,7 @@ export function RoomDashboard({
                   repeatMode={snapshot?.repeatMode ?? "off"}
                   onToggleShuffle={toggleShuffle}
                   onToggleRepeat={toggleRepeat}
+                  jumpingTrackId={jumpingTrackId}
                 />
               ) : (
                 <RoomChat
@@ -530,7 +560,7 @@ export function RoomDashboard({
               </button>
             )}
             <button 
-              onClick={() => setShowProfileModal(true)}
+              onClick={openProfilePage}
               className="text-[9px] px-3 py-1 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20"
             >
               <User className="w-3 h-3" />
@@ -609,6 +639,7 @@ export function RoomDashboard({
                   repeatMode={snapshot?.repeatMode ?? "off"}
                   onToggleShuffle={toggleShuffle}
                   onToggleRepeat={toggleRepeat}
+                  jumpingTrackId={jumpingTrackId}
                 />
               </GlassCard>
               <GlassCard className="p-2 shrink-0">
@@ -659,18 +690,29 @@ export function RoomDashboard({
         </div>
       )}
 
-      {showVisualsPanel && (
-        <VisualsModal
-          isVisualsInteracting={isVisualsInteracting}
-          setIsVisualsInteracting={setIsVisualsInteracting}
-          onClose={() => setShowVisualsPanel(false)}
-        />
-      )}
-
-      <ProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
+      {/* Sleek, Minimal Room Activity Notification Pill (No Emojis, No Toasts) */}
+      <AnimatePresence>
+        {activityNotification && (
+          <motion.div
+            key={activityNotification.id}
+            initial={{ opacity: 0, y: -24, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+          >
+            <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-xl border border-foreground/15 shadow-2xl text-xs font-semibold text-foreground">
+              <span
+                className={cn(
+                  "w-2 h-2 rounded-full shrink-0",
+                  activityNotification.type === "join" ? "bg-emerald-500 animate-pulse" : "bg-foreground/40"
+                )}
+              />
+              <span className="truncate max-w-xs">{activityNotification.text}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

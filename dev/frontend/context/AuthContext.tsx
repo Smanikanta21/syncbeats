@@ -4,7 +4,7 @@
 // Persists token in cookies, exposes user + helpers to all children.
 
 import {
-  createContext, useContext, useEffect, useState, useCallback,
+  createContext, useContext, useEffect, useState, useCallback, useMemo,
   type ReactNode,
 } from "react";
 import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
@@ -24,6 +24,9 @@ interface AuthContextType {
   replaceDevice: (targetDeviceId: string) => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
   updateSettings: (settings: any) => Promise<void>;
+  /** Patches user.settings in-memory so the useSettings DB-sync effect
+   *  doesn't overwrite local changes with stale login-time data. */
+  patchUserSettings: (settings: any) => void;
   logout:   () => void;
 }
 
@@ -119,8 +122,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSettings = useCallback(async (settings: any) => {
-    const { user: updated } = await authApi.updateSettings(settings);
-    setUser(updated);
+    // NOTE: intentionally NOT calling setUser(updated) here with a full fetch.
+    // Use patchUserSettings to update user.settings in-memory after a save.
+    await authApi.updateSettings(settings);
+  }, []);
+
+  const patchUserSettings = useCallback((settings: any) => {
+    // Update user.settings in-memory so the useSettings merge effect always
+    // sees fresh data and doesn't overwrite local changes with stale login data.
+    setUser((prev) => prev ? { ...prev, settings } : prev);
   }, []);
 
   const replaceDevice = useCallback(async (targetDeviceId: string) => {
@@ -139,8 +149,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  const contextValue = useMemo(() => ({
+    user, device, needsDeviceRename, emailVerified, token, loading,
+    login, register, googleLogin, resendVerification,
+    renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout,
+  }), [user, device, needsDeviceRename, emailVerified, token, loading,
+    login, register, googleLogin, resendVerification,
+    renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout]);
+
   return (
-    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, updateProfile, updateSettings, logout }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

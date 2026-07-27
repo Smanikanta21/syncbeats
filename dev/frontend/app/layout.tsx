@@ -12,8 +12,9 @@ import { Toaster } from "sonner";
 import SmoothScrolling from "../components/SmoothScrolling";
 import Preloader from "../components/Preloader";
 import { ToastProvider } from "../components/ToastProvider";
+import { ConnectionProvider } from "../context/ConnectionContext";
+import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
-import { IOSHomeScreenPrompt } from "../components/IOSHomeScreenPrompt";
 import { cn } from "@/lib/utils";
 
 const geistSans = Geist({
@@ -233,15 +234,18 @@ export default function RootLayout({
           <Preloader />
           {/* <IOSHomeScreenPrompt /> */}
           <ThemeProvider>
-            <AuthProvider>
-              <AudioProvider>
-                <VisualizerProvider>
-                  <ToastProvider>
-                    <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
-                  </ToastProvider>
-                </VisualizerProvider>
-              </AudioProvider>
-            </AuthProvider>
+            <ConnectionProvider>
+              <ConnectionStatusModal />
+              <AuthProvider>
+                <AudioProvider>
+                  <VisualizerProvider>
+                    <ToastProvider>
+                      <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
+                    </ToastProvider>
+                  </VisualizerProvider>
+                </AudioProvider>
+              </AuthProvider>
+            </ConnectionProvider>
           </ThemeProvider>
           <Toaster position="bottom-right" theme="system" richColors closeButton />
           <Analytics />

@@ -14,9 +14,12 @@ export function getSocket(): Socket {
 
     socket = io(socketUrl, {
       autoConnect: false,
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
       path: socketPath,
       withCredentials: true,
+      reconnectionDelay: 3000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
     });
   }
 

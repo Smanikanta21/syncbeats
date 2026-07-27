@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
+import { getTrackThumbnailUrl } from '../lib/colorExtractor';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -179,12 +180,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [setupAudioGraph]);
 
   const stopCurrentSource = useCallback(() => {
+    pendingScheduleRef.current = null;
+    if (unlockTimeoutRef.current) {
+      clearTimeout(unlockTimeoutRef.current);
+      unlockTimeoutRef.current = null;
+    }
     if (sourceNodeRef.current) {
       sourceNodeRef.current.onended = null;
       try {
         sourceNodeRef.current.stop();
       } catch (e) {}
-      sourceNodeRef.current.disconnect();
+      try {
+        sourceNodeRef.current.disconnect();
+      } catch (e) {}
       sourceNodeRef.current = null;
     }
     if (streamingAudioElRef.current) {
@@ -278,10 +286,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (typeof window === "undefined") return;
     if (!keepAliveAudioRef.current) {
       const audio = new Audio();
-      // 0.1s silent WAV data URI
-      audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+      // Valid silent WAV data URI for OS system media session
+      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
       audio.loop = true;
-      audio.volume = 0.001; // Silent, non-zero to retain OS background audio privileges
+      audio.volume = 0.01; // Non-zero to maintain OS background media privileges
       keepAliveAudioRef.current = audio;
     }
   }, []);
@@ -303,13 +311,22 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     if (trackTitle || trackUrl) {
       try {
+        const thumbUrl = getTrackThumbnailUrl({ trackUrl: trackUrl ?? undefined });
+        const artwork: MediaImage[] = thumbUrl
+          ? [
+              { src: thumbUrl, sizes: "512x512", type: "image/jpeg" },
+              { src: thumbUrl, sizes: "256x256", type: "image/jpeg" },
+              { src: thumbUrl, sizes: "96x96", type: "image/jpeg" },
+            ]
+          : [
+              { src: "https://syncbeats.app/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+            ];
+
         navigator.mediaSession.metadata = new MediaMetadata({
           title: trackTitle || "SyncBeats Track",
           artist: trackArtist || "SyncBeats Room",
           album: "SyncBeats",
-          artwork: [
-            { src: "/syncbeats-icon.svg", sizes: "512x512", type: "image/svg+xml" }
-          ]
+          artwork,
         });
       } catch (e) {}
     }
@@ -1030,6 +1047,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const pauseAt = useCallback((position: number) => {
     scheduleIdRef.current += 1;
+    pendingScheduleRef.current = null;
     stopCurrentSource();
     setIsPlaying(false);
     pauseOffsetRef.current = position;
@@ -1058,6 +1076,45 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const time = pct * duration;
     seek(time);
   }, [seek, duration]);
+
+  // Set action handlers (play, pause, seekto)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {}
+    };
+
+    setHandler("play", () => {
+      if (!isPlaying) play();
+    });
+    setHandler("pause", () => {
+      if (isPlaying) pause();
+    });
+    setHandler("seekto", (details) => {
+      if (details.seekTime != null) {
+        seek(details.seekTime);
+      }
+    });
+  }, [isPlaying, play, pause, seek]);
+
+  // Update OS System Media Control Position State slider
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    if (!("setPositionState" in navigator.mediaSession)) return;
+
+    if (duration > 0 && Number.isFinite(duration) && Number.isFinite(currentTime)) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0, duration),
+          playbackRate: 1,
+          position: Math.min(Math.max(0, currentTime), duration),
+        });
+      } catch (e) {}
+    }
+  }, [currentTime, duration]);
 
   const setPlaybackRate = useCallback((rate: number) => {
     playbackRateRef.current = rate;

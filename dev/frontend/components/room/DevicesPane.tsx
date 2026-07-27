@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Wifi, Volume2, Loader2, CheckCircle2, Activity,
+  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus,
   ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
@@ -396,11 +396,20 @@ export function DevicesPane({
             Account Devices
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-            {participants.length} online
-          </span>
+        <div className="flex items-center gap-1.5">
+          <button 
+            onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
+            className="p-1 rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors flex items-center justify-center"
+            title="Invite Friends"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+              {participants.length} online
+            </span>
+          </div>
         </div>
       </div>
 

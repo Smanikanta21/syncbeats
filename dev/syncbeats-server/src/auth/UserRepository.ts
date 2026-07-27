@@ -1,6 +1,8 @@
 // auth/UserRepository.ts — Prisma client for users table
 
 import prisma from '../db/prisma';
+import { sanitizeNullBytes } from '../db/prisma';
+
 
 export interface UserRow {
   id:            string;
@@ -29,10 +31,19 @@ export interface PublicUser {
   settings?:  any;
 }
 
+export function sanitizeString(val: string): string {
+  if (!val || typeof val !== 'string') return val;
+  return val
+    .replace(/\0/g, '')
+    .replace(/\u0000/g, '')
+    .replace(/\\u0000/g, '')
+    .replace(/\x00/g, '');
+}
+
 function cleanJsonPayload(data: any): any {
-  if (!data) return data;
+  if (data === null || data === undefined) return data;
   if (typeof data === 'string') {
-    return data.replace(/\u0000/g, '');
+    return sanitizeString(data);
   }
   if (typeof data === 'object') {
     if (Array.isArray(data)) {
@@ -40,7 +51,7 @@ function cleanJsonPayload(data: any): any {
     }
     const clean: any = {};
     for (const key of Object.keys(data)) {
-      clean[key.replace(/\u0000/g, '')] = cleanJsonPayload(data[key]);
+      clean[sanitizeString(key)] = cleanJsonPayload(data[key]);
     }
     return clean;
   }
@@ -49,10 +60,31 @@ function cleanJsonPayload(data: any): any {
 
 export class UserRepository {
   async updateSettings(userId: string, settings: any): Promise<PublicUser | null> {
-    const sanitized = cleanJsonPayload(settings);
+    // Parse if it came in as a string
+    let payload = settings;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch { payload = {}; }
+    }
+
+    // 1. Deep-sanitize via the shared sanitizer (returns a fresh object, no mutation)
+    const sanitized = sanitizeNullBytes(payload);
+    const safePayload = (sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized))
+      ? sanitized
+      : {};
+
+    // 2. Round-trip through JSON.stringify / JSON.parse to guarantee valid JSON
+    //    This also removes any remaining undefined values that Prisma can't serialize
+    let finalPayload: any;
+    try {
+      finalPayload = JSON.parse(JSON.stringify(safePayload));
+    } catch (e) {
+      console.error('[UserRepository] Settings payload failed JSON round-trip, resetting to {}', e);
+      finalPayload = {};
+    }
+
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { settings: sanitized },
+      data: { settings: finalPayload },
     }) as any;
     return user ? this.toPublicUser(user) : null;
   }

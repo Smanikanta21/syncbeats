@@ -79,6 +79,7 @@ interface MobileRadialNavigatorProps {
   activeTab: MobileTab;
   onSelectTab: (tabId: MobileTab) => void;
   onLeaveRoom?: () => void;
+  unreadChatCount?: number;
   className?: string;
 }
 
@@ -86,6 +87,7 @@ export function MobileRadialNavigator({
   activeTab,
   onSelectTab,
   onLeaveRoom,
+  unreadChatCount = 0,
   className,
 }: MobileRadialNavigatorProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -381,10 +383,17 @@ export function MobileRadialNavigator({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           whileTap={{ scale: 0.90 }}
+          animate={unreadChatCount > 0 && activeTab !== "chat" && !isOpen ? {
+            rotate: [0, -14, 14, -10, 10, -5, 5, 0],
+            scale: [1, 1.18, 0.94, 1.1, 0.98, 1.04, 1],
+            transition: { duration: 0.8, repeat: Infinity, repeatDelay: 1.8 }
+          } : { rotate: 0, scale: 1 }}
           className={cn(
             "relative w-12 h-12 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-md border transition-all duration-200 touch-none cursor-pointer",
             isOpen
               ? "bg-primary text-primary-foreground border-white/40 ring-4 ring-primary/40 scale-105 shadow-[0_0_25px_rgba(168,85,247,0.6)]"
+              : unreadChatCount > 0 && activeTab !== "chat"
+              ? "bg-gradient-to-r from-pink-600 to-rose-600 text-white border-pink-400/80 ring-4 ring-pink-500/40 shadow-[0_0_25px_rgba(236,72,153,0.7)]"
               : "bg-background/90 dark:bg-black/90 text-foreground border-foreground/15 hover:bg-background"
           )}
           style={{ touchAction: "none", willChange: "transform, opacity" }}
@@ -415,8 +424,20 @@ export function MobileRadialNavigator({
             )}
           </AnimatePresence>
 
+          {/* Unread Message Count Badge on Mobile Button */}
+          {unreadChatCount > 0 && activeTab !== "chat" && !isOpen && (
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: [1, 1.25, 1] }}
+              transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
+              className="absolute -top-1.5 -left-1.5 flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full bg-pink-500 text-white text-[10px] font-black border-2 border-background shadow-lg z-50 pointer-events-none"
+            >
+              {unreadChatCount}
+            </motion.span>
+          )}
+
           {/* Glowing pulse ring indicator */}
-          {!isOpen && (
+          {!isOpen && unreadChatCount === 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-primary border-2 border-background"></span>
@@ -544,6 +565,13 @@ export function MobileRadialNavigator({
                     }}
                   >
                     <Icon className="w-4 h-4" />
+
+                    {/* Unread badge on chat radial menu item */}
+                    {item.id === "chat" && unreadChatCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-pink-500 text-white text-[9px] font-black border border-background shadow-md">
+                        {unreadChatCount}
+                      </span>
+                    )}
 
                     {/* Item label under icon */}
                     <span

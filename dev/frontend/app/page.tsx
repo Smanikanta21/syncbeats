@@ -13,6 +13,9 @@ import Magnetic from "../components/Magnetic";
 
 import { FeaturesExplanation } from "../components/FeaturesExplanation";
 
+import { getSocket } from "../lib/socket";
+import { roomsApi } from "../lib/api";
+
 const AmbientBackground = dynamic(() => import("../components/AmbientBackground").then(mod => mod.AmbientBackground), { ssr: false });
 const MouseGradient = dynamic(() => import("../components/MouseGradient").then(mod => mod.MouseGradient), { ssr: false });
 
@@ -23,6 +26,7 @@ export default function LandingPage() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isScrolled, setIsScrolled] = useState(false);
   const [hoveredStep, setHoveredStep] = useState<number | null>(0);
+  const [isRoomPlaying, setIsRoomPlaying] = useState(false);
   
   const { scrollY } = useScroll(); // Track window scroll natively
 
@@ -32,7 +36,46 @@ export default function LandingPage() {
     else if (latest <= 100 && isScrolled) setIsScrolled(false);
   });
 
+  // When user is logged in, check if their default room is playing a song to sync ambient background & beat visuals (without playing sound)
+  useEffect(() => {
+    if (!user) {
+      setIsRoomPlaying(false);
+      return;
+    }
+    const socket = getSocket();
 
+    roomsApi.default()
+      .then((res) => {
+        if (!res?.roomId) return;
+        const roomId = res.roomId;
+        socket.emit("room:join", {
+          roomId,
+          displayName: user.name || "User",
+          userId: user.id,
+        });
+
+        const handleSnapshot = (snap: any) => {
+          if (snap) {
+            setIsRoomPlaying(snap.isPlaying || snap.state === "PLAYING");
+          }
+        };
+
+        const handleStateChanged = (snap: any) => {
+          if (snap) {
+            setIsRoomPlaying(snap.isPlaying || snap.state === "PLAYING");
+          }
+        };
+
+        socket.on("room:snapshot", handleSnapshot);
+        socket.on("room:stateChanged", handleStateChanged);
+      })
+      .catch(() => {});
+
+    return () => {
+      socket.off("room:snapshot");
+      socket.off("room:stateChanged");
+    };
+  }, [user]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +88,8 @@ export default function LandingPage() {
       {/* Interactive Mouse Gradient Follower (Fixed) */}
       <MouseGradient />
 
-      {/* Ambient Background Gradients for Continuity */}
-      <AmbientBackground syncWithAudio={false} />
+      {/* Ambient Background Gradients for Continuity (Syncs visuals to room's song without playing audio) */}
+      <AmbientBackground syncWithAudio={!!user} isRoomPlaying={isRoomPlaying} />
 
       {/* Dynamic Snapping Navbar Wrapper */}
       <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none pt-6">

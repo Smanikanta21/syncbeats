@@ -49,6 +49,7 @@ export class SyncBeatsServer {
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id']
     },
+    transports: ['polling', 'websocket'],
   });
 
   private roomManager = RoomManager.getInstance();

@@ -36,9 +36,10 @@ export async function extractTwoColorsFromImage(imageUrl: string): Promise<[stri
     // Route remote HTTP/HTTPS images (Spotify i.scdn.co, YouTube i.ytimg.com, etc.)
     // through our server CORS proxy endpoint so canvas is never tainted!
     let targetUrl = imageUrl;
+    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
       if (!imageUrl.includes("/api/search/proxy-image")) {
-        targetUrl = `/api/search/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+        targetUrl = `${serverUrl}/api/search/proxy-image?url=${encodeURIComponent(imageUrl)}`;
       }
     }
 

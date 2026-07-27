@@ -9,6 +9,7 @@ import {
 
 export class SocketHandler {
   private nextDebounce = new Map<string, number>();
+  private endedDebounce = new Map<string, number>();
   private userRepo: UserRepository = new UserRepository();
 
   constructor(
@@ -324,6 +325,14 @@ export class SocketHandler {
       // Allow any client to notify that the track ended.
       // The expectedCurrentTrackUrl ensures we only advance once per track end.
       if (room.getTrackUrl() !== trackUrl) return;
+
+      const key = `${roomId}:${trackUrl}`;
+      const now = Date.now();
+      const last = this.endedDebounce.get(key) || 0;
+      if (now - last < 3000) {
+        return;
+      }
+      this.endedDebounce.set(key, now);
 
       try {
         const next = await this.roomRepo.advanceQueue(roomId, trackUrl);
