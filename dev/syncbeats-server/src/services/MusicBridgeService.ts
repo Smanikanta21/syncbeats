@@ -61,9 +61,15 @@ async function getSpotifyApiToken(): Promise<string | null> {
 export class MusicBridgeService {
   /**
    * Extracts playlist tracks from a public Spotify URL.
-   * Uses Spotify Web API with full pagination to fetch ALL tracks (unlimited 500+ / 1000+ tracks).
+   *
+   * Token priority:
+   *  1. userToken  — the importing user's own Spotify OAuth token (playlist-read-private scope).
+   *                  Works for ALL public and private playlists, FREE, no Premium needed.
+   *  2. Client Credentials token — app-level token, only works for Spotify-owned playlists
+   *                  since Spotify's 2024 policy restricts user playlists without user auth.
+   *  3. Embed scraper fallback — no auth, capped at 100 tracks.
    */
-  static async getPlaylistMetadata(playlistUrl: string): Promise<{ name: string, coverUrl: string, tracks: TrackMetadata[] }> {
+  static async getPlaylistMetadata(playlistUrl: string, userToken?: string): Promise<{ name: string, coverUrl: string, tracks: TrackMetadata[] }> {
     try {
       // Validate the URL format
       const match = playlistUrl.match(/playlist\/([a-zA-Z0-9]+)/);
@@ -73,16 +79,23 @@ export class MusicBridgeService {
       const spotifyPlaylistId = match[1];
 
       // ── Method A: Official Spotify Web API with unlimited pagination + retry backoff ──
-      const token = await getSpotifyApiToken();
+      // Prefer the user's own OAuth token; fall back to client credentials
+      const token = userToken || await getSpotifyApiToken();
       if (token) {
         try {
-          console.log(`[MusicBridge] Fetching playlist ${spotifyPlaylistId} via Spotify API (with retry backoff)...`);
+          console.log(`[MusicBridge] Fetching playlist ${spotifyPlaylistId} via Spotify API${userToken ? ' (user token)' : ' (client credentials)'}...`);
 
           // Helper: fetch with up to `maxAttempts` retries on 5xx errors
           const fetchWithRetry = async (url: string, maxAttempts = 5): Promise<any> => {
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
               if (res.ok) return await res.json();
+              if (res.status === 403) {
+                // Could be Premium required for app owner — log and bail out to embed fallback
+                const body = await res.text().catch(() => '');
+                console.warn(`[MusicBridge] Spotify 403 (${body.slice(0, 120)}). Falling back to embed scraper.`);
+                return null;
+              }
               if (res.status === 429) {
                 // Rate limited — honour Retry-After header
                 const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);

@@ -161,17 +161,18 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         : `${frontendUrl}/login?mode=register&returnTo=/room/${roomId}`;
 
       const { AuthService } = await import('../auth/AuthService');
+      const { buildRoomInviteHtml } = await import('../auth/EmailTemplates');
       const authService = new AuthService();
+      const inviterName = inviter?.name || 'A friend';
+      
+      const htmlEmail = buildRoomInviteHtml(inviterName, roomId, inviteLink);
+      const textEmail = `You're invited! ${inviterName} has invited you to join SyncBeats Room #${roomId}. Join here: ${inviteLink}`;
+
       await authService.sendEmail(
         finalEmail,
-        `${inviter?.name || 'A friend'} invited you to a SyncBeats room!`,
-        `<div style="font-family: sans-serif; color: #111;">
-          <h2>You're invited!</h2>
-          <p><strong>${inviter?.name || 'A friend'}</strong> has invited you to join their listening room on SyncBeats.</p>
-          <p><a href="${inviteLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Join Room</a></p>
-          <p>Or copy and paste this link into your browser: <br/>${inviteLink}</p>
-        </div>`,
-        `You're invited! ${inviter?.name || 'A friend'} has invited you to join their listening room on SyncBeats. Join here: ${inviteLink}`
+        `🎵 ${inviterName} invited you to SyncBeats Room #${roomId}`,
+        htmlEmail,
+        textEmail
       );
 
       res.json({ success: true, inviteId: invite.id });

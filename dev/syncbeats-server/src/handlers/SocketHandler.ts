@@ -115,6 +115,7 @@ export class SocketHandler {
               playbackState: dbRoom.playback_state,
               positionMs:    dbRoom.position_ms,
               queue,
+              createdAt:     dbRoom.created_at,
             });
           } else if (queue.length > 0) {
             room.syncQueue(queue, queue.find(q => q.isCurrent)?.id ?? null);

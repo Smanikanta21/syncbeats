@@ -538,8 +538,11 @@ export default function HubPage() {
                         {!room.ended_at && (
                           <span className={`w-1.5 h-1.5 rounded-full ${!room.participant_count ? 'bg-red-400' : (room.playback_state === 'playing' ? 'bg-green-400 animate-pulse' : 'bg-green-400')} inline-block`} title={!room.participant_count ? 'Empty' : (room.playback_state === 'playing' ? 'Playing' : 'Paused')} />
                         )}
-                        <div className={cn('text-xs', 'text-foreground/40', 'font-medium')}>
-                          {new Date(room.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        <div className={cn('text-xs', 'text-foreground/40', 'font-medium', 'flex', 'items-center', 'gap-1.5')}>
+                          <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
+                          <span>
+                            {new Date(room.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
                         </div>
                       </div>
                     </div>

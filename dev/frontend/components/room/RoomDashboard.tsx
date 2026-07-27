@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X, Plus
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -235,6 +235,35 @@ export function RoomDashboard({
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
   const isRoomReady = participants.every(p => p.isReady);
 
+  // Live Session Uptime State (updates every second when room is active)
+  const initialSessionSec = snapshot?.accumulatedSessionTime ?? Math.floor((snapshot?.sessionDurationMs ?? 0) / 1000);
+  const [liveSessionSec, setLiveSessionSec] = useState(initialSessionSec);
+
+  useEffect(() => {
+    if (snapshot?.accumulatedSessionTime !== undefined) {
+      setLiveSessionSec(snapshot.accumulatedSessionTime);
+    } else if (snapshot?.sessionDurationMs !== undefined) {
+      setLiveSessionSec(Math.floor(snapshot.sessionDurationMs / 1000));
+    }
+  }, [snapshot?.accumulatedSessionTime, snapshot?.sessionDurationMs]);
+
+  useEffect(() => {
+    if (!snapshot || participants.length === 0) return;
+    const interval = setInterval(() => {
+      setLiveSessionSec(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [snapshot, participants.length]);
+
+  const formattedSessionTime = (() => {
+    const hrs = Math.floor(liveSessionSec / 3600);
+    const mins = Math.floor((liveSessionSec % 3600) / 60);
+    const secs = liveSessionSec % 60;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    if (hrs > 0) return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+    return `${pad(mins)}:${pad(secs)}`;
+  })();
+
   const lastExtractedTrackRef = useRef<string | null>(null);
 
   // Clear jump loading state when the queue actually updates from server
@@ -374,44 +403,57 @@ export function RoomDashboard({
               <div className="flex items-center gap-1.5">
                 <div className="flex-1 bg-background/50 rounded-lg border border-foreground/10 px-2 py-1.5 flex justify-between items-center">
                   <span className="font-mono text-[10px] text-foreground/80 truncate select-text cursor-text">{roomId}</span>
-                  <button 
-                    onClick={async () => {
-                      if (copied) return;
-                      const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                      try {
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                          await navigator.clipboard.writeText(link);
-                        } else {
-                          const textArea = document.createElement("textarea");
-                          textArea.value = link;
-                          document.body.appendChild(textArea);
-                          textArea.select();
-                          document.execCommand("copy");
-                          document.body.removeChild(textArea);
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={async () => {
+                        if (copied) return;
+                        const link = typeof window !== 'undefined' ? window.location.href : roomId;
+                        try {
+                          if (navigator.clipboard && navigator.clipboard.writeText) {
+                            await navigator.clipboard.writeText(link);
+                          } else {
+                            const textArea = document.createElement("textarea");
+                            textArea.value = link;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(textArea);
+                          }
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        } catch (err) {
+                          console.error("Failed to copy link.", err);
                         }
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      } catch (err) {
-                        console.error("Failed to copy link.", err);
-                      }
-                    }}
-                    className={`${copied ? "text-green-500" : "text-foreground/40 hover:text-foreground"} transition-colors p-1 rounded-md hover:bg-foreground/5`}
-                    title="Copy Invite Link"
-                  >
-                    {copied ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                    )}
-                  </button>
+                      }}
+                      className={`transition-colors p-1 rounded hover:bg-foreground/5 ${copied ? "text-green-500" : "text-foreground/40 hover:text-foreground/80"}`}
+                      title="Copy Invite Link"
+                    >
+                      {copied ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowQR(true)}
+                      className="p-1 rounded hover:bg-foreground/5 text-foreground/40 hover:text-foreground/80 transition-colors"
+                      title="Show QR Code"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="p-1.5 bg-background/50 rounded-lg border border-foreground/10 text-foreground/60 hover:text-foreground transition-colors hover:bg-foreground/5"
-                  onClick={() => setShowQR(true)}
-                  title="Show QR Code"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                </button>
+              </div>
+              {/* Session Duration Pill */}
+              <div className="flex items-center justify-between bg-background/40 rounded-lg border border-foreground/10 px-2 py-1 mt-0.5">
+                <span className="text-[9px] font-bold text-foreground/50 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Session Time
+                </span>
+                <div className="flex items-center gap-1 font-mono text-[11px] font-extrabold text-cyan-400">
+                  <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span>{formattedSessionTime}</span>
+                </div>
               </div>
             </div>
 
@@ -496,47 +538,54 @@ export function RoomDashboard({
       <div className="flex md:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-1">
         {/* Mobile Header */}
         <div className="flex items-center justify-between px-3 pb-2.5 border-b border-foreground/5 mb-2 shrink-0">
-          <div className="flex flex-col">
-            <span className="text-[8px] font-bold tracking-widest text-foreground/40 uppercase">Room Code</span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="font-mono text-xs font-bold text-foreground/70">{roomId}</span>
-              <button 
-                onClick={async () => {
-                  if (copied) return;
-                  const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                  try {
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                      await navigator.clipboard.writeText(link);
-                    } else {
-                      const textArea = document.createElement("textarea");
-                      textArea.value = link;
-                      document.body.appendChild(textArea);
-                      textArea.select();
-                      document.execCommand("copy");
-                      document.body.removeChild(textArea);
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col">
+              <span className="text-[8px] font-bold tracking-widest text-foreground/40 uppercase">Room Code</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="font-mono text-xs font-bold text-foreground/70">{roomId}</span>
+                <button 
+                  onClick={async () => {
+                    if (copied) return;
+                    const link = typeof window !== 'undefined' ? window.location.href : roomId;
+                    try {
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(link);
+                      } else {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = link;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(textArea);
+                      }
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch (err) {
+                      console.error("Failed to copy link.", err);
                     }
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  } catch (err) {
-                    console.error("Failed to copy link.", err);
-                  }
-                }}
-                className={`transition-colors p-1.5 rounded-md bg-foreground/[0.03] border border-foreground/10 ${copied ? "text-green-500" : "text-foreground/50 active:text-foreground"}`}
-                title="Copy Invite Link"
-              >
-                {copied ? (
-                  <Check className="w-3 h-3" />
-                ) : (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                )}
-              </button>
-              <button
-                onClick={() => setShowQR(true)}
-                className="p-1.5 rounded-md bg-foreground/[0.03] border border-foreground/10 text-foreground/50 active:text-foreground transition-colors"
-                title="Show QR Code"
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-              </button>
+                  }}
+                  className={`transition-colors p-1.5 rounded-md bg-foreground/[0.03] border border-foreground/10 ${copied ? "text-green-500" : "text-foreground/50 active:text-foreground"}`}
+                  title="Copy Invite Link"
+                >
+                  {copied ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowQR(true)}
+                  className="p-1.5 rounded-md bg-foreground/[0.03] border border-foreground/10 text-foreground/50 active:text-foreground transition-colors"
+                  title="Show QR Code"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                </button>
+              </div>
+            </div>
+            {/* Live Session Time Badge (Mobile) */}
+            <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 px-2 py-1 rounded-lg">
+              <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span className="font-mono text-[11px] font-black text-cyan-400">{formattedSessionTime}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">

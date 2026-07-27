@@ -86,6 +86,40 @@ export async function spotifyFetch(url: string, accessToken: string): Promise<an
   return res.json();
 }
 
+/**
+ * Gets a valid Spotify OAuth access token for a given user from the DB.
+ * Automatically refreshes the token if expired.
+ * Returns null if the user has not connected their Spotify account.
+ */
+export async function getUserSpotifyToken(userId: string): Promise<string | null> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { spotifyAccessToken: true, spotifyRefreshToken: true },
+    });
+    if (!user?.spotifyAccessToken) return null;
+
+    // Try the stored token first — if it's expired, refresh it
+    try {
+      const testRes = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${user.spotifyAccessToken}` },
+      });
+      if (testRes.ok) return user.spotifyAccessToken;
+    } catch { /* fall through to refresh */ }
+
+    // Token expired — refresh
+    if (user.spotifyRefreshToken) {
+      const newToken = await refreshSpotifyToken(user.spotifyRefreshToken);
+      await prisma.user.update({ where: { id: userId }, data: { spotifyAccessToken: newToken } });
+      return newToken;
+    }
+    return null;
+  } catch (e: any) {
+    console.warn('[SpotifyRoutes] getUserSpotifyToken failed:', e?.message);
+    return null;
+  }
+}
+
 // ── YouTube search match ─────────────────────────────────────────────────────
 
 async function matchToYouTube(title: string, artist: string): Promise<{ youtubeId: string; thumbnail: string } | null> {

@@ -49,6 +49,13 @@ export class Room extends EventEmitter {
   private isPrivate:    boolean                = false;
   private shuffle:      boolean                = false;
   private repeatMode:   "off" | "track" | "all" = "off";
+  private createdAt:    number                 = Date.now();
+  private accumulatedSessionTimeMs: number     = 0;
+  private sessionActiveStartEpoch:  number | null = null;
+  private lastParticipantLeftEpoch: number | null = null;
+  private sessionExpiryTimer:       NodeJS.Timeout | null = null;
+  private static readonly SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+
   private timeline = {
     startEpoch: null as number | null,
     pauseOffset: 0,
@@ -92,7 +99,13 @@ export class Room extends EventEmitter {
     queue: TrackQueueItem[];
     shuffle?: boolean;
     repeatMode?: string;
+    createdAt?: Date | string | number;
   }): void {
+    if (data.createdAt) {
+      this.createdAt = typeof data.createdAt === 'number' 
+        ? data.createdAt 
+        : new Date(data.createdAt).getTime();
+    }
     this.hostId   = data.hostId;
     this.queue    = [...data.queue].sort((a, b) => a.queueIndex - b.queueIndex);
     const current = this.queue.find((item) => item.isCurrent) ?? null;
@@ -531,13 +544,34 @@ export class Room extends EventEmitter {
 
   // ── Participants ──────────────────────────────────────────────────────
 
+  // ── Participants ──────────────────────────────────────────────────────
+
   addParticipant(p: Participant): void {
-    // hostId is now tied to the user_id from the database and should not be
-    // overwritten by the first connecting socket.
+    const wasEmpty = this.participants.size === 0;
+
     p.isReady = false;
     p.isBlocked = false;
     p.volume = this.clampVolume(p.volume ?? 100);
     this.participants.set(p.socketId, p);
+
+    // If first participant joined or room was empty:
+    if (wasEmpty) {
+      // Cancel pending 1-hour expiry timer if active
+      if (this.sessionExpiryTimer) {
+        clearTimeout(this.sessionExpiryTimer);
+        this.sessionExpiryTimer = null;
+      }
+
+      const now = Date.now();
+      // Check if more than 1 hour passed since last participant left
+      if (this.lastParticipantLeftEpoch && (now - this.lastParticipantLeftEpoch >= Room.SESSION_EXPIRY_MS)) {
+        console.log(`[Room ${this.roomId}] >1 hr passed since room was empty. Resetting session time.`);
+        this.accumulatedSessionTimeMs = 0;
+      }
+
+      this.sessionActiveStartEpoch = now;
+    }
+
     this.emit('participantJoined', p);
   }
 
@@ -547,13 +581,44 @@ export class Room extends EventEmitter {
 
   removeParticipant(socketId: string): void {
     this.participants.delete(socketId);
-    // Removed host election on socket disconnect so user remains host
+
+    // If room is now empty (0 participants remaining):
+    if (this.participants.size === 0) {
+      const now = Date.now();
+      if (this.sessionActiveStartEpoch !== null) {
+        this.accumulatedSessionTimeMs += Math.max(0, now - this.sessionActiveStartEpoch);
+        this.sessionActiveStartEpoch = null;
+      }
+      this.lastParticipantLeftEpoch = now;
+
+      // Schedule 1-hour idle timer to clear session time if no one rejoins within 60 minutes
+      if (this.sessionExpiryTimer) {
+        clearTimeout(this.sessionExpiryTimer);
+      }
+      this.sessionExpiryTimer = setTimeout(() => {
+        console.log(`[Room ${this.roomId}] 1 hour of continuous empty room inactivity reached. Resetting session time.`);
+        this.accumulatedSessionTimeMs = 0;
+        this.sessionActiveStartEpoch = null;
+        this.lastParticipantLeftEpoch = null;
+        this.sessionExpiryTimer = null;
+        this.emit('stateChanged', this.snapshot());
+      }, Room.SESSION_EXPIRY_MS);
+    }
+
     this.emit('participantLeft', socketId);
   }
 
   getParticipantCount(): number { return this.participants.size; }
   getTrackUrl(): string | null  { return this.trackUrl; }
   getQueue(): TrackQueueItem[]  { return this.queueSnapshot(); }
+
+  getSessionDurationMs(): number {
+    let currentStretch = 0;
+    if (this.sessionActiveStartEpoch !== null) {
+      currentStretch = Math.max(0, Date.now() - this.sessionActiveStartEpoch);
+    }
+    return this.accumulatedSessionTimeMs + currentStretch;
+  }
 
   computeCurrentPosition(): number {
     if (!this.trackUrl) return 0;
@@ -572,23 +637,27 @@ export class Room extends EventEmitter {
   }
 
   snapshot(): RoomSnapshot {
+    const sessionDurationMs = this.getSessionDurationMs();
     return {
-      roomId:       this.roomId,
-      trackUrl:     this.trackUrl,
-      position:     this.computeCurrentPosition(),
-      state:        this.state,
-      hostId:       this.hostId,
-      timestamp:    Date.now(),
-      participants: Array.from(this.participants.values()),
-      queue:        this.queueSnapshot(),
-      spatial:      Array.from(this.spatial.entries()).map(([deviceId, position]) => ({ deviceId, position })),
-      startEpoch:   this.timeline.startEpoch,
-      pauseOffset:  this.timeline.pauseOffset,
-      isPlaying:    this.timeline.isPlaying,
-      pendingPlay:  this.pendingPlay,
-      isPrivate:    this.isPrivate,
-      shuffle:      this.shuffle,
-      repeatMode:   this.repeatMode
+      roomId:                 this.roomId,
+      trackUrl:               this.trackUrl,
+      position:               this.computeCurrentPosition(),
+      state:                  this.state,
+      hostId:                 this.hostId,
+      timestamp:              Date.now(),
+      createdAt:              this.createdAt,
+      sessionDurationMs:      sessionDurationMs,
+      accumulatedSessionTime: Math.floor(sessionDurationMs / 1000),
+      participants:           Array.from(this.participants.values()),
+      queue:                  this.queueSnapshot(),
+      spatial:                Array.from(this.spatial.entries()).map(([deviceId, position]) => ({ deviceId, position })),
+      startEpoch:             this.timeline.startEpoch,
+      pauseOffset:            this.timeline.pauseOffset,
+      isPlaying:              this.timeline.isPlaying,
+      pendingPlay:            this.pendingPlay,
+      isPrivate:              this.isPrivate,
+      shuffle:                this.shuffle,
+      repeatMode:             this.repeatMode
     };
   }
 

@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/authMiddleware';
 import prisma, { sanitizeNullBytes } from '../db/prisma';
 import ytSearch from 'yt-search';
 import play from 'play-dl';
+import { getUserSpotifyToken } from './SpotifyRoutes';
 
 // Fallback search using RapidAPI with multi-key rotation, and play-dl as the ultimate fallback
 export async function matchToYouTubeFallback(title: string, artist: string): Promise<{ youtubeId: string; thumbnail: string } | null> {
@@ -267,9 +268,18 @@ export function createMusicBridgeRoutes(): Router {
       const t0 = Date.now();
       console.log(`[Import] Starting import: ${playlistUrl}`);
 
-      // 1. Get playlist metadata (credential-free via scraping)
-      const { name, coverUrl, tracks } = await MusicBridgeService.getPlaylistMetadata(playlistUrl);
-      console.log(`[Import] Scraped ${tracks.length} tracks in ${Date.now() - t0}ms`);
+      // 1. Try to use the importing user's own Spotify token (free, no Premium needed, works for
+      //    ALL public and private playlists they own or follow).
+      const userSpotifyToken = await getUserSpotifyToken(req.user.sub).catch(() => null);
+      if (userSpotifyToken) {
+        console.log('[Import] Using user Spotify OAuth token for unlimited track import');
+      } else {
+        console.log('[Import] No user Spotify token found — will try client credentials then embed fallback');
+      }
+
+      // 2. Get playlist metadata + all tracks
+      const { name, coverUrl, tracks } = await MusicBridgeService.getPlaylistMetadata(playlistUrl, userSpotifyToken ?? undefined);
+      console.log(`[Import] Fetched ${tracks.length} tracks in ${Date.now() - t0}ms`);
 
       if (tracks.length === 0) {
         res.status(404).json({ error: 'No tracks found or could not read playlist.' });

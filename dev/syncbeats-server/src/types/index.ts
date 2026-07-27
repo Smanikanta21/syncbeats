@@ -32,22 +32,25 @@ export interface TrackQueueItem {
 }
 
 export interface RoomSnapshot {
-  roomId:       string;
-  trackUrl:     string | null;
-  position:     number;       // ms, computed at snapshot time
-  state:        PlaybackState;
-  hostId:       string | null;
-  timestamp:    number;       // server epoch when snapshot was taken
-  participants: Participant[];
-  queue:        TrackQueueItem[];
-  spatial:      DeviceSpatialState[];
-  startEpoch?:  number | null;
-  pauseOffset?: number;
-  isPlaying?:   boolean;
-  pendingPlay?: boolean;
-  isPrivate?:   boolean;
-  shuffle:      boolean;
-  repeatMode:   "off" | "track" | "all";
+  roomId:                 string;
+  trackUrl:               string | null;
+  position:               number;       // ms, computed at snapshot time
+  state:                  PlaybackState;
+  hostId:                 string | null;
+  timestamp:              number;       // server epoch when snapshot was taken
+  createdAt?:             number;       // server epoch when room session started
+  sessionDurationMs?:     number;       // active session duration in ms
+  accumulatedSessionTime?: number;      // active session duration in seconds
+  participants:           Participant[];
+  queue:                  TrackQueueItem[];
+  spatial:                DeviceSpatialState[];
+  startEpoch?:            number | null;
+  pauseOffset?:           number;
+  isPlaying?:             boolean;
+  pendingPlay?:           boolean;
+  isPrivate?:             boolean;
+  shuffle:                boolean;
+  repeatMode:             "off" | "track" | "all";
 }
 
 export interface SpatialPosition {
