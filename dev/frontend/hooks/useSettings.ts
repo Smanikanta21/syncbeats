@@ -204,13 +204,15 @@ export function useSettings() {
     settingsRef.current = settings;
   }, [settings]);
 
+  const userSettings = auth?.user?.settings;
+
   // Sync settings with the database user object when it changes (e.g. on login or save)
   useEffect(() => {
-    if (auth?.user?.settings) {
+    if (userSettings) {
       try {
-        const dbSettings = typeof auth.user.settings === "string" 
-          ? JSON.parse(auth.user.settings) 
-          : auth.user.settings;
+        const dbSettings = typeof userSettings === "string" 
+          ? JSON.parse(userSettings) 
+          : userSettings;
         
         if (dbSettings && typeof dbSettings === "object") {
           const currentStr = JSON.stringify(settingsRef.current);
@@ -242,7 +244,7 @@ export function useSettings() {
         console.warn("Failed to parse DB settings", e);
       }
     }
-  }, [auth?.user?.settings]);
+  }, [userSettings]);
 
   const updateSettings = (updates: Partial<AppSettings>) => {
     const newSettings = {

@@ -102,6 +102,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return token;
   }, []);
 
+  // Handle Google OAuth 2.0 id_token redirect & postMessage globally
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Inside popup window: notify parent window and close popup
+    if (window.opener && window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.opener.postMessage({ type: "GOOGLE_ID_TOKEN", idToken }, window.location.origin);
+        window.close();
+        return;
+      }
+    }
+
+    // Direct hash redirect on main window
+    if (window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        googleLogin(idToken)
+          .then(() => {
+            const params = new URLSearchParams(window.location.search);
+            const returnTo = params.get("returnTo") || "/hub";
+            window.location.href = returnTo;
+          })
+          .catch((err) => {
+            console.error("[Auth] Google OAuth hash login error:", err);
+          });
+      }
+    }
+
+    // Popup window postMessage handler
+    const handleMessage = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "GOOGLE_ID_TOKEN" && e.data.idToken) {
+        try {
+          await googleLogin(e.data.idToken);
+          const params = new URLSearchParams(window.location.search);
+          const returnTo = params.get("returnTo") || "/hub";
+          window.location.href = returnTo;
+        } catch (err) {
+          console.error("[Auth] Google OAuth popup message error:", err);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [googleLogin]);
+
   const resendVerification = useCallback(async (email?: string) => {
     const target = email?.trim() || user?.email;
     if (!target) throw new Error("Email is required");

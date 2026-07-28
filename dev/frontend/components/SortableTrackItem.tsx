@@ -5,15 +5,39 @@ import { TrackQueueItem } from "../lib/types";
 import { Play, Disc, Trash2, GripVertical } from "lucide-react";
 import { motion } from "framer-motion";
 
+const globalSortableYtCache = new Map<string, string>();
+
 function cleanTitle(t: string) {
-  return (
-    t
-      .replace(/\s*\[.*?\]/g, "")
-      .replace(/\s*\(.*?\)/g, "")
-      .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
-      .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
-      .trim() || t
-  );
+  if (!t) return "Unknown Track";
+  let name = t
+    .replace(/\s*\[.*?\]/g, "")
+    .replace(/\s*\(.*?\)/g, "")
+    .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
+    .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
+    .trim() || t;
+
+  name = name.replace(/[_\s]+\d{10,13}$/, '');
+  name = name.replace(/^\d+[_-\s]*/, '').replace(/_/g, ' ').trim();
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(name)) {
+    const ytId = name;
+    if (globalSortableYtCache.has(ytId)) {
+      return globalSortableYtCache.get(ytId)!;
+    }
+    if (typeof window !== "undefined") {
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.title) {
+            globalSortableYtCache.set(ytId, data.title);
+          }
+        })
+        .catch(() => {});
+    }
+    return "YouTube Track";
+  }
+
+  return name || "Unknown Track";
 }
 
 function ytThumb(trackUrl: string | null | undefined) {

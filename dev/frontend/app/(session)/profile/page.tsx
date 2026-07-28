@@ -1,17 +1,303 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Sparkles, Copy, Check, Download, Trash2, Cpu, Activity, AlertTriangle, RefreshCw
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Sparkles, Copy, Check, Download, Trash2, Cpu, Activity, AlertTriangle, RefreshCw, Loader2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
-import { devicesApi, roomsApi, type Device } from "../../../lib/api";
+import { devicesApi, roomsApi, spotifyApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/SettingsPanel";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import { cn } from "../../../lib/utils";
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+
+interface ImportedPlaylist {
+  id: string;
+  name: string;
+  coverUrl: string | null;
+  sourceType: string;
+  tracks: { id: string; title: string; artist: string; thumbnail: string; youtubeId: string }[];
+}
+
+function SpotifyIntegrationTab({ token }: { token: string | null }) {
+  const router = useRouter();
+  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
+  const [playlistUrl, setPlaylistUrl] = useState("");
+  const [playlistName, setPlaylistName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [success, setSuccess] = useState<{ total: number; matched: number; playlistId: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [imported, setImported] = useState<ImportedPlaylist[]>([]);
+  const [loadingImported, setLoadingImported] = useState(true);
+  const [playingPlaylistId, setPlayingPlaylistId] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(() => {
+    if (!token) return;
+    spotifyApi.getStatus()
+      .then(res => setSpotifyConnected(res.connected))
+      .catch(() => setSpotifyConnected(false));
+  }, [token]);
+
+  const fetchImported = useCallback(async () => {
+    if (!token) return;
+    try {
+      const playlists = await spotifyApi.getUserSpotifyPlaylists();
+      setImported(playlists);
+    } catch {
+      setImported([]);
+    } finally {
+      setLoadingImported(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchStatus();
+    fetchImported();
+  }, [fetchStatus, fetchImported]);
+
+  const handlePlayPlaylist = async (playlistId: string) => {
+    if (!token) return;
+    setPlayingPlaylistId(playlistId);
+    try {
+      const roomRes = await fetch(`${SERVER_URL}/rooms`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!roomRes.ok) throw new Error("Failed to create room");
+      const { roomId } = await roomRes.json();
+
+      const enqueueRes = await fetch(`${SERVER_URL}/rooms/${roomId}/enqueue-playlist`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ playlistId }),
+      });
+      if (!enqueueRes.ok) throw new Error("Failed to enqueue playlist");
+
+      router.push(`/room/${roomId}`);
+    } catch (e) {
+      console.error("Failed to play playlist:", e);
+      setPlayingPlaylistId(null);
+    }
+  };
+
+  const handleImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    if (!playlistUrl.includes("spotify.com/playlist/")) {
+      setError("Please enter a valid Spotify playlist URL (e.g. https://open.spotify.com/playlist/...).");
+      return;
+    }
+
+    setImporting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const r = await fetch(`${SERVER_URL}/api/bridge/import`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          playlistUrl,
+          playlistName: playlistName.trim() || "Imported Spotify Playlist",
+        }),
+      });
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || data.details || "Failed to import playlist.");
+
+      setSuccess({
+        total: data.totalTracks,
+        matched: data.matchedTracks,
+        playlistId: data.playlistId,
+      });
+      setPlaylistUrl("");
+      setPlaylistName("");
+      await fetchImported();
+    } catch (err: any) {
+      console.error("[Spotify Bridge] Import error:", err);
+      setError(err.message || "Something went wrong during import.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="border-b border-foreground/10 pb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-foreground flex items-center gap-2.5">
+            <svg className="w-6 h-6 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.42-1.02.6-1.56.3z"/>
+            </svg>
+            Spotify Integration & Playlist Bridge
+          </h2>
+          <p className="text-xs sm:text-sm text-foreground/50 mt-1">
+            Connect Spotify to import your Private, Collaborative, and Public playlists directly into SyncBeats.
+          </p>
+        </div>
+      </div>
+
+      {/* Account Connection Status Box */}
+      {spotifyConnected === true ? (
+        <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-3.5 h-3.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-emerald-400">Spotify Account Linked</p>
+              <p className="text-xs text-foreground/60">Your Spotify OAuth token is active. Private & Collaborative playlists are fully supported!</p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              await spotifyApi.disconnect();
+              setSpotifyConnected(false);
+            }}
+            className="px-4 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground font-bold text-xs transition-all"
+          >
+            Disconnect
+          </button>
+        </div>
+      ) : spotifyConnected === false ? (
+        <div className="p-6 rounded-3xl bg-foreground/5 border border-foreground/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#1DB954]/20 flex items-center justify-center shrink-0 border border-[#1DB954]/30">
+              <svg className="w-7 h-7 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.42-1.02.6-1.56.3z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-base font-black text-foreground">Connect Your Spotify Account</p>
+              <p className="text-xs text-foreground/50 mt-0.5">
+                Link Spotify to import your Private & Collaborative playlists without rate limits or 403 API errors.
+              </p>
+            </div>
+          </div>
+          <a
+            href={spotifyApi.getConnectUrl()}
+            className="px-5 py-3 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-black text-xs uppercase tracking-wider transition-all shadow-lg hover:scale-105 active:scale-95 shrink-0"
+          >
+            Link Account
+          </a>
+        </div>
+      ) : null}
+
+      {/* Playlist Import Form */}
+      <form onSubmit={handleImport} className="p-6 rounded-3xl bg-foreground/5 border border-foreground/10 space-y-4">
+        <h3 className="text-lg font-black text-foreground flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-emerald-400" />
+          Import a Spotify Playlist
+        </h3>
+        
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Spotify Playlist URL</label>
+            <input
+              type="url"
+              value={playlistUrl}
+              onChange={(e) => setPlaylistUrl(e.target.value)}
+              placeholder="https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+              required
+              className="w-full mt-1.5 px-4 py-3 rounded-2xl bg-background border border-foreground/15 text-foreground text-sm outline-none focus:border-foreground/40 transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Custom Playlist Title (Optional)</label>
+            <input
+              type="text"
+              value={playlistName}
+              onChange={(e) => setPlaylistName(e.target.value)}
+              placeholder="My Roadtrip Mix"
+              className="w-full mt-1.5 px-4 py-3 rounded-2xl bg-background border border-foreground/15 text-foreground text-sm outline-none focus:border-foreground/40 transition-colors"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center justify-between">
+            <span>Successfully imported {success.matched} of {success.total} tracks!</span>
+            <button
+              type="button"
+              onClick={() => handlePlayPlaylist(success.playlistId)}
+              disabled={playingPlaylistId === success.playlistId}
+              className="px-4 py-2 rounded-xl bg-[#1DB954] text-black font-black text-xs hover:scale-105 transition-all"
+            >
+              {playingPlaylistId === success.playlistId ? "Creating Room..." : "Play in Room"}
+            </button>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={importing || !playlistUrl.trim()}
+          className="w-full py-3.5 rounded-2xl bg-foreground text-background font-black text-sm tracking-wide transition-all hover:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl"
+        >
+          {importing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Fetching Tracks & Matching YouTube Audio...</span>
+            </>
+          ) : (
+            <span>Import & Bridge Playlist</span>
+          )}
+        </button>
+      </form>
+
+      {/* Imported Playlists Library */}
+      {!loadingImported && imported.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-black text-foreground">Your Imported Spotify Playlists</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {imported.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => handlePlayPlaylist(p.id)}
+                className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 hover:border-foreground/20 transition-all cursor-pointer group"
+              >
+                {p.coverUrl ? (
+                  <img src={p.coverUrl} alt={p.name} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-foreground/10" />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-foreground/10 flex items-center justify-center shrink-0">
+                    <Radio className="w-5 h-5 text-foreground/40" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-foreground truncate">{p.name}</p>
+                  <p className="text-xs text-foreground/50">{p.tracks.length} tracks</p>
+                </div>
+                <button className="w-8 h-8 rounded-full bg-[#1DB954]/20 group-hover:bg-[#1DB954] text-[#1DB954] group-hover:text-black flex items-center justify-center transition-all shrink-0">
+                  {playingPlaylistId === p.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5">
+                      <path d="M5 3l14 9-14 9V3z"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
@@ -32,7 +318,7 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
+  const { user, token, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
   
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
@@ -44,9 +330,15 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
-  // Active production tab ('settings' | 'devices' | 'security' | 'data')
-  const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'security' | 'data'>('settings');
+  // Active production tab ('settings' | 'devices' | 'spotify' | 'security' | 'data')
+  const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'spotify' | 'security' | 'data'>('settings');
   const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('tab=spotify')) {
+      setActiveTab('spotify');
+    }
+  }, []);
 
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -316,6 +608,18 @@ export default function ProfilePage() {
             </button>
 
             <button
+              onClick={() => setActiveTab('spotify')}
+              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activeTab === 'spotify' ? 'bg-foreground text-background border-foreground shadow-xl scale-[1.01]' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 text-foreground'}`}
+            >
+              <div className={cn('flex', 'items-center', 'gap-3')}>
+                <svg className="w-4 h-4 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.42-1.02.6-1.56.3z"/>
+                </svg>
+                <span className={cn('text-sm', 'font-bold')}>Spotify Integration & Import</span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setActiveTab('security')}
               className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activeTab === 'security' ? 'bg-foreground text-background border-foreground shadow-xl scale-[1.01]' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 text-foreground'}`}
             >
@@ -444,7 +748,19 @@ export default function ProfilePage() {
               </motion.div>
             )}
 
-            {/* 3. Security & Password Tab */}
+            {/* 3. Spotify Integration Tab */}
+            {activeTab === 'spotify' && (
+              <motion.div
+                key="spotify"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+              >
+                <SpotifyIntegrationTab token={token} />
+              </motion.div>
+            )}
+
+            {/* 4. Security & Password Tab */}
             {activeTab === 'security' && (
               <motion.div
                 key="security"

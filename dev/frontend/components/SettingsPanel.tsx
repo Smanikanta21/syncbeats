@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSettings, GradientNode, DEFAULT_SETTINGS } from "../hooks/useSettings";
+import { useSettings, GradientNode, DEFAULT_SETTINGS, type AppSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { cn } from "../lib/utils";
 
@@ -73,11 +73,14 @@ function hexToHue(hex: string): number {
 }
 
 function RoomPreview({ 
-  onInteractionStateChange
+  onInteractionStateChange,
+  onUpdateSettings,
 }: { 
   onInteractionStateChange?: (interacting: boolean) => void;
+  onUpdateSettings?: (updates: Partial<AppSettings>) => void;
 }) {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings: rawUpdateSettings } = useSettings();
+  const updateSettings = onUpdateSettings || rawUpdateSettings;
   const containerRef = useRef<HTMLDivElement>(null);
   // refs for each blob element so we can animate them imperatively
   const blobRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -343,26 +346,29 @@ function RoomPreview({
 }
 
 export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionStateChange }: SettingsPanelProps) {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings: rawUpdateSettings } = useSettings();
   const { user, updateSettings: saveDbSettings } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
+  const [hasUserEdited, setHasUserEdited] = useState(false);
 
-  // Snapshot initial settings ONCE on mount to detect unsaved changes
-  const initialSettingsRef = useRef<string>("");
+  const baselineSettingsRef = useRef<string>(JSON.stringify(settings));
+
+  // If user hasn't edited anything yet, update baseline whenever settings sync from DB/auth
   useEffect(() => {
-    // Set once: captures the settings at the moment the panel mounts.
-    // Do NOT re-run when settings change — we want to compare against the
-    // original values at open time, not a moving target.
-    initialSettingsRef.current = JSON.stringify(settings);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!hasUserEdited) {
+      baselineSettingsRef.current = JSON.stringify(settings);
+    }
+  }, [settings, hasUserEdited]);
 
-  const isDirty = initialSettingsRef.current
-    ? JSON.stringify(settings) !== initialSettingsRef.current
-    : false;
+  const updateSettings = useCallback((updates: Partial<AppSettings>) => {
+    setHasUserEdited(true);
+    rawUpdateSettings(updates);
+  }, [rawUpdateSettings]);
+
+  const isDirty = hasUserEdited && JSON.stringify(settings) !== baselineSettingsRef.current;
 
   const handleCloseAttempt = () => {
     if (isDirty) {
@@ -391,7 +397,8 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
     setIsSaving(true);
     try {
       await saveDbSettings(settings);
-      initialSettingsRef.current = JSON.stringify(settings);
+      baselineSettingsRef.current = JSON.stringify(settings);
+      setHasUserEdited(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (e) {
@@ -634,6 +641,7 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
             </div>
             <RoomPreview
               onInteractionStateChange={onInteractionStateChange}
+              onUpdateSettings={updateSettings}
             />
           </div>
 

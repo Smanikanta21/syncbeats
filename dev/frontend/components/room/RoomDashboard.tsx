@@ -236,16 +236,40 @@ export function RoomDashboard({
   const isRoomReady = participants.every(p => p.isReady);
 
   // Live Session Uptime State (updates every second when room is active)
-  const initialSessionSec = snapshot?.accumulatedSessionTime ?? Math.floor((snapshot?.sessionDurationMs ?? 0) / 1000);
+  const initialSessionSec = (() => {
+    if (snapshot?.accumulatedSessionTime !== undefined && snapshot.accumulatedSessionTime > 0) {
+      return snapshot.accumulatedSessionTime;
+    }
+    if (snapshot?.sessionDurationMs !== undefined && snapshot.sessionDurationMs > 0) {
+      return Math.floor(snapshot.sessionDurationMs / 1000);
+    }
+    if (snapshot?.createdAt) {
+      const createdMs = typeof snapshot.createdAt === 'number' ? snapshot.createdAt : new Date(snapshot.createdAt).getTime();
+      if (!isNaN(createdMs) && createdMs > 0) {
+        return Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
+      }
+    }
+    return 0;
+  })();
+
   const [liveSessionSec, setLiveSessionSec] = useState(initialSessionSec);
 
+  const accumTime = snapshot?.accumulatedSessionTime;
+  const sessDurationMs = snapshot?.sessionDurationMs;
+  const createdAt = snapshot?.createdAt;
+
   useEffect(() => {
-    if (snapshot?.accumulatedSessionTime !== undefined) {
-      setLiveSessionSec(snapshot.accumulatedSessionTime);
-    } else if (snapshot?.sessionDurationMs !== undefined) {
-      setLiveSessionSec(Math.floor(snapshot.sessionDurationMs / 1000));
+    if (accumTime !== undefined && accumTime > 0) {
+      setLiveSessionSec(accumTime);
+    } else if (sessDurationMs !== undefined && sessDurationMs > 0) {
+      setLiveSessionSec(Math.floor(sessDurationMs / 1000));
+    } else if (createdAt) {
+      const createdMs = typeof createdAt === 'number' ? createdAt : new Date(createdAt).getTime();
+      if (!isNaN(createdMs) && createdMs > 0) {
+        setLiveSessionSec(Math.max(0, Math.floor((Date.now() - createdMs) / 1000)));
+      }
     }
-  }, [snapshot?.accumulatedSessionTime, snapshot?.sessionDurationMs]);
+  }, [accumTime, sessDurationMs, createdAt]);
 
   useEffect(() => {
     if (!snapshot || participants.length === 0) return;

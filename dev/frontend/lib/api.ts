@@ -392,6 +392,27 @@ export const roomsApi = {
     request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),
 };
 
+export const spotifyApi = {
+  getStatus: () => request<{ connected: boolean }>('/spotify/status', {}, true),
+  getConnectUrl: () => `${BASE}/spotify/auth?token=${getAuthToken()}`,
+  disconnect: () => request<{ ok: boolean }>('/spotify/disconnect', { method: 'DELETE' }, true),
+  getUserSpotifyPlaylists: async (): Promise<any[]> => {
+    try {
+      const data = await request<{ playlists: any[] }>('/spotify/my-playlists', {}, true);
+      return (data.playlists || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        coverUrl: p.coverUrl,
+        trackCount: p.tracks?.length || 0,
+        tracks: p.tracks || [],
+        owner: 'SyncBeats',
+      }));
+    } catch {
+      return [];
+    }
+  },
+};
+
 export const devicesApi = {
   mine: () => request<DeviceListResponse>('/devices/mine', {}, true),
 

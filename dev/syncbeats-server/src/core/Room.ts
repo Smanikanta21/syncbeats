@@ -191,7 +191,11 @@ export class Room extends EventEmitter {
     const ytId = ytMatch ? ytMatch[1] : null;
     const fallbackThumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
     
-    const isGenericTitle = !hintTitle || hintTitle === 'Unknown Track' || hintTitle === 'Track' || hintTitle === 'Room Audio';
+    const isGenericTitle = !hintTitle || 
+      hintTitle === 'Unknown Track' || 
+      hintTitle === 'Track' || 
+      hintTitle === 'Room Audio' ||
+      /^[a-zA-Z0-9_-]{11}([_\s]+\d{10,13})?$/.test((hintTitle || '').trim());
     const isGenericArtist = !hintArtist || hintArtist === 'Unknown Artist' || hintArtist === 'SyncBeats Room' || hintArtist === '';
 
     let resolvedTitle = hintTitle;
@@ -351,6 +355,32 @@ export class Room extends EventEmitter {
       this.setCurrentQueueItem(item.id, true);
     }
     this.emit('queueChanged', this.queueSnapshot());
+
+    // Fetch YouTube metadata if title is generic or raw video ID/timestamp
+    const ytMatch = item.trackUrl ? item.trackUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/) : null;
+    const ytId = ytMatch ? ytMatch[1] : null;
+    const isGenericTitle = !item.title || 
+      item.title === 'Unknown Track' || 
+      item.title === 'Track' || 
+      /^[a-zA-Z0-9_-]{11}([_\s]+\d{10,13})?$/.test((item.title || '').trim());
+
+    if (ytId && isGenericTitle) {
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then((data: any) => {
+          if (data && data.title) {
+            const target = this.queue.find(q => q.id === item.id);
+            if (target) {
+              target.title = data.title;
+              if (data.author_name) target.artist = data.author_name;
+              if (data.thumbnail_url) target.thumbnail = data.thumbnail_url;
+              this.emit('queueChanged', this.queueSnapshot());
+              this.emit('stateChanged', this.snapshot());
+            }
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   syncQueue(queue: TrackQueueItem[], currentItemId: string | null): void {
@@ -617,7 +647,11 @@ export class Room extends EventEmitter {
     if (this.sessionActiveStartEpoch !== null) {
       currentStretch = Math.max(0, Date.now() - this.sessionActiveStartEpoch);
     }
-    return this.accumulatedSessionTimeMs + currentStretch;
+    const totalMs = this.accumulatedSessionTimeMs + currentStretch;
+    if (totalMs === 0 && this.createdAt > 0) {
+      return Math.max(0, Date.now() - this.createdAt);
+    }
+    return totalMs;
   }
 
   computeCurrentPosition(): number {

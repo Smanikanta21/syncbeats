@@ -58,6 +58,8 @@ async function getSpotifyApiToken(): Promise<string | null> {
   return null;
 }
 
+import { getAnonymousAccessToken } from '../utils/spotifyPlaylistFetcher';
+
 export class MusicBridgeService {
   /**
    * Extracts playlist tracks from a public Spotify URL.
@@ -65,9 +67,9 @@ export class MusicBridgeService {
    * Token priority:
    *  1. userToken  — the importing user's own Spotify OAuth token (playlist-read-private scope).
    *                  Works for ALL public and private playlists, FREE, no Premium needed.
-   *  2. Client Credentials token — app-level token, only works for Spotify-owned playlists
-   *                  since Spotify's 2024 policy restricts user playlists without user auth.
-   *  3. Embed scraper fallback — no auth, capped at 100 tracks.
+   *  2. Anonymous Web Token — Spotify Web Player anonymous token. Works for ALL public playlists.
+   *  3. Client Credentials token — app-level token, fallback for Spotify-owned playlists.
+   *  4. Embed scraper fallback — no auth, capped at 100 tracks.
    */
   static async getPlaylistMetadata(playlistUrl: string, userToken?: string): Promise<{ name: string, coverUrl: string, tracks: TrackMetadata[] }> {
     try {
@@ -79,11 +81,17 @@ export class MusicBridgeService {
       const spotifyPlaylistId = match[1];
 
       // ── Method A: Official Spotify Web API with unlimited pagination + retry backoff ──
-      // Prefer the user's own OAuth token; fall back to client credentials
-      const token = userToken || await getSpotifyApiToken();
+      // Prefer user's OAuth token; fall back to Web Player anonymous token, then client credentials
+      const token = userToken 
+        || await getAnonymousAccessToken(spotifyPlaylistId).catch(err => {
+            console.warn('[MusicBridge] Failed to get Spotify anonymous web token:', err?.message || err);
+            return null;
+          })
+        || await getSpotifyApiToken();
+
       if (token) {
         try {
-          console.log(`[MusicBridge] Fetching playlist ${spotifyPlaylistId} via Spotify API${userToken ? ' (user token)' : ' (client credentials)'}...`);
+          console.log(`[MusicBridge] Fetching playlist ${spotifyPlaylistId} via Spotify API${userToken ? ' (user token)' : ' (web player anonymous token)'}...`);
 
           // Helper: fetch with up to `maxAttempts` retries on 5xx errors
           const fetchWithRetry = async (url: string, maxAttempts = 5): Promise<any> => {

@@ -144,6 +144,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     let parts: Participant[] = [];
 
     if (details.live) {
+      const parsedLiveCreated = details.live.createdAt ? (typeof details.live.createdAt === 'number' ? details.live.createdAt : new Date(details.live.createdAt).getTime()) : undefined;
+      const liveCreatedMs = parsedLiveCreated ?? (details.db?.created_at ? new Date(details.db.created_at).getTime() : undefined);
+      const fallbackDurationMs = typeof liveCreatedMs === 'number' ? Math.max(0, Date.now() - liveCreatedMs) : undefined;
+      const durationMs = details.live.sessionDurationMs ?? fallbackDurationMs;
+
       snap = {
         roomId:       details.live.roomId,
         trackUrl:     details.live.trackUrl,
@@ -155,7 +160,9 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         pendingPlay:  details.live.pendingPlay ?? false,
         hostId:       details.live.hostId,
         timestamp:    details.live.timestamp,
-        createdAt:    details.live.createdAt ?? (details.db?.created_at ? new Date(details.db.created_at).getTime() : undefined),
+        createdAt:    liveCreatedMs,
+        sessionDurationMs: durationMs,
+        accumulatedSessionTime: details.live.accumulatedSessionTime ?? (durationMs ? Math.floor(durationMs / 1000) : undefined),
         participants: details.live.participants as Participant[],
         queue:        details.live.queue as TrackQueueItem[],
         spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
@@ -165,6 +172,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       };
       parts = details.live.participants as Participant[];
     } else if (details.db) {
+      const dbCreatedMs = details.db.created_at ? new Date(details.db.created_at).getTime() : Date.now();
+      const durationMs = Math.max(0, Date.now() - dbCreatedMs);
       snap = {
         roomId,
         trackUrl:     details.db.track_url,
@@ -176,7 +185,9 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         pendingPlay:  false,
         hostId:       details.db.host_id,
         timestamp:    Date.now(),
-        createdAt:    details.db.created_at ? new Date(details.db.created_at).getTime() : undefined,
+        createdAt:    dbCreatedMs,
+        sessionDurationMs: durationMs,
+        accumulatedSessionTime: Math.floor(durationMs / 1000),
         participants: details.participants.map(p => ({ ...p, isReady: false })),
         queue:        details.queue as TrackQueueItem[],
         spatial:      [],

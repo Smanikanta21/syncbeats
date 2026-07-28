@@ -15,7 +15,7 @@ const roomManager = RoomManager.getInstance();
 const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID!;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!;
 const BACKEND_URL           = process.env.BACKEND_URL || 'http://localhost:4000';
-const SPOTIFY_REDIRECT_URI  = `${BACKEND_URL}/spotify/callback`;
+const SPOTIFY_REDIRECT_URI  = process.env.SPOTIFY_REDIRECT_URI || `${BACKEND_URL}/spotify/callback`;
 const SPOTIFY_SCOPES        = 'playlist-read-private playlist-read-collaborative user-library-read';
 
 // ── Token helpers ────────────────────────────────────────────────────────────
@@ -208,11 +208,11 @@ export function createSpotifyRoutes(): Router {
           spotifyRefreshToken: tokens.refresh_token,
         },
       });
-      // Redirect back to the Spotify import page with success
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/spotify-import?spotify_connected=true`);
+      // Redirect back to profile Spotify tab with success
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=spotify&spotify_connected=true`);
     } catch (err) {
       console.error('[Spotify] Callback error:', err);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/spotify-import?spotify_error=token_failed`);
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=spotify&spotify_error=token_failed`);
     }
   });
 

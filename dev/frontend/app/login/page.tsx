@@ -196,7 +196,7 @@ export default function AuthPage() {
       return;
     }
 
-    const redirectUri = window.location.origin + '/login';
+    const redirectUri = window.location.origin;
     const nonce = Math.random().toString(36).substring(2);
 
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
@@ -277,87 +277,6 @@ export default function AuthPage() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [googleLogin, router]);
-
-  // Load and initialize Google GSI script once on mount
-  useEffect(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId || typeof window === "undefined") return;
-
-    let cancelled = false;
-
-    const initGoogle = () => {
-      const google = (window as any).google;
-      if (!google?.accounts?.id || cancelled) return;
-
-      google.accounts.id.initialize({
-        client_id: clientId,
-        auto_select: false,
-        cancel_on_tap_outside: false,
-        itp_support: true,
-        callback: async (response: { credential?: string }) => {
-          if (!response.credential) return;
-          setError(null);
-          setLoading(true);
-          try {
-            const params = new URLSearchParams(window.location.search);
-            const returnTo = params.get('returnTo') || '/hub';
-            const token = await googleLogin(response.credential);
-            if (returnTo.startsWith('syncbeats://')) {
-              window.location.href = `${returnTo}?token=${token}`;
-            } else {
-              router.push(returnTo);
-            }
-          } catch (err) {
-            setError((err as Error).message);
-            setLoading(false);
-          }
-        },
-      });
-
-      setGoogleReady(true);
-    };
-
-    if ((window as any).google?.accounts?.id) {
-      initGoogle();
-    } else {
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.onload = () => { if (!cancelled) initGoogle(); };
-      document.head.appendChild(script);
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [googleLogin, router]);
-
-  // Render Google's Official Button on mount and tab switches
-  useEffect(() => {
-    if (!googleReady || typeof window === "undefined") return;
-    const google = (window as any).google;
-    if (!google?.accounts?.id) return;
-
-    const activeRef = isLogin ? googleLoginButtonRef.current : googleSignupButtonRef.current;
-    if (!activeRef) return;
-
-    const timer = setTimeout(() => {
-      if (activeRef) {
-        activeRef.innerHTML = "";
-        google.accounts.id.renderButton(activeRef, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: isLogin ? "continue_with" : "signup_with",
-          width: 384,
-        });
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [isLogin, googleReady]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
@@ -621,11 +540,10 @@ export default function AuthPage() {
 }
 
 function GoogleButton({
-  refEl,
   onGoogleOAuth,
   loading
 }: {
-  refEl: React.RefObject<HTMLDivElement | null>;
+  refEl?: React.RefObject<HTMLDivElement | null>;
   onGoogleOAuth: () => void;
   loading: boolean;
 }) {
@@ -638,7 +556,7 @@ function GoogleButton({
         <div className="flex-1 h-px bg-foreground/10" />
       </div>
 
-      {/* Primary OAuth Button / GSI container wrapper */}
+      {/* Primary OAuth Button */}
       <div className="relative w-full">
         <button
           type="button"
@@ -654,12 +572,6 @@ function GoogleButton({
           </svg>
           Continue with Google
         </button>
-
-        {/* Hidden GSI container ref — rendered by Google JS SDK if GSI is active */}
-        <div
-          ref={refEl}
-          className="absolute inset-0 opacity-0 overflow-hidden pointer-events-auto"
-        />
       </div>
     </div>
   );

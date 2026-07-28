@@ -56,10 +56,45 @@ type IslandTab = "player" | "network" | "search" | "requests" | "deviceInfo" | "
 // Helpers
 // ─────────────────────────────────────────────────────────
 
-function cleanTrackTitle(title: string | null | undefined): string {
+const globalYtTitleCache = new Map<string, string>();
+
+function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | null): string {
   if (!title) return "Unknown Track";
-  const fileName = title.split('/').pop() ?? '';
-  return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
+  let fileName = title.split('/').pop() ?? '';
+  fileName = fileName.split('?')[0];
+
+  // Remove file extension
+  fileName = fileName.replace(/\.[^.]+$/, '');
+
+  // Strip trailing timestamps (e.g. _1785136544031 or " 1785136544031")
+  fileName = fileName.replace(/[_\s]+\d{10,13}$/, '');
+
+  // Strip leading numeric prefix followed by separator (e.g. 1785136544031_MySong -> MySong)
+  fileName = fileName.replace(/^\d+[_-\s]*/, '');
+
+  // Replace underscores with spaces
+  fileName = fileName.replace(/_/g, ' ').trim();
+
+  // If the result is a raw 11-char YouTube ID (e.g., "LPnDCTqW7zw")
+  if (/^[a-zA-Z0-9_-]{11}$/.test(fileName)) {
+    const ytId = fileName;
+    if (globalYtTitleCache.has(ytId)) {
+      return globalYtTitleCache.get(ytId)!;
+    }
+    if (typeof window !== "undefined") {
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.title) {
+            globalYtTitleCache.set(ytId, data.title);
+          }
+        })
+        .catch(() => {});
+    }
+    return "YouTube Track";
+  }
+
+  return fileName || 'Unknown Track';
 }
 
 function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 'mq' = 'mq'): string | null {
@@ -1394,6 +1429,20 @@ export function DynamicIsland() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [audio, play, pause, seek]);
 
+  // Compute syncing flag first — used both for dimensions and handlers
+  const isSyncingNow = isRoom && (
+    incomingTrack != null ||
+    upload.isUploading ||
+    (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100)))
+  );
+
+  // Auto-extend island to show downloading progress bar whenever a song is downloading/buffering
+  useEffect(() => {
+    if (isSyncingNow && islandState === "pill") {
+      setIslandState("extended");
+    }
+  }, [isSyncingNow, islandState]);
+
   // ── Render guard
   if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) return null;
 
@@ -1442,20 +1491,6 @@ export function DynamicIsland() {
   // Three states: pill / extended / expanded
   const isExpanded_room = islandState === "expanded";
   const isExtended_room = islandState === "extended";
-
-  // Compute syncing flag first — used both for dimensions and handlers
-  const isSyncingNow = isRoom && (
-    incomingTrack != null ||
-    upload.isUploading ||
-    (hasTrack && (!audio.isReady || Object.values(deviceSyncProgress).some(p => p < 100)))
-  );
-
-  // Auto-extend island to show downloading progress bar whenever a song is downloading/buffering
-  useEffect(() => {
-    if (isSyncingNow && islandState === "pill") {
-      setIslandState("extended");
-    }
-  }, [isSyncingNow, islandState]);
 
   // Pill dimensions
   const pillWidth = hasTrack ? 120 : 86;
