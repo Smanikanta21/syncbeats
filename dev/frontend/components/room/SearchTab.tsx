@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { roomsApi, historyApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles } from "lucide-react";
+import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles, History, Clock } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface SearchTabProps {
@@ -67,6 +67,15 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const [isFixingMetadata, setIsFixingMetadata] = useState(false);
+  const [recentHistory, setRecentHistory] = useState<{ listens: any[]; searches: any[] }>({ listens: [], searches: [] });
+
+  useEffect(() => {
+    if (user?.id) {
+      historyApi.getRecent(user.id).then(res => {
+        if (res) setRecentHistory(res);
+      }).catch(() => {});
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     onImportingStateChange?.(importing);
@@ -194,6 +203,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       historyApi.logSearch(user.id, q).catch((err) => {
         console.warn("[SearchTab] Failed to log search history:", err);
       });
+      setRecentHistory(prev => ({
+        ...prev,
+        searches: [{ id: `temp-${Date.now()}`, query: q, createdAt: new Date().toISOString() }, ...prev.searches.filter(s => s.query !== q)].slice(0, 10)
+      }));
     }
 
     if (mode === "youtube") {
@@ -445,6 +458,18 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       }
       await upload.downloadYoutubeToP2P(roomId, videoId, result.title, result.uploaderName);
       setAddedSongs(prev => new Set(prev).add(result.url));
+
+      if (user?.id) {
+        historyApi.logListen(user.id, {
+          youtubeId: videoId,
+          title: result.title,
+          artist: result.uploaderName || result.artist || '',
+          thumbnail: result.thumbnail
+        }).then(() => historyApi.getRecent(user.id))
+          .then(res => { if (res) setRecentHistory(res); })
+          .catch(() => {});
+      }
+
       onSuccess?.();
     } catch (err: any) {
       setDownloadError(err.message?.includes("RapidAPI") || err.message?.includes("FATAL")
@@ -1048,6 +1073,87 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   );
                 })}
               </>
+            ) : !query.trim() && mode !== "spotify" ? (
+              <div className="space-y-6 mt-4">
+                {/* Recent Searches */}
+                {recentHistory.searches.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50 mb-2 px-1">
+                      <History className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Recent Searches</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {recentHistory.searches.slice(0, 8).map((s, idx) => (
+                        <button
+                          key={`s-${s.id || idx}`}
+                          onClick={() => {
+                            setQuery(s.query);
+                            performSearch(s.query);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white text-xs font-medium border border-white/10 transition-all active:scale-95"
+                        >
+                          <Search className="w-3 h-3 text-white/40" />
+                          <span>{s.query}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recently Listened */}
+                {recentHistory.listens.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50 mb-2 px-1">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Recently Listened</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {recentHistory.listens.slice(0, 6).map((item, idx) => {
+                        const mappedSong = {
+                          url: `https://youtube.com/watch?v=${item.youtubeId}`,
+                          title: item.title,
+                          thumbnail: item.thumbnail || `https://img.youtube.com/vi/${item.youtubeId}/hqdefault.jpg`,
+                          uploaderName: item.artist || 'SyncBeats',
+                        };
+                        const isAdded = addedSongs.has(mappedSong.url);
+
+                        return (
+                          <div
+                            key={`l-${item.id || idx}`}
+                            className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent hover:bg-white/10 transition-all duration-200 group shrink-0"
+                          >
+                            <img
+                              src={mappedSong.thumbnail}
+                              loading="eager"
+                              decoding="sync"
+                              className="w-16 h-12 object-cover rounded-lg bg-black/50 shrink-0"
+                            />
+                            <div className="space-y-0.5 min-w-0 flex-1 pl-1">
+                              <div className="text-white text-sm font-bold truncate">{item.title}</div>
+                              <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{item.artist || 'SyncBeats'}</div>
+                            </div>
+                            <button
+                              onClick={() => !isAdded && handlePlay(mappedSong)}
+                              disabled={enqueuing === mappedSong.url || isAdded}
+                              className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-full transition-all ${
+                                isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"
+                              }`}
+                            >
+                              {enqueuing === mappedSong.url ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : isAdded ? (
+                                <CheckCircle2 className="w-4 h-4" />
+                              ) : (
+                                <Plus className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : query && mode !== "spotify" ? <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-10')}>Press Enter to search</div> : null}
           </motion.div>
         )}

@@ -25,17 +25,37 @@
 
   html,
   body {
-    height: 100%;
     min-height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
-    overscroll-behavior-y: none;
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-geist-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
+  }
+
+  html.lenis,
+  html.lenis-smooth {
+    height: auto !important;
+  }
+
+  html.lenis body,
+  html.lenis-smooth body {
+    height: auto !important;
+  }
+
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: hidden;
   }
 
   @media (max-width: 768px) {

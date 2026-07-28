@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, X, KeyRound, MonitorSmartphone, Settings, ChevronLeft
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, X, KeyRound, MonitorSmartphone, Settings, ChevronLeft, History, Clock, Search, Loader2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
-import { devicesApi, roomsApi, type Device } from "../lib/api";
+import { devicesApi, roomsApi, historyApi, type Device } from "../lib/api";
 import { SettingsPanel } from "./SettingsPanel";
 import { ForgotPasswordPanel } from "./ForgotPasswordPanel";
 import { cn } from "../lib/utils";
@@ -79,8 +79,23 @@ function ProfileModalInner({ onClose }: { onClose: () => void }) {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Modals / Panels state
-  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | 'password' | null>(null);
+  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | 'password' | 'history' | null>(null);
   const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
+
+  // History State
+  const [userHistory, setUserHistory] = useState<{ listens: any[]; searches: any[] }>({ listens: [], searches: [] });
+  const [historyTab, setHistoryTab] = useState<'listens' | 'searches'>('listens');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (activePanel === 'history' && userId) {
+      setLoadingHistory(true);
+      historyApi.getRecent(userId)
+        .then((res) => { if (res) setUserHistory(res); })
+        .catch(() => {})
+        .finally(() => setLoadingHistory(false));
+    }
+  }, [activePanel, userId]);
 
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -327,6 +342,22 @@ function ProfileModalInner({ onClose }: { onClose: () => void }) {
             </button>
 
             <button
+              onClick={() => setActivePanel(activePanel === 'history' ? null : 'history')}
+              className={`w-full flex items-center justify-between p-3.5 rounded-2xl transition-all group border ${activePanel === 'history' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-foreground/10 flex items-center justify-center">
+                  <History className="w-4 h-4 text-foreground/70" />
+                </div>
+                <div className="text-left">
+                  <h4 className="text-sm font-bold text-foreground">Listening & Search History</h4>
+                  <p className="text-[11px] text-foreground/50">View recent activity</p>
+                </div>
+              </div>
+              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'history' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
+            </button>
+
+            <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-red-500/10 transition-all group mt-1"
             >
@@ -429,6 +460,100 @@ function ProfileModalInner({ onClose }: { onClose: () => void }) {
                       </div>
                     );
                   })
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activePanel === 'history' && (
+            <motion.div
+              layout
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/95 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15 shadow-[0_30px_90px_rgba(0,0,0,0.6)] p-6 z-10 max-h-[580px] overflow-hidden"
+            >
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-foreground/10 shrink-0">
+                <button
+                  onClick={() => setActivePanel(null)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-foreground/10 hover:bg-foreground/20 text-foreground text-xs font-bold transition-all active:scale-95"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Back to Profile
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* History Sub-tabs */}
+              <div className="flex items-center gap-2 p-1 rounded-xl bg-foreground/5 mb-3 border border-foreground/10 shrink-0">
+                <button
+                  onClick={() => setHistoryTab('listens')}
+                  className={cn('flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5', historyTab === 'listens' ? 'bg-foreground text-background shadow-md' : 'text-foreground/60 hover:text-foreground')}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Listens ({userHistory.listens.length})
+                </button>
+                <button
+                  onClick={() => setHistoryTab('searches')}
+                  className={cn('flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5', historyTab === 'searches' ? 'bg-foreground text-background shadow-md' : 'text-foreground/60 hover:text-foreground')}
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  Searches ({userHistory.searches.length})
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-0">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-12 text-foreground/40 gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-xs font-medium">Loading history...</span>
+                  </div>
+                ) : historyTab === 'listens' ? (
+                  userHistory.listens.length === 0 ? (
+                    <p className="text-foreground/40 text-xs font-medium text-center py-12">No listen history recorded yet.</p>
+                  ) : (
+                    userHistory.listens.map((item, idx) => (
+                      <div key={`pl-${item.id || idx}`} className="flex items-center gap-3 p-2.5 rounded-2xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 transition-all">
+                        <img
+                          src={item.thumbnail || `https://img.youtube.com/vi/${item.youtubeId}/hqdefault.jpg`}
+                          className="w-12 h-10 object-cover rounded-xl bg-black/40 shrink-0 border border-foreground/10"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h5 className="text-xs font-bold text-foreground truncate">{item.title}</h5>
+                          <p className="text-[10px] text-foreground/50 truncate mt-0.5">{item.artist || 'SyncBeats'}</p>
+                        </div>
+                        {item.playedAt && (
+                          <span className="text-[9px] font-semibold text-foreground/40 shrink-0">
+                            {new Date(item.playedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )
+                ) : (
+                  userHistory.searches.length === 0 ? (
+                    <p className="text-foreground/40 text-xs font-medium text-center py-12">No search history recorded yet.</p>
+                  ) : (
+                    userHistory.searches.map((item, idx) => (
+                      <div key={`ps-${item.id || idx}`} className="flex items-center justify-between p-3 rounded-2xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 transition-all">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Search className="w-3.5 h-3.5 text-foreground/50 shrink-0" />
+                          <span className="text-xs font-bold text-foreground truncate">{item.query}</span>
+                        </div>
+                        {item.createdAt && (
+                          <span className="text-[9px] font-semibold text-foreground/40 shrink-0 ml-2">
+                            {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )
                 )}
               </div>
             </motion.div>

@@ -995,7 +995,7 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
             </div>
           </div>
 
-          <div className={cn('flex', 'gap-2', 'mt-6')}>
+          <div className={cn('mt-6')}>
             <button 
               onClick={() => updateSettings({
                 gradientSettings: {
@@ -1010,32 +1010,13 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
                 ambientBrightness: 100,
                 ambientContrast: 100
               })}
-              className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground/5', 'text-foreground/70', 'text-sm', 'font-bold', 'flex', 'items-center', 'justify-center', 'gap-2', 'hover:bg-foreground/10', 'transition', 'border', 'border-foreground/10')}
+              className={cn('w-full', 'py-2.5', 'rounded-xl', 'bg-foreground/5', 'text-foreground/70', 'text-sm', 'font-bold', 'flex', 'items-center', 'justify-center', 'gap-2', 'hover:bg-foreground/10', 'transition', 'border', 'border-foreground/10')}
             >
               <RefreshCw className={cn('w-4', 'h-4')} /> Reset Default Theme
             </button>
-
-            {user && (
-              <button 
-                onClick={handleSaveToCloud}
-                disabled={isSaving}
-                className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground', 'text-background', 'text-sm', 'font-bold', 'flex', 'items-center', 'justify-center', 'gap-2', 'hover:bg-foreground/90', 'transition', 'disabled:opacity-50')}
-              >
-                {isSaving ? (
-                  <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
-                ) : saveSuccess ? (
-                  <>
-                    <Check className={cn('w-4', 'h-4')} /> Saved!
-                  </>
-                ) : (
-                  <>
-                    <Save className={cn('w-4', 'h-4')} /> Save to Cloud
-                  </>
-                )}
-              </button>
-            )}
           </div>
         </section>
+
 
         {!onlyVisuals && (
           /* Sync Settings */

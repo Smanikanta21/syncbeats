@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { getSocket } from '../lib/socket';
-import { roomsApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
+import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
@@ -442,8 +442,25 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         window.dispatchEvent(new CustomEvent("syncbeats:welcome-burst"));
       }
 
+      const logListenHistory = (url: string, queueItems?: TrackQueueItem[]) => {
+        if (!userId || !url) return;
+        const currentItem = queueItems?.find(q => q.isCurrent || q.trackUrl === url);
+        const title = currentItem?.title || getTrackTitle(url, queueItems);
+        const artist = currentItem?.artist || currentItem?.addedByName || '';
+        const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
+        const youtubeId = url.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
+
+        historyApi.logListen(userId, {
+          youtubeId,
+          title,
+          artist,
+          thumbnail,
+        }).catch(() => {});
+      };
+
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+        logListenHistory(snap.trackUrl, snap.queue);
       } else if (!snap.trackUrl) {
         audioRef.current.clearTrack();
       }
@@ -455,6 +472,20 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+        if (userId && snap.trackUrl) {
+          const currentItem = snap.queue?.find(q => q.isCurrent || q.trackUrl === snap.trackUrl);
+          const title = currentItem?.title || getTrackTitle(snap.trackUrl, snap.queue);
+          const artist = currentItem?.artist || currentItem?.addedByName || '';
+          const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
+          const youtubeId = snap.trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
+
+          historyApi.logListen(userId, {
+            youtubeId,
+            title,
+            artist,
+            thumbnail,
+          }).catch(() => {});
+        }
       } else if (!snap.trackUrl) {
         audioRef.current.clearTrack();
       }

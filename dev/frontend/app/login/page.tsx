@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useEffect, useRef } from "react";
+import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FullscreenLoader } from "../../components/FullscreenLoader";
@@ -14,6 +14,10 @@ export default function AuthPage() {
   const router  = useRouter();
   const { login, register, googleLogin } = useAuth();
   const [googleReady, setGoogleReady] = useState(false);
+  // Whether the GSI library injected an actual button into the DOM
+  const [googleBtnVisible, setGoogleBtnVisible] = useState(false);
+  // Whether we gave up waiting for GSI (show fallback)
+  const [googleLoadFailed, setGoogleLoadFailed] = useState(false);
   const googleLoginButtonRef = useRef<HTMLDivElement | null>(null);
   const googleSignupButtonRef = useRef<HTMLDivElement | null>(null);
 
@@ -198,14 +202,13 @@ export default function AuthPage() {
       const google = (window as any).google;
       if (!google?.accounts?.id || cancelled) return;
 
-      console.log("[GSI DEBUG] Initializing Google Auth with:");
-      console.log("[GSI DEBUG] Client ID:", clientId);
-      console.log("[GSI DEBUG] Origin:", window.location.origin);
-
       google.accounts.id.initialize({
         client_id: clientId,
-        auto_select: false,
-        use_fedcm_for_prompt: false,
+        // auto_select: true lets Google pick the account automatically
+        // when the user is signed in — enables the "1-tap" zero-click flow.
+        auto_select: true,
+        cancel_on_tap_outside: false,
+        itp_support: true,
         callback: async (response: { credential?: string }) => {
           if (!response.credential) return;
           setError(null);
@@ -226,14 +229,60 @@ export default function AuthPage() {
         },
       });
 
-      google.accounts.id.prompt();
+      // Call prompt() with a notification handler so we know if One Tap was suppressed.
+      // When suppressed, we immediately surface the fallback button so users still have a path.
+      google.accounts.id.prompt((notification: any) => {
+        const notShown  = notification.isNotDisplayed?.();
+        const skipped   = notification.isSkippedMoment?.();
+        const dismissed = notification.isDismissedMoment?.();
+
+        console.log('[GSI] One Tap:', {
+          notShown,  reason: notification.getNotDisplayedReason?.(),
+          skipped,   skipReason: notification.getSkippedReason?.(),
+          dismissed, dismissReason: notification.getDismissedReason?.(),
+        });
+
+        // If One Tap won't show, mark google as failed so the fallback button appears now
+        if (notShown || skipped) {
+          setGoogleLoadFailed(true);
+        }
+      });
 
       setGoogleReady(true);
     };
 
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
     if (existing) {
-      initGoogle();
+      // Script tag already in DOM — but it may not have loaded yet (race condition)
+      if ((window as any).google?.accounts?.id) {
+        // Already ready: initialize immediately
+        initGoogle();
+      } else {
+        // Script is still loading: piggyback on its onload
+        const prevOnLoad = existing.onload;
+        existing.onload = (e) => {
+          if (typeof prevOnLoad === 'function') prevOnLoad.call(existing, e);
+          if (!cancelled) initGoogle();
+        };
+        // Fallback: poll for readiness (handles cases where onload already fired)
+        let attempts = 0;
+        const poll = setInterval(() => {
+          attempts++;
+          if ((window as any).google?.accounts?.id) {
+            clearInterval(poll);
+            if (!cancelled) initGoogle();
+          } else if (attempts > 40) {
+            clearInterval(poll);
+          }
+        }, 150);
+        return () => {
+          cancelled = true;
+          clearInterval(poll);
+          if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
+            (window as any).google.accounts.id.cancel();
+          }
+        };
+      }
       return () => {
         cancelled = true;
         if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
@@ -246,7 +295,7 @@ export default function AuthPage() {
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
-    script.onload = initGoogle;
+    script.onload = () => { if (!cancelled) initGoogle(); };
     document.head.appendChild(script);
 
     return () => {
@@ -273,7 +322,7 @@ export default function AuthPage() {
           size: "large",
           shape: "pill",
           text: "continue_with",
-          width: 320,
+          width: 384,
         });
       } else if (!isLogin && googleSignupButtonRef.current) {
         googleSignupButtonRef.current.innerHTML = "";
@@ -283,13 +332,67 @@ export default function AuthPage() {
           size: "large",
           shape: "pill",
           text: "signup_with",
-          width: 320,
+          width: 384,
         });
       }
     }, 400); // 400ms ensures AnimatePresence mode="wait" (300ms duration) fully mounts the new ref
 
     return () => clearTimeout(timer);
   }, [isLogin, googleReady]);
+
+  // Watch whether GSI actually injected button content into the ref divs.
+  // If the div remains empty after googleReady + 600ms → show the fallback.
+  useEffect(() => {
+    if (!googleReady) return;
+
+    const checkAndObserve = (ref: React.MutableRefObject<HTMLDivElement | null>) => {
+      if (!ref.current) return;
+      const checkEmpty = () => {
+        const hasContent = !!(ref.current && ref.current.childElementCount > 0 && ref.current.offsetHeight > 0);
+        setGoogleBtnVisible(hasContent);
+      };
+      const observer = new MutationObserver(checkEmpty);
+      observer.observe(ref.current, { childList: true, subtree: true });
+      // Check immediately after 600ms (after renderButton settles)
+      const timer = setTimeout(checkEmpty, 600);
+      return () => { observer.disconnect(); clearTimeout(timer); };
+    };
+
+    const activeRef = isLogin ? googleLoginButtonRef : googleSignupButtonRef;
+    return checkAndObserve(activeRef);
+  }, [googleReady, isLogin]);
+
+  // 6-second fallback: if GSI never became ready, show fallback button
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!googleReady) setGoogleLoadFailed(true);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [googleReady]);
+
+  // Fallback: trigger GSI One Tap prompt if google is available, or re-render button
+  const handleGoogleFallback = useCallback(() => {
+    const g = (window as any).google;
+    if (g?.accounts?.id) {
+      g.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
+          const activeRef = isLogin ? googleLoginButtonRef.current : googleSignupButtonRef.current;
+          if (activeRef) {
+            activeRef.innerHTML = "";
+            g.accounts.id.renderButton(activeRef, {
+              type: "standard",
+              theme: "outline",
+              size: "large",
+              shape: "pill",
+              text: isLogin ? "continue_with" : "signup_with",
+              width: 384,
+            });
+            setGoogleBtnVisible(true);
+          }
+        }
+      });
+    }
+  }, [isLogin]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
@@ -394,10 +497,14 @@ export default function AuthPage() {
                     {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className="w-5 h-5" /></>}
                   </motion.button>
 
-                  <div className="pt-1 flex justify-center">
-                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
-                    <div ref={googleLoginButtonRef} />
-                  </div>
+                  <GoogleButton
+                    refEl={googleLoginButtonRef}
+                    ready={googleReady}
+                    failed={googleLoadFailed}
+                    btnVisible={googleBtnVisible}
+                    onFallbackClick={handleGoogleFallback}
+                    loading={loading}
+                  />
                 </form>
 
                 <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
@@ -506,11 +613,14 @@ export default function AuthPage() {
                     {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className="w-4 h-4" /></>}
                   </motion.button>
 
-                  <div className="pt-2 flex flex-col items-center gap-2">
-                    <span className="text-xs uppercase tracking-[0.25em] text-foreground/40">Or use Google</span>
-                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
-                    <div ref={googleSignupButtonRef} />
-                  </div>
+                  <GoogleButton
+                    refEl={googleSignupButtonRef}
+                    ready={googleReady}
+                    failed={googleLoadFailed}
+                    btnVisible={googleBtnVisible}
+                    onFallbackClick={handleGoogleFallback}
+                    loading={loading}
+                  />
                 </form>
 
                 <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
@@ -555,6 +665,62 @@ export default function AuthPage() {
           </AnimatePresence>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+// ─── GoogleButton: renders GSI button + custom fallback ─────────────────────
+interface GoogleButtonProps {
+  refEl: React.RefObject<HTMLDivElement | null>;
+  ready: boolean;
+  failed: boolean;
+  btnVisible: boolean;
+  onFallbackClick: () => void;
+  loading: boolean;
+}
+
+function GoogleButton({ refEl, ready, failed, btnVisible, onFallbackClick, loading }: GoogleButtonProps) {
+  const showFallback = failed || (ready && !btnVisible);
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full my-4 py-2">
+
+      {/* Divider */}
+      <div className="flex items-center gap-3 w-full">
+        <div className="flex-1 h-px bg-foreground/10" />
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/30">or</span>
+        <div className="flex-1 h-px bg-foreground/10" />
+      </div>
+
+      {/* GSI container — Google injects its button here */}
+      <div
+        ref={refEl}
+        className={btnVisible ? "flex justify-center items-center w-full min-h-[50px] py-1" : "hidden"}
+        aria-hidden={!btnVisible}
+      />
+
+      {/* Loading skeleton */}
+      {!ready && !failed && (
+        <div className="w-full h-14 rounded-full bg-foreground/5 border border-foreground/10 animate-pulse" />
+      )}
+
+      {/* Fallback button — shown if GSI failed/rendered nothing */}
+      {showFallback && (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onFallbackClick}
+          className="w-full h-14 flex items-center justify-center gap-3 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 active:scale-[0.98] text-foreground text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-wait shadow-sm cursor-pointer"
+        >
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+          Continue with Google
+        </button>
+      )}
     </div>
   );
 }
