@@ -411,6 +411,14 @@ export const spotifyApi = {
       return [];
     }
   },
+  getAccountPlaylists: async (): Promise<any[]> => {
+    try {
+      const data = await request<{ playlists: any[] }>('/spotify/playlists', {}, true);
+      return data.playlists || [];
+    } catch {
+      return [];
+    }
+  },
 };
 
 export const devicesApi = {

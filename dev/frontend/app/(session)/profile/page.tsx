@@ -34,12 +34,27 @@ function SpotifyIntegrationTab({ token }: { token: string | null }) {
   const [loadingImported, setLoadingImported] = useState(true);
   const [playingPlaylistId, setPlayingPlaylistId] = useState<string | null>(null);
 
+  const [accountPlaylists, setAccountPlaylists] = useState<any[]>([]);
+  const [loadingAccountPlaylists, setLoadingAccountPlaylists] = useState(false);
+
   const fetchStatus = useCallback(() => {
     if (!token) return;
     spotifyApi.getStatus()
       .then(res => setSpotifyConnected(res.connected))
       .catch(() => setSpotifyConnected(false));
   }, [token]);
+
+  useEffect(() => {
+    if (spotifyConnected) {
+      setLoadingAccountPlaylists(true);
+      spotifyApi.getAccountPlaylists()
+        .then(res => setAccountPlaylists(res))
+        .catch(() => setAccountPlaylists([]))
+        .finally(() => setLoadingAccountPlaylists(false));
+    } else {
+      setAccountPlaylists([]);
+    }
+  }, [spotifyConnected]);
 
   const fetchImported = useCallback(async () => {
     if (!token) return;
@@ -86,14 +101,8 @@ function SpotifyIntegrationTab({ token }: { token: string | null }) {
     }
   };
 
-  const handleImport = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const importSpotifyPlaylistUrl = async (url: string, name?: string) => {
     if (!token) return;
-    if (!playlistUrl.includes("spotify.com/playlist/")) {
-      setError("Please enter a valid Spotify playlist URL (e.g. https://open.spotify.com/playlist/...).");
-      return;
-    }
-
     setImporting(true);
     setError(null);
     setSuccess(null);
@@ -106,8 +115,8 @@ function SpotifyIntegrationTab({ token }: { token: string | null }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          playlistUrl,
-          playlistName: playlistName.trim() || "Imported Spotify Playlist",
+          playlistUrl: url,
+          playlistName: name?.trim() || "Imported Spotify Playlist",
         }),
       });
 
@@ -128,6 +137,15 @@ function SpotifyIntegrationTab({ token }: { token: string | null }) {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!playlistUrl.includes("spotify.com/playlist/")) {
+      setError("Please enter a valid Spotify playlist URL (e.g. https://open.spotify.com/playlist/...).");
+      return;
+    }
+    await importSpotifyPlaylistUrl(playlistUrl, playlistName);
   };
 
   return (
@@ -190,6 +208,69 @@ function SpotifyIntegrationTab({ token }: { token: string | null }) {
           </a>
         </div>
       ) : null}
+
+      {/* User's Linked Spotify Account Playlists */}
+      {spotifyConnected === true && (
+        <div className="space-y-4 p-6 rounded-3xl bg-foreground/5 border border-foreground/10">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-black text-foreground flex items-center gap-2">
+              <svg className="w-5 h-5 text-[#1DB954]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.42-1.02.6-1.56.3z"/>
+              </svg>
+              Your Linked Spotify Playlists ({accountPlaylists.length})
+            </h3>
+            <button
+              onClick={() => {
+                setLoadingAccountPlaylists(true);
+                spotifyApi.getAccountPlaylists().then(setAccountPlaylists).finally(() => setLoadingAccountPlaylists(false));
+              }}
+              className="text-xs text-foreground/50 hover:text-foreground flex items-center gap-1 font-bold transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingAccountPlaylists ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+
+          {loadingAccountPlaylists ? (
+            <div className="py-8 text-center flex flex-col items-center justify-center gap-2 text-foreground/50 text-xs">
+              <Loader2 className="w-6 h-6 animate-spin text-[#1DB954]" />
+              <span>Fetching playlists from your Spotify account...</span>
+            </div>
+          ) : accountPlaylists.length === 0 ? (
+            <p className="text-xs text-foreground/50 py-4 text-center">No playlists found on your Spotify account.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+              {accountPlaylists.map((sp) => (
+                <div
+                  key={sp.id}
+                  className="flex items-center gap-3 p-3 rounded-2xl bg-background border border-foreground/10 hover:border-[#1DB954]/50 transition-all group"
+                >
+                  {sp.coverUrl ? (
+                    <img src={sp.coverUrl} alt={sp.name} className="w-11 h-11 rounded-xl object-cover shrink-0 border border-foreground/10" />
+                  ) : (
+                    <div className="w-11 h-11 rounded-xl bg-foreground/10 flex items-center justify-center shrink-0">
+                      <Radio className="w-5 h-5 text-foreground/40" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-xs text-foreground truncate">{sp.name}</p>
+                    <p className="text-[10px] text-foreground/50 truncate">
+                      {sp.trackCount} tracks • {sp.owner || 'Spotify User'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => importSpotifyPlaylistUrl(`https://open.spotify.com/playlist/${sp.id}`, sp.name)}
+                    disabled={importing}
+                    className="px-3 py-1.5 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black font-black text-[11px] transition-all hover:scale-105 shrink-0 disabled:opacity-50 shadow-md"
+                  >
+                    Import & Play
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Playlist Import Form */}
       <form onSubmit={handleImport} className="p-6 rounded-3xl bg-foreground/5 border border-foreground/10 space-y-4">
