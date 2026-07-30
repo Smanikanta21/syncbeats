@@ -47,6 +47,7 @@ services:
     volumes:
       - uploads:/app/uploads
       - ./yt-dlp-cache:/root/.cache/yt-dlp
+      - ./cookies.txt:/app/cookies.txt
 
   frontend:
     image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
