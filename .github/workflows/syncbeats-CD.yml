@@ -33,9 +33,11 @@ jobs:
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
-      - name: Install Backend Dependencies
+      - name: Install Backend Dependencies & Generate Prisma Client
         working-directory: ./dev/syncbeats-server
-        run: npm ci
+        run: |
+          npm ci
+          DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" npx prisma generate
 
       - name: Execute Backend Tests
         working-directory: ./dev/syncbeats-server
