@@ -233,7 +233,7 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <Preloader />
-          <IOSHomeScreenPrompt />
+          {process.env.NODE_ENV !== 'development' && <IOSHomeScreenPrompt />}
           <ThemeProvider>
             <ConnectionProvider>
               <ConnectionStatusModal />

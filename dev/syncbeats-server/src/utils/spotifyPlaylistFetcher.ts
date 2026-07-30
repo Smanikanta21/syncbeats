@@ -75,99 +75,95 @@ function clean(s: any): string {
  *                      The function does NOT fetch its own token; the caller is responsible.
  * @returns           Array of TrackMetadata objects (also includes .searchQuery string)
  */
+/**
+ * fetchEntirePlaylist
+ *
+ * Fetches ALL tracks from a Spotify playlist using offset-based pagination.
+ * Requests https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&offset=${currentOffset}
+ * in a while loop until data.next is null.
+ *
+ * Anti-ban shields:
+ *   1. 429 Shield   — reads Retry-After header and pauses for that exact number of seconds before retrying the same offset.
+ *   2. Page Delay   — hardcoded 200ms delay at the end of every successful iteration.
+ *
+ * @param playlistId  — Spotify playlist ID or full URL
+ * @param accessToken — Spotify Bearer access token
+ * @returns           Flat array of formatted track queries: ["Artist - Track Name", ...]
+ */
 export async function fetchEntirePlaylist(
   playlistId: string,
-  accessToken: string,
-): Promise<TrackMetadata[]> {
-  // Strip any accidental full URL — we only want the bare playlist ID
+  accessToken: string
+): Promise<string[]> {
   const cleanId = playlistId.includes('playlist/')
     ? playlistId.split('playlist/')[1].split('?')[0]
     : playlistId.split('?')[0];
 
-  const allTracks: TrackMetadata[] = [];
+  const trackQueries: string[] = [];
   let currentOffset = 0;
-  let pageNumber    = 0;
 
   while (true) {
-    pageNumber++;
-    const url =
-      `https://api.spotify.com/v1/playlists/${cleanId}/tracks` +
-      `?limit=100&offset=${currentOffset}`;
+    const url = `https://api.spotify.com/v1/playlists/${cleanId}/tracks?limit=100&offset=${currentOffset}`;
 
-    const response: Response = await fetch(url, {
-      method:  'GET',
+    const response = await fetch(url, {
+      method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        'User-Agent':  BROWSER_UA,
-        Accept:        'application/json',
+        'User-Agent': BROWSER_UA,
+        Accept: 'application/json',
       },
     });
 
-    // ── Anti-ban Shield 1: 429 Rate Limit ──────────────────────────────────
-    // Read Retry-After header, wait exactly that many seconds, then retry
-    // the SAME offset (do NOT advance currentOffset).
+    // ── Anti-Ban Shield 1: 429 Rate Limit Retry-After Pause ───────────
     if (response.status === 429) {
       const retryAfterHeader = response.headers.get('Retry-After');
-      const retryAfterSec    = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 5;
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 5;
       console.warn(
-        `[SpotifyFetcher] Rate limited (429) at offset ${currentOffset}. ` +
-        `Waiting ${retryAfterSec}s then retrying page ${pageNumber}...`
+        `[SpotifyFetcher] Rate limited (429) at offset ${currentOffset}. Waiting ${retryAfterSec}s before retrying...`
       );
-      await delay(retryAfterSec * 1_000);
-      continue; // retry the exact same offset
+      await delay(retryAfterSec * 1000);
+      continue; // Retry same offset without advancing
     }
 
-    // Any other non-2xx: throw so the caller can fall back to the embed scraper
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
+      const errorText = await response.text().catch(() => '');
       throw new Error(
-        `Spotify API returned ${response.status} at offset ${currentOffset}: ${body.slice(0, 300)}`
+        `Spotify API returned ${response.status} at offset ${currentOffset}: ${errorText.slice(0, 300)}`
       );
     }
 
     const data: any = await response.json();
     const items: any[] = data.items || [];
 
-    // ── Extract and format tracks from this page ────────────────────────────
+    // ── Filter out null & local tracks ─────────────────────────────────
     for (const item of items) {
-      const t = item?.track;
+      const track = item?.track;
+      if (!track || !track.name || track.is_local === true) {
+        continue;
+      }
 
-      // Skip null tracks (can happen for removed/unavailable songs) and local files
-      if (!t || !t.name || t.is_local === true) continue;
-
-      const artistName = Array.isArray(t.artists) && t.artists.length > 0
-        ? t.artists.map((a: any) => clean(a?.name || '')).filter(Boolean).join(', ')
+      const artistNames = Array.isArray(track.artists) && track.artists.length > 0
+        ? track.artists.map((a: any) => clean(a?.name || '')).filter(Boolean).join(', ')
         : 'Unknown Artist';
 
-      const title = clean(t.name) || 'Unknown Track';
-
-      allTracks.push({
-        title,
-        artist:          artistName,
-        duration_ms:     typeof t.duration_ms === 'number' ? t.duration_ms : 0,
-        artworkUrl:      clean(t.album?.images?.[0]?.url || ''),
-        spotifyTrackId:  t.id ? clean(t.id) : undefined,
-        album:           t.album?.name ? clean(t.album.name) : undefined,
-        searchQuery:     `${artistName} - ${title}`,
-      });
+      const trackName = clean(track.name);
+      if (trackName) {
+        trackQueries.push(`${artistNames} - ${trackName}`);
+      }
     }
 
-    console.log(
-      `[SpotifyFetcher] Page ${pageNumber} (offset ${currentOffset}): ` +
-      `fetched ${items.length} items → running total: ${allTracks.length} tracks`
-    );
+    // Stop when data.next is null
+    if (!data.next) {
+      break;
+    }
 
-    // If Spotify says there's no next page, we're done
-    if (!data.next) break;
-
-    // Advance to the next page
+    // Advance offset by 100
     currentOffset += 100;
 
-    // ── Anti-ban Shield 2: 200 ms inter-page delay ──────────────────────────
+    // ── Anti-Ban Shield 2: Hardcoded 200ms inter-page delay ───────────
     await delay(200);
   }
 
-  return allTracks;
+  return trackQueries;
 }
 
 // ─── Anonymous token (best-effort, may 403 from server IPs) ──────────────────

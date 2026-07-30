@@ -142,15 +142,17 @@ export class MusicBridgeService {
     // fetchEntirePlaylist handles all pagination + anti-ban shields
     const fetched = await fetchEntirePlaylist(playlistId, accessToken);
 
-    // Map spotifyPlaylistFetcher.TrackMetadata -> MusicBridgeService.TrackMetadata
-    const tracks: TrackMetadata[] = fetched.map(t => ({
-      title:          t.title,
-      artist:         t.artist,
-      duration_ms:    t.duration_ms,
-      artworkUrl:     t.artworkUrl || coverUrl,
-      spotifyTrackId: t.spotifyTrackId,
-      album:          t.album,
-    }));
+    const tracks: TrackMetadata[] = fetched.map(query => {
+      const parts = query.split(' - ');
+      const artist = parts.length > 1 ? parts[0] : 'Unknown Artist';
+      const title = parts.length > 1 ? parts.slice(1).join(' - ') : query;
+      return {
+        title,
+        artist,
+        duration_ms: 0,
+        artworkUrl: coverUrl,
+      };
+    });
 
     return { name: playlistName, coverUrl, tracks };
   }

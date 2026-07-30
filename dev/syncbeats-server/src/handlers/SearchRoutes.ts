@@ -273,40 +273,62 @@ export function extractYoutubeIdOrSongId(input: string): string {
 async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
   const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
   const { spawn } = require('child_process');
-  
+  const path = require('path');
+  const fs = require('fs');
+
+  const cookieCandidates = [
+    path.resolve(process.cwd(), 'cookies.txt'),
+    path.resolve(__dirname, '../../cookies.txt'),
+    '/app/cookies.txt'
+  ];
+  const foundCookiePath = cookieCandidates.find(p => fs.existsSync(p));
+  const cookieArgs = foundCookiePath ? ['--cookies', foundCookiePath] : [];
+
+  if (foundCookiePath) {
+    console.log(`[Search] Using yt-dlp cookies from: ${foundCookiePath}`);
+  }
+
   const attempt = (extraArgs: string[]): Promise<string | null> => {
     return new Promise((resolve) => {
       const args = [
+        '-6',
         '-g',
         '--no-warnings',
         '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '--extractor-args', 'youtube:player_client=ios,android,tv',
+        ...cookieArgs,
         ...extraArgs,
         watchUrl
       ];
       const child = spawn(ytDlpPath, args);
       let stdout = '';
+      let stderr = '';
       
       child.stdout.on('data', (d: any) => { stdout += d.toString(); });
+      child.stderr.on('data', (d: any) => { stderr += d.toString(); });
       
       child.on('close', (code: number) => {
         if (code === 0 && stdout.trim().startsWith('http')) {
           const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
           resolve(lines[0] || null);
         } else {
+          if (stderr.trim()) {
+            console.warn(`[Search] yt-dlp attempt failed (${extraArgs.join(' ')}): ${stderr.trim()}`);
+          }
           resolve(null);
         }
       });
-      child.on('error', () => resolve(null));
+      child.on('error', (err: any) => {
+        console.error(`[Search] yt-dlp spawn error:`, err);
+        resolve(null);
+      });
     });
   };
 
-  let url = await attempt(['--extractor-args', 'youtube:player_client=android,web']);
+  let url = await attempt([]);
   if (url) return url;
 
-  url = await attempt(['--extractor-args', 'youtube:player_client=ios,mweb']);
-  if (url) return url;
-
-  url = await attempt([]);
+  url = await attempt(['--extractor-args', 'youtube:player_client=mweb,web']);
   return url;
 }
 
