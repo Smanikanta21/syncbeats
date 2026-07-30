@@ -29,6 +29,15 @@ import { RoomRepository }      from './db/RoomRepository';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
 
+// ─── Timestamp all console output ─────────────────────────────────────────
+(['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
+  const original = console[method].bind(console);
+  (console as any)[method] = (...args: unknown[]) => {
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    original(`[${ts}]`, ...args);
+  };
+});
+
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 

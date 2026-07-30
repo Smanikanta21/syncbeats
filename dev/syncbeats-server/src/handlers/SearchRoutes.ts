@@ -327,12 +327,12 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
     });
   };
 
-  // Tier 1: IPv6 + OAuth2 + mobile/TV clients
-  let url = await attempt(true, []);
+  // Tier 1: IPv4 — CDN URL is IPv4-bound, matches Node.js proxy fetch (no IPv4/IPv6 403 mismatch)
+  let url = await attempt(false, []);
   if (url) return url;
 
-  // Tier 2: IPv4 + OAuth2 + mobile/TV clients fallback
-  url = await attempt(false, []);
+  // Tier 2: IPv6 fallback — useful on bot-checked IPs where IPv6 has better luck
+  url = await attempt(true, []);
   if (url) return url;
 
   // Tier 3: play-dl fallback engine
