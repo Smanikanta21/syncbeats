@@ -85,6 +85,8 @@ export class SyncBeatsServer {
   }
 
   private setupMiddleware(): void {
+    this.app.set('trust proxy', 1);
+
     // Basic security headers
     this.app.use(helmet({
       crossOriginResourcePolicy: false, // Allow fetching media across origins (like AudioContext)

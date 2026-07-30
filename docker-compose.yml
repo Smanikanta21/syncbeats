@@ -46,6 +46,7 @@ services:
       RAPID_API_KEYS: ${RAPID_API_KEYS:-}
     volumes:
       - uploads:/app/uploads
+      - ./yt-dlp-cache:/root/.cache/yt-dlp
 
   frontend:
     image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
@@ -74,3 +75,7 @@ services:
 volumes:
   pgdata:
   uploads:
+
+networks:
+  default:
+    enable_ipv6: true

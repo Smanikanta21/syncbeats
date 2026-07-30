@@ -270,7 +270,7 @@ export function extractYoutubeIdOrSongId(input: string): string {
   return cleaned.trim();
 }
 
-async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
+export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
   const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
   const { spawn } = require('child_process');
   const path = require('path');
@@ -288,15 +288,17 @@ async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string
     console.log(`[Search] Using yt-dlp cookies from: ${foundCookiePath}`);
   }
 
-  const attempt = (extraArgs: string[]): Promise<string | null> => {
+  const attempt = (useIpv6: boolean, extraArgs: string[]): Promise<string | null> => {
     return new Promise((resolve) => {
       const args = [
-        '-6',
+        ...(useIpv6 ? ['-6'] : []),
+        ...cookieArgs,
+        '--extractor-args', 'youtube:player_client=mweb;formats=missing_pot',
+        '--js-runtimes', 'node',
+        '--remote-components', 'ejs:github',
         '-g',
         '--no-warnings',
         '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-        '--extractor-args', 'youtube:player_client=ios,android,tv',
-        ...cookieArgs,
         ...extraArgs,
         watchUrl
       ];
@@ -313,7 +315,7 @@ async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string
           resolve(lines[0] || null);
         } else {
           if (stderr.trim()) {
-            console.warn(`[Search] yt-dlp attempt failed (${extraArgs.join(' ')}): ${stderr.trim()}`);
+            console.warn(`[Search] yt-dlp attempt failed (IPv6:${useIpv6} ${extraArgs.join(' ')}): ${stderr.trim().slice(0, 150)}`);
           }
           resolve(null);
         }
@@ -325,11 +327,40 @@ async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string
     });
   };
 
-  let url = await attempt([]);
+  // Tier 1: IPv6 + OAuth2 + mobile/TV clients
+  let url = await attempt(true, []);
   if (url) return url;
 
-  url = await attempt(['--extractor-args', 'youtube:player_client=mweb,web']);
-  return url;
+  // Tier 2: IPv4 + OAuth2 + mobile/TV clients fallback
+  url = await attempt(false, []);
+  if (url) return url;
+
+  // Tier 3: play-dl fallback engine
+  try {
+    const play = require('play-dl');
+    const stream = await play.stream(watchUrl, { quality: 2 });
+    if (stream && stream.url) {
+      console.log(`[Search] Fallback play-dl resolved URL for ${youtubeId}`);
+      return stream.url;
+    }
+  } catch (playErr) {
+    // ignore
+  }
+
+  // Tier 4: @distube/ytdl-core fallback engine
+  try {
+    const ytdl = require('@distube/ytdl-core');
+    const info = await ytdl.getInfo(youtubeId);
+    const format = ytdl.chooseFormat(info.formats, { filter: 'audioonly' });
+    if (format?.url) {
+      console.log(`[Search] Fallback ytdl-core resolved URL for ${youtubeId}`);
+      return format.url;
+    }
+  } catch (ytdlErr) {
+    // ignore
+  }
+
+  return null;
 }
 
 export async function streamYoutubeAudio(rawInput: string, req: any, res: any): Promise<void> {

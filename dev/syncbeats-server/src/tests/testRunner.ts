@@ -1,3 +1,14 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Hydrate environment variables from root and server .env files before any module imports
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://syncbeats:syncbeats@localhost:5432/syncbeats';
+}
+
 import { runYoutubeFetcherTest } from './youtubeFetcher.test';
 import { runSyncCheckerTest } from './syncChecker.test';
 import { runSpotifyCheckerTest } from './spotifyChecker.test';
