@@ -449,7 +449,23 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
       headers['Range'] = req.headers.range as string;
     }
 
-    const audioResp = await fetch(directAudioUrl, { headers });
+    let audioResp = await fetch(directAudioUrl, { headers });
+
+    // Auto-retry on 403 / non-OK status: Evict stale cache & resolve fresh direct audio URL
+    if (!audioResp.ok && audioResp.status !== 206) {
+      console.warn(`[Search] GoogleVideo CDN returned HTTP ${audioResp.status} for ${targetYoutubeId}. Evicting stale cache & resolving fresh stream URL...`);
+      youtubeUrlCache.delete(targetYoutubeId);
+      const freshUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
+      if (freshUrl) {
+        directAudioUrl = freshUrl;
+        youtubeUrlCache.set(targetYoutubeId, {
+          url: freshUrl,
+          expiresAt: Date.now() + 15 * 60 * 1000
+        });
+        audioResp = await fetch(directAudioUrl, { headers });
+      }
+    }
+
     if (!audioResp.ok && audioResp.status !== 206) {
       res.status(audioResp.status).json({ error: `GoogleVideo CDN returned HTTP ${audioResp.status}` });
       return;
