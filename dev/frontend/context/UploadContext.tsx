@@ -54,6 +54,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
   // 1. Seed Local File via WebSockets
   const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string, artist?: string): Promise<UploadResult> => {
+    // Hard guard — prevents double-upload if caller doesn't check isUploading
+    if (isUploading) throw new Error('An upload is already in progress. Please wait.');
+    
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     setIsUploading(true);
     setUploadProgress(10);
@@ -93,14 +96,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
   // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via WebSockets
   const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string, artist?: string) => {
+    // Hard guard — prevents double-download if caller doesn't check isUploading
+    if (isUploading) throw new Error('A download is already in progress. Please wait.');
+    
     setIsUploading(true);
     setUploadProgress(5);
     getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
     try {
       const baseUrl = getServerUrl();
-      const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+      const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+      const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
       
-      const response = await fetch(proxyUrl);
+      const response = await fetch(proxyUrl, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
       let blob: Blob;
 
       if (!response.ok) {

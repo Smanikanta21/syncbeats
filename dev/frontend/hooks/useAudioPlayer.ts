@@ -66,6 +66,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const rafRef   = useRef<number>(0);
 
   const [isPlaying,   setIsPlaying]   = useState(false);
+  const isPlayingRef = useRef(false); // mirror of isPlaying that's always fresh (no closure staleness)
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -203,7 +204,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const getTruePosition = useCallback(() => {
-    if (!isPlaying) return pauseOffsetRef.current;
+    // Use isPlayingRef (not isPlaying state) to avoid stale closure values.
+    // React state is 1 render behind at the time of the pause click, which caused
+    // getTruePosition to return an ~2s stale position when pausing.
+    if (!isPlayingRef.current) return pauseOffsetRef.current;
     
     // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
     if (audioCtxRef.current) {
@@ -212,7 +216,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
-  }, [isPlaying]);
+  }, []); // no deps — uses only refs, always fresh
 
   const setEqBand = useCallback((index: number, gain: number) => {
     if (eqNodesRef.current[index]) {
@@ -521,8 +525,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 );
 
                 try {
-                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
-                  const resp = await fetch(proxyUrl, { signal });
+                  const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+                  const resp = await fetch(proxyUrl, { signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
                   if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
 
                   const contentLength = resp.headers.get('content-length');
@@ -690,7 +695,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
-            const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
+            const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+            const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
             
             // Assign src immediately for Instant Playback!
             if (streamingAudioElRef.current) {
@@ -698,7 +704,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
 
             // Concurrently fetch stream bytes in background to stash to IDB
-            const response = await fetch(fetchUrl);
+            const response = await fetch(fetchUrl, {
+              headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+            });
             if (!response.ok) {
               throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
             }
@@ -1010,6 +1018,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       pauseOffsetRef.current = Math.max(0, clampedPosition);
     }
     
+    isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(pauseOffsetRef.current);
   }, [audioUnlocked, stopCurrentSource]);
@@ -1041,6 +1050,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     startTimeRef.current = audioCtxRef.current.currentTime;
     pauseOffsetRef.current = clampedPosition;
+    isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(clampedPosition);
   }, [audioUnlocked, stopCurrentSource]);
@@ -1049,28 +1059,30 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     scheduleIdRef.current += 1;
     pendingScheduleRef.current = null;
     stopCurrentSource();
+    isPlayingRef.current = false;
     setIsPlaying(false);
     pauseOffsetRef.current = position;
     setCurrentTime(position);
   }, [stopCurrentSource]);
 
   const play = useCallback(() => {
-    if (!isPlaying) playNow(pauseOffsetRef.current);
-  }, [isPlaying, playNow]);
+    if (!isPlayingRef.current) playNow(pauseOffsetRef.current);
+  }, [playNow]);
 
   const pause = useCallback(() => {
-    if (isPlaying) pauseAt(getTruePosition());
-  }, [isPlaying, pauseAt, getTruePosition]);
+    // Read position from refs — NOT from React state — to avoid stale closure values.
+    if (isPlayingRef.current) pauseAt(getTruePosition());
+  }, [pauseAt, getTruePosition]);
 
   const toggle = useCallback(() => {
-    if (isPlaying) pause();
+    if (isPlayingRef.current) pause();
     else play();
-  }, [isPlaying, play, pause]);
+  }, [play, pause]);
 
   const seek = useCallback((time: number) => {
-    if (isPlaying) playNow(time);
+    if (isPlayingRef.current) playNow(time);
     else pauseAt(time);
-  }, [isPlaying, playNow, pauseAt]);
+  }, [playNow, pauseAt]);
 
   const seekPct = useCallback((pct: number) => {
     const time = pct * duration;

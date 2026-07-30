@@ -63,17 +63,19 @@ export function ConfirmModal({
 
             <div className="flex items-center justify-end gap-3">
               <button
+                type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground transition-colors"
+                className="h-11 px-5 text-xs font-semibold rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground transition-colors min-h-[44px] flex items-center justify-center"
               >
                 {cancelText}
               </button>
               <button
+                type="button"
                 onClick={() => {
                   onConfirm();
                   onClose();
                 }}
-                className={`px-5 py-2 text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 ${
+                className={`h-11 px-6 text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 min-h-[44px] flex items-center justify-center ${
                   isDanger
                     ? "bg-red-500 hover:bg-red-600 text-white"
                     : "bg-foreground text-background hover:opacity-90"

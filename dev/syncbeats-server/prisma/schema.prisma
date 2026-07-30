@@ -36,6 +36,7 @@ model User {
   playlists                  Playlist[]
   invitesSent                RoomInvite[]      @relation("InvitesSent")
   invitesReceived            RoomInvite[]      @relation("InvitesReceived")
+  feedbacks                  UserFeedback[]
 
   @@map("users")
 }
@@ -243,3 +244,25 @@ model RoomInvite {
   @@index([inviteeEmail])
   @@map("room_invites")
 }
+
+model UserFeedback {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  rating     Int
+  category   String   @default("general")
+  comment    String?  @db.Text
+  appVersion String?  @map("app_version")
+  page       String?
+  sessionId  String?  @map("session_id")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([rating])
+  @@index([createdAt(sort: Desc)])
+  @@index([category])
+  @@map("user_feedback")
+}
+

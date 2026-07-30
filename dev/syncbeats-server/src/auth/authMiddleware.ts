@@ -16,16 +16,43 @@ const authService = new AuthService();
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  let token: string | undefined;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else if (typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
+  if (!token) {
     res.status(401).json({ error: 'Missing or invalid Authorization header' });
     return;
   }
 
-  const token = authHeader.slice(7);
   try {
     req.user = authService.verifyToken(token);
     next();
   } catch {
     res.status(401).json({ error: 'Token expired or invalid' });
   }
+}
+
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  let token: string | undefined;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else if (typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+
+  if (token) {
+    try {
+      req.user = authService.verifyToken(token);
+    } catch {
+      // Ignored for optional auth
+    }
+  }
+  next();
 }

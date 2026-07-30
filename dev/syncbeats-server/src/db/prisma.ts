@@ -7,18 +7,30 @@ import { PrismaClient } from '@prisma/client';
 const globalForPrisma = globalThis as unknown as { _prisma?: PrismaClient };
 
 /**
- * Deep-clone and strip all null bytes (\0 / \u0000) from any plain value.
+ * Deep-sanitize any plain value for safe storage in PostgreSQL:
+ *  - Strips null bytes (\0 / \u0000) which cause "invalid byte sequence for encoding UTF8: 0x00"
+ *  - Strips other non-printable C0/C1 control characters (U+0001–U+001F, U+007F, U+0080–U+009F)
+ *    which can cause "syntax error at or near <word>" Postgres errors
+ *  - Normalises rogue \n or \r inside field values that corrupt timestamp parsing
+ *    e.g. "2026-07-28\n, Tungevaag" being treated as a timestamp
  * Returns a NEW object — never mutates the input.
- * IMPORTANT: Only use this on plain data (not Prisma query args/proxies).
+ * IMPORTANT: Only use this on plain data objects (not Prisma query arg proxies).
  */
 export function sanitizeNullBytes(val: any): any {
   if (val === null || val === undefined) return val;
   if (typeof val === 'string') {
     return val
-      .replace(/\0/g, '')
+      // Remove null bytes
+      .replace(/\x00/g, '')
       .replace(/\u0000/g, '')
       .replace(/\\u0000/g, '')
-      .replace(/\x00/g, '');
+      // Remove other ASCII control characters (except tab \x09, newline \x0A, CR \x0D which may be legitimate in text)
+      // Actually for DB field values (titles, artists, urls) strip ALL control characters
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F]/g, '')
+      // Replace any remaining newline/CR with a space so artist names don't get split across lines
+      .replace(/[\r\n]+/g, ' ')
+      .trim();
   }
   if (typeof val === 'number' || typeof val === 'boolean') return val;
   if (val instanceof Date) return val;
@@ -55,9 +67,18 @@ function createPrismaClient() {
   });
 
   // Discard corrupted/errored connections from the pool so they don't
-  // cause 08P01 "insufficient data left in message" on the next query.
-  pool.on('error', (err, _client) => {
-    console.error('[pg pool] Idle client error — connection discarded:', err.message);
+  // cause 08P01 "insufficient data left in message" or "invalid message format" errors.
+  // When a connection enters an error state (e.g. after a failed UTF8 transaction),
+  // pg emits the 'error' event on the pool. We catch it and forcibly terminate the
+  // underlying TCP socket so the pool removes it and creates a fresh connection.
+  pool.on('error', (err, client) => {
+    console.error('[pg pool] Idle client error — forcibly destroying connection:', err.message);
+    try {
+      // Destroy the underlying socket so pg-pool removes this connection from the pool
+      (client as any).connection?.stream?.destroy();
+    } catch {
+      // ignore — best effort
+    }
   });
 
   const adapter = new PrismaPg(pool);

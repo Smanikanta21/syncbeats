@@ -154,11 +154,12 @@ export function useTrackPrefetcher({
     setIsPrefetching(true);
     setNextTrackProgress(1);
 
-    const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}`;
+    const authToken = typeof window !== "undefined" ? (localStorage.getItem("token") || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+    const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
     const startedAt = Date.now();
 
     try {
-      const resp = await fetch(proxyUrl, { signal: ctrl.signal });
+      const resp = await fetch(proxyUrl, { signal: ctrl.signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
       if (!resp.ok) throw new Error(`yt-proxy ${resp.status}`);
 
       const contentLength = resp.headers.get("content-length");

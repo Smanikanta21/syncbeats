@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../auth/AuthService';
 import { requireAuth } from '../auth/authMiddleware';
+import { loginLimiter, registerLimiter, forgotPasswordLimiter, verificationResendLimiter } from '../middleware/rateLimiter';
 
 const authService = new AuthService();
 
@@ -17,15 +18,20 @@ function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: 
 export function createAuthRoutes(): Router {
   const router = Router();
 
-  // POST /auth/register
-  router.post('/register', async (req: Request, res: Response) => {
+  // POST /auth/register — rate limited
+  router.post('/register', registerLimiter, async (req: Request, res: Response) => {
     const { name, email, password } = req.body as { name?: string; email?: string; password?: string };
     if (!name || !email || !password) {
       res.status(400).json({ error: 'name, email and password are required' });
       return;
     }
+    // Input length caps — prevents DB storage attacks
+    if (name.trim().length > 100) { res.status(400).json({ error: 'Name too long (max 100 chars)' }); return; }
+    if (email.trim().length > 254) { res.status(400).json({ error: 'Email too long' }); return; }
+    if (password.length > 128) { res.status(400).json({ error: 'Password too long (max 128 chars)' }); return; }
+    if (password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
     try {
-      await authService.register(name, email, password);
+      await authService.register(name.trim(), email.trim().toLowerCase(), password);
       res.status(201).json({ ok: true });
     } catch (err) {
       console.error('[Auth] register error:', err);
@@ -50,16 +56,20 @@ export function createAuthRoutes(): Router {
     }
   });
 
-  // POST /auth/login
-  router.post('/login', async (req: Request, res: Response) => {
+  // POST /auth/login — rate limited (brute-force protection)
+  router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) {
       res.status(400).json({ error: 'email and password are required' });
       return;
     }
+    if (email.length > 254 || password.length > 128) {
+      res.status(400).json({ error: 'Invalid credentials' }); // don't leak which field
+      return;
+    }
     try {
       const { deviceKey, userAgent } = getDeviceContext(req);
-      const result = await authService.login(email, password, deviceKey, userAgent);
+      const result = await authService.login(email.trim().toLowerCase(), password, deviceKey, userAgent);
       res.json(result);
     } catch (err) {
       console.error('[Auth] login error:', err);
@@ -86,15 +96,16 @@ export function createAuthRoutes(): Router {
     }
   });
 
-  // POST /auth/verification/resend
-  router.post('/verification/resend', async (req: Request, res: Response) => {
+  // POST /auth/verification/resend — rate limited
+  router.post('/verification/resend', verificationResendLimiter, async (req: Request, res: Response) => {
     const { email } = req.body as { email?: string };
     if (!email?.trim()) {
       res.status(400).json({ error: 'email is required' });
       return;
     }
+    if (email.length > 254) { res.status(400).json({ error: 'Invalid email' }); return; }
     try {
-      await authService.resendVerification(email);
+      await authService.resendVerification(email.trim().toLowerCase());
       res.json({ ok: true });
     } catch (err) {
       console.error('[Auth] resend verification error:', err);
@@ -121,16 +132,17 @@ export function createAuthRoutes(): Router {
     }
   });
 
-  // POST /auth/password/forgot
-  router.post('/password/forgot', async (req: Request, res: Response) => {
+  // POST /auth/password/forgot — rate limited
+  router.post('/password/forgot', forgotPasswordLimiter, async (req: Request, res: Response) => {
     const { email } = req.body as { email?: string };
     if (!email?.trim()) {
       res.status(400).json({ error: 'email is required' });
       return;
     }
+    if (email.length > 254) { res.status(400).json({ error: 'Invalid email' }); return; }
     try {
-      const result = await authService.forgotPassword(email);
-      // Return generic success to avoid account enumeration.
+      const result = await authService.forgotPassword(email.trim().toLowerCase());
+      // Always return ok to avoid account enumeration.
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[Auth] forgot password error:', err);

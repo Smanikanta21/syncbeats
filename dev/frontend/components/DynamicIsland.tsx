@@ -46,7 +46,7 @@ const SHAPE_SPRING = {
 
 const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
-const EXPANDED_HEIGHT = 350;
+const EXPANDED_HEIGHT = 410;
 
 // Room island states
 type IslandState = "pill" | "extended" | "expanded";
@@ -76,7 +76,7 @@ function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | n
   fileName = fileName.replace(/_/g, ' ').trim();
 
   // If the result is a raw 11-char YouTube ID (e.g., "LPnDCTqW7zw")
-  if (/^[a-zA-Z0-9_-]{11}$/.test(fileName)) {
+  if (/^[a-zA-Z0-9_-]{11}$/.test(fileName) && !/^[a-zA-Z]{11}$/.test(fileName)) {
     const ytId = fileName;
     if (globalYtTitleCache.has(ytId)) {
       return globalYtTitleCache.get(ytId)!;
@@ -306,7 +306,7 @@ const SyncProgressBar = ({
 
   const color = isStuck
     ? "from-amber-600 to-red-500 animate-pulse"
-    : "from-cyan-500 via-violet-500 to-purple-500";
+    : "from-violet-500 via-emerald-500 to-emerald-400";
 
   return (
     <div className={cn('flex', 'flex-col', 'justify-center', 'gap-1', 'w-full')}>
@@ -1503,20 +1503,20 @@ export function DynamicIsland() {
   const searchHeight = isViewingPlaylist 
     ? 560 
     : (isImportingPlaylist || upload.activeImport?.isImporting) 
-    ? 440 
+    ? 300 
     : hasSearchContent 
-    ? 360 
-    : (ytResultsCount > 0 ? 480 : 200);
+    ? 100 
+    : (ytResultsCount > 0 ? 480 : 100);
 
   const expandedHeightMap: Record<IslandTab, number> = {
-    player: 280,
-    network: 350,
+    player: 300,
+    network: 410,
     search: searchHeight,
-    requests: 280,
-    deviceInfo: 380,
-    invite: 380,
+    requests: 310,
+    deviceInfo: 420,
+    invite: 420,
   };
-  const expandedHeight = expandedHeightMap[activeTab] || 320;
+  const expandedHeight = expandedHeightMap[activeTab] || 380;
 
   // Current animated dimensions
   // When radial navigator active: expand to 265px

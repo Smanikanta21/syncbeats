@@ -7,6 +7,13 @@ import { motion } from "framer-motion";
 
 const globalSortableYtCache = new Map<string, string>();
 
+function isRawYouTubeId(str: string): boolean {
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(str)) return false;
+  // If it's pure letters (e.g. Mockingbird, Bloodstream, Unstoppable), it's a song title word, NOT a YouTube ID
+  if (/^[a-zA-Z]{11}$/.test(str)) return false;
+  return true;
+}
+
 function cleanTitle(t: string) {
   if (!t) return "Unknown Track";
   let name = t
@@ -19,7 +26,7 @@ function cleanTitle(t: string) {
   name = name.replace(/[_\s]+\d{10,13}$/, '');
   name = name.replace(/^\d+[_-\s]*/, '').replace(/_/g, ' ').trim();
 
-  if (/^[a-zA-Z0-9_-]{11}$/.test(name)) {
+  if (isRawYouTubeId(name)) {
     const ytId = name;
     if (globalSortableYtCache.has(ytId)) {
       return globalSortableYtCache.get(ytId)!;

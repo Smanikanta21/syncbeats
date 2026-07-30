@@ -3,7 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
-import { requireAuth }    from '../auth/authMiddleware';
+import { requireAuth, optionalAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import prisma             from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
@@ -13,6 +13,10 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { streamYoutubeAudio } from './SearchRoutes';
+import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
+
+// Strict YouTube video ID format — 11 alphanumeric/dash/underscore chars only
+const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -21,12 +25,16 @@ const exhaustedRapidKeys = new Set<string>();
 export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
 
-  // GET /rooms/:roomId/youtube-search
-  router.get('/:roomId/youtube-search', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId/youtube-search — auth required, rate limited
+  router.get('/:roomId/youtube-search', requireAuth, searchLimiter, async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {
         res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      if (q.length > 200) {
+        res.status(400).json({ error: 'Search query too long (max 200 chars)' });
         return;
       }
 
@@ -51,8 +59,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // GET /rooms/youtube/details?videoId=ID
-  router.get('/youtube/details', async (req: Request, res: Response) => {
+  // GET /rooms/youtube/details?videoId=ID — auth required
+  router.get('/youtube/details', requireAuth, async (req: Request, res: Response) => {
     try {
       const { videoId } = req.query;
       if (!videoId || typeof videoId !== 'string') {
@@ -60,6 +68,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
       const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+      if (!YOUTUBE_ID_RE.test(cleanId)) {
+        res.status(400).json({ error: 'Invalid video ID format' });
+        return;
+      }
       const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}&format=json`;
       const response = await fetch(oembedUrl);
       if (!response.ok) {
@@ -77,12 +89,16 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // GET /rooms/youtube-suggest
-  router.get('/youtube/suggest', async (req: Request, res: Response) => {
+  // GET /rooms/youtube-suggest — auth required, rate limited
+  router.get('/youtube/suggest', requireAuth, searchLimiter, async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {
         res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      if (q.length > 200) {
+        res.status(400).json({ error: 'Query too long' });
         return;
       }
       const response = await fetch(`http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`);
@@ -105,8 +121,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // GET /rooms/:roomId
-  router.get('/:roomId', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId — auth required (room data is private)
+  router.get('/:roomId', requireAuth, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
     try {
       const [dbRow, participants, queue] = await Promise.all([
@@ -261,65 +277,118 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
+      // Cap at 500 tracks to prevent server overload
+      const MAX_TRACKS = 500;
+      const tracks = playlist.tracks.slice(0, MAX_TRACKS);
+      const wasCapped = playlist.tracks.length > MAX_TRACKS;
+
       const room = roomManager.getOrCreate(roomId);
-      let enqueuedCount = 0;
-      const currentQueueLen = room.getQueue().length;
 
-      for (let i = 0; i < playlist.tracks.length; i++) {
-        const track = playlist.tracks[i];
-        let trackUrl = '';
-        const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
-        const pidParam = `pid=${playlistId}`;
-        const queryParams = [thumbParam, pidParam].filter(Boolean).join('&');
-        const qs = `?${queryParams}`;
+      // ── Step 1: Check if room already has items (for isCurrent logic) ──
+      const [existingCurrent, lastItem] = await Promise.all([
+        prisma.roomQueueItem.findFirst({
+          where: { roomId, isCurrent: true },
+          select: { id: true }
+        }),
+        prisma.roomQueueItem.findFirst({
+          where: { roomId },
+          orderBy: { queueIndex: 'desc' },
+          select: { queueIndex: true }
+        })
+      ]);
 
-        // If it's a lazy loaded track without youtubeId, use our special scheme
-        if (!track.youtubeId) {
-          // Resolve the very first track synchronously so playback can start instantly
-          if (i === 0 && currentQueueLen === 0) {
-            console.log(`[Rooms] Resolving first lazy track synchronously: ${track.title}`);
-            try {
-              const ytResult = await matchToYouTubeFallback(track.title, track.artist || '');
-              if (ytResult && ytResult.youtubeId) {
-                trackUrl = `youtube:${ytResult.youtubeId}${qs}`;
-                await prisma.playlistTrack.update({
-                  where: { id: track.id },
-                  data: { youtubeId: ytResult.youtubeId }
-                });
-              } else {
-                trackUrl = `spotify-lazy:${track.id}${qs}`;
-              }
-            } catch (e) {
-              console.warn(`[Rooms] Sync resolve failed for first track:`, e);
-              trackUrl = `spotify-lazy:${track.id}${qs}`;
-            }
+      const isFirstTrack = !existingCurrent;
+      let nextQueueIndex = (lastItem?.queueIndex ?? -1) + 1;
+
+      // ── Step 2: Resolve first track synchronously if queue is empty ──
+      // This ensures playback can start immediately
+      let firstTrackUrl = '';
+      const firstTrack = tracks[0];
+      const firstThumb = firstTrack.thumbnail ? `thumb=${encodeURIComponent(firstTrack.thumbnail)}` : '';
+      const firstPidParam = `pid=${playlistId}`;
+      const firstQs = `?${[firstThumb, firstPidParam].filter(Boolean).join('&')}`;
+
+      if (isFirstTrack && !firstTrack.youtubeId) {
+        console.log(`[Rooms] Resolving first lazy track synchronously: ${firstTrack.title}`);
+        try {
+          const ytResult = await matchToYouTubeFallback(firstTrack.title, firstTrack.artist || '');
+          if (ytResult?.youtubeId) {
+            firstTrackUrl = `youtube:${ytResult.youtubeId}${firstQs}`;
+            await prisma.playlistTrack.update({
+              where: { id: firstTrack.id },
+              data: { youtubeId: ytResult.youtubeId }
+            }).catch(() => {});
           } else {
-            trackUrl = `spotify-lazy:${track.id}${qs}`;
+            firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
           }
-        } else {
-          trackUrl = `youtube:${track.youtubeId}${qs}`;
+        } catch {
+          firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
         }
-
-        const { item, activated } = await repo.enqueueTrack(roomId, userId, {
-          trackUrl,
-          title: track.title,
-          artist: track.artist || undefined,
-          fileName: `playlist_track.yt`,
-          mimeType: 'video/youtube', // We treat them all as youtube eventually
-          sizeBytes: 0,
-        });
-
-        room.addToQueue(item);
-        enqueuedCount++;
-
-        // Small delay to prevent database locks on massive playlists
-        if (enqueuedCount % 10 === 0) {
-          await new Promise(r => setTimeout(r, 50));
-        }
+      } else if (firstTrack.youtubeId) {
+        firstTrackUrl = `youtube:${firstTrack.youtubeId}${firstQs}`;
+      } else {
+        firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
       }
 
-      console.log(`[Rooms] Enqueued ${enqueuedCount} tracks from playlist ${playlistId} in room ${roomId}`);
-      res.json({ success: true, enqueuedCount });
+      // ── Step 3: Build all queue item data in memory ──
+      const allItemData: any[] = [];
+
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        let trackUrl: string;
+
+        if (i === 0) {
+          trackUrl = firstTrackUrl;
+        } else {
+          const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
+          const pidParam = `pid=${playlistId}`;
+          const qs = `?${[thumbParam, pidParam].filter(Boolean).join('&')}`;
+          trackUrl = track.youtubeId ? `youtube:${track.youtubeId}${qs}` : `spotify-lazy:${track.id}${qs}`;
+        }
+
+        allItemData.push({
+          roomId,
+          uploaderUserId: userId,
+          trackUrl,
+          title: track.title || 'Unknown Track',
+          artist: track.artist || undefined,
+          fileName: 'playlist_track.yt',
+          mimeType: 'video/youtube',
+          sizeBytes: BigInt(0),
+          queueIndex: nextQueueIndex + i,
+          isCurrent: isFirstTrack && i === 0,
+        });
+      }
+
+      // ── Step 4: Bulk insert in chunks of 200 ──
+      // (createMany doesn't return IDs, so we fetch them after)
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < allItemData.length; i += CHUNK_SIZE) {
+        const chunk = allItemData.slice(i, i + CHUNK_SIZE);
+        await prisma.roomQueueItem.createMany({ data: chunk });
+      }
+
+      // ── Step 5: Activate first track in room table if this is the first item ──
+      if (isFirstTrack) {
+        await prisma.room.update({
+          where: { id: roomId },
+          data: { trackUrl: firstTrackUrl, playbackState: 'PAUSED', positionMs: 0n }
+        }).catch(() => {});
+      }
+
+      // ── Step 6: Fetch the final queue from DB and sync room state once ──
+      const latestQueue = await repo.getQueue(roomId);
+      room.syncQueue(latestQueue, latestQueue.find(q => q.isCurrent)?.id ?? null);
+
+      // Emit single queueChanged event to all clients
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+
+      console.log(`[Rooms] Enqueued ${tracks.length} tracks from playlist ${playlistId} in room ${roomId} (bulk insert)`);
+      res.json({ 
+        success: true, 
+        enqueuedCount: tracks.length,
+        ...(wasCapped ? { warning: `Playlist capped at ${MAX_TRACKS} tracks` } : {})
+      });
     } catch (err) {
       console.error('[Rooms] enqueue playlist error:', err);
       res.status(500).json({ error: 'Failed to enqueue playlist' });
@@ -519,8 +588,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // POST /rooms/:roomId/enqueue-youtube
-  router.post('/:roomId/enqueue-youtube', requireAuth, async (req: Request, res: Response) => {
+  // POST /rooms/:roomId/enqueue-youtube — rate limited
+  router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
     try {
       const { roomId } = req.params;
       const { youtubeUrl, title: customTitle } = req.body as { youtubeUrl?: string; title?: string };
@@ -528,6 +597,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       if (!youtubeUrl) {
         res.status(400).json({ error: 'Missing youtubeUrl' });
+        return;
+      }
+      if (customTitle && customTitle.length > 255) {
+        res.status(400).json({ error: 'Title too long (max 255 chars)' });
         return;
       }
 
@@ -597,8 +670,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // POST /rooms/:roomId/enqueue-magnet
-  router.post('/:roomId/enqueue-magnet', requireAuth, async (req: Request, res: Response) => {
+  // POST /rooms/:roomId/enqueue-magnet — rate limited
+  router.post('/:roomId/enqueue-magnet', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
     try {
       const roomId = req.params['roomId'] as string;
       const { magnetUri, title, artist } = req.body as { magnetUri?: string; title?: string; artist?: string };
@@ -629,7 +702,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  router.get('/:roomId/yt-proxy', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId/yt-proxy — CRITICAL: optionalAuth (supports ?token= query or guest streaming) + rate limited + videoId validation
+  router.get('/:roomId/yt-proxy', optionalAuth, ytProxyLimiter, async (req: Request, res: Response) => {
     try {
       const { videoId } = req.query;
       if (!videoId || typeof videoId !== 'string') {
@@ -637,8 +711,15 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Live memory streaming audio for YouTube video: ${videoId}`);
-      await streamYoutubeAudio(videoId, req, res);
+      // Strict format check — prevents path traversal and shell injection
+      const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+      if (!YOUTUBE_ID_RE.test(cleanId)) {
+        res.status(400).json({ error: 'Invalid video ID format' });
+        return;
+      }
+
+      console.log(`[Proxy] Live memory streaming audio for YouTube video: ${cleanId}`);
+      await streamYoutubeAudio(cleanId, req, res);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('Truncated YouTube ID')) {

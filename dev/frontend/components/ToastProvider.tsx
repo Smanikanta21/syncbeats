@@ -4,6 +4,8 @@ import { useState, useEffect, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
+import { formatHumanMessage } from "./feedback/AppFeedback";
+
 export interface ToastItem {
   id: string;
   message: string;
@@ -22,8 +24,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const showToast = (message: string, type: "info" | "error" | "success" = "info") => {
+    const formatted = formatHumanMessage(message);
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message: formatted, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
@@ -42,7 +45,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed top-20 right-4 sm:right-6 z-[10000] flex flex-col gap-2 pointer-events-none max-w-sm w-full">
+      <div className="fixed top-20 left-3 right-3 sm:left-auto sm:right-6 z-[10000] flex flex-col gap-2 pointer-events-none max-w-sm sm:w-full">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div

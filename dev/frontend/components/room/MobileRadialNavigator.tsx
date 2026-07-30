@@ -408,7 +408,7 @@ export function MobileRadialNavigator({
                 exit={{ rotate: 90, opacity: 0 }}
                 transition={{ duration: 0.12 }}
               >
-                <X className="w-5 h-5 text-white" />
+                <X className={cn('w-5', 'h-5', 'text-white')} />
               </motion.div>
             ) : (
               <motion.div
@@ -417,9 +417,9 @@ export function MobileRadialNavigator({
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
                 transition={{ duration: 0.12 }}
-                className="flex flex-col items-center justify-center"
+                className={cn('flex', 'flex-col', 'items-center', 'justify-center')}
               >
-                <ActiveIcon className="w-5 h-5 text-primary" />
+                <ActiveIcon className={cn('w-5', 'h-5', 'text-primary')} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -430,7 +430,7 @@ export function MobileRadialNavigator({
               initial={{ scale: 0 }}
               animate={{ scale: [1, 1.25, 1] }}
               transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
-              className="absolute -top-1.5 -left-1.5 flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full bg-pink-500 text-white text-[10px] font-black border-2 border-background shadow-lg z-50 pointer-events-none"
+              className={cn('absolute', '-top-1.5', '-left-1.5', 'flex', 'h-5', 'min-w-[20px]', 'px-1.5', 'items-center', 'justify-center', 'rounded-full', 'bg-pink-500', 'text-white', 'text-[10px]', 'font-black', 'border-2', 'border-background', 'shadow-lg', 'z-50', 'pointer-events-none')}
             >
               {unreadChatCount}
             </motion.span>
@@ -438,9 +438,9 @@ export function MobileRadialNavigator({
 
           {/* Glowing pulse ring indicator */}
           {!isOpen && unreadChatCount === 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-primary border-2 border-background"></span>
+            <span className={cn('absolute', '-top-0.5', '-right-0.5', 'flex', 'h-3', 'w-3')}>
+              <span className={cn('animate-ping', 'absolute', 'inline-flex', 'h-full', 'w-full', 'rounded-full', 'bg-primary', 'opacity-75')}></span>
+              <span className={cn('relative', 'inline-flex', 'rounded-full', 'h-3', 'w-3', 'bg-primary', 'border-2', 'border-background')}></span>
             </span>
           )}
         </motion.button>
@@ -454,14 +454,14 @@ export function MobileRadialNavigator({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
-            className="fixed inset-0 z-40 md:hidden pointer-events-auto bg-black/50 backdrop-blur-sm select-none touch-none"
+            className={cn('fixed', 'inset-0', 'z-40', 'md:hidden', 'pointer-events-auto', 'bg-black/50', 'backdrop-blur-sm', 'select-none', 'touch-none')}
             style={{ touchAction: "none", willChange: "opacity" }}
             onClick={() => setMenuOpen(false)}
             onPointerDown={() => setMenuOpen(false)}
           >
             {/* Magnetic Connector Line to Active Thumb */}
             {thumbPos && (
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+              <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'z-10')}>
                 {snappedIndex !== null ? (
                   (() => {
                     const angle = getItemArcAngle(snappedIndex, MENU_ITEMS.length);
@@ -507,7 +507,7 @@ export function MobileRadialNavigator({
             )}
 
             {/* Arc Items Rendered in Compact 110px Semi-Circle Arc */}
-            <div className="absolute inset-0 pointer-events-none">
+            <div className={cn('absolute', 'inset-0', 'pointer-events-none')}>
               {MENU_ITEMS.map((item, idx) => {
                 const angle = getItemArcAngle(idx, MENU_ITEMS.length);
                 const rad = (angle * Math.PI) / 180;
@@ -564,19 +564,19 @@ export function MobileRadialNavigator({
                       handleItemSelect(item);
                     }}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className={cn('w-4', 'h-4')} />
 
                     {/* Unread badge on chat radial menu item */}
                     {item.id === "chat" && unreadChatCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-pink-500 text-white text-[9px] font-black border border-background shadow-md">
+                      <span className={cn('absolute', '-top-1', '-right-1', 'flex', 'h-4', 'min-w-[16px]', 'px-1', 'items-center', 'justify-center', 'rounded-full', 'bg-pink-500', 'text-white', 'text-[9px]', 'font-black', 'border', 'border-background', 'shadow-md')}>
                         {unreadChatCount}
                       </span>
                     )}
 
                     {/* Item label under icon */}
-                    <span
+                    {/* <span
                       className={cn(
-                        "absolute -bottom-5 text-[8px] font-extrabold uppercase tracking-wider whitespace-nowrap px-1.5 py-0.5 rounded-full backdrop-blur-md transition-all duration-150 pointer-events-none",
+                        "absolute right-8 -top-4 text-[6px] font-extrabold uppercase tracking-wider whitespace-nowrap px-1.5 py-0.5 rounded-full backdrop-blur-md transition-all duration-150 pointer-events-none",
                         isLeave
                           ? "bg-red-600 text-white opacity-100 shadow-md"
                           : isSnapped
@@ -585,7 +585,7 @@ export function MobileRadialNavigator({
                       )}
                     >
                       {item.label}
-                    </span>
+                    </span> */}
                   </motion.div>
                 );
               })}

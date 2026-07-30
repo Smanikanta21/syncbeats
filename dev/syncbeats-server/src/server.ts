@@ -21,6 +21,7 @@ import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
 import { createMusicBridgeRoutes } from './handlers/MusicBridgeRoutes';
 import playlistRoutes from './handlers/PlaylistRoutes';
 import { createUserRoutes } from './handlers/UserRoutes';
+import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
 import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
@@ -170,6 +171,7 @@ export class SyncBeatsServer {
     this.app.use('/spotify', createSpotifyRoutes());
     this.app.use('/api/bridge', createMusicBridgeRoutes());
     this.app.use('/api/playlists', playlistRoutes);
+    this.app.use('/feedback', createFeedbackRoutes());
   }
 
   private setupSocketIO(): void {

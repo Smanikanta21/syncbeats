@@ -286,10 +286,24 @@ export function createMusicBridgeRoutes(): Router {
         return;
       }
 
+      // cleanStr: strips null bytes, all C0 control chars, normalises whitespace
       const cleanStr = (s: any): string => {
         if (!s || typeof s !== 'string') return '';
-        return s.replace(/\0/g, '').replace(/\u0000/g, '').replace(/\\u0000/g, '').replace(/\x00/g, '').trim();
+        return s
+          // Null bytes
+          .replace(/\x00/g, '').replace(/\u0000/g, '').replace(/\\u0000/g, '')
+          // Other non-printable C0/C1 control chars
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F]/g, '')
+          // Replace newlines/CR with space so "2026-07-28\n, Tungevaag" doesn't corrupt timestamps
+          .replace(/[\r\n]+/g, ' ')
+          .trim();
       };
+
+      // Guard: detect tracks where title looks like an ISO date — these are embed scraper
+      // artefacts where Spotify's added_at timestamp leaked into the name field.
+      // e.g. { name: "2026-07-28", artist: "n, Tungevaag" } should be skipped.
+      const isDateLike = (s: string) => /^\d{4}-\d{2}-\d{2}/.test(s.trim());
 
       const userProvidedName = cleanStr(req.body.playlistName);
       const scrapedPlaylistName = cleanStr(name);
@@ -297,15 +311,30 @@ export function createMusicBridgeRoutes(): Router {
         ? userProvidedName
         : (scrapedPlaylistName || 'Imported Spotify Playlist');
 
-      // Sanitize all scraped tracks first to strip null bytes
-      const sanitizedTracks = tracks.map((t: any) => ({
-        title: cleanStr(t.title) || 'Unknown Track',
-        artist: cleanStr(t.artist) || 'Unknown Artist',
-        album: cleanStr(t.album) || null,
-        artworkUrl: cleanStr(t.artworkUrl) || null,
-        spotifyTrackId: cleanStr(t.spotifyTrackId) || null,
-        duration_ms: t.duration_ms,
-      }));
+      // Sanitize all scraped tracks: strip control chars and filter out malformed items
+      const sanitizedTracks = tracks
+        .map((t: any) => ({
+          title: cleanStr(t.title),
+          artist: cleanStr(t.artist),
+          album: cleanStr(t.album) || null,
+          artworkUrl: cleanStr(t.artworkUrl) || null,
+          spotifyTrackId: cleanStr(t.spotifyTrackId) || null,
+          duration_ms: typeof t.duration_ms === 'number' ? t.duration_ms : 0,
+        }))
+        // Filter out tracks where title is missing, too short, or looks like a timestamp
+        .filter((t: any) => {
+          if (!t.title || t.title.length < 1) return false;
+          if (isDateLike(t.title)) {
+            console.warn(`[Import] Skipping malformed track with date-like title: "${t.title}" / artist: "${t.artist}"`);
+            return false;
+          }
+          return true;
+        })
+        .map((t: any) => ({
+          ...t,
+          title: t.title || 'Unknown Track',
+          artist: t.artist || 'Unknown Artist',
+        }));
 
       // 2. Batch pre-check: find ALL songs that already exist in our DB safely in chunks
       const existingSongs: any[] = [];
@@ -324,20 +353,27 @@ export function createMusicBridgeRoutes(): Router {
         }
       }
 
-      // B. Query remaining non-spotifyId tracks by (title, artist) in chunks of 20
+      // B. Query remaining non-spotifyId tracks by title IN (avoids compound OR parameter mismatch)
+      //    Then filter by artist in-memory to get exact matches.
       const remainingTracks = sanitizedTracks.filter(
         (t: any) => !t.spotifyTrackId || !existingSongs.some((s) => s.spotifyId === t.spotifyTrackId)
       );
 
-      for (let i = 0; i < remainingTracks.length; i += 20) {
-        const chunk = remainingTracks.slice(i, i + 20);
+      for (let i = 0; i < remainingTracks.length; i += 30) {
+        const chunk = remainingTracks.slice(i, i + 30);
+        const titleSet = [...new Set(chunk.map((t: any) => t.title))];
         try {
           const res = await prisma.song.findMany({
-            where: {
-              OR: chunk.map((t: any) => ({ title: t.title, artist: t.artist })),
-            },
+            where: { title: { in: titleSet } },
           });
-          existingSongs.push(...res);
+          // Only push songs whose (title, artist) matches a track in this chunk
+          const chunkKeys = new Set(chunk.map((t: any) => `${t.title}|||${t.artist}`.toLowerCase()));
+          for (const s of res) {
+            const key = `${s.title}|||${s.artist}`.toLowerCase();
+            if (chunkKeys.has(key) && !existingSongs.some(e => e.id === s.id)) {
+              existingSongs.push(s);
+            }
+          }
         } catch (err) {
           console.warn('[Import] title/artist pre-check chunk failed:', err);
         }
@@ -353,16 +389,46 @@ export function createMusicBridgeRoutes(): Router {
 
       console.log(`[Import] Found ${existingSongs.length} existing songs in DB (of ${sanitizedTracks.length} total)`);
 
-      // 3. Create the playlist in DB
-      const playlist = await prisma.playlist.create({
-        data: sanitizeNullBytes({
-          userId:     req.user.sub,
-          name:       playlistName,
-          coverUrl:   cleanStr(coverUrl) || null,
+      // 3. Upsert playlist in DB (update existing if previously imported by this user, or create new)
+      const cleanSourceId = cleanStr(playlistUrl);
+      const spotifyPlaylistId = playlistUrl.match(/playlist\/([a-zA-Z0-9]+)/)?.[1] || '';
+
+      let playlist = await prisma.playlist.findFirst({
+        where: {
+          userId: req.user.sub,
           sourceType: 'SPOTIFY_BRIDGE',
-          sourceId:   cleanStr(playlistUrl),
-        }),
+          OR: [
+            { sourceId: cleanSourceId },
+            ...(spotifyPlaylistId ? [{ sourceId: { contains: spotifyPlaylistId } }] : []),
+          ],
+        },
       });
+
+      if (playlist) {
+        // Update existing playlist info and clear old tracks to replace with updated tracklist
+        playlist = await prisma.playlist.update({
+          where: { id: playlist.id },
+          data: sanitizeNullBytes({
+            name: playlistName,
+            coverUrl: cleanStr(coverUrl) || playlist.coverUrl,
+            updatedAt: new Date(),
+          }),
+        });
+        await prisma.playlistTrack.deleteMany({
+          where: { playlistId: playlist.id },
+        });
+        console.log(`[Import] Updated existing playlist ${playlist.id} ("${playlist.name}") and cleared old tracks for re-sync`);
+      } else {
+        playlist = await prisma.playlist.create({
+          data: sanitizeNullBytes({
+            userId:     req.user.sub,
+            name:       playlistName,
+            coverUrl:   cleanStr(coverUrl) || null,
+            sourceType: 'SPOTIFY_BRIDGE',
+            sourceId:   cleanSourceId,
+          }),
+        });
+      }
 
       // 4. Process each track: reuse existing Song or create new one, then link via PlaylistTrack
       const needsYouTube: { songId: string; title: string; artist: string }[] = [];
@@ -456,15 +522,21 @@ export function createMusicBridgeRoutes(): Router {
         }));
       }
 
-      // 5. Batch insert all PlaylistTracks in chunks of 50 with individual row fallback
-      for (let i = 0; i < playlistTrackData.length; i += 50) {
-        const chunk = playlistTrackData.slice(i, i + 50);
+      // 5. Batch insert all PlaylistTracks in chunks of 20
+      //    Keeping chunks small avoids PostgreSQL "bind message parameter count mismatch" errors
+      //    that occur when prepared statement caches collide across different chunk sizes.
+      for (let i = 0; i < playlistTrackData.length; i += 20) {
+        const chunk = playlistTrackData.slice(i, i + 20);
         try {
-          await prisma.playlistTrack.createMany({ data: chunk });
+          // Re-sanitize each item at insertion time to catch any remaining control chars
+          const safeChunk = chunk.map((item: any) => sanitizeNullBytes(item));
+          await prisma.playlistTrack.createMany({ data: safeChunk });
         } catch (chunkErr) {
           console.warn(`[Import] Bulk playlistTrack insert chunk ${i} failed, falling back to individual inserts:`, chunkErr);
           for (const item of chunk) {
-            await prisma.playlistTrack.create({ data: item }).catch(() => {});
+            await prisma.playlistTrack.create({ data: sanitizeNullBytes(item) }).catch((e: any) => {
+              console.warn(`[Import] Individual PlaylistTrack insert failed for "${item.title}":`, e?.message || e);
+            });
           }
         }
       }

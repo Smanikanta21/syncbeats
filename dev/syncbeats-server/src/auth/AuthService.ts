@@ -327,7 +327,7 @@ export class AuthService {
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) throw new Error('JWT_SECRET not configured');
     const payload: TokenPayload = { sub: user.id, email: user.email, name: user.name };
-    // Token does not expire by default for this project requirement.
-    return jwt.sign(payload, jwtSecret);
+    // 90-day expiry — balances UX (users stay logged in) with security (leaked tokens expire)
+    return jwt.sign(payload, jwtSecret, { expiresIn: '90d' });
   }
 }

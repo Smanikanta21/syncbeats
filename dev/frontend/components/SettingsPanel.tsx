@@ -202,7 +202,7 @@ function RoomPreview({
   };
 
   return (
-    <div ref={containerRef} className={cn('w-full', 'aspect-[16/9]', 'max-h-[340px]', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/[0.08]', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'touch-none', 'mb-6')}>
+    <div ref={containerRef} className={cn('w-full', 'aspect-[16/9]', 'max-h-[340px]', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/[0.08]', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'mb-6')}>
       
       {/* Glowing Ambient Background Blobs — animated by demo beat rAF loop */}
       {nodes.map((node, idx) => {
@@ -227,7 +227,7 @@ function RoomPreview({
       })}
 
       {/* Interactive Drag Handles for Lights matching EXACT NODE COLORS */}
-      <div className="absolute inset-0 z-20 pointer-events-none touch-none">
+      <div className="absolute inset-0 z-20 pointer-events-none">
         {/* Helper instruction text */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/80 border border-white/15 rounded-full px-3 py-1 text-[8px] font-black uppercase tracking-widest text-white/80 backdrop-blur-md shadow-lg">
           ✦ Drag Nodes to Reposition Light Blobs ✦

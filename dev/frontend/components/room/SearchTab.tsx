@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
-import { roomsApi, historyApi } from "../../lib/api";
+import { useAsync } from "../../hooks/useAsync";
+import { roomsApi, historyApi, getServerUrl } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles, History, Clock } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { SearchSkeleton } from "../loaders/SearchSkeleton";
+import { AppFeedback } from "../feedback/AppFeedback";
 
 interface SearchTabProps {
   roomId: string;
@@ -58,6 +61,27 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [importStage, setImportStage] = useState<"scraping" | "indexing" | "enriching" | "done">("scraping");
   const [importProgress, setImportProgress] = useState(0);
   const [importStats, setImportStats] = useState<{ total: number; playlistName?: string; playlistId?: string; coverUrl?: string }>({ total: 0 });
+
+  // Single-flight async wrappers — prevents duplicate API calls on rapid clicks
+  const enqueueAsync = useAsync(async (playlistId: string) => {
+    if (!token || !roomId) throw new Error('Not authenticated');
+    const SERVER = getServerUrl();
+    const res = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ playlistId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to add playlist to queue.");
+    }
+    return res.json();
+  });
+
+  const importAsync = useAsync(async (url: string) => {
+    if (!token) throw new Error('Not authenticated');
+    return handleSpotifyImport(url);
+  });
 
   // Playlist Edit/Delete State
   const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null);
@@ -337,22 +361,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-  const handleSpotifyEnqueue = async (playlistId: string) => {
-    if (!token || !roomId) return;
+  // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
+  const handleSpotifyEnqueue = useCallback(async (playlistId: string) => {
+    setSpError(null);
     try {
-      setSpError(null);
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/rooms/${roomId}/enqueue-playlist`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistId }),
-      });
-      if (!res.ok) throw new Error("Failed to enqueue playlist");
+      await enqueueAsync.run(playlistId);
       onSuccess?.();
-    } catch (e) {
-      console.error(e);
-      setSpError("Failed to enqueue playlist.");
+    } catch (e: any) {
+      setSpError(e?.message || "Failed to add playlist to queue.");
     }
-  };
+  }, [enqueueAsync, onSuccess]);
 
   const handlePlaylistClick = (id: string) => {
     setSelectedPlaylistId(id);
@@ -644,54 +662,54 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -15, scale: 0.95 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="p-5 rounded-3xl bg-gradient-to-br from-cyan-500/15 via-black/90 to-purple-500/20 border border-cyan-500/30 shadow-[0_0_30px_rgba(6,182,212,0.2)] backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
+            className="p-5 rounded-3xl bg-foreground/5 border border-foreground/15 shadow-2xl backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
           >
             {/* Ambient Pulsing Background Aura */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-purple-500/20 blur-3xl animate-pulse pointer-events-none" />
+            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl animate-pulse pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-emerald-500/10 blur-3xl animate-pulse pointer-events-none" />
 
             {/* Header Info */}
             <div className="flex items-center justify-between mb-3 relative z-10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0 shadow-lg">
-                  {importStage === "done" ? <CheckCircle2 className="w-6 h-6 text-cyan-400" /> : <Loader2 className="w-5 h-5 animate-spin" />}
+                <div className="w-10 h-10 rounded-2xl bg-foreground/10 border border-foreground/15 flex items-center justify-center text-foreground shrink-0 shadow-md">
+                  {importStage === "done" ? <CheckCircle2 className="w-6 h-6 text-emerald-400" /> : <Loader2 className="w-5 h-5 animate-spin text-foreground/80" />}
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-white flex items-center gap-2">
+                  <h4 className="text-sm font-black text-foreground flex items-center gap-2">
                     <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Spotify Playlist"}"` : "Importing Spotify Playlist"}</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 uppercase tracking-widest">
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-foreground/10 text-foreground/80 font-bold border border-foreground/15 uppercase tracking-widest">
                       {importStage === "done" ? "SUCCESS" : "ACTIVE STAGE"}
                     </span>
                   </h4>
-                  <p className="text-xs text-white/80 mt-0.5">
-                    {importStage === "scraping" && "Stage 1/3: 🔍 Extracting tracks & metadata..."}
-                    {importStage === "indexing" && "Stage 2/3: 💾 Building catalog & checking duplicates..."}
-                    {importStage === "enriching" && "Stage 3/3: 🎨 Fetching 600x600 artwork & audio streams..."}
-                    {importStage === "done" && `🎉 ${importStats.total} Songs successfully imported into "${importStats.playlistName || "Playlist"}"!`}
+                  <p className="text-xs text-foreground/60 mt-0.5">
+                    {importStage === "scraping" && "Stage 1/3: Extracting tracks & metadata..."}
+                    {importStage === "indexing" && "Stage 2/3: Building catalog & checking duplicates..."}
+                    {importStage === "enriching" && "Stage 3/3: Fetching 600x600 artwork & audio streams..."}
+                    {importStage === "done" && `${importStats.total} songs successfully imported into "${importStats.playlistName || "Playlist"}"!`}
                   </p>
                 </div>
               </div>
-              <span className="text-xl font-black text-cyan-400 font-mono tracking-wider ml-2">
+              <span className="text-xl font-black text-foreground font-mono tracking-wider ml-2">
                 {Math.round(importProgress)}%
               </span>
             </div>
 
-            {/* Animated Glowing Progress Bar */}
+            {/* Animated Progress Bar in Pure White */}
             <div className="w-full h-3.5 rounded-full bg-white/10 overflow-hidden relative border border-white/15 p-0.5 z-10 shadow-inner">
               <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-violet-500 to-purple-500 relative"
+                className="h-full rounded-full bg-white relative shadow-[0_0_12px_rgba(255,255,255,0.6)]"
                 initial={{ width: "0%" }}
                 animate={{ width: `${importProgress}%` }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
               >
-                {/* Glowing head light */}
-                <div className="absolute top-0 right-0 w-3 h-full bg-white rounded-full shadow-[0_0_12px_#06b6d4] animate-ping opacity-75" />
+                {/* Subtle glowing head light */}
+                <div className="absolute top-0 right-0 w-3 h-full bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.9)] opacity-100" />
               </motion.div>
             </div>
 
             {/* Completion Actions or Stage Footer */}
             {importStage === "done" && importStats.playlistId ? (
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/10 relative z-10">
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-foreground/10 relative z-10">
                 <button
                   onClick={() => {
                     if (importStats.playlistId) {
@@ -699,7 +717,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       setImporting(false);
                     }
                   }}
-                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all active:scale-95 flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+                  className="px-4 py-2 rounded-xl bg-foreground hover:bg-foreground/90 text-background font-extrabold text-xs transition-all active:scale-95 flex items-center gap-1.5 shadow-lg"
                 >
                   <Music className="w-4 h-4" /> View Playlist ({importStats.total} Tracks)
                 </button>
@@ -710,24 +728,24 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       setImporting(false);
                     }
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 border border-white/10"
+                  className="px-3.5 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 border border-foreground/10"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" /> Play All
                 </button>
                 <button
                   onClick={() => setImporting(false)}
-                  className="ml-auto px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-xs font-bold transition-all"
+                  className="ml-auto px-3 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/60 hover:text-foreground text-xs font-bold transition-all"
                 >
                   Dismiss
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between mt-3 text-[11px] text-white/60 relative z-10">
+              <div className="flex items-center justify-between mt-3 text-[11px] text-foreground/60 relative z-10">
                 <div className="flex items-center gap-1.5 font-bold">
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                  <Sparkles className="w-3.5 h-3.5 text-foreground/70 animate-spin" />
                   <span>{importStats.total ? `${importStats.total} Tracks Processed` : "Scanning playlist items..."}</span>
                 </div>
-                <span className="text-white/40 italic">Auto-resumes on network dropout</span>
+                <span className="text-foreground/40 italic">Auto-resumes on network dropout</span>
               </div>
             )}
           </motion.div>
@@ -743,7 +761,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             data-lenis-prevent="true"
             onClick={e => e.stopPropagation()}>
 
-            {showSuggestions && ytSuggestions.length > 0 ? (
+            {spError && (
+              <AppFeedback message={spError} severity="error" onDismiss={() => setSpError(null)} className="mb-2" />
+            )}
+            {downloadError && (
+              <AppFeedback message={downloadError} severity="error" onDismiss={() => setDownloadError(null)} className="mb-2" />
+            )}
+
+            {isSearching ? (
+              <SearchSkeleton count={5} />
+            ) : showSuggestions && ytSuggestions.length > 0 ? (
               ytSuggestions.map((s, idx) => (
                 <div key={idx} onMouseDown={e => { e.preventDefault(); setQuery(s); performSearch(s); }}
                   onMouseEnter={() => setSelectedIndex(idx)}
@@ -781,9 +808,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       </div>
                       <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
                     </div>
-                    <button onClick={() => handleSpotifyEnqueue(r.id)}
-                      className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all')}>
-                      <Plus className={cn('w-5', 'h-5')} />
+                    <button
+                      onClick={() => handleSpotifyEnqueue(r.id)}
+                      disabled={enqueueAsync.isPending}
+                      className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait')}
+                    >
+                      {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
                     </button>
                   </div>
                 ))}
@@ -802,19 +832,19 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       onClick={() => handlePlaylistClick(r.id)}
                       className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'relative', 'overflow-hidden',
                         isThisPlaylistImporting 
-                          ? 'bg-cyan-950/40 border border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.2)]' 
+                          ? 'bg-foreground/10 border border-foreground/20 shadow-md' 
                           : 'bg-white/5 border border-transparent hover:bg-white/10',
                         'transition-all', 'duration-300', 'group', 'shrink-0', 'cursor-pointer')}
                     >
                       {/* Background Fill Progress Bar */}
                       {isThisPlaylistImporting && (
                         <motion.div
-                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-600/30 via-violet-500/25 to-purple-600/30 z-0 pointer-events-none border-r border-cyan-400/50"
+                          className="absolute inset-y-0 left-0 bg-foreground/10 z-0 pointer-events-none border-r border-foreground/30"
                           initial={{ width: "0%" }}
                           animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         >
-                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_10px_#06b6d4] animate-pulse" />
+                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.8)] opacity-90" />
                         </motion.div>
                       )}
 
@@ -869,8 +899,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10')}>
-                        <Play className={cn('w-5', 'h-5', 'ml-0.5')} />
+                        disabled={enqueueAsync.isPending}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
+                        {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
                       </button>
                     </div>
                   );

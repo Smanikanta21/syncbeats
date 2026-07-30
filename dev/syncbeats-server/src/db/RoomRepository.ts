@@ -245,28 +245,32 @@ export class RoomRepository {
 
     // Enrich with thumbnails from the Song catalog
     if (mapped.length > 0) {
-      const titles = mapped.map(m => m.title);
-      const songs = await prisma.song.findMany({
-        where: { title: { in: titles } },
-        select: { title: true, artist: true, albumArt: true, youtubeThumbnail: true }
-      });
-      const songMap = new Map<string, { albumArt?: string | null; youtubeThumbnail?: string | null }>();
-      for (const s of songs) {
-        // Key by lowercase title+artist for matching
-        const key = `${s.title.toLowerCase()}::${(s.artist || '').toLowerCase()}`;
-        songMap.set(key, s);
-        // Also key by title only as fallback
-        if (!songMap.has(s.title.toLowerCase())) {
-          songMap.set(s.title.toLowerCase(), s);
+      try {
+        const titles = Array.from(new Set(mapped.map(m => sanitizeNullBytes(m.title)).filter((t): t is string => Boolean(t))));
+        if (titles.length > 0) {
+          const songs = await prisma.song.findMany({
+            where: { title: { in: titles } },
+            select: { title: true, artist: true, albumArt: true, youtubeThumbnail: true }
+          });
+          const songMap = new Map<string, { albumArt?: string | null; youtubeThumbnail?: string | null }>();
+          for (const s of songs) {
+            const key = `${s.title.toLowerCase()}::${(s.artist || '').toLowerCase()}`;
+            songMap.set(key, s);
+            if (!songMap.has(s.title.toLowerCase())) {
+              songMap.set(s.title.toLowerCase(), s);
+            }
+          }
+          for (const item of mapped) {
+            if (item.thumbnail) continue;
+            const exactKey = `${item.title.toLowerCase()}::${(item.artist || '').toLowerCase()}`;
+            const match = songMap.get(exactKey) || songMap.get(item.title.toLowerCase());
+            if (match) {
+              item.thumbnail = match.albumArt || match.youtubeThumbnail || undefined;
+            }
+          }
         }
-      }
-      for (const item of mapped) {
-        if (item.thumbnail) continue; // already has one
-        const exactKey = `${item.title.toLowerCase()}::${(item.artist || '').toLowerCase()}`;
-        const match = songMap.get(exactKey) || songMap.get(item.title.toLowerCase());
-        if (match) {
-          item.thumbnail = match.albumArt || match.youtubeThumbnail || undefined;
-        }
+      } catch (err) {
+        console.warn('[RoomRepository] Song thumbnail enrichment warning:', err);
       }
     }
 
@@ -764,14 +768,14 @@ export class RoomRepository {
   }): TrackQueueItem {
     return {
       id: item.id,
-      trackUrl: item.trackUrl,
-      title: item.title,
-      artist: item.artist || undefined,
-      fileName: item.fileName,
+      trackUrl: sanitizeNullBytes(item.trackUrl) || item.trackUrl,
+      title: sanitizeNullBytes(item.title) || item.title,
+      artist: item.artist ? (sanitizeNullBytes(item.artist) || undefined) : undefined,
+      fileName: sanitizeNullBytes(item.fileName) || item.fileName,
       queueIndex: item.queueIndex,
       isCurrent: item.isCurrent,
       addedBy: item.uploaderUserId,
-      addedByName: item.uploader?.name,
+      addedByName: item.uploader?.name ? (sanitizeNullBytes(item.uploader.name) || item.uploader.name) : undefined,
       createdAt: item.createdAt.getTime(),
       sizeBytes: item.sizeBytes ? Number(item.sizeBytes) : undefined,
     };

@@ -9,7 +9,7 @@ enum APIError: Error {
 
 class APIClient {
     static let shared = APIClient()
-    var baseURL = "http://127.0.0.1:4000"
+    var baseURL = "http://172.20.10.7:4000"
     
     // JWT token to inject into Authorization header
     var token: String? = nil

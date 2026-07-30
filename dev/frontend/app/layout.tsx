@@ -16,6 +16,7 @@ import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
 import { cn } from "@/lib/utils";
+import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -232,7 +233,7 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <Preloader />
-          {/* <IOSHomeScreenPrompt /> */}
+          <IOSHomeScreenPrompt />
           <ThemeProvider>
             <ConnectionProvider>
               <ConnectionStatusModal />
