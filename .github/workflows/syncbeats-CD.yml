@@ -37,6 +37,10 @@ jobs:
         working-directory: ./dev/syncbeats-server
         run: npm ci
 
+      - name: Generate Prisma Client
+        working-directory: ./dev/syncbeats-server
+        run: npm run prisma:generate
+
       - name: Execute Backend Tests
         working-directory: ./dev/syncbeats-server
         run: npm test
