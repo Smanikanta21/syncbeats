@@ -477,25 +477,38 @@ async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<bo
 
   for (const key of shuffledKeys) {
     try {
-      const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
-        method: 'GET',
-        headers: {
-          'x-rapidapi-key': key,
-          'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
-        }
-      });
+      let downloadLink = '';
+      for (let poll = 0; poll < 5; poll++) {
+        const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+          method: 'GET',
+          headers: {
+            'x-rapidapi-key': key,
+            'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
+          }
+        });
 
-      if (apiRes.status === 429 || apiRes.status === 403) {
-        exhaustedRapidKeys.add(key);
-        continue;
+        if (apiRes.status === 429 || apiRes.status === 403) {
+          exhaustedRapidKeys.add(key);
+          break;
+        }
+
+        if (!apiRes.ok) break;
+
+        const data = (await apiRes.json()) as { link?: string; status?: string };
+        if (data.link) {
+          downloadLink = data.link;
+          break;
+        } else if (data.status === 'processing') {
+          console.log(`[Proxy] RapidAPI processing ${videoId}... retry ${poll + 1}/5`);
+          await new Promise(r => setTimeout(r, 1200));
+        } else {
+          break;
+        }
       }
 
-      if (!apiRes.ok) continue;
-
-      const data = (await apiRes.json()) as { link?: string; status?: string };
-      if (data.link) {
+      if (downloadLink) {
         console.log(`[Proxy] RapidAPI link resolved using key ${key.slice(0, 5)}...`);
-        const audioRes = await fetch(data.link);
+        const audioRes = await fetch(downloadLink);
         if (audioRes.ok) {
           const arrayBuf = await audioRes.arrayBuffer();
           fs.writeFileSync(outputFile, Buffer.from(arrayBuf));
