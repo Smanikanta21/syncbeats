@@ -437,25 +437,11 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
   }
 
   // ── Cache MISS — download via yt-dlp ─────────────────────────────────────
-  // Downloading a full file is far less bot-checked than yt-dlp -g (get CDN URL).
   console.log(`[Search] Downloading audio to server disk for: ${targetYoutubeId}`);
 
-  const cookieCandidates = [
-    path.resolve(process.cwd(), 'cookies.txt'),
-    path.resolve(__dirname, '../../cookies.txt'),
-    '/app/cookies.txt',
-  ];
-  const foundCookiePath = cookieCandidates.find(p => {
-    try { return fs.statSync(p).isFile(); } catch { return false; }
-  });
-  const cookieArgs = foundCookiePath ? ['--cookies', foundCookiePath] : [];
-  if (foundCookiePath) console.log(`[Search] Using yt-dlp cookies from: ${foundCookiePath}`);
-
   const ytDlpArgs = [
-    ...cookieArgs,
-    '--extractor-args', 'youtube:player_client=mweb;formats=missing_pot',
+    '--extractor-args', 'youtube:player_client=mweb,ios,android',
     '--js-runtimes', 'node',
-    '--remote-components', 'ejs:github',
     '-f', 'bestaudio[ext=m4a]/bestaudio/best',
     '-o', outputFile,
     `https://www.youtube.com/watch?v=${targetYoutubeId}`,
