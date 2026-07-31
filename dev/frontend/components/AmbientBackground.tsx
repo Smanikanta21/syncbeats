@@ -3,6 +3,7 @@ import { useAudio } from "../context/AudioContext";
 import { useTheme } from "next-themes";
 import { useSyncInfo } from "../context/SyncContext";
 import { useSettings } from "../hooks/useSettings";
+import { useDevicePerf } from "../hooks/useDevicePerf";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEBUG OVERLAY — toggle with the `showDebug` prop or via keyboard shortcut (Shift+D in dev)
@@ -108,6 +109,7 @@ export function AmbientBackground({
 
   const { resolvedTheme } = useTheme();
   const { settings } = useSettings();
+  const { frameInterval, maxBlobs, skipWander, isLow } = useDevicePerf();
   const [mounted, setMounted] = useState(false);
   const [keyDebug, setKeyDebug] = useState(false);
 
@@ -188,12 +190,29 @@ export function AmbientBackground({
     return base + (50 - base) * (1 - 1 / cMult);
   };
 
-  const bassSat = adjustSat(isDark ? 85 : 75);
-  const bassLight = adjustLight(isDark ? 55 : 50);
-  const midSat = adjustSat(isDark ? 80 : 70);
-  const midLight = adjustLight(isDark ? 50 : 42);
-  const highSat = adjustSat(isDark ? 75 : 70);
-  const highLight = adjustLight(isDark ? 55 : 48);
+  // Per-node sat/light — derived directly from each node's hex color so blobs
+  // match exactly what the user picked in settings (no fixed 3-bucket tiers).
+  function hexToHsl(hex: string): { h: number; s: number; l: number } {
+    let c = hex.replace("#", "");
+    if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+    const r = parseInt(c.substring(0, 2), 16) / 255;
+    const g = parseInt(c.substring(2, 4), 16) / 255;
+    const b = parseInt(c.substring(4, 6), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // DIRECT 1:1 NODE RESOLUTION
@@ -242,7 +261,31 @@ export function AmbientBackground({
   const currentMapping = bandMappings[lightCount] || bandMappings[3];
   const activeBands = currentMapping.map((m) => m.name);
 
+  // Build per-band sat/light from actual node colors, with contrast/brightness applied
+  const nodeSatLight: Record<string, { sat: number; light: number }> = {
+    sub:      { sat: adjustSat(isDark ? 85 : 75), light: adjustLight(isDark ? 55 : 50) },
+    bass:     { sat: adjustSat(isDark ? 85 : 75), light: adjustLight(isDark ? 55 : 50) },
+    lowMid:   { sat: adjustSat(isDark ? 80 : 70), light: adjustLight(isDark ? 50 : 42) },
+    mid:      { sat: adjustSat(isDark ? 80 : 70), light: adjustLight(isDark ? 50 : 42) },
+    upperMid: { sat: adjustSat(isDark ? 80 : 70), light: adjustLight(isDark ? 50 : 42) },
+    high:     { sat: adjustSat(isDark ? 75 : 70), light: adjustLight(isDark ? 55 : 48) },
+  };
+
+  currentMapping.forEach((m, idx) => {
+    const node = nodes[idx] || nodes[0];
+    const { s, l } = hexToHsl(node.color);
+    // Blend node's natural saturation with the dark/light baseline so it feels
+    // vivid but still theme-aware. Apply user contrast multiplier on top.
+    const blendedSat = Math.round((s * 0.7 + (isDark ? 85 : 75) * 0.3));
+    const blendedLight = Math.round((l * 0.5 + (isDark ? 52 : 46) * 0.5));
+    nodeSatLight[m.name] = {
+      sat:   adjustSat(blendedSat),
+      light: adjustLight(blendedLight),
+    };
+  });
+
   // Derive node hues and 2D positions directly from settings.gradientSettings.nodes
+  // Default fallbacks — will be overwritten for active bands below
   const nodeHues: Record<string, number> = {
     sub: 320,
     bass: 0,
@@ -273,6 +316,13 @@ export function AmbientBackground({
     if (!syncWithAudio && !isRoomPlayingProp) return;
 
     let rafId: number;
+    let lastFrameTime = 0;
+    let isPageVisible = !document.hidden;
+
+    // Pause the loop when the tab is hidden — saves GPU/CPU entirely
+    const handleVisibility = () => { isPageVisible = !document.hidden; };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     const getRawAudioData = audioContext?.getRawAudioData;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -318,16 +368,21 @@ export function AmbientBackground({
     const targetPosY = [...posY];
     let lastWanderTime = performance.now();
 
-    // ─── Dual Beat Anchor Positions ───────────────────────────────────────────
-    // Blob 1 (bass) is pinned lower-left → pulses on kick/bass beats
-    // Blob 5 (high) is pinned upper-right → pulses on treble/hi-hat beats
-    const BASS_ANCHOR  = { x: 22, y: 65 };
-    const TREBLE_ANCHOR = { x: 78, y: 22 };
+    // ─── Beat Anchor Positions — derived from node settings, not hardcoded ───
+    // Blob 1 (bass) and blob 5 (high) still snap back to their anchor on wander,
+    // but the anchor IS whatever the user positioned them to in settings.
+    const BASS_ANCHOR   = { x: nodePositions.bass.x,  y: nodePositions.bass.y  };
+    const TREBLE_ANCHOR = { x: nodePositions.high.x,  y: nodePositions.high.y  };
 
     let prevTimestamp = performance.now();
 
     const animate = (timestamp: number) => {
       rafId = requestAnimationFrame(animate);
+
+      // Skip frame if tab hidden or not enough time has passed (throttle to frameInterval)
+      if (!isPageVisible) return;
+      if (timestamp - lastFrameTime < frameInterval) return;
+      lastFrameTime = timestamp;
 
       const deltaMs = Math.min(100, timestamp - prevTimestamp);
       prevTimestamp = timestamp;
@@ -552,21 +607,6 @@ export function AmbientBackground({
       const autoBright = smoothAutoBrightnessRef.current;
       const autoContrast = smoothAutoContrastRef.current;
 
-      // ── Liquid Turbulence Displacement Modulation ─────────────────
-      const turbEl = typeof document !== "undefined" ? document.getElementById("syncbeats-liquid-turb") : null;
-      const dispEl = typeof document !== "undefined" ? document.getElementById("syncbeats-liquid-disp") : null;
-      if (turbEl && dispEl) {
-        const overallEnergy = (smoothed[0] + smoothed[1] + smoothed[2] + smoothed[3] + smoothed[4] + smoothed[5]) / 6;
-        // Slower, smaller turbulence frequency for smoother liquid effect
-        const freqX = 0.006 + Math.sin(timestamp * 0.0003) * 0.002 + overallEnergy * 0.002;
-        const freqY = 0.008 + Math.cos(timestamp * 0.00025) * 0.002 + overallEnergy * 0.002;
-        // Cap displacement scale: 10 at rest, max 24 with heavy bass (was 32+55+50)
-        const dispScale = isPlaying ? Math.min(24, 10 + overallEnergy * 20 + smoothed[0] * 18) : 10;
-
-        turbEl.setAttribute("baseFrequency", `${freqX.toFixed(5)} ${freqY.toFixed(5)}`);
-        dispEl.setAttribute("scale", dispScale.toFixed(1));
-      }
-
       // ── Beat-reactive intensity: v² makes light hits soft, heavy hits slam ──
       // Sub: biggest physical space, hardest punch on deep bass
       if (blobSub) {
@@ -574,26 +614,26 @@ export function AmbientBackground({
         const v2 = v * v;
         const scale = (1 + v2 * 0.9 + v * 0.2) * (0.9 + (autoBright - 1) * 0.2);
         const opacityVal = Math.min(0.9, (baseOpacity[0] + v2 * (peakOpacity[0] - baseOpacity[0]) * 0.9) * autoBright);
-        const sat = Math.min(100, (bassSat + v2 * 10) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.sub;
+        const sat = Math.min(100, (bSat + v2 * 10) * autoContrast);
         const hue = nodeHues.sub;
         blobSub.style.transform = `translate3d(${posX[0]}vw, ${posY[0]}vh, 0) scale(${scale})`;
         blobSub.style.opacity = `${opacityVal}`;
-        blobSub.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bassLight}%, ${0.65 + v2 * 0.12}) 0%, hsla(${hue}, ${sat}%, ${bassLight}%, 0) 80%)`;
+        blobSub.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, ${0.65 + v2 * 0.12}) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 80%)`;
       }
-      // Bass: primary kick/punch driver
-      // Bass ANCHOR: pinned lower-left, snaps sharply on kick/bass beat onset
+      // Bass: primary kick/punch driver — snaps sharply on kick/bass beat onset
       if (blobBass) {
         const v = smoothed[1];
         const v2 = v * v;
-        // beatPulse: sharp spike from peakHold on onset, decays quickly
         const beatPulse = 1 + peakHold[1] * 1.6;
         const scale = (1 + v2 * 0.8 + v * 0.2) * beatPulse * (0.9 + (autoBright - 1) * 0.2);
         const opacityVal = Math.min(0.95, (baseOpacity[0] + peakHold[1] * 0.6 + v2 * 0.2) * autoBright);
-        const sat = Math.min(100, (bassSat + v2 * 10 + peakHold[1] * 20) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.bass;
+        const sat = Math.min(100, (bSat + v2 * 10 + peakHold[1] * 20) * autoContrast);
         const hue = nodeHues.bass;
         blobBass.style.transform = `translate3d(${posX[1]}vw, ${posY[1]}vh, 0) scale(${scale})`;
         blobBass.style.opacity = `${opacityVal}`;
-        blobBass.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bassLight}%, ${0.7 + peakHold[1] * 0.25}) 0%, hsla(${hue}, ${sat}%, ${bassLight}%, 0) 80%)`;
+        blobBass.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, ${0.7 + peakHold[1] * 0.25}) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 80%)`;
       }
       // Low-mid: warmth layer, moderate reactivity
       if (blobLowMid) {
@@ -601,11 +641,12 @@ export function AmbientBackground({
         const v2 = v * v;
         const scale = 1 + v2 * 0.65 + v * 0.15;
         const opacityVal = Math.min(0.85, (baseOpacity[1] + v2 * (peakOpacity[1] - baseOpacity[1])) * autoBright);
-        const sat = Math.min(100, (midSat + v2 * 8) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.lowMid;
+        const sat = Math.min(100, (bSat + v2 * 8) * autoContrast);
         const hue = nodeHues.lowMid;
         blobLowMid.style.transform = `translate3d(${posX[2]}vw, ${posY[2]}vh, 0) scale(${scale})`;
         blobLowMid.style.opacity = `${opacityVal}`;
-        blobLowMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${midLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${midLight}%, 0) 80%)`;
+        blobLowMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 80%)`;
       }
       // Mid: vocal presence layer
       if (blobMid) {
@@ -613,11 +654,12 @@ export function AmbientBackground({
         const v2 = v * v;
         const scale = 1 + v2 * 0.55 + v * 0.12;
         const opacityVal = Math.min(0.85, (baseOpacity[1] + v2 * (peakOpacity[1] - baseOpacity[1])) * autoBright);
-        const sat = Math.min(100, (midSat + v2 * 8) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.mid;
+        const sat = Math.min(100, (bSat + v2 * 8) * autoContrast);
         const hue = nodeHues.mid;
         blobMid.style.transform = `translate3d(${posX[3]}vw, ${posY[3]}vh, 0) scale(${scale})`;
         blobMid.style.opacity = `${opacityVal}`;
-        blobMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${midLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${midLight}%, 0) 80%)`;
+        blobMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 80%)`;
       }
       // Upper-mid: presence/air layer
       if (blobUpperMid) {
@@ -625,31 +667,34 @@ export function AmbientBackground({
         const v2 = v * v;
         const scale = 1 + v2 * 0.5 + v * 0.1;
         const opacityVal = Math.min(0.8, (baseOpacity[1] + v2 * (peakOpacity[1] - baseOpacity[1])) * autoBright);
-        const sat = Math.min(100, (midSat + v2 * 7) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.upperMid;
+        const sat = Math.min(100, (bSat + v2 * 7) * autoContrast);
         const hue = nodeHues.upperMid;
         blobUpperMid.style.transform = `translate3d(${posX[4]}vw, ${posY[4]}vh, 0) scale(${scale})`;
         blobUpperMid.style.opacity = `${opacityVal}`;
-        blobUpperMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${midLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${midLight}%, 0) 80%)`;
+        blobUpperMid.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, 0.6) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 80%)`;
       }
-      // High: shimmer/sparkle, fastest reactivity but smallest punch
-      // Treble ANCHOR: pinned upper-right, snaps sharply on hi-hat/treble beat onset
+      // High: shimmer/sparkle, fastest reactivity — snaps sharply on hi-hat/treble onset
       if (blobHigh) {
         const v = smoothed[5];
         const v2 = v * v;
-        // beatPulse: sharp spike from peakHold on onset, decays quickly
         const beatPulse = 1 + peakHold[5] * 1.3;
         const scale = (1 + v2 * 0.4 + v * 0.08) * beatPulse;
         const opacityVal = Math.min(0.85, (baseOpacity[2] + peakHold[5] * 0.5 + v2 * 0.15) * autoBright);
-        const sat = Math.min(100, (highSat + v2 * 7 + peakHold[5] * 18) * autoContrast);
+        const { sat: bSat, light: bLight } = nodeSatLight.high;
+        const sat = Math.min(100, (bSat + v2 * 7 + peakHold[5] * 18) * autoContrast);
         const hue = nodeHues.high;
         blobHigh.style.transform = `translate3d(${posX[5]}vw, ${posY[5]}vh, 0) scale(${scale})`;
         blobHigh.style.opacity = `${opacityVal}`;
-        blobHigh.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${highLight}%, ${0.55 + peakHold[5] * 0.30}) 0%, hsla(${hue}, ${sat}%, ${highLight}%, 0) 82%)`;
+        blobHigh.style.background = `radial-gradient(circle, hsla(${hue}, ${sat}%, ${bLight}%, ${0.55 + peakHold[5] * 0.30}) 0%, hsla(${hue}, ${sat}%, ${bLight}%, 0) 82%)`;
       }
     };
 
     rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [
     syncWithAudio,
     isRoomPlayingProp,
@@ -675,32 +720,8 @@ export function AmbientBackground({
     <>
       {isDebugActive && syncWithAudio && <DebugOverlay debugData={debugDataRef} />}
 
-      {/* SVG Filter for silky liquid fluid morphing */}
-      <svg className="hidden">
-        <defs>
-          <filter id="syncbeats-liquid-fluid" x="-20%" y="-20%" width="140%" height="140%">
-            <feTurbulence
-              id="syncbeats-liquid-turb"
-              type="fractalNoise"
-              baseFrequency="0.012 0.018"
-              numOctaves="3"
-              result="noise"
-            />
-            <feDisplacementMap
-              id="syncbeats-liquid-disp"
-              in="SourceGraphic"
-              in2="noise"
-              scale="35"
-              xChannelSelector="R"
-              yChannelSelector="G"
-            />
-          </filter>
-        </defs>
-      </svg>
-
       <div
         className={`fixed inset-0 pointer-events-none z-0 transition-opacity duration-700 ease-in-out ${syncWithAudio && !isPlaying && !isRoomPlayingProp ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-        style={{ filter: "url(#syncbeats-liquid-fluid)" }}
       >
         {showSub && (
           <div
@@ -713,7 +734,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.sub.x}vw, ${nodePositions.sub.y}vh, 0)`,
               opacity: baseOpacity[0],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.sub}, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(${nodeHues.sub}, ${bassSat}%, ${bassLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.sub}, ${nodeSatLight.sub.sat}%, ${nodeSatLight.sub.light}%, 0.8) 0%, hsla(${nodeHues.sub}, ${nodeSatLight.sub.sat}%, ${nodeSatLight.sub.light}%, 0) 70%)`,
             }}
           />
         )}
@@ -728,7 +749,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.bass.x}vw, ${nodePositions.bass.y}vh, 0)`,
               opacity: baseOpacity[0],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.bass}, ${bassSat}%, ${bassLight}%, 0.8) 0%, hsla(${nodeHues.bass}, ${bassSat}%, ${bassLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.bass}, ${nodeSatLight.bass.sat}%, ${nodeSatLight.bass.light}%, 0.8) 0%, hsla(${nodeHues.bass}, ${nodeSatLight.bass.sat}%, ${nodeSatLight.bass.light}%, 0) 70%)`,
             }}
           />
         )}
@@ -743,7 +764,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.lowMid.x}vw, ${nodePositions.lowMid.y}vh, 0)`,
               opacity: baseOpacity[1],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.lowMid}, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(${nodeHues.lowMid}, ${midSat}%, ${midLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.lowMid}, ${nodeSatLight.lowMid.sat}%, ${nodeSatLight.lowMid.light}%, 0.8) 0%, hsla(${nodeHues.lowMid}, ${nodeSatLight.lowMid.sat}%, ${nodeSatLight.lowMid.light}%, 0) 70%)`,
             }}
           />
         )}
@@ -758,7 +779,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.mid.x}vw, ${nodePositions.mid.y}vh, 0)`,
               opacity: baseOpacity[1],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.mid}, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(${nodeHues.mid}, ${midSat}%, ${midLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.mid}, ${nodeSatLight.mid.sat}%, ${nodeSatLight.mid.light}%, 0.8) 0%, hsla(${nodeHues.mid}, ${nodeSatLight.mid.sat}%, ${nodeSatLight.mid.light}%, 0) 70%)`,
             }}
           />
         )}
@@ -773,7 +794,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.upperMid.x}vw, ${nodePositions.upperMid.y}vh, 0)`,
               opacity: baseOpacity[1],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.upperMid}, ${midSat}%, ${midLight}%, 0.8) 0%, hsla(${nodeHues.upperMid}, ${midSat}%, ${midLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.upperMid}, ${nodeSatLight.upperMid.sat}%, ${nodeSatLight.upperMid.light}%, 0.8) 0%, hsla(${nodeHues.upperMid}, ${nodeSatLight.upperMid.sat}%, ${nodeSatLight.upperMid.light}%, 0) 70%)`,
             }}
           />
         )}
@@ -788,7 +809,7 @@ export function AmbientBackground({
               transform: `translate3d(${nodePositions.high.x}vw, ${nodePositions.high.y}vh, 0)`,
               opacity: baseOpacity[2],
               mixBlendMode: blendMode,
-              background: `radial-gradient(circle, hsla(${nodeHues.high}, ${highSat}%, ${highLight}%, 0.8) 0%, hsla(${nodeHues.high}, ${highSat}%, ${highLight}%, 0) 70%)`,
+              background: `radial-gradient(circle, hsla(${nodeHues.high}, ${nodeSatLight.high.sat}%, ${nodeSatLight.high.light}%, 0.8) 0%, hsla(${nodeHues.high}, ${nodeSatLight.high.sat}%, ${nodeSatLight.high.light}%, 0) 70%)`,
             }}
           />
         )}

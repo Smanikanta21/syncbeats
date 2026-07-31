@@ -23,8 +23,7 @@
     "@aws-sdk/lib-storage": "^3.1057.0",
     "@distube/ytdl-core": "^4.16.12",
     "@google-cloud/storage": "^7.19.0",
-    "@prisma/adapter-pg": "^7.7.0",
-    "@prisma/client": "^7.7.0",
+    "@prisma/client": "^6.4.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/pg": "^8.20.0",
     "bcryptjs": "^3.0.3",
@@ -61,7 +60,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/uuid": "^10.0.0",
     "@types/yt-search": "^2.10.3",
-    "prisma": "^7.7.0",
+    "prisma": "^6.4.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^6.0.2"

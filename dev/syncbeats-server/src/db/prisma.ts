@@ -1,7 +1,3 @@
-// db/prisma.ts — singleton Prisma client with pg adapter + null-byte sanitizer utility
-
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as { _prisma?: PrismaClient };
@@ -57,28 +53,7 @@ function createPrismaClient() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  const pool = new Pool({
-    connectionString,
-    max: 25,
-    idleTimeoutMillis: 0, // Disable aggressive 10s idle client destruction (prevents invalid message format / type 53 errors)
-    connectionTimeoutMillis: 10_000,
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10_000,
-  });
-
-  // Handle pool error events quietly without flooding logs
-  pool.on('error', (err, client) => {
-    try {
-      (client as any).connection?.stream?.destroy();
-    } catch {
-      // best effort
-    }
-  });
-
-  const adapter = new PrismaPg(pool);
-
   const client = new PrismaClient({
-    adapter,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
