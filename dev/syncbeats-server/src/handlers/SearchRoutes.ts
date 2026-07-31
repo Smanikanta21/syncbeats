@@ -371,24 +371,20 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
   }
 
   const path = require('path');
-  const fs = require('fs');
+  const fs   = require('fs');
+  const { spawn } = require('child_process');
 
   let targetYoutubeId = cleanId;
 
+  // ── DB lookup: resolve Song ID → YouTube ID ────────────────────────────────
   try {
     const dbSong = await prisma.song.findFirst({
-      where: {
-        OR: [
-          { id: cleanId },
-          { youtubeId: cleanId }
-        ]
-      }
+      where: { OR: [{ id: cleanId }, { youtubeId: cleanId }] }
     });
-
     if (dbSong?.youtubeId) {
       targetYoutubeId = dbSong.youtubeId;
     } else if (dbSong) {
-      console.log(`[Search] Song in DB lacks youtubeId, resolving from DB metadata: ${dbSong.title} - ${dbSong.artist}`);
+      console.log(`[Search] Song in DB lacks youtubeId, resolving: ${dbSong.title} - ${dbSong.artist}`);
       const yt = await matchToYouTubeFallback(dbSong.title, dbSong.artist || '');
       if (yt?.youtubeId) {
         targetYoutubeId = yt.youtubeId;
@@ -408,104 +404,84 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
       path.resolve(__dirname, '../../bin/yt-dlp'),
       path.resolve(process.cwd(), 'yt-dlp'),
       path.resolve(process.cwd(), 'dev/syncbeats-server/yt-dlp'),
-      path.resolve(process.cwd(), 'dev/syncbeats-server/bin/yt-dlp')
+      'yt-dlp'
     ];
     for (const p of paths) {
-      if (fs.existsSync(p)) return p;
+      if (fs.existsSync && fs.existsSync(p)) return p;
     }
     return 'yt-dlp';
   })();
 
-  let directAudioUrl: string | null = null;
-  const cachedUrlEntry = youtubeUrlCache.get(targetYoutubeId);
-  if (cachedUrlEntry && Date.now() < cachedUrlEntry.expiresAt) {
-    console.log(`[Search] In-memory CDN URL cache HIT for YouTube video: ${targetYoutubeId}`);
-    directAudioUrl = cachedUrlEntry.url;
-  } else {
-    console.log(`[Search] Resolving direct audio stream for YouTube video: ${targetYoutubeId}`);
-    directAudioUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
-    if (directAudioUrl) {
-      // Cache URL for 15 minutes to handle dual-fetch (audio element + background stash) instantly
-      youtubeUrlCache.set(targetYoutubeId, {
-        url: directAudioUrl,
-        expiresAt: Date.now() + 15 * 60 * 1000
-      });
-    }
+  // ── Server-disk cache: /tmp/<videoId>.m4a ─────────────────────────────────
+  // Disk cache means YouTube is only called ONCE per track ever.
+  // Every subsequent user gets an instant res.sendFile() — no YouTube, no CDN.
+  const tmpDir    = '/tmp/syncbeats-audio';
+  const outputFile = path.join(tmpDir, `${targetYoutubeId}.m4a`);
+
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  if (!directAudioUrl) {
-    console.error(`[Search] Failed to resolve audio stream for YouTube video: ${targetYoutubeId}`);
-    res.status(404).json({ error: `YouTube track unavailable or restricted: ${targetYoutubeId}` });
-    return;
+  const serveFile = () => {
+    res.setHeader('Content-Type', 'audio/mp4');
+    res.setHeader('Content-Disposition', `inline; filename="${targetYoutubeId}.m4a"`);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(outputFile);
+  };
+
+  // ── Cache HIT — serve instantly ───────────────────────────────────────────
+  if (fs.existsSync(outputFile)) {
+    console.log(`[Search] Server-disk cache HIT for ${targetYoutubeId} — serving instantly`);
+    return serveFile();
   }
 
-  console.log(`[Search] Streaming audio via fast direct CDN proxy: ${targetYoutubeId}`);
+  // ── Cache MISS — download via yt-dlp ─────────────────────────────────────
+  // Downloading a full file is far less bot-checked than yt-dlp -g (get CDN URL).
+  console.log(`[Search] Downloading audio to server disk for: ${targetYoutubeId}`);
 
-  try {
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    };
-    if (req.headers.range) {
-      headers['Range'] = req.headers.range as string;
-    }
+  const cookieCandidates = [
+    path.resolve(process.cwd(), 'cookies.txt'),
+    path.resolve(__dirname, '../../cookies.txt'),
+    '/app/cookies.txt',
+  ];
+  const foundCookiePath = cookieCandidates.find(p => {
+    try { return fs.statSync(p).isFile(); } catch { return false; }
+  });
+  const cookieArgs = foundCookiePath ? ['--cookies', foundCookiePath] : [];
+  if (foundCookiePath) console.log(`[Search] Using yt-dlp cookies from: ${foundCookiePath}`);
 
-    let audioResp = await fetch(directAudioUrl, { headers });
+  const ytDlpArgs = [
+    ...cookieArgs,
+    '--extractor-args', 'youtube:player_client=mweb;formats=missing_pot',
+    '--js-runtimes', 'node',
+    '--remote-components', 'ejs:github',
+    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+    '-o', outputFile,
+    `https://www.youtube.com/watch?v=${targetYoutubeId}`,
+  ];
 
-    // Auto-retry on 403 / non-OK status: Evict stale cache & resolve fresh direct audio URL
-    if (!audioResp.ok && audioResp.status !== 206) {
-      console.warn(`[Search] GoogleVideo CDN returned HTTP ${audioResp.status} for ${targetYoutubeId}. Evicting stale cache & resolving fresh stream URL...`);
-      youtubeUrlCache.delete(targetYoutubeId);
-      const freshUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
-      if (freshUrl) {
-        directAudioUrl = freshUrl;
-        youtubeUrlCache.set(targetYoutubeId, {
-          url: freshUrl,
-          expiresAt: Date.now() + 15 * 60 * 1000
-        });
-        audioResp = await fetch(directAudioUrl, { headers });
+  const ytDlp = spawn(ytDlpPath, ytDlpArgs);
+  let stderr = '';
+  ytDlp.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+  ytDlp.on('close', (code: number) => {
+    if (code === 0 && fs.existsSync(outputFile)) {
+      console.log(`[Search] yt-dlp download complete for ${targetYoutubeId}`);
+      if (!res.headersSent) serveFile();
+    } else {
+      console.error(`[Search] yt-dlp failed for ${targetYoutubeId} (code ${code}): ${stderr.slice(0, 300)}`);
+      // Clean up partial download so next request retries
+      try { fs.unlinkSync(outputFile); } catch {}
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
       }
     }
+  });
 
-    if (!audioResp.ok && audioResp.status !== 206) {
-      res.status(audioResp.status).json({ error: `GoogleVideo CDN returned HTTP ${audioResp.status}` });
-      return;
-    }
-
-    res.status(audioResp.status);
-    const contentType = audioResp.headers.get('content-type') || 'audio/mp4';
-    const contentLength = audioResp.headers.get('content-length');
-    const contentRange = audioResp.headers.get('content-range');
-
-    res.setHeader('Content-Type', contentType);
-    if (contentLength) res.setHeader('Content-Length', contentLength);
-    if (contentRange) res.setHeader('Content-Range', contentRange);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Disposition', `inline; filename="${targetYoutubeId}.m4a"`);
-
-    if (audioResp.body) {
-      const reader = audioResp.body.getReader();
-      const pump = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (!res.writableEnded) {
-              res.write(Buffer.from(value));
-            }
-          }
-          if (!res.writableEnded) res.end();
-        } catch (pumpErr) {
-          if (!res.writableEnded) res.end();
-        }
-      };
-      pump();
-    } else {
-      res.end();
-    }
-  } catch (streamErr) {
-    console.error('[Search] Stream proxy error:', streamErr);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to stream audio file' });
-    }
-  }
+  ytDlp.on('error', (err: Error) => {
+    console.error('[Search] yt-dlp spawn error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'yt-dlp not available' });
+  });
 }
+
