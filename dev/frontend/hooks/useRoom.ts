@@ -126,7 +126,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     if (!trackUrl) return "Unknown Track";
     const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
     const fileName = clean.split('/').pop() ?? '';
-    const formatted = fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ');
+    const rawId = fileName.split('?')[0].replace(/\.[^.]+$/, '');
+    // If rawId looks like a bare YouTube video ID (11 alphanumeric+_- chars), don't show it
+    const isYouTubeId = /^[a-zA-Z0-9_-]{11}$/.test(rawId);
+    if (isYouTubeId) return "SyncBeats Track";
+    const formatted = rawId.replace(/^\d+_/, '').replace(/_/g, ' ');
     if (formatted && !formatted.startsWith('youtube:')) return formatted;
     return "SyncBeats Track";
   }, []);

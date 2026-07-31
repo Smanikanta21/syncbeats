@@ -57,39 +57,10 @@ function createPrismaClient() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  const pool = new Pool({
-    connectionString,
-    max: 20,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 15_000,
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10_000,
-  });
-
-  // Discard corrupted/errored connections from the pool so they don't
-  // cause 08P01 "insufficient data left in message" or "invalid message format" errors.
-  // When a connection enters an error state (e.g. after a failed UTF8 transaction),
-  // pg emits the 'error' event on the pool. We catch it and forcibly terminate the
-  // underlying TCP socket so the pool removes it and creates a fresh connection.
-  pool.on('error', (err, client) => {
-    console.error('[pg pool] Idle client error — forcibly destroying connection:', err.message);
-    try {
-      // Destroy the underlying socket so pg-pool removes this connection from the pool
-      (client as any).connection?.stream?.destroy();
-    } catch {
-      // ignore — best effort
-    }
-  });
-
-  const adapter = new PrismaPg(pool);
-
-  // NOTE: Do NOT use $extends to sanitize args here.
-  // Prisma query args contain internal proxies and special objects —
-  // deep-cloning them into plain objects destroys their prototype chain
-  // and produces 08P01 "insufficient data left in message" from PostgreSQL.
-  // Null-byte sanitization is handled per-operation in UserRepository.
+  // Standard PrismaClient uses Prisma's native Rust query engine connection pool,
+  // which handles PostgreSQL protocol state, idle connection resets, and automatic retries
+  // seamlessly without throwing 'DriverAdapterError: invalid message format' or pg pool idle errors.
   const client = new PrismaClient({
-    adapter,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 

@@ -291,13 +291,18 @@ export function RoomDashboard({
   const lastExtractedTrackRef = useRef<string | null>(null);
 
   // Dynamically extract colors from album artwork when active track changes
+  // NOTE: Use only STABLE primitives in deps — avoid object refs (audio, currentQueueItem)
+  // which change on every render and cause constant re-fires (glitch).
+  const audioCoverUrl = audio.coverUrl;
+  const audioTrackTitle = audio.trackTitle;
+  const currentTrackId = currentQueueItem?.id ?? null;
+  const currentThumbnail = currentQueueItem
+    ? getTrackThumbnailUrl(currentQueueItem)
+    : getTrackThumbnailUrl({ coverUrl: audioCoverUrl || undefined });
+
   useEffect(() => {
-    const thumbUrl = getTrackThumbnailUrl(currentQueueItem || {
-      thumbnail: audio.coverUrl || undefined,
-      coverUrl: audio.coverUrl || undefined,
-      trackUrl: audio.trackUrl || undefined
-    });
-    const trackId = currentQueueItem?.id || audio?.trackTitle || thumbUrl;
+    const thumbUrl = currentThumbnail;
+    const trackId = currentTrackId || audioTrackTitle || thumbUrl;
     if (!thumbUrl || !trackId || lastExtractedTrackRef.current === trackId) return;
 
     lastExtractedTrackRef.current = trackId;
@@ -314,7 +319,8 @@ export function RoomDashboard({
         });
       }
     }).catch(() => {});
-  }, [currentQueueItem, audio, updateSettings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrackId, currentThumbnail, audioTrackTitle]);
 
   // Clear jump loading state when the queue actually updates from server
   const prevQueueRef = useRef(queue);
