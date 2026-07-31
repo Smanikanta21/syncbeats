@@ -278,29 +278,13 @@ export function extractYoutubeIdOrSongId(input: string): string {
 export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
   const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
   const { spawn } = require('child_process');
-  const path = require('path');
-  const fs = require('fs');
-
-  const cookieCandidates = [
-    path.resolve(process.cwd(), 'cookies.txt'),
-    path.resolve(__dirname, '../../cookies.txt'),
-    '/app/cookies.txt'
-  ];
-  const foundCookiePath = cookieCandidates.find(p => fs.existsSync(p));
-  const cookieArgs = foundCookiePath ? ['--cookies', foundCookiePath] : [];
-
-  if (foundCookiePath) {
-    console.log(`[Search] Using yt-dlp cookies from: ${foundCookiePath}`);
-  }
 
   const attempt = (useIpv6: boolean, extraArgs: string[]): Promise<string | null> => {
     return new Promise((resolve) => {
       const args = [
         ...(useIpv6 ? ['-6'] : []),
-        ...cookieArgs,
-        '--extractor-args', 'youtube:player_client=mweb;formats=missing_pot',
+        '--extractor-args', 'youtube:player_client=mweb,ios,android',
         '--js-runtimes', 'node',
-        '--remote-components', 'ejs:github',
         '-g',
         '--no-warnings',
         '-f', 'bestaudio[ext=m4a]/bestaudio/best',

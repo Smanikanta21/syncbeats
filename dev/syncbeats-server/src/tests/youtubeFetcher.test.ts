@@ -36,7 +36,7 @@ export async function runYoutubeFetcherTest(): Promise<void> {
       resolvedTracks.push({ id: trackId, url: result });
     } else {
       if (process.env.CI) {
-        console.warn(`  ! Note: Direct audio stream for ${trackId} skipped in CI environment due to YouTube cloud IP restriction without cookies.`);
+        console.warn(`  ! Note: Direct audio stream for ${trackId} skipped in CI environment due to YouTube cloud IP rate limiting.`);
       } else {
         throw new Error(`YouTube Audio Fetcher FAILED to resolve audio stream for track ${trackId}. Bot block or network failure.`);
       }
