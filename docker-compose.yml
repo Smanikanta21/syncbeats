@@ -44,6 +44,7 @@ services:
       # RapidAPI Configuration
       RAPID_API_KEY: ${RAPID_API_KEY:-}
       RAPID_API_KEYS: ${RAPID_API_KEYS:-}
+    volumes:
       - uploads:/app/uploads
       - ./yt-dlp-cache:/root/.cache/yt-dlp
 
