@@ -57,10 +57,28 @@ function createPrismaClient() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  // Standard PrismaClient uses Prisma's native Rust query engine connection pool,
-  // which handles PostgreSQL protocol state, idle connection resets, and automatic retries
-  // seamlessly without throwing 'DriverAdapterError: invalid message format' or pg pool idle errors.
+  const pool = new Pool({
+    connectionString,
+    max: 25,
+    idleTimeoutMillis: 0, // Disable aggressive 10s idle client destruction (prevents invalid message format / type 53 errors)
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+  });
+
+  // Handle pool error events quietly without flooding logs
+  pool.on('error', (err, client) => {
+    try {
+      (client as any).connection?.stream?.destroy();
+    } catch {
+      // best effort
+    }
+  });
+
+  const adapter = new PrismaPg(pool);
+
   const client = new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
