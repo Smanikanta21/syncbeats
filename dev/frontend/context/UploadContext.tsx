@@ -113,15 +113,25 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       let blob: Blob;
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`YouTube Proxy failed with status ${response.status}: ${errorText}`);
+        console.warn(`[UploadContext] YouTube Proxy returned ${response.status}. Enqueuing track directly as youtube:${videoId} for client/peer playback...`);
+        const fallbackUrl = `youtube:${videoId}`;
+        await roomsApi.enqueueMagnet(roomId, fallbackUrl, title, artist);
+        setIsUploading(false);
+        setUploadProgress(0);
+        getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+        return;
       }
       
       blob = await response.blob();
       
-      // AWS/VM yt-dlp IP block check! If yt-dlp fails silently, it returns a 0-byte blob.
       if (blob.size < 5000) {
-        throw new Error(`FATAL: YouTube download returned a ${blob.size}-byte file! Your server's IP is likely blocked by YouTube, or you need to update cookies.txt.`);
+        console.warn(`[UploadContext] YouTube proxy returned small blob (${blob.size} bytes). Enqueuing track directly as youtube:${videoId}...`);
+        const fallbackUrl = `youtube:${videoId}`;
+        await roomsApi.enqueueMagnet(roomId, fallbackUrl, title, artist);
+        setIsUploading(false);
+        setUploadProgress(0);
+        getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+        return;
       }
       
       setUploadProgress(20);
@@ -136,12 +146,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       // Re-use the existing upload logic
       await uploadFile(file, roomId, customTrackUrl, artist);
 
-    } catch (err) {
-      console.error("[UploadContext] downloadYoutubeToP2P failed:", err);
+    } catch (err: any) {
+      console.warn("[UploadContext] downloadYoutubeToP2P proxy failed, attempting direct enqueue:", err);
+      try {
+        await roomsApi.enqueueMagnet(roomId, `youtube:${videoId}`, title, artist);
+      } catch (enqueueErr) {
+        console.error("[UploadContext] Direct enqueue failed:", enqueueErr);
+      }
       setIsUploading(false);
       setUploadProgress(0);
       getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-      throw err;
     }
   }, [uploadFile]);
 
