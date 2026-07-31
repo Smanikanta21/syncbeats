@@ -466,17 +466,31 @@ export class SocketHandler {
 
     // ── Peer-to-Peer file sharing relays via WebSockets ──────────────────────
 
+    // Step 1 handshake: requester asks room "who has videoId X?"
+    socket.on('track:check_cache', ({ roomId, videoId }: { roomId: string; videoId: string }) => {
+      socket.to(roomId).emit('track:check_cache', { requesterSocketId: socket.id, videoId });
+    });
+
+    // Step 2 handshake: a peer who has it replies directly back to requester
+    socket.on('track:cache_available', ({ targetSocketId, videoId }: { targetSocketId: string; videoId: string }) => {
+      this.io.to(targetSocketId).emit('track:cache_available', { videoId, seederSocketId: socket.id });
+    });
+
+    // Step 3: requester asks the specific seeder (or broadcasts) for chunks
     socket.on('track:request_file', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
       // Broadcast to everyone else in the room (excludes the sender) to find who has this file
       socket.to(roomId).emit('track:request_file', { requesterSocketId: socket.id, roomId, trackUrl });
     });
 
+    // Step 4: seeder sends chunks — always direct-to-target for minimum latency
+    // targetSocketId is always provided by the optimized seeder. roomId fallback kept for old clients.
     socket.on('track:send_chunk', ({ roomId, targetSocketId, trackUrl, chunkIndex, totalChunks, data }: any, callback?: () => void) => {
-      // Fallback for older seeder tabs that haven't refreshed and still send targetSocketId instead of roomId
-      if (roomId) {
-        socket.to(roomId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
-      } else if (targetSocketId) {
+      if (targetSocketId) {
+        // Fast path: direct unicast to requester only. No room broadcast.
         this.io.to(targetSocketId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
+      } else if (roomId) {
+        // Legacy fallback: older clients that don't send targetSocketId
+        socket.to(roomId).emit('track:receive_chunk', { trackUrl, chunkIndex, totalChunks, data });
       }
       if (typeof callback === 'function') callback();
     });

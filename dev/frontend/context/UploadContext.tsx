@@ -145,54 +145,90 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }
   }, [uploadFile]);
 
-  // 3. Listen for WebSocket P2P requests and serve chunks
+  // 3. Listen for WebSocket P2P requests and serve chunks — optimized for speed
   useEffect(() => {
     const socket = getSocket();
-    const CHUNK_SIZE = 64 * 1024; // 64KB chunks (safe for strict Nginx proxy buffers)
+    // ── Perf constants ──────────────────────────────────────────────────────────
+    // 256KB chunks → 4MB audio = ~16 chunks instead of 64 (4× fewer socket messages).
+    // Nginx default proxy_buffer_size is 4KB–256KB; Socket.IO frames can handle 256KB fine.
+    const CHUNK_SIZE = 256 * 1024;
+    // Sliding window: how many in-flight emits before we yield to the socket buffer.
+    const WINDOW = 12;
 
-    const handleRequestFile = async ({ requesterSocketId, roomId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
-      if (!trackUrl.startsWith('ws-p2p:')) return;
-      
+    // ── Cache-check responder ────────────────────────────────────────────────────
+    // Peers ask "does anyone have videoId X?" before even requesting chunks.
+    // We reply instantly so the requester can open a direct pipe to us.
+    const handleCheckCache = async ({ requesterSocketId, videoId }: { requesterSocketId: string; videoId: string }) => {
       try {
-        const { getTrack } = await import('../lib/idb');
-        const file = await getTrack(trackUrl);
-        if (!file) {
-          console.log(`[WebSocket P2P] Requested file ${trackUrl} not found in my IDB.`);
-          return; // I don't have it, let someone else seed it
+        const { getCachedYouTubeTrack } = await import('../lib/idb');
+        const blob = await getCachedYouTubeTrack(videoId);
+        if (blob) {
+          socket.emit('track:cache_available', { targetSocketId: requesterSocketId, videoId });
         }
+      } catch { /* ignore */ }
+    };
 
-        console.log(`[WebSocket P2P] Found ${trackUrl} in IDB! Seeding ${file.size} bytes to ${requesterSocketId}...`);
-        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    // ── File-request responder (seeder) ─────────────────────────────────────────
+    const handleRequestFile = async ({ requesterSocketId, roomId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
+      try {
+        // ── Resolve the IDB key regardless of URL scheme ─────────────────────
+        // Tracks are stored by videoId (e.g. 'h_VCgsWLmY4') for youtube: scheme,
+        // or by full trackUrl for ws-p2p: and magnet: schemes.
+        const { getCachedYouTubeTrack, getTrack } = await import('../lib/idb');
+        const videoIdMatch = trackUrl.match(/(?:youtube:|ws-p2p:yt:)([a-zA-Z0-9_-]{11})/);
+        const videoId = videoIdMatch?.[1] ?? null;
+
+        const file: Blob | null = videoId
+          ? (await getCachedYouTubeTrack(videoId)) ?? (await getTrack(trackUrl))
+          : await getTrack(trackUrl);
+
+        if (!file) return; // don't have it — silent skip so another peer responds
+
+        const fileSize = file.size;
+        console.log(`[P2P] Seeding '${trackUrl}' (${(fileSize / 1024 / 1024).toFixed(2)} MB) → ${requesterSocketId}`);
+
+        // ── Read the entire blob ONCE into an ArrayBuffer ────────────────────
+        // Avoids N async IDB slice reads (one per chunk). Pure in-memory slicing after.
+        const fullBuffer = await file.arrayBuffer();
+        const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+
+        let inFlight = 0;
 
         for (let i = 0; i < totalChunks; i++) {
           const start = i * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const chunk = file.slice(start, end);
-          const buffer = await chunk.arrayBuffer();
+          const end  = Math.min(start + CHUNK_SIZE, fileSize);
+          // slice() on ArrayBuffer is O(1) — no copy, just a view window reference
+          const data = fullBuffer.slice(start, end);
 
           socket.emit('track:send_chunk', {
-            roomId, // Backward compatibility for older servers
-            targetSocketId: requesterSocketId, // Send directly to the requester, NOT the whole room!
+            targetSocketId: requesterSocketId,
             trackUrl,
             chunkIndex: i,
             totalChunks,
-            data: buffer
+            data,
           });
-          
-          // Yield to event loop periodically to prevent UI blocking and socket buffer overflow.
-          // By not awaiting a server ACK for every single chunk, transfer speed increases massively.
-          if (i % 5 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 5));
+
+          inFlight++;
+
+          // ── Sliding-window backpressure ──────────────────────────────────
+          // Yield to the socket send-buffer every WINDOW chunks instead of
+          // a fixed sleep. setTimeout(0) flushes the microtask/macrotask queue
+          // and lets Socket.IO drain without blocking the main thread.
+          if (inFlight >= WINDOW) {
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            inFlight = 0;
           }
         }
-        console.log(`[WebSocket P2P] Finished seeding ${trackUrl} to ${requesterSocketId}.`);
+        console.log(`[P2P] ✅ Finished seeding '${trackUrl}' (${totalChunks} chunks) → ${requesterSocketId}`);
       } catch (err) {
-        console.error("[WebSocket P2P] Failed to send chunks:", err);
+        console.error('[P2P] Seeding error:', err);
       }
     };
 
+    socket.on('track:check_cache', handleCheckCache);
     socket.on('track:request_file', handleRequestFile);
     return () => {
+      socket.off('track:check_cache', handleCheckCache);
       socket.off('track:request_file', handleRequestFile);
     };
   }, []);
