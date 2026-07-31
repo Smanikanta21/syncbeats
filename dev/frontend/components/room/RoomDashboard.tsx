@@ -290,6 +290,32 @@ export function RoomDashboard({
 
   const lastExtractedTrackRef = useRef<string | null>(null);
 
+  // Dynamically extract colors from album artwork when active track changes
+  useEffect(() => {
+    const thumbUrl = getTrackThumbnailUrl(currentQueueItem || {
+      thumbnail: audio.coverUrl || undefined,
+      coverUrl: audio.coverUrl || undefined,
+      trackUrl: audio.trackUrl || undefined
+    });
+    const trackId = currentQueueItem?.id || audio?.trackTitle || thumbUrl;
+    if (!thumbUrl || !trackId || lastExtractedTrackRef.current === trackId) return;
+
+    lastExtractedTrackRef.current = trackId;
+    extractTwoColorsFromImage(thumbUrl).then(([c1, c2]) => {
+      if (c1 && c2) {
+        updateSettings({
+          gradientSettings: {
+            nodes: [
+              { id: "1", color: c1, position: 0, x: 25, y: 30 },
+              { id: "2", color: c2, position: 50, x: 75, y: 40 },
+              { id: "3", color: c1, position: 100, x: 50, y: 75 }
+            ]
+          }
+        });
+      }
+    }).catch(() => {});
+  }, [currentQueueItem, audio, updateSettings]);
+
   // Clear jump loading state when the queue actually updates from server
   const prevQueueRef = useRef(queue);
   useEffect(() => {
