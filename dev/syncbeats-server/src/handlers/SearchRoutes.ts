@@ -209,13 +209,18 @@ export function createSearchRoutes(): Router {
         res.status(400).json({ error: 'videoId is required' });
         return;
       }
-      res.json({ ok: true, directStreaming: true });
     } catch (err) {
-      console.error('[Search] prefetch error:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to initiate prefetch' });
-      }
+      res.status(500).json({ error: 'Failed to initiate prefetch' });
     }
+  });
+
+  router.get('/youtube/download', (req, res) => {
+    const videoId = req.query.videoId as string;
+    if (!videoId) {
+      res.status(400).json({ error: 'Query parameter "videoId" is required' });
+      return;
+    }
+    streamYoutubeAudio(videoId, req, res);
   });
 
   return router;
@@ -412,40 +417,27 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     return 'yt-dlp';
   })();
 
-  // ── Server-disk cache: /tmp/<videoId>.m4a ─────────────────────────────────
-  // Disk cache means YouTube is only called ONCE per track ever.
-  // Every subsequent user gets an instant res.sendFile() — no YouTube, no CDN.
-  const tmpDir    = '/tmp/syncbeats-audio';
-  const outputFile = path.join(tmpDir, `${targetYoutubeId}.m4a`);
+  // ── Server-disk cache: tmp/<videoId>.m4a ─────────────────────────────────
+  // Matches main branch: downloads AAC m4a audio natively via yt-dlp
+  const tmpDir = path.resolve(process.cwd(), 'tmp');
+  const outputFile = path.resolve(tmpDir, `${targetYoutubeId}.m4a`);
 
   if (!fs.existsSync(tmpDir)) {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  const serveFile = () => {
-    res.setHeader('Content-Type', 'audio/mp4');
-    res.setHeader('Content-Disposition', `inline; filename="${targetYoutubeId}.m4a"`);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.sendFile(outputFile);
-  };
-
   // ── Cache HIT — serve instantly ───────────────────────────────────────────
   if (fs.existsSync(outputFile)) {
     console.log(`[Search] Server-disk cache HIT for ${targetYoutubeId} — serving instantly`);
-    return serveFile();
+    return res.sendFile(outputFile);
   }
 
-  // ── Cache MISS — download via yt-dlp ─────────────────────────────────────
-  console.log(`[Search] Downloading audio to server disk for: ${targetYoutubeId}`);
+  // ── Cache MISS — download via yt-dlp (exact main branch arguments) ──────
+  const watchUrl = `https://www.youtube.com/watch?v=${targetYoutubeId}`;
+  console.log(`[Search] Downloading audio via yt-dlp for: ${watchUrl}`);
 
-  const ytDlpArgs = [
-    '--extractor-args', 'youtube:player_client=mweb,ios,android',
-    '--js-runtimes', 'node',
-    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-    '-o', outputFile,
-    `https://www.youtube.com/watch?v=${targetYoutubeId}`,
-  ];
+  // Exact args matching main branch: ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl]
+  const ytDlpArgs = ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl];
 
   const ytDlp = spawn(ytDlpPath, ytDlpArgs);
   let stderr = '';
@@ -454,10 +446,9 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
   ytDlp.on('close', (code: number) => {
     if (code === 0 && fs.existsSync(outputFile)) {
       console.log(`[Search] yt-dlp download complete for ${targetYoutubeId}`);
-      if (!res.headersSent) serveFile();
+      if (!res.headersSent) res.sendFile(outputFile);
     } else {
       console.error(`[Search] yt-dlp failed for ${targetYoutubeId} (code ${code}): ${stderr.slice(0, 300)}`);
-      // Clean up partial download so next request retries
       try { fs.unlinkSync(outputFile); } catch {}
       if (!res.headersSent) {
         res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
@@ -470,4 +461,5 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     if (!res.headersSent) res.status(500).json({ error: 'yt-dlp not available' });
   });
 }
+
 
