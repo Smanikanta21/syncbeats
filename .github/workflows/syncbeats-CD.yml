@@ -204,10 +204,18 @@ jobs:
             ' docker-compose.yml
           fi
 
-          # Ensure target dir exists, is writable, and is completely clean of old folders/files
+          # Ensure target dir exists, is writable.
+          # IMPORTANT: back up cookies.txt BEFORE wiping the directory.
+          # Docker will auto-create cookies.txt as a *directory* if the bind-mount target
+          # doesn't exist as a file when the container starts — this preserves any
+          # manually-uploaded cookies.txt across deploys.
           ssh -o StrictHostKeyChecking=yes \
             ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} \
-            "mkdir -p ~/$APP_DIR && sudo chown -R \$USER:\$USER ~/$APP_DIR && rm -rf ~/$APP_DIR/* ~/$APP_DIR/.[!.]* ~/$APP_DIR/..?*" || true
+            "mkdir -p ~/$APP_DIR && sudo chown -R \$USER:\$USER ~/$APP_DIR && \
+             cp ~/$APP_DIR/cookies.txt /tmp/_cookies_backup.txt 2>/dev/null || true && \
+             rm -rf ~/$APP_DIR/* ~/$APP_DIR/.[!.]* ~/$APP_DIR/..?* && \
+             if [ -f /tmp/_cookies_backup.txt ]; then cp /tmp/_cookies_backup.txt ~/$APP_DIR/cookies.txt; else touch ~/$APP_DIR/cookies.txt; fi && \
+             rm -f /tmp/_cookies_backup.txt" || true
 
           # Ensure a swapfile exists to prevent OOM crashes on micro instances
           ssh -o StrictHostKeyChecking=yes \
