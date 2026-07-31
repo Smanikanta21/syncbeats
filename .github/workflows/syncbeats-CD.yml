@@ -134,7 +134,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Write .env and SCP to EC2
         env:
@@ -257,7 +257,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Pull latest image
         run: |
@@ -395,7 +395,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Reload nginx and cleanup
         run: |
@@ -431,7 +431,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s' "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 400 ~/.ssh/id_rsa
-          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Rollback backend
         run: |

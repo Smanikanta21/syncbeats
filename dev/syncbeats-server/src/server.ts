@@ -29,11 +29,24 @@ import { RoomRepository }      from './db/RoomRepository';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
 
-// ─── Timestamp all console output ─────────────────────────────────────────
+// ─── Timestamp all console output in Indian Standard Time (IST) ────────────
 (['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
   const original = console[method].bind(console);
   (console as any)[method] = (...args: unknown[]) => {
-    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const map: Record<string, string> = {};
+    parts.forEach(p => { map[p.type] = p.value; });
+    const ts = `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second} IST`;
     original(`[${ts}]`, ...args);
   };
 });
