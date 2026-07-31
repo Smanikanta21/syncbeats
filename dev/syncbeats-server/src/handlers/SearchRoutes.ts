@@ -427,23 +427,86 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
   let stderr = '';
   ytDlp.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
 
-  ytDlp.on('close', (code: number) => {
+  ytDlp.on('close', async (code: number) => {
     if (code === 0 && fs.existsSync(outputFile)) {
       console.log(`[Search] yt-dlp download complete for ${targetYoutubeId}`);
       if (!res.headersSent) res.sendFile(outputFile);
     } else {
-      console.error(`[Search] yt-dlp failed for ${targetYoutubeId} (code ${code}): ${stderr.slice(0, 300)}`);
+      console.warn(`[Search] yt-dlp failed for ${targetYoutubeId} (code ${code}), trying RapidAPI fallback...`);
       try { fs.unlinkSync(outputFile); } catch {}
+
+      const rapidSuccess = await fetchViaRapidAPI(targetYoutubeId, outputFile);
+      if (rapidSuccess && fs.existsSync(outputFile)) {
+        console.log(`[Search] RapidAPI fallback complete for ${targetYoutubeId}`);
+        if (!res.headersSent) res.sendFile(outputFile);
+        return;
+      }
+
       if (!res.headersSent) {
         res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
       }
     }
   });
 
-  ytDlp.on('error', (err: Error) => {
-    console.error('[Search] yt-dlp spawn error:', err);
+  ytDlp.on('error', async (err: Error) => {
+    console.error('[Search] yt-dlp spawn error, trying RapidAPI fallback:', err);
+    const rapidSuccess = await fetchViaRapidAPI(targetYoutubeId, outputFile);
+    if (rapidSuccess && fs.existsSync(outputFile)) {
+      if (!res.headersSent) res.sendFile(outputFile);
+      return;
+    }
     if (!res.headersSent) res.status(500).json({ error: 'yt-dlp not available' });
   });
+}
+
+const exhaustedRapidKeys = new Set<string>();
+
+async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<boolean> {
+  const fs = require('fs');
+  const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
+  if (!keysStr) return false;
+
+  const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
+  let activeKeys = keys.filter(k => !exhaustedRapidKeys.has(k));
+  if (activeKeys.length === 0) {
+    exhaustedRapidKeys.clear();
+    activeKeys = keys;
+  }
+
+  const shuffledKeys = [...activeKeys].sort(() => 0.5 - Math.random());
+
+  for (const key of shuffledKeys) {
+    try {
+      const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': key,
+          'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
+        }
+      });
+
+      if (apiRes.status === 429 || apiRes.status === 403) {
+        exhaustedRapidKeys.add(key);
+        continue;
+      }
+
+      if (!apiRes.ok) continue;
+
+      const data = (await apiRes.json()) as { link?: string; status?: string };
+      if (data.link) {
+        console.log(`[Proxy] RapidAPI link resolved using key ${key.slice(0, 5)}...`);
+        const audioRes = await fetch(data.link);
+        if (audioRes.ok) {
+          const arrayBuf = await audioRes.arrayBuffer();
+          fs.writeFileSync(outputFile, Buffer.from(arrayBuf));
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn(`[Proxy] RapidAPI key evaluation error:`, err);
+    }
+  }
+  return false;
 }
 
 
