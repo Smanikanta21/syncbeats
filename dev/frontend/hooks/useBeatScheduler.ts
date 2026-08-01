@@ -10,7 +10,7 @@ import { getServerUrl, getAuthToken } from "../lib/api";
 export function useBeatScheduler(trackUrl?: string | null) {
   const { emitBeat } = useBeatEngine();
   const audioContext = useOptionalAudio();
-  const { isPlaying } = useSyncInfo();
+  const { isRoomPlaying: isPlaying } = useSyncInfo();
   
   const [cachedEvents, setCachedEvents] = useState<BeatEvent[] | null>(null);
   const [useFallback, setUseFallback] = useState(!trackUrl);
@@ -76,8 +76,7 @@ export function useBeatScheduler(trackUrl?: string | null) {
       // We will assume audioContext exposes something like `getCurrentTimeMs()` or we use `positionMs` from room state
       // For precision, we use the `AudioContext.currentTime` coupled with the known track start time.
       
-      // Let's assume audioContext has a `getPlaybackPositionMs()` or we can approximate it:
-      const currentPosMs = audioContext.getPlaybackPositionMs ? audioContext.getPlaybackPositionMs() : 0;
+      const currentPosMs = audioContext.getTruePosition ? audioContext.getTruePosition() * 1000 : (audioContext.currentTime ? audioContext.currentTime * 1000 : 0);
       
       // Fast forward if we seeked
       while (

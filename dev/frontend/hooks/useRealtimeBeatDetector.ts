@@ -8,7 +8,7 @@ import { useSyncInfo } from "../context/SyncContext";
 export function useRealtimeBeatDetector(enabled: boolean = true) {
   const { emitBeat } = useBeatEngine();
   const audioContext = useOptionalAudio();
-  const { isPlaying: isRoomPlaying } = useSyncInfo();
+  const { isRoomPlaying } = useSyncInfo();
 
   const rafRef = useRef<number>(0);
   const stateRef = useRef({
@@ -63,7 +63,7 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
 
       // Fallback: If WebAudio FFT data is unavailable or zero (e.g. YouTube stream or CORS limitation),
       // run a rhythmic beat pulse clock so ambient lighting and spatial nodes ALWAYS dance to the music!
-      if (!isDataActive) {
+      if (!isDataActive || !data) {
         if (!s.lastSyntheticBeatTime) s.lastSyntheticBeatTime = timestamp;
         if (timestamp - s.lastSyntheticBeatTime > 480) { // ~125 BPM beat pulse
           s.lastSyntheticBeatTime = timestamp;

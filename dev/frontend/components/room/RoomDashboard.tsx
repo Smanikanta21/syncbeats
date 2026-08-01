@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSettings } from "../../hooks/useSettings";
 import { motion, AnimatePresence } from "framer-motion";
-import { isIpadOS } from "../../lib/utils";
 import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
