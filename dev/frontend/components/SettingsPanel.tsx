@@ -1002,8 +1002,26 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
               )}
             </div>
           </div>
-
           <div className={cn('mt-6')}>
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/5 mb-4">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-foreground">Dynamic Colors from Cover Art</span>
+                <span className="text-[10px] text-foreground/50 mt-0.5 max-w-[200px]">Automatically extract and use colors from the currently playing track's artwork.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateSettings({ dynamicBackgroundColors: !settings.dynamicBackgroundColors })}
+                className={`relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-foreground/20 shrink-0 ${
+                  settings.dynamicBackgroundColors ? "bg-emerald-500 border-emerald-400" : "bg-foreground/10"
+                }`}
+              >
+                <span
+                  className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 absolute top-1 ${
+                    settings.dynamicBackgroundColors ? "translate-x-7" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
             <button 
               onClick={() => updateSettings({
                 gradientSettings: {

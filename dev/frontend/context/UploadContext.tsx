@@ -7,7 +7,7 @@ import {
   createContext, useContext, useState, useCallback, useEffect,
   type ReactNode
 } from "react";
-import { roomsApi, getServerUrl } from "../lib/api";
+import { roomsApi, getServerUrl, getAuthToken } from "../lib/api";
 import { getSocket } from "../lib/socket";
 
 interface UploadResult {
@@ -104,7 +104,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
     try {
       const baseUrl = getServerUrl();
-      const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+      const authToken = getAuthToken();
       const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
       
       const response = await fetch(proxyUrl, {

@@ -14,90 +14,83 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 async function run() {
   const client = await pool.connect();
   try {
-    console.log('Connected. Running server-side null-byte cleanup...\n');
+    console.log('Connected. Creating clean_null_bytes function and purging null bytes...\n');
 
-    // Execute a DO block — runs entirely in PostgreSQL, never sends bad bytes to Node.
-    // We use convert_from(convert_to(col, 'UTF8'), 'UTF8') trick won't work either.
-    // The correct approach: convert to bytea, remove 0x00 bytes, convert back.
-    // regexp_replace(encode(col::bytea, 'escape'), '\\\\000', '', 'g') is too complex.
-    //
-    // Simplest working approach: use a plpgsql DO block with overlay/replace on bytea level.
+    // Create helper function in PostgreSQL
     await client.query(`
-      DO $$
+      CREATE OR REPLACE FUNCTION clean_null_bytes(t text) RETURNS text AS $$
       DECLARE
-        r RECORD;
-        clean_text text;
+        b bytea;
+        clean_b bytea := ''::bytea;
+        i int;
+        c int;
       BEGIN
-        -- Clean users.settings (JSON column)
-        FOR r IN SELECT id FROM users LOOP
-          BEGIN
-            -- Try reading the settings — if it throws, the row has null bytes
-            PERFORM (SELECT settings FROM users WHERE id = r.id)::text;
-          EXCEPTION WHEN others THEN
-            -- Can't read it directly; use bytea manipulation
-            UPDATE users
-            SET settings = (
-              convert_from(
-                replace(
-                  convert_to(settings::text, 'UTF8'),
-                  decode('00', 'hex'),
-                  ''::bytea
-                ),
-                'UTF8'
-              )
-            )::jsonb
-            WHERE id = r.id;
-          END;
+        IF t IS NULL THEN RETURN NULL; END IF;
+        b := convert_to(t, 'UTF8');
+        FOR i IN 0..length(b)-1 LOOP
+          c := get_byte(b, i);
+          IF c != 0 THEN
+            clean_b := clean_b || set_byte('\\x00'::bytea, 0, c);
+          END IF;
         END LOOP;
-      END $$;
+        RETURN convert_from(clean_b, 'UTF8');
+      EXCEPTION WHEN OTHERS THEN
+        RETURN t;
+      END;
+      $$ LANGUAGE plpgsql;
     `);
-    console.log('users.settings: cleaned (via DO block)');
 
+    // Clean users table
     await client.query(`
-      DO $$
-      DECLARE
-        r RECORD;
-      BEGIN
-        FOR r IN SELECT id FROM rooms LOOP
-          BEGIN
-            PERFORM (SELECT id || host_id || COALESCE(track_url,'') FROM rooms WHERE id = r.id);
-          EXCEPTION WHEN others THEN
-            UPDATE rooms SET
-              id             = convert_from(replace(convert_to(id,             'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              host_id        = convert_from(replace(convert_to(host_id,        'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              track_url      = CASE WHEN track_url IS NOT NULL THEN convert_from(replace(convert_to(track_url, 'UTF8'), decode('00','hex'), ''::bytea), 'UTF8') ELSE NULL END,
-              playback_state = convert_from(replace(convert_to(playback_state, 'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              repeat_mode    = convert_from(replace(convert_to(repeat_mode,    'UTF8'), decode('00','hex'), ''::bytea), 'UTF8')
-            WHERE id = r.id;
-          END;
-        END LOOP;
-      END $$;
+      UPDATE users SET
+        name  = clean_null_bytes(name),
+        email = clean_null_bytes(email);
     `);
-    console.log('rooms: cleaned (via DO block)');
+    console.log('✅ users: cleaned');
 
+    // Clean songs table
     await client.query(`
-      DO $$
-      DECLARE
-        r RECORD;
-      BEGIN
-        FOR r IN SELECT id FROM room_queue_items LOOP
-          BEGIN
-            PERFORM (SELECT id || track_url || title FROM room_queue_items WHERE id = r.id);
-          EXCEPTION WHEN others THEN
-            UPDATE room_queue_items SET
-              track_url = convert_from(replace(convert_to(track_url, 'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              title     = convert_from(replace(convert_to(title,     'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              artist    = CASE WHEN artist IS NOT NULL THEN convert_from(replace(convert_to(artist,    'UTF8'), decode('00','hex'), ''::bytea), 'UTF8') ELSE NULL END,
-              file_name = convert_from(replace(convert_to(file_name, 'UTF8'), decode('00','hex'), ''::bytea), 'UTF8'),
-              mime_type = convert_from(replace(convert_to(mime_type, 'UTF8'), decode('00','hex'), ''::bytea), 'UTF8')
-            WHERE id = r.id;
-          END;
-        END LOOP;
-      END $$;
+      UPDATE songs SET
+        title             = clean_null_bytes(title),
+        artist            = clean_null_bytes(artist),
+        album             = clean_null_bytes(album),
+        youtube_id        = clean_null_bytes(youtube_id),
+        youtube_thumbnail = clean_null_bytes(youtube_thumbnail),
+        album_art         = clean_null_bytes(album_art);
     `);
-    console.log('room_queue_items: cleaned (via DO block)');
+    console.log('✅ songs: cleaned');
 
-    console.log('\n✅ Server-side cleanup complete!');
+    // Clean playlists table
+    await client.query(`
+      UPDATE playlists SET
+        name        = clean_null_bytes(name),
+        description = clean_null_bytes(description);
+    `);
+    console.log('✅ playlists: cleaned');
+
+    // Clean rooms table
+    await client.query(`
+      UPDATE rooms SET
+        id             = clean_null_bytes(id),
+        host_id        = clean_null_bytes(host_id),
+        track_url      = clean_null_bytes(track_url),
+        playback_state = clean_null_bytes(playback_state),
+        repeat_mode    = clean_null_bytes(repeat_mode);
+    `);
+    console.log('✅ rooms: cleaned');
+
+    // Clean room_queue_items table
+    await client.query(`
+      UPDATE room_queue_items SET
+        track_url = clean_null_bytes(track_url),
+        title     = clean_null_bytes(title),
+        artist    = clean_null_bytes(artist),
+        file_name = clean_null_bytes(file_name),
+        mime_type = clean_null_bytes(mime_type);
+    `);
+    console.log('✅ room_queue_items: cleaned');
+
+    console.log('\n🎉 Complete database null-byte purge finished!');
   } catch (err) {
     console.error('❌ Cleanup failed:', err);
     process.exit(1);

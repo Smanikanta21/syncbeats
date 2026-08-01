@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
-import { getServerUrl } from "../../lib/api";
+import { getServerUrl, getAuthToken } from "../../lib/api";
 import { Trash2, Disc, Play, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -47,17 +47,16 @@ export function SpotifyIslandTab({
   const [playingPlaylistId, setPlayingPlaylistId] = useState<string | null>(null);
 
   const fetchImported = useCallback(async () => {
-    if (!token) return;
+    const authToken = token || getAuthToken();
+    if (!authToken) return;
     try {
       const SERVER = getServerUrl();
       const r = await fetch(`${SERVER}/spotify/my-playlists`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
       if (r.ok) {
         const data = await r.json();
-        const spotifyPlaylists = data.playlists?.filter(
-          (p: any) => p.sourceType === "SPOTIFY" || p.sourceType === "SPOTIFY_BRIDGE"
-        ) || [];
+        const spotifyPlaylists = data.playlists || [];
         setImported(spotifyPlaylists);
       }
     } catch (e) {

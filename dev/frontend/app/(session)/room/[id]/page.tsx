@@ -9,10 +9,11 @@ import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
 import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
-import { useAmbientLight } from "../../../../hooks/useAmbientLight";
+
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
+import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
 import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
 
@@ -26,8 +27,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   const [isTimedOut, setIsTimedOut] = useState(false);
 
-  // Drive the global ambient background blobs reactively with music frequency data
-  useAmbientLight();
+
 
   const {
     isConnected,
@@ -92,7 +92,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   }, [audio.isReady, setReady, isConnected]);
 
   // Sync volume from server if modified remotely
-  const myParticipant = participants.find(p => p.socketId === currentSocketId);
+  const myParticipant = participants?.find(p => p.socketId === currentSocketId);
   useEffect(() => {
     if (myParticipant?.volume !== undefined) {
       const curVol = audio.getVolume ? audio.getVolume() : audio.volume;
@@ -314,6 +314,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           }}
         />
       )}
+
+      {/* Spatial Beat Nodes (Visual representation of beat pulses mapped to node positions) */}
+      <SpatialBeatNodes />
 
       {/* Host Join Requests UI */}
       {isHost && pendingRequests.length > 0 && (

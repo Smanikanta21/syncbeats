@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useAudio } from "../context/AudioContext";
+import { useOptionalAudio } from "../context/AudioContext";
 import { useTheme } from "next-themes";
 import { useSyncInfo } from "../context/SyncContext";
 import { useSettings } from "../hooks/useSettings";
@@ -100,6 +100,10 @@ export function AmbientBackground({
   isRoomPlaying?: boolean;
   showDebug?: boolean;
 }) {
+  // Always call hooks unconditionally at the very top to ensure strict hook order determinism
+  const audioContext = useOptionalAudio();
+  const syncInfo = useSyncInfo();
+
   const blobSubRef = useRef<HTMLDivElement>(null);
   const blobBassRef = useRef<HTMLDivElement>(null);
   const blobLowMidRef = useRef<HTMLDivElement>(null);
@@ -160,29 +164,16 @@ export function AmbientBackground({
 
   const isDark = mounted ? resolvedTheme !== "light" : true;
 
-  // Conditionally get audio context
-  let audioContext: ReturnType<typeof useAudio> | null = null;
-  let isRoomPlaying = false;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    if (syncWithAudio) {
-      audioContext = useAudio();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      isRoomPlaying = useSyncInfo().isRoomPlaying;
-    }
-  } catch {
-    // Ignore error if not wrapped in AudioProvider/SyncProvider
-  }
-
-  const isPlaying = isRoomPlayingProp || isRoomPlaying || (audioContext?.isPlaying ?? false);
+  const isRoomPlaying = syncWithAudio && (syncInfo?.isRoomPlaying ?? false);
+  const isPlaying = isRoomPlayingProp || isRoomPlaying || (syncWithAudio && (audioContext?.isPlaying ?? false));
 
   // Theme-adaptive values
   const blendMode = isDark ? "screen" : "multiply";
   const bMult = (settings.ambientBrightness || 100) / 100;
   const cMult = (settings.ambientContrast || 100) / 100;
 
-  const baseOpacity = (isDark ? [0.25, 0.22, 0.22] : [0.35, 0.30, 0.30]).map((v) => v * bMult);
-  const peakOpacity = (isDark ? [0.85, 0.80, 0.80] : [0.95, 0.90, 0.90]).map((v) => v * bMult);
+  const baseOpacity = (isDark ? [0.08, 0.06, 0.06] : [0.15, 0.12, 0.12]).map((v) => v * bMult);
+  const peakOpacity = (isDark ? [0.55, 0.50, 0.50] : [0.65, 0.60, 0.60]).map((v) => v * bMult);
 
   const adjustSat = (base: number) => Math.min(100, base * Math.pow(cMult, 1.2));
   const adjustLight = (base: number) => {
@@ -437,12 +428,12 @@ export function AmbientBackground({
         const offPhase = ((timestamp + msPerBeat / 2) % msPerBeat) / msPerBeat;
         const hatPulse = Math.pow(Math.max(0, 1 - offPhase * 3), 2.5);
 
-        rawValues[0] = kickPulse * 0.85 + Math.sin(timestamp * 0.003) * 0.12;
-        rawValues[1] = kickPulse * 0.90 + Math.cos(timestamp * 0.004) * 0.10;
-        rawValues[2] = hatPulse * 0.50 + Math.sin(timestamp * 0.005) * 0.15;
-        rawValues[3] = hatPulse * 0.60 + Math.sin(timestamp * 0.002) * 0.20;
-        rawValues[4] = hatPulse * 0.70 + Math.cos(timestamp * 0.006) * 0.18;
-        rawValues[5] = hatPulse * 0.65 + Math.sin(timestamp * 0.007) * 0.15;
+        rawValues[0] = kickPulse * 0.40 + Math.sin(timestamp * 0.003) * 0.05;
+        rawValues[1] = kickPulse * 0.45 + Math.cos(timestamp * 0.004) * 0.04;
+        rawValues[2] = hatPulse * 0.25 + Math.sin(timestamp * 0.005) * 0.05;
+        rawValues[3] = hatPulse * 0.30 + Math.sin(timestamp * 0.002) * 0.06;
+        rawValues[4] = hatPulse * 0.35 + Math.cos(timestamp * 0.006) * 0.05;
+        rawValues[5] = hatPulse * 0.30 + Math.sin(timestamp * 0.007) * 0.04;
       }
 
       // Smooth decay of welcome burst multiplier back down to 1.0 over ~2.5 seconds
@@ -554,8 +545,8 @@ export function AmbientBackground({
         dominantBand,
       };
 
-      // Slow wander: new target every 5s for smoother, more organic drifting
-      if (now - lastWanderTime > 5000) {
+      // Slow wander: new target every 5s — skipped entirely on low-end devices
+      if (!skipWander && now - lastWanderTime > 5000) {
         lastWanderTime = now;
         const wanderRadius = 12;
         for (let i = 0; i < 6; i++) {
@@ -704,17 +695,20 @@ export function AmbientBackground({
     settings.ambientBrightness,
     settings.ambientContrast,
     settings.activeLightCount,
+    frameInterval,
+    maxBlobs,
+    skipWander,
   ]);
 
   if (!mounted) return null;
   if (settings.ambientEnabled === false) return null;
 
-  const showSub = activeBands.includes("sub");
-  const showBass = activeBands.includes("bass");
-  const showLowMid = activeBands.includes("lowMid");
-  const showMid = activeBands.includes("mid");
-  const showUpperMid = activeBands.includes("upperMid");
-  const showHigh = activeBands.includes("high");
+  const showSub      = activeBands.includes("sub")      && maxBlobs >= 4;
+  const showBass     = activeBands.includes("bass");
+  const showLowMid   = activeBands.includes("lowMid")   && maxBlobs >= 6;
+  const showMid      = activeBands.includes("mid")      && maxBlobs >= 3;
+  const showUpperMid = activeBands.includes("upperMid") && maxBlobs >= 5;
+  const showHigh     = activeBands.includes("high");
 
   return (
     <>
@@ -726,7 +720,7 @@ export function AmbientBackground({
         {showSub && (
           <div
             ref={blobSubRef}
-            className="absolute rounded-full blur-[40px] md:blur-[100px] w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]"
+            className={`absolute rounded-full ${isLow ? "blur-[60px]" : "blur-[40px] md:blur-[100px]"} w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]`}
             style={{
               maxWidth: "600px",
               maxHeight: "600px",
@@ -741,7 +735,7 @@ export function AmbientBackground({
         {showBass && (
           <div
             ref={blobBassRef}
-            className="absolute rounded-full blur-[40px] md:blur-[100px] w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]"
+            className={`absolute rounded-full ${isLow ? "blur-[60px]" : "blur-[40px] md:blur-[100px]"} w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]`}
             style={{
               maxWidth: "600px",
               maxHeight: "600px",

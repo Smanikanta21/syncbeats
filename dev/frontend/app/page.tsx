@@ -17,7 +17,7 @@ import { getSocket } from "../lib/socket";
 import { roomsApi } from "../lib/api";
 import { cn } from "@/lib/utils";
 
-const AmbientBackground = dynamic(() => import("../components/AmbientBackground").then(mod => mod.AmbientBackground), { ssr: false });
+
 const MouseGradient = dynamic(() => import("../components/MouseGradient").then(mod => mod.MouseGradient), { ssr: false });
 
 export default function LandingPage() {
@@ -89,8 +89,7 @@ export default function LandingPage() {
       {/* Interactive Mouse Gradient Follower (Fixed) */}
       <MouseGradient />
 
-      {/* Ambient Background Gradients for Continuity (Syncs visuals to room's song without playing audio) */}
-      <AmbientBackground syncWithAudio={!!user} isRoomPlaying={isRoomPlaying} />
+
 
       {/* Dynamic Snapping Navbar Wrapper */}
       <div className={cn('fixed', 'top-0', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none', 'pt-6')}>

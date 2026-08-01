@@ -131,10 +131,18 @@ export class RoomRepository {
     };
     if (trackUrl !== undefined) data.trackUrl = trackUrl;
 
-    await prisma.room.update({
-      where: { id: roomId },
-      data
-    });
+    try {
+      await prisma.room.update({
+        where: { id: roomId },
+        data
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2024') {
+        console.warn(`[RoomRepository] updateState pool timeout for room ${roomId}, skipping tick`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   async markEnded(roomId: string): Promise<void> {
@@ -243,10 +251,18 @@ export class RoomRepository {
 
     const mapped = validItems.map((item) => this.mapQueueItem(item));
 
-    // Enrich with thumbnails from the Song catalog
-    if (mapped.length > 0) {
+    // Enrich with thumbnails from the Song catalog (only for queue items missing thumbnails)
+    const missingThumbnails = mapped.filter((item) => !item.thumbnail);
+    if (missingThumbnails.length > 0) {
       try {
-        const titles = Array.from(new Set(mapped.map(m => sanitizeNullBytes(m.title)).filter((t): t is string => Boolean(t))));
+        const titles = Array.from(
+          new Set(
+            missingThumbnails
+              .map((m) => sanitizeNullBytes(m.title)?.replace(/\0/g, ''))
+              .filter((t): t is string => Boolean(t) && !t.includes('\0'))
+          )
+        ).slice(0, 50); // Limit bind parameters to max 50 to prevent Postgres protocol violations
+
         if (titles.length > 0) {
           const songs = await prisma.song.findMany({
             where: { title: { in: titles } },
@@ -419,6 +435,14 @@ export class RoomRepository {
     await prisma.roomQueueItem.deleteMany({
       where: { roomId }
     });
+    await prisma.room.update({
+      where: { id: roomId },
+      data: {
+        trackUrl: null,
+        playbackState: 'IDLE',
+        positionMs: 0,
+      }
+    }).catch(() => {});
   }
 
   async advanceQueue(roomId: string, expectedCurrentTrackUrl?: string): Promise<TrackQueueItem | null | undefined> {

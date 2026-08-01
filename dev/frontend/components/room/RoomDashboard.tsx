@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSettings } from "../../hooks/useSettings";
 import { motion, AnimatePresence } from "framer-motion";
+import { isIpadOS } from "../../lib/utils";
+import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
@@ -235,6 +237,7 @@ export function RoomDashboard({
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
   const isRoomReady = participants.every(p => p.isReady);
 
+  useBeatScheduler(currentQueueItem?.trackUrl);
   // Live Session Uptime State (updates every second when room is active)
   const initialSessionSec = (() => {
     if (snapshot?.accumulatedSessionTime !== undefined && snapshot.accumulatedSessionTime > 0) {
@@ -306,6 +309,8 @@ export function RoomDashboard({
     if (!thumbUrl || !trackId || lastExtractedTrackRef.current === trackId) return;
 
     lastExtractedTrackRef.current = trackId;
+    if (!settings.dynamicBackgroundColors) return;
+
     extractTwoColorsFromImage(thumbUrl).then(([c1, c2]) => {
       if (c1 && c2) {
         updateSettings({

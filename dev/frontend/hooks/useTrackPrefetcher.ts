@@ -232,7 +232,7 @@ export function useTrackPrefetcher({
   }, [currentTime, duration, doDownload]);
 
   // Reset when current track changes
-  const currentTrackUrl = snapshot?.queue.find(q => q.isCurrent)?.trackUrl;
+  const currentTrackUrl = snapshot?.queue?.find(q => q.isCurrent)?.trackUrl;
   useEffect(() => {
     prefetchedUrlRef.current = null;
     if (timerRef.current) clearTimeout(timerRef.current);

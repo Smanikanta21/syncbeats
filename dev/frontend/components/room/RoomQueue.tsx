@@ -201,9 +201,9 @@ export function RoomQueue({
       onConfirm: async () => {
         if (isResetting) return;
         setIsResetting(true);
+        setOptimisticQueue([]);
         try {
           await roomsApi.reset(roomId);
-          await new Promise(r => setTimeout(r, 600));
         } catch (err) {
           console.error("Failed to reset room", err);
         } finally {

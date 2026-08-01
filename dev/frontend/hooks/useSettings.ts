@@ -26,6 +26,7 @@ export interface AppSettings {
   syncAggressiveness: "high" | "saver";
   keepScreenAwake: boolean; // Screen Awake Feature (Wake Lock API)
   islandCustomizer: IslandCustomizerSettings; // Dynamic Island Customizer
+  dynamicBackgroundColors: boolean; // Use album art colors for ambient background
   gradientSettings: GradientSettings; // Custom Gradient & Theme Color Palette
   ambientColors: {
     subHue: number;
@@ -60,6 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoShrinkDelaySec: 6,
     showAlbumArt: true,
   },
+  dynamicBackgroundColors: false,
   gradientSettings: {
     presetName: "Cyber Neon",
     nodes: [
@@ -205,40 +207,29 @@ export function useSettings() {
   }, [settings]);
 
   const userSettings = auth?.user?.settings;
+  const isInitialDbSyncRef = useRef(true);
 
-  // Sync settings with the database user object when it changes (e.g. on login or save)
+  // Sync settings with the database user object once on initial mount
   useEffect(() => {
-    if (userSettings) {
+    if (userSettings && isInitialDbSyncRef.current) {
+      isInitialDbSyncRef.current = false;
       try {
         const dbSettings = typeof userSettings === "string" 
           ? JSON.parse(userSettings) 
           : userSettings;
         
         if (dbSettings && typeof dbSettings === "object") {
-          const currentStr = JSON.stringify(settingsRef.current);
-          const merged = {
-            ...settingsRef.current,
-            ...dbSettings,
-            islandCustomizer: {
-              ...settingsRef.current.islandCustomizer,
-              ...(dbSettings.islandCustomizer || {}),
-            },
-            gradientSettings: {
-              ...settingsRef.current.gradientSettings,
-              ...(dbSettings.gradientSettings || {}),
-            },
-            ambientColors: {
-              ...settingsRef.current.ambientColors,
-              ...(dbSettings.ambientColors || {}),
-            },
-            ambientPositions: {
-              ...settingsRef.current.ambientPositions,
-              ...(dbSettings.ambientPositions || {}),
-            },
-          };
-          if (JSON.stringify(merged) !== currentStr) {
-            setSettingsState(merged);
+          const localStr = typeof window !== "undefined" ? localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
+          let merged = { ...DEFAULT_SETTINGS, ...dbSettings };
+          if (localStr) {
+            try {
+              const localSettings = JSON.parse(localStr);
+              merged = { ...merged, ...localSettings };
+            } catch {}
           }
+          setSettingsState(merged);
+          settingsRef.current = merged;
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
         }
       } catch (e) {
         console.warn("Failed to parse DB settings", e);
@@ -246,46 +237,58 @@ export function useSettings() {
     }
   }, [userSettings]);
 
+  // Flush pending settings sync on unmount / navigation
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+        if (auth?.user) {
+          authApi.updateSettings(settingsRef.current)
+            .then(() => auth.patchUserSettings(settingsRef.current))
+            .catch(() => {});
+        }
+      }
+    };
+  }, [auth]);
+
   const updateSettings = (updates: Partial<AppSettings>) => {
     const newSettings = {
-      ...settings,
+      ...settingsRef.current,
       ...updates,
       islandCustomizer: updates.islandCustomizer
-        ? { ...settings.islandCustomizer, ...updates.islandCustomizer }
-        : settings.islandCustomizer,
+        ? { ...settingsRef.current.islandCustomizer, ...updates.islandCustomizer }
+        : settingsRef.current.islandCustomizer,
       gradientSettings: updates.gradientSettings
-        ? { ...settings.gradientSettings, ...updates.gradientSettings }
-        : settings.gradientSettings,
+        ? { ...settingsRef.current.gradientSettings, ...updates.gradientSettings }
+        : settingsRef.current.gradientSettings,
       ambientColors: updates.ambientColors 
-        ? { ...settings.ambientColors, ...updates.ambientColors }
-        : settings.ambientColors,
+        ? { ...settingsRef.current.ambientColors, ...updates.ambientColors }
+        : settingsRef.current.ambientColors,
       ambientPositions: updates.ambientPositions
-        ? { ...settings.ambientPositions, ...updates.ambientPositions }
-        : settings.ambientPositions,
+        ? { ...settingsRef.current.ambientPositions, ...updates.ambientPositions }
+        : settingsRef.current.ambientPositions,
     };
     setSettingsState(newSettings);
+    settingsRef.current = newSettings;
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+    
     // Mark this as an internal update so our own custom event handler ignores it
     isInternalUpdateRef.current = true;
     window.dispatchEvent(new Event("syncbeats-settings-updated"));
-    // Reset after microtask so only our handler is skipped, not future cross-tab events
     setTimeout(() => { isInternalUpdateRef.current = false; }, 0);
 
-    // Sync to backend if logged in (debounced to prevent high-frequency PATCH flooding)
-    // Note: we call authApi directly — NOT AuthContext.updateSettings — to avoid setUser re-render
+    // Sync to backend immediately with 200ms debounce
     if (auth?.user) {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
         authApi.updateSettings(newSettings)
           .then(() => {
-            // Keep auth.user.settings in sync so the DB-merge effect never
-            // overwrites local state with stale login-time data.
             auth.patchUserSettings(newSettings);
           })
           .catch((err) => {
             console.warn("Failed to sync settings to server:", err);
           });
-      }, 1500);
+      }, 200);
     }
   };
 

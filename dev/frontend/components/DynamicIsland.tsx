@@ -1072,6 +1072,7 @@ export function DynamicIsland() {
   const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
   const [isImportingPlaylist, setIsImportingPlaylist] = useState(false);
   const [hasSearchContent, setHasSearchContent] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
@@ -1500,13 +1501,23 @@ export function DynamicIsland() {
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
-  const searchHeight = isViewingPlaylist 
-    ? 560 
-    : (isImportingPlaylist || upload.activeImport?.isImporting) 
-    ? 300 
-    : hasSearchContent 
-    ? 100 
-    : (ytResultsCount > 0 ? 480 : 100);
+  let searchHeight = 100;
+  if (isViewingPlaylist) {
+    searchHeight = 560;
+  } else if (isImportingPlaylist || upload.activeImport?.isImporting) {
+    searchHeight = 300;
+  } else if (searchError) {
+    const isPrivateVideo = searchError.includes("Private playlists cannot be imported");
+    const textLines = Math.ceil(searchError.length / 45);
+    const extraHeight = isPrivateVideo ? 260 : Math.max(0, textLines - 1) * 22;
+    searchHeight = Math.min(540, 150 + extraHeight);
+  } else if (hasSearchContent) {
+    searchHeight = 100;
+  } else if (ytResultsCount > 0) {
+    searchHeight = 480;
+  } else {
+    searchHeight = 100;
+  }
 
   const expandedHeightMap: Record<IslandTab, number> = {
     player: 300,
@@ -1863,6 +1874,7 @@ export function DynamicIsland() {
                         onPlaylistViewChange={setIsViewingPlaylist}
                         onImportingStateChange={setIsImportingPlaylist}
                         onHasContentChange={setHasSearchContent}
+                        onErrorStateChange={setSearchError}
                         onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
                       />
                     </motion.div>

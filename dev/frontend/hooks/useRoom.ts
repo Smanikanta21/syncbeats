@@ -8,6 +8,7 @@ import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatial
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 import { toast } from 'sonner';
+import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -94,9 +95,6 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     if (trackUrl) {
-      console.log("[DEBUG] getTrackTitle searching for url:", trackUrl);
-      console.log("[DEBUG] queue urls:", queue.map(i => i.trackUrl));
-      
       const extractId = (url: string): string | null => {
         if (!url) return null;
         const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
@@ -113,8 +111,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       });
 
       if (match?.title && !match.title.startsWith('youtube:') && match.title !== 'Track') {
-        console.log("[DEBUG] getTrackTitle found match:", match.title);
         return match.title;
+      }
+
+      if (playingId) {
+        const fetchedTitle = getYoutubeTrackTitle(playingId);
+        if (fetchedTitle) return fetchedTitle;
+        return playingId;
       }
     }
     
@@ -127,9 +130,12 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
     const fileName = clean.split('/').pop() ?? '';
     const rawId = fileName.split('?')[0].replace(/\.[^.]+$/, '');
-    // If rawId looks like a bare YouTube video ID (11 alphanumeric+_- chars), don't show it
     const isYouTubeId = /^[a-zA-Z0-9_-]{11}$/.test(rawId);
-    if (isYouTubeId) return "SyncBeats Track";
+    if (isYouTubeId) {
+      const fetchedTitle = getYoutubeTrackTitle(rawId);
+      if (fetchedTitle) return fetchedTitle;
+      return rawId;
+    }
     const formatted = rawId.replace(/^\d+_/, '').replace(/_/g, ' ');
     if (formatted && !formatted.startsWith('youtube:')) return formatted;
     return "SyncBeats Track";
@@ -585,6 +591,18 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       setDeviceSyncProgress(prev => ({ ...prev, [socketId]: progress }));
     };
     socket.on('room:sync_progress', handleSyncProgress);
+
+    const handleTitleResolved = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.ytId && detail?.title && audioRef.current.trackUrl) {
+        if (audioRef.current.trackUrl.includes(detail.ytId)) {
+          loadAndSetTrack(audioRef.current.trackUrl, detail.title);
+        }
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("syncbeats:title-resolved", handleTitleResolved);
+    }
 
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);

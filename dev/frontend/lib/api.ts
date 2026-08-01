@@ -96,8 +96,16 @@ async function request<T>(
   }
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { ...options, headers });
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      signal: AbortSignal.timeout(8000), // 8s timeout — prevents requests from hanging indefinitely
+    });
   } catch (err: any) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      notifyServerError("SyncBeats Server is not responding");
+      throw new ApiError("Server not responding — please check your connection and try again.", 0);
+    }
     notifyServerError("Cannot reach SyncBeats Server");
     throw new ApiError("Cannot reach SyncBeats Server. Please check your network connection.", 0);
   }

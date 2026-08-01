@@ -23,11 +23,12 @@ interface SearchTabProps {
   onPlaylistViewChange?: (isViewing: boolean) => void;
   onImportingStateChange?: (isImporting: boolean) => void;
   onHasContentChange?: (hasContent: boolean) => void;
+  onErrorStateChange?: (error: string | null) => void;
 }
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
-export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange }: SearchTabProps) {
+export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -199,6 +200,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   useEffect(() => {
     onPlaylistViewChange?.(!!selectedPlaylistId);
   }, [selectedPlaylistId, onPlaylistViewChange]);
+
+  const activeError = downloadError || spError;
+  useEffect(() => {
+    onErrorStateChange?.(activeError);
+  }, [activeError, onErrorStateChange]);
 
   useEffect(() => {
     let total = 0;
@@ -1004,8 +1010,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
                         <div className={cn('flex', 'flex-col', 'gap-1', 'mt-2')}>
                           {selectedPlaylistData.tracks?.map((track: any, idx: number) => {
-                            const song = track.song;
-                            if (!song) return null;
+                            const song = track.song || track;
+                            if (!song || (!song.title && !song.youtubeId)) return null;
 
                             // Map to expected ytResults format for handlePlay
                             const mappedSong = {

@@ -27,6 +27,32 @@ export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: stri
   return null;
 }
 
+const ytTitleCache = new Map<string, string>();
+const pendingFetches = new Set<string>();
+
+export function getYoutubeTrackTitle(ytId: string): string | null {
+  if (!ytId || !/^[a-zA-Z0-9_-]{11}$/.test(ytId)) return null;
+  if (ytTitleCache.has(ytId)) return ytTitleCache.get(ytId)!;
+
+  if (typeof window !== "undefined" && !pendingFetches.has(ytId)) {
+    pendingFetches.add(ytId);
+    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.title) {
+          const cleanTitle = data.title.replace(/\0/g, '').trim();
+          ytTitleCache.set(ytId, cleanTitle);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("syncbeats:title-resolved", { detail: { ytId, title: cleanTitle } }));
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => pendingFetches.delete(ytId));
+  }
+  return null;
+}
+
 export async function extractTwoColorsFromImage(imageUrl: string): Promise<[string, string]> {
   return new Promise((resolve) => {
     if (!imageUrl || typeof window === "undefined") {

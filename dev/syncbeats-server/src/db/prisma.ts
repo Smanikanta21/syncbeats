@@ -16,10 +16,12 @@ export function sanitizeNullBytes(val: any): any {
   if (val === null || val === undefined) return val;
   if (typeof val === 'string') {
     return val
-      // Remove null bytes
+      // Remove null bytes and null byte escape sequences
+      .replace(/\0/g, '')
       .replace(/\x00/g, '')
       .replace(/\u0000/g, '')
       .replace(/\\u0000/g, '')
+      .replace(/\\x00/g, '')
       // Remove other ASCII control characters (except tab \x09, newline \x0A, CR \x0D which may be legitimate in text)
       // Actually for DB field values (titles, artists, urls) strip ALL control characters
       // eslint-disable-next-line no-control-regex

@@ -242,3 +242,11 @@ model RoomInvite {
   @@index([inviteeEmail])
   @@map("room_invites")
 }
+
+model BeatEventsCache {
+  spotifyId String   @id @map("spotify_id")
+  events    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  @@map("beat_events_cache")
+}

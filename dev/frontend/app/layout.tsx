@@ -17,6 +17,7 @@ import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
 import { cn } from "@/lib/utils";
 import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
+import { BeatProvider } from "../context/BeatContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -216,10 +217,7 @@ export default function RootLayout({
           
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
           <div className={cn('hidden', 'md:block', 'absolute', 'inset-0')}>
-            {/* Blobs must stay within 0–100% — no negative positions or transforms that go off-screen */}
-            <div id="ambient-bass"   className={cn('absolute', 'top-[5%]', 'left-[10%]', 'w-[55vw]', 'h-[55vw]', 'bg-purple-600/12', 'dark:bg-purple-900/18', 'blur-[160px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-mid"    className={cn('absolute', 'top-[20%]', 'right-[5%]', 'w-[50vw]', 'h-[50vw]', 'bg-indigo-500/10', 'dark:bg-indigo-900/15', 'blur-[160px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-treble" className={cn('absolute', 'bottom-[5%]', 'left-[20%]', 'w-[60vw]', 'h-[60vw]', 'bg-pink-500/10', 'dark:bg-pink-900/15', 'blur-[150px]', 'rounded-full', 'mix-blend-screen')} style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
+
             <div className={cn('absolute', 'inset-0', 'opacity-[0.015]', 'dark:opacity-[0.03]')} style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 
@@ -240,11 +238,13 @@ export default function RootLayout({
               <ConnectionStatusModal />
               <AuthProvider>
                 <AudioProvider>
-                  <VisualizerProvider>
-                    <ToastProvider>
-                      <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
-                    </ToastProvider>
-                  </VisualizerProvider>
+                  <BeatProvider>
+                    <VisualizerProvider>
+                      <ToastProvider>
+                        <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
+                      </ToastProvider>
+                    </VisualizerProvider>
+                  </BeatProvider>
                 </AudioProvider>
               </AuthProvider>
             </ConnectionProvider>

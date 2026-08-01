@@ -72,6 +72,7 @@ export class AuthService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ from, to: [to], subject, html, text }),
+      signal: AbortSignal.timeout(5000),
     });
 
     const rawBody = await response.text();
@@ -146,7 +147,9 @@ export class AuthService {
     if (!valid) throw new Error('Invalid password');
 
     if (!row.email_verified_at) {
-      await this.issueEmailVerification(row as unknown as PublicUser, false);
+      this.issueEmailVerification(row as unknown as PublicUser, false).catch(err => {
+        console.error('[Auth] Background email verification error:', err);
+      });
       throw new Error('UNVERIFIED_EMAIL: We have sent a new verification link to your email. Please verify before logging in.');
     }
 

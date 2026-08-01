@@ -351,7 +351,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
           uploaderUserId: userId,
           trackUrl,
           title: track.title || 'Unknown Track',
-          artist: track.artist || undefined,
+          artist: track.artist || null,
           fileName: 'playlist_track.yt',
           mimeType: 'video/youtube',
           sizeBytes: BigInt(0),
@@ -365,7 +365,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const CHUNK_SIZE = 200;
       for (let i = 0; i < allItemData.length; i += CHUNK_SIZE) {
         const chunk = allItemData.slice(i, i + CHUNK_SIZE);
-        await prisma.roomQueueItem.createMany({ data: chunk });
+        // Workaround for Prisma createMany bug that causes Postgres syntax errors/binary corruption
+        await prisma.$transaction(
+          chunk.map((item: any) => prisma.roomQueueItem.create({ data: item }))
+        );
       }
 
       // ── Step 5: Activate first track in room table if this is the first item ──
@@ -490,10 +493,11 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       await repo.clearUpcomingQueue(roomId);
       
       const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.get(roomId);
-      if (room) {
-        room.syncQueue(latestQueue, null);
-      }
+      const room = roomManager.getOrCreate(roomId);
+      room.syncQueue(latestQueue, null);
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+
       res.json({ ok: true });
     } catch (err) {
       console.error('[Rooms] clear queue error:', err);
@@ -508,11 +512,11 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const roomId = req.params['roomId'] as string;
       await repo.clearEntireQueue(roomId);
       
-      const room = roomManager.get(roomId);
-      if (room) {
-        room.resetRoom();
-        io.to(roomId).emit('room:reset', { roomId });
-      }
+      const room = roomManager.getOrCreate(roomId);
+      room.resetRoom();
+      io.to(roomId).emit('room:queueChanged', { queue: [] });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId).emit('room:reset', { roomId });
 
       res.json({ ok: true, message: 'Room has been reset successfully.' });
     } catch (err) {
@@ -661,6 +665,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const room = roomManager.getOrCreate(roomId as string);
       room.addToQueue(item);
 
+      const latestQueue = await repo.getQueue(roomId as string);
+      io.to(roomId as string).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId as string).emit('room:stateChanged', { state: room.snapshot() });
+
       console.log(`[Rooms] Enqueued YouTube video ${videoId} in room ${roomId}`);
       res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
     } catch (err) {
@@ -693,6 +701,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       const room = roomManager.getOrCreate(roomId);
       room.addToQueue(item);
+
+      const latestQueue = await repo.getQueue(roomId);
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
 
       res.status(201).json({ item, queued: !activated });
     } catch (err) {

@@ -9,7 +9,7 @@ import { SyncProvider } from "../../context/SyncContext";
 const DynamicIsland = dynamic(() => import("../../components/DynamicIsland").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
 import { X, Camera, MessageSquare } from "lucide-react";
-import { AmbientBackground } from "../../components/AmbientBackground";
+
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
 
@@ -229,7 +229,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-      <AmbientBackground syncWithAudio={true} />
+
       <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-32"}>
         {(!loading && user) ? children : null}
       </div>
