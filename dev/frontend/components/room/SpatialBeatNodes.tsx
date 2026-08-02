@@ -29,30 +29,32 @@ function BeatNode({ beatType, x, y, label, gradientClass }: BeatNodeProps) {
       const scale = 1 + boundedIntensity * 0.8;
       const opacity = 0.5 + boundedIntensity * 0.45;
 
-      // 1. Instant hit on the glowing blob
-      blob.style.transition = "none";
-      blob.style.transform = `translate(-50%, -50%) scale(${scale})`;
-      blob.style.opacity = opacity.toFixed(2);
+      // 1. Instant 0ms hit pop & smooth decay using Web Animations API (GPU Compositor Thread)
+      blob.animate(
+        [
+          { transform: `translate(-50%, -50%) scale(${scale})`, opacity: opacity },
+          { transform: `translate(-50%, -50%) scale(1)`, opacity: 0.25 },
+        ],
+        {
+          duration: 380,
+          easing: "cubic-bezier(0, 0, 0.2, 1)",
+          fill: "forwards",
+        }
+      );
 
-      // 2. Pulse shockwave ring effect
+      // 2. Instant shockwave ring expansion
       if (ring) {
-        ring.style.transition = "none";
-        ring.style.transform = `translate(-50%, -50%) scale(0.6)`;
-        ring.style.opacity = (boundedIntensity * 0.8).toFixed(2);
-      }
-
-      // Force reflow
-      void blob.offsetWidth;
-
-      // 3. Smooth decay back to subtle idle baseline
-      blob.style.transition = "transform 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 450ms ease-out";
-      blob.style.transform = `translate(-50%, -50%) scale(1)`;
-      blob.style.opacity = "0.25";
-
-      if (ring) {
-        ring.style.transition = "transform 500ms cubic-bezier(0.16, 1, 0.3, 1), opacity 500ms ease-out";
-        ring.style.transform = `translate(-50%, -50%) scale(${scale * 1.4})`;
-        ring.style.opacity = "0";
+        ring.animate(
+          [
+            { transform: `translate(-50%, -50%) scale(0.5)`, opacity: boundedIntensity * 0.85 },
+            { transform: `translate(-50%, -50%) scale(${scale * 1.45})`, opacity: 0 },
+          ],
+          {
+            duration: 480,
+            easing: "cubic-bezier(0, 0, 0.2, 1)",
+            fill: "forwards",
+          }
+        );
       }
     });
 

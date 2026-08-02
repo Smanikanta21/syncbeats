@@ -123,7 +123,7 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
         if (s.peakHold[i] < 0.005) s.peakHold[i] = 0;
 
         s.fluxAvg[i] = s.fluxAvg[i] * FLUX_AVG_DECAY + flux * FLUX_AVG_RISE;
-        s.prevEnergy[i] = s.prevEnergy[i] * 0.5 + normValues[i] * 0.5;
+        s.prevEnergy[i] = normValues[i];
       }
 
       // Group into Bass, Mid, Treble
