@@ -42,23 +42,31 @@ import { createClient }  from 'redis';
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (process.env.NODE_ENV?.toLowerCase() === 'development') return true;
+  if (FRONTEND_URL && origin === FRONTEND_URL) return true;
+  if (origin.includes('syncbeats.app')) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return true;
+  return false;
+};
+
 export class SyncBeatsServer {
   private app        = express();
   private httpServer = http.createServer(this.app);
   private io         = new Server(this.httpServer, {
     cors: { 
       origin: (origin, callback) => {
-        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
-          callback(null, true);
-        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          callback(null, false);
         }
       },
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id']
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range']
     },
     transports: ['polling', 'websocket'],
   });
@@ -104,17 +112,15 @@ export class SyncBeatsServer {
 
     this.app.use(cors({
       origin: (origin, callback) => {
-        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
-          callback(null, true);
-        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          callback(null, false);
         }
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
     }));
     this.app.use(express.json());
