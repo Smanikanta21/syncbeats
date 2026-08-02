@@ -66,7 +66,7 @@ const prisma = (globalForPrisma._prisma ?? createPrismaClient()) as unknown as P
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma._prisma = prisma;
 
-// Auto-create beat_events_cache table if it doesn't exist yet in PostgreSQL database
+// Auto-create beat_events_cache & admin_audit_logs tables if they don't exist yet
 void (async () => {
   try {
     await prisma.$executeRawUnsafe(`
@@ -74,6 +74,14 @@ void (async () => {
         "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
         "spotify_id" TEXT NOT NULL UNIQUE,
         "events" JSONB NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "admin_audit_logs" (
+        "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+        "action" TEXT NOT NULL,
+        "details" TEXT,
+        "ip" TEXT,
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);

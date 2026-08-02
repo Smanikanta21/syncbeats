@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { streamYoutubeAudio } from './SearchRoutes';
 import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
+import { AuditLogger } from '../services/AuditLogger';
 
 // Strict YouTube video ID format — 11 alphanumeric/dash/underscore chars only
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/

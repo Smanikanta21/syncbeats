@@ -4,6 +4,7 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../auth/AuthService';
 import { requireAuth } from '../auth/authMiddleware';
 import { loginLimiter, registerLimiter, forgotPasswordLimiter, verificationResendLimiter } from '../middleware/rateLimiter';
+import { AuditLogger } from '../services/AuditLogger';
 
 const authService = new AuthService();
 
@@ -42,12 +43,15 @@ export function createAuthRoutes(): Router {
     if (email.trim().length > 254) { res.status(400).json({ error: 'Email too long' }); return; }
     if (password.length > 128) { res.status(400).json({ error: 'Password too long (max 128 chars)' }); return; }
     if (password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
+    const { ip } = getDeviceContext(req);
     try {
       await authService.register(name.trim(), email.trim().toLowerCase(), password);
+      void AuditLogger.info('USER_REGISTER', `User ${name.trim()} (${email.trim()}) registered successfully`, ip || undefined);
       res.status(201).json({ ok: true });
     } catch (err) {
       console.error('[Auth] register error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      void AuditLogger.warn('REGISTER_FAILED', `Failed registration attempt for ${email}: ${msg}`, ip || undefined);
       res.status(409).json({ error: msg });
     }
   });
@@ -79,13 +83,15 @@ export function createAuthRoutes(): Router {
       res.status(400).json({ error: 'Invalid credentials' }); // don't leak which field
       return;
     }
+    const { deviceKey, userAgent, ip } = getDeviceContext(req);
     try {
-      const { deviceKey, userAgent, ip } = getDeviceContext(req);
       const result = await authService.login(email.trim().toLowerCase(), password, deviceKey, userAgent, ip);
+      void AuditLogger.info('USER_LOGIN', `User ${email.trim()} logged in successfully`, ip || undefined);
       res.json(result);
     } catch (err) {
       console.error('[Auth] login error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      void AuditLogger.warn('AUTH_FAILED', `Failed login for ${email}: ${msg}`, ip || undefined);
       res.status(401).json({ error: msg });
     }
   });
@@ -97,13 +103,15 @@ export function createAuthRoutes(): Router {
       res.status(400).json({ error: 'credential is required' });
       return;
     }
+    const { deviceKey, userAgent, ip } = getDeviceContext(req);
     try {
-      const { deviceKey, userAgent, ip } = getDeviceContext(req);
       const result = await authService.googleLogin(credential, deviceKey, userAgent, ip);
+      void AuditLogger.info('GOOGLE_LOGIN', `Google OAuth login for ${result.user.email}`, ip || undefined);
       res.json(result);
     } catch (err) {
       console.error('[Auth] google error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      void AuditLogger.warn('GOOGLE_AUTH_FAILED', `Failed Google OAuth login: ${msg}`, ip || undefined);
       res.status(401).json({ error: msg });
     }
   });
