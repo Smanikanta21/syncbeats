@@ -5,15 +5,46 @@ import { TrackQueueItem } from "../lib/types";
 import { Play, Disc, Trash2, GripVertical } from "lucide-react";
 import { motion } from "framer-motion";
 
+const globalSortableYtCache = new Map<string, string>();
+
+function isRawYouTubeId(str: string): boolean {
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(str)) return false;
+  // If it's pure letters (e.g. Mockingbird, Bloodstream, Unstoppable), it's a song title word, NOT a YouTube ID
+  if (/^[a-zA-Z]{11}$/.test(str)) return false;
+  return true;
+}
+
 function cleanTitle(t: string) {
-  return (
-    t
-      .replace(/\s*\[.*?\]/g, "")
-      .replace(/\s*\(.*?\)/g, "")
-      .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
-      .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
-      .trim() || t
-  );
+  if (!t) return "Unknown Track";
+  let name = t
+    .replace(/\s*\[.*?\]/g, "")
+    .replace(/\s*\(.*?\)/g, "")
+    .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
+    .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
+    .trim() || t;
+
+  name = name.replace(/[_\s]+\d{10,13}$/, '');
+  name = name.replace(/^\d+[_-\s]*/, '').replace(/_/g, ' ').trim();
+
+  if (isRawYouTubeId(name)) {
+    const ytId = name;
+    if (globalSortableYtCache.has(ytId)) {
+      return globalSortableYtCache.get(ytId)!;
+    }
+    if (typeof window !== "undefined") {
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.title) {
+            globalSortableYtCache.set(ytId, data.title);
+          }
+        })
+        .catch(() => {});
+    }
+    return "YouTube Track";
+  }
+
+  return name || "Unknown Track";
 }
 
 function ytThumb(trackUrl: string | null | undefined) {
@@ -24,7 +55,7 @@ function ytThumb(trackUrl: string | null | undefined) {
   if (thumbMatch) return decodeURIComponent(thumbMatch[1]);
 
   // Otherwise, extract YouTube ID
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?]+)/);
+  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
   return ytMatch ? `https://i.ytimg.com/vi/${ytMatch[1]}/mqdefault.jpg` : null;
 }
 
@@ -43,6 +74,7 @@ export interface TrackItemRowProps {
   isHistory?: boolean;
   isNew?: boolean;
   isDragging?: boolean;
+  isJumping?: boolean;
   style?: React.CSSProperties;
   dragHandleProps?: any;
   setNodeRef?: (node: HTMLElement | null) => void;
@@ -51,7 +83,7 @@ export interface TrackItemRowProps {
 export function TrackItemRow({
   item, idx, isCurrent, isPlaying, isHovered, isHost,
   onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag, isHistory, isNew,
-  isDragging, style, dragHandleProps, setNodeRef
+  isDragging, isJumping, style, dragHandleProps, setNodeRef
 }: TrackItemRowProps) {
   const thumb = ytThumb(item.trackUrl);
 
@@ -96,7 +128,13 @@ export function TrackItemRow({
 
       {/* Track number / playing indicator */}
       <div className={`w-5 shrink-0 flex items-center justify-center ${(!isHost || disableDrag) ? "ml-1" : ""}`}>
-        {isCurrent ? (
+        {isJumping ? (
+          <motion.div
+            className="w-4 h-4 rounded-full border-2 border-foreground/30 border-t-foreground"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+          />
+        ) : isCurrent ? (
           <div className="flex gap-[2px] h-4 items-end">
             {isPlaying ? (
               <>
@@ -191,6 +229,7 @@ export interface SortableTrackItemProps {
   disableDrag?: boolean;
   isHistory?: boolean;
   isNew?: boolean;
+  isJumping?: boolean;
 }
 
 export function SortableTrackItem(props: SortableTrackItemProps) {

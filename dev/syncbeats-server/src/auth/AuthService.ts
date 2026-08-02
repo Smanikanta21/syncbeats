@@ -72,6 +72,7 @@ export class AuthService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ from, to: [to], subject, html, text }),
+      signal: AbortSignal.timeout(5000),
     });
 
     const rawBody = await response.text();
@@ -132,7 +133,7 @@ export class AuthService {
     await this.issueEmailVerification(user, true);
   }
 
-  async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
+  async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
     const row = await this.repo.findByEmail(email);
     if (!row) throw new Error('User not found , Register first');
 
@@ -146,18 +147,20 @@ export class AuthService {
     if (!valid) throw new Error('Invalid password');
 
     if (!row.email_verified_at) {
-      await this.issueEmailVerification(row as unknown as PublicUser, false);
+      this.issueEmailVerification(row as unknown as PublicUser, false).catch(err => {
+        console.error('[Auth] Background email verification error:', err);
+      });
       throw new Error('UNVERIFIED_EMAIL: We have sent a new verification link to your email. Please verify before logging in.');
     }
 
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
     const token = this.signToken(loggedInUser);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
     return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
-  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
+  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
     const audience = process.env.GOOGLE_CLIENT_ID;
     if (!audience) throw new Error('GOOGLE_CLIENT_ID is not configured');
 
@@ -202,7 +205,7 @@ export class AuthService {
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
     const token = this.signToken(loggedInUser);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
     return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
@@ -327,7 +330,7 @@ export class AuthService {
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) throw new Error('JWT_SECRET not configured');
     const payload: TokenPayload = { sub: user.id, email: user.email, name: user.name };
-    // Token does not expire by default for this project requirement.
-    return jwt.sign(payload, jwtSecret);
+    // 90-day expiry — balances UX (users stay logged in) with security (leaked tokens expire)
+    return jwt.sign(payload, jwtSecret, { expiresIn: '90d' });
   }
 }

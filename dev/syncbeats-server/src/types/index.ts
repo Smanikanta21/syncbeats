@@ -21,6 +21,7 @@ export interface TrackQueueItem {
   trackUrl:   string;
   title:      string;
   artist?:    string;
+  thumbnail?: string;   // album art URL (from Song catalog)
   fileName:   string;
   queueIndex: number;
   isCurrent:  boolean;
@@ -31,22 +32,25 @@ export interface TrackQueueItem {
 }
 
 export interface RoomSnapshot {
-  roomId:       string;
-  trackUrl:     string | null;
-  position:     number;       // ms, computed at snapshot time
-  state:        PlaybackState;
-  hostId:       string | null;
-  timestamp:    number;       // server epoch when snapshot was taken
-  participants: Participant[];
-  queue:        TrackQueueItem[];
-  spatial:      DeviceSpatialState[];
-  startEpoch?:  number | null;
-  pauseOffset?: number;
-  isPlaying?:   boolean;
-  pendingPlay?: boolean;
-  isPrivate?:   boolean;
-  shuffle:      boolean;
-  repeatMode:   "off" | "track" | "all";
+  roomId:                 string;
+  trackUrl:               string | null;
+  position:               number;       // ms, computed at snapshot time
+  state:                  PlaybackState;
+  hostId:                 string | null;
+  timestamp:              number;       // server epoch when snapshot was taken
+  createdAt?:             number;       // server epoch when room session started
+  sessionDurationMs?:     number;       // active session duration in ms
+  accumulatedSessionTime?: number;      // active session duration in seconds
+  participants:           Participant[];
+  queue:                  TrackQueueItem[];
+  spatial:                DeviceSpatialState[];
+  startEpoch?:            number | null;
+  pauseOffset?:           number;
+  isPlaying?:             boolean;
+  pendingPlay?:           boolean;
+  isPrivate?:             boolean;
+  shuffle:                boolean;
+  repeatMode:             "off" | "track" | "all";
 }
 
 export interface SpatialPosition {
@@ -60,7 +64,7 @@ export interface DeviceSpatialState {
   position: SpatialPosition;
 }
 
-export interface JoinPayload  { roomId: string; displayName: string; userId?: string; isReady?: boolean; }
+export interface JoinPayload  { roomId: string; displayName: string; userId?: string; deviceId?: string; isReady?: boolean; }
 export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
 export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }
@@ -75,6 +79,13 @@ export interface PlaybackSchedulePayload {
   atEpoch: number;
 }
 
-export interface PlaybackPausePayload {
-  pauseOffset: number;
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  socketId: string;
+  userId?: string;
+  displayName: string;
+  message: string;
+  timestamp: number;
 }
+

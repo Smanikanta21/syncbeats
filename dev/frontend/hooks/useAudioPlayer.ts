@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getServerUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
+import { getTrackThumbnailUrl } from '../lib/colorExtractor';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -65,6 +66,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const rafRef   = useRef<number>(0);
 
   const [isPlaying,   setIsPlaying]   = useState(false);
+  const isPlayingRef = useRef(false); // mirror of isPlaying that's always fresh (no closure staleness)
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -100,6 +102,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]); // 60, 230, 910, 3600, 14000 Hz
 
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const mediaElSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const streamingAudioElRef = useRef<HTMLAudioElement | null>(null);
+
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const trackUrlRef = useRef<string | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
@@ -126,6 +131,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     analyserNodeRef.current = audioCtxRef.current.createAnalyser();
     analyserNodeRef.current.fftSize = 512;
     analyserNodeRef.current.smoothingTimeConstant = 0.25;
+
+    // Initialize streaming audio element with crossOrigin = "anonymous" to prevent Web Audio silence trap
+    if (typeof window !== 'undefined' && !streamingAudioElRef.current) {
+      const audioEl = new Audio();
+      audioEl.crossOrigin = "anonymous";
+      streamingAudioElRef.current = audioEl;
+    }
+
+    // Connect HTMLAudioElement into Web Audio graph (ONLY ONCE per lifecycle to prevent InvalidStateError)
+    if (streamingAudioElRef.current && gainNodeRef.current && !mediaElSourceRef.current) {
+      try {
+        mediaElSourceRef.current = audioCtxRef.current.createMediaElementSource(streamingAudioElRef.current);
+        mediaElSourceRef.current.connect(gainNodeRef.current);
+      } catch (err) {
+        console.warn("[AudioPlayer] MediaElementSource initialization warning:", err);
+      }
+    }
 
     // Create 5-band EQ with proper shelf/peak types
     const freqs = [60, 230, 910, 3600, 14000];
@@ -155,22 +177,40 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setupAudioGraph();
+      if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+        setAudioUnlocked(true);
+      }
     }
   }, [setupAudioGraph]);
 
   const stopCurrentSource = useCallback(() => {
+    pendingScheduleRef.current = null;
+    if (unlockTimeoutRef.current) {
+      clearTimeout(unlockTimeoutRef.current);
+      unlockTimeoutRef.current = null;
+    }
     if (sourceNodeRef.current) {
       sourceNodeRef.current.onended = null;
       try {
         sourceNodeRef.current.stop();
       } catch (e) {}
-      sourceNodeRef.current.disconnect();
+      try {
+        sourceNodeRef.current.disconnect();
+      } catch (e) {}
       sourceNodeRef.current = null;
+    }
+    if (streamingAudioElRef.current) {
+      try {
+        streamingAudioElRef.current.pause();
+      } catch (e) {}
     }
   }, []);
 
   const getTruePosition = useCallback(() => {
-    if (!isPlaying) return pauseOffsetRef.current;
+    // Use isPlayingRef (not isPlaying state) to avoid stale closure values.
+    // React state is 1 render behind at the time of the pause click, which caused
+    // getTruePosition to return an ~2s stale position when pausing.
+    if (!isPlayingRef.current) return pauseOffsetRef.current;
     
     // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
     if (audioCtxRef.current) {
@@ -179,7 +219,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
-  }, [isPlaying]);
+  }, []); // no deps — uses only refs, always fresh
 
   const setEqBand = useCallback((index: number, gain: number) => {
     if (eqNodesRef.current[index]) {
@@ -246,8 +286,47 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }, 50);
   }, []);
 
+  // ── Media Session Integration ─────────────────────
   useEffect(() => {
-    const unlock = () => { unlockAudio(); };
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    if (isPlaying) {
+      navigator.mediaSession.playbackState = "playing";
+    } else {
+      navigator.mediaSession.playbackState = "paused";
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    if (trackTitle || trackUrl) {
+      try {
+        const thumbUrl = getTrackThumbnailUrl({ trackUrl: trackUrl ?? undefined });
+        const artwork: MediaImage[] = thumbUrl
+          ? [
+              { src: thumbUrl, sizes: "512x512", type: "image/jpeg" },
+              { src: thumbUrl, sizes: "256x256", type: "image/jpeg" },
+              { src: thumbUrl, sizes: "96x96", type: "image/jpeg" },
+            ]
+          : [
+              { src: "https://syncbeats.app/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+            ];
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: trackTitle || "SyncBeats Track",
+          artist: trackArtist || "SyncBeats Room",
+          album: "SyncBeats",
+          artwork,
+        });
+      } catch (e) {}
+    }
+  }, [trackTitle, trackArtist, trackUrl]);
+
+  useEffect(() => {
+    const unlock = () => { 
+      unlockAudio();
+    };
     document.addEventListener('touchstart', unlock, { passive: true });
     document.addEventListener('click', unlock, { passive: true });
     document.addEventListener('pointerdown', unlock, { passive: true });
@@ -316,7 +395,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setIsReady(false);
       setError(null);
       try {
-        let arrayBuffer: ArrayBuffer;
+        let arrayBuffer: ArrayBuffer = new ArrayBuffer(0);
 
         if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
@@ -419,7 +498,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 socket.off('track:receive_chunk', onChunk);
                 clearAllTimers();
 
-                const ytMatch = url.match(/^ws-p2p:yt:([^_]+)_/);
+                const ytMatch = url.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
                 if (!ytMatch) {
                   reject(new Error(p2pErrMsg));
                   return;
@@ -432,8 +511,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 );
 
                 try {
-                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
-                  const resp = await fetch(proxyUrl, { signal });
+                  const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+                  const resp = await fetch(proxyUrl, { signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
                   if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
 
                   const contentLength = resp.headers.get('content-length');
@@ -582,31 +662,58 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             });
           }
         } else if (url.startsWith('youtube:')) {
-          const match = url.match(/^youtube:([^?&]+)/);
+          const match = url.match(/^youtube:([a-zA-Z0-9_-]{11})/);
           const videoId = match ? match[1] : '';
-          const roomId = window.location.pathname.split('/').pop();
-          const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}`;
-          const response = await fetch(fetchUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
+          if (!videoId || videoId.length < 11) {
+            throw new Error(`Corrupted YouTube track ID. Please tap Reset Room or skip track.`);
           }
-          const contentLength = response.headers.get('content-length');
-          if (contentLength) {
-            const total = parseInt(contentLength, 10);
+          const roomId = window.location.pathname.split('/').pop();
+          const { getCachedYouTubeTrack, cacheYouTubeTrack } = await import('../lib/idb');
+
+          // Check IDB v2 first!
+          const cachedBlob = await getCachedYouTubeTrack(videoId);
+          if (cachedBlob) {
+            console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
+            setDownloadProgress(100);
+            if (streamingAudioElRef.current) {
+              streamingAudioElRef.current.src = URL.createObjectURL(cachedBlob);
+            }
+            arrayBuffer = await cachedBlob.arrayBuffer();
+          } else {
+            console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
+            const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
+            const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+            
+            // Assign src immediately for Instant Playback!
+            if (streamingAudioElRef.current) {
+              streamingAudioElRef.current.src = fetchUrl;
+            }
+
+            // Concurrently fetch stream bytes in background to stash to IDB
+            const response = await fetch(fetchUrl, {
+              headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+            });
+            if (!response.ok) {
+              throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
+            }
+            const contentLength = response.headers.get('content-length');
+            const total = contentLength ? parseInt(contentLength, 10) : 0;
             let loaded = 0;
             const reader = response.body!.getReader();
-            const chunks = [];
+            const chunks: Uint8Array[] = [];
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               chunks.push(value);
               loaded += value.length;
-              const pct = Math.round((loaded / total) * 100);
-              setDownloadProgress(pct);
-              const { getSocket } = require('../lib/socket');
-              const socket = getSocket();
-              const roomId = window.location.pathname.split('/').pop();
-              if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+              if (total > 0) {
+                const pct = Math.round((loaded / total) * 100);
+                setDownloadProgress(pct);
+                const { getSocket } = require('../lib/socket');
+                const socket = getSocket();
+                const roomId = window.location.pathname.split('/').pop();
+                if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+              }
             }
             const concat = new Uint8Array(loaded);
             let offset = 0;
@@ -615,11 +722,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               offset += chunk.length;
             }
             arrayBuffer = concat.buffer;
-          } else {
-            arrayBuffer = await response.arrayBuffer();
+
+            // Stash to IDB asynchronously
+            const stashedBlob = new Blob([arrayBuffer], { type: 'audio/mp4' });
+            cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
+              console.warn('[AudioPlayer] Background stash to IDB warning:', err);
+            });
           }
         } else {
-          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            fetchUrl = fetchUrl.replace('http://localhost:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
+            fetchUrl = fetchUrl.replace('http://127.0.0.1:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
+          }
+
+          const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
+          if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
+            throw new Error(`Corrupted YouTube track ID '${paramMatch[1]}'. Please tap Reset Room or skip track.`);
+          }
+
           const response = await fetch(fetchUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
@@ -664,7 +785,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
         } catch (decodeErr) {
           console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
-          setError("Corrupted audio file received from proxy. Please try another track.");
+          setError("Playback Error: Failed to decode audio. Track may be blocked or corrupted.");
+          setIsBuffering(false);
+          setIsReady(false);
           pendingArrayBufferRef.current = arrayBuffer;
           
           if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {
@@ -736,6 +859,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
         setIsReady(true);
+        // Apply pending room schedule now that the buffer is ready
+        const pendingSched = pendingScheduleRef.current;
+        if (pendingSched) {
+          pendingScheduleRef.current = null;
+          const clockOffset = pendingSched.clockOffset;
+          const serverNow = Date.now() + clockOffset;
+          const elapsed = Math.max(0, (serverNow - pendingSched.payload.startEpoch) / 1000);
+          const adjustedPayload = {
+            ...pendingSched.payload,
+            atEpoch: Date.now() + clockOffset + 100,
+            fromPosition: elapsed,
+          };
+          scheduleStartRef.current?.(adjustedPayload, clockOffset);
+        }
       })
       .catch((err) => {
         console.error('[AudioPlayer] Deferred decode still failed:', err);
@@ -744,10 +881,36 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [audioUnlocked]);
 
   useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
+    if (gainNodeRef.current && audioCtxRef.current) {
+      const targetGain = Math.max(0, Math.min(1, volume / 100));
+      const currTime = audioCtxRef.current.currentTime;
+      try {
+        gainNodeRef.current.gain.cancelScheduledValues(currTime);
+        gainNodeRef.current.gain.setValueAtTime(gainNodeRef.current.gain.value, currTime);
+        gainNodeRef.current.gain.linearRampToValueAtTime(targetGain, currTime + 0.05);
+      } catch (err) {
+        gainNodeRef.current.gain.value = targetGain;
+      }
     }
   }, [volume]);
+
+  // When the buffer finishes decoding (isReady flips true), apply any pending
+  // room schedule so synced playback starts automatically without another interaction.
+  useEffect(() => {
+    if (!isReady) return;
+    const pending = pendingScheduleRef.current;
+    if (!pending) return;
+    pendingScheduleRef.current = null;
+    const clockOffset = pending.clockOffset;
+    const serverNow = Date.now() + clockOffset;
+    const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
+    const adjustedPayload = {
+      ...pending.payload,
+      atEpoch: Date.now() + clockOffset + 100,
+      fromPosition: elapsed,
+    };
+    scheduleStartRef.current?.(adjustedPayload, clockOffset);
+  }, [isReady]);
 
   useEffect(() => {
     let intervalId: any;
@@ -767,36 +930,50 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
   const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
-    scheduleIdRef.current += 1;
-    const currentScheduleId = scheduleIdRef.current;
-
     stopCurrentSource();
     if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
 
-    if (!audioCtxRef.current) return;
-    
-    let buffer = audioBufferRef.current;
-    if (!buffer && payload.trackUrl) {
-      if (fetchPromiseRef.current) {
-        buffer = await fetchPromiseRef.current;
-      }
-      
-      if (!buffer) {
-        const absoluteUrl = (!payload.trackUrl.startsWith('/') && !payload.trackUrl.startsWith('http') && !payload.trackUrl.startsWith('magnet:') && !payload.trackUrl.startsWith('ws-p2p:') && !payload.trackUrl.startsWith('blob:') && !payload.trackUrl.startsWith('data:')) 
-          ? `${getServerUrl()}/${payload.trackUrl}` 
-          : payload.trackUrl.startsWith('/') ? `${getServerUrl()}${payload.trackUrl}` : payload.trackUrl;
-        buffer = await fetchAndDecode(absoluteUrl);
-      }
+    if (!audioCtxRef.current) {
+      setupAudioGraph();
     }
 
-    if (scheduleIdRef.current !== currentScheduleId) return;
-
-    if (!buffer) return;
-
-    if (audioCtxRef.current.state === 'suspended') {
+    // If track URL differs from what's loaded, we can't play yet —
+    // save the schedule and let the fetch/decode pipeline apply it when ready.
+    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
+      console.log('[AudioPlayer] scheduleStart: trackUrl mismatch, saving pending');
       pendingScheduleRef.current = { payload, clockOffset };
       return;
     }
+
+    let buffer = audioBufferRef.current;
+    if (!buffer && payload.trackUrl) {
+      // Await the in-flight fetch if one exists (started by useEffect[trackUrl]).
+      if (fetchPromiseRef.current) {
+        buffer = await fetchPromiseRef.current;
+      }
+    }
+
+    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
+      console.log('[AudioPlayer] scheduleStart superseded by new trackUrl:', trackUrlRef.current, 'vs', payload.trackUrl);
+      return;
+    }
+
+    if (!buffer) {
+      // Buffer still unavailable — save pending schedule.
+      // Will be applied by isReady useEffect or unlockAudio once decode completes.
+      console.log('[AudioPlayer] scheduleStart: no buffer yet, saving pending schedule');
+      pendingScheduleRef.current = { payload, clockOffset };
+      return;
+    }
+
+    if (audioCtxRef.current?.state === 'suspended') {
+      console.log('[AudioPlayer] AudioContext suspended — saving pending schedule and attempting resume');
+      pendingScheduleRef.current = { payload, clockOffset };
+      audioCtxRef.current.resume().catch(() => {});
+      return;
+    }
+
+    if (!audioCtxRef.current) return;
 
     const localAtEpoch = payload.atEpoch - clockOffset;
     const msUntilStart = localAtEpoch - Date.now();
@@ -835,6 +1012,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       pauseOffsetRef.current = Math.max(0, clampedPosition);
     }
     
+    isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(pauseOffsetRef.current);
   }, [audioUnlocked, stopCurrentSource]);
@@ -866,40 +1044,83 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     startTimeRef.current = audioCtxRef.current.currentTime;
     pauseOffsetRef.current = clampedPosition;
+    isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(clampedPosition);
   }, [audioUnlocked, stopCurrentSource]);
 
   const pauseAt = useCallback((position: number) => {
     scheduleIdRef.current += 1;
+    pendingScheduleRef.current = null;
     stopCurrentSource();
+    isPlayingRef.current = false;
     setIsPlaying(false);
     pauseOffsetRef.current = position;
     setCurrentTime(position);
   }, [stopCurrentSource]);
 
   const play = useCallback(() => {
-    if (!isPlaying) playNow(pauseOffsetRef.current);
-  }, [isPlaying, playNow]);
+    if (!isPlayingRef.current) playNow(pauseOffsetRef.current);
+  }, [playNow]);
 
   const pause = useCallback(() => {
-    if (isPlaying) pauseAt(getTruePosition());
-  }, [isPlaying, pauseAt, getTruePosition]);
+    // Read position from refs — NOT from React state — to avoid stale closure values.
+    if (isPlayingRef.current) pauseAt(getTruePosition());
+  }, [pauseAt, getTruePosition]);
 
   const toggle = useCallback(() => {
-    if (isPlaying) pause();
+    if (isPlayingRef.current) pause();
     else play();
-  }, [isPlaying, play, pause]);
+  }, [play, pause]);
 
   const seek = useCallback((time: number) => {
-    if (isPlaying) playNow(time);
+    if (isPlayingRef.current) playNow(time);
     else pauseAt(time);
-  }, [isPlaying, playNow, pauseAt]);
+  }, [playNow, pauseAt]);
 
   const seekPct = useCallback((pct: number) => {
     const time = pct * duration;
     seek(time);
   }, [seek, duration]);
+
+  // Set action handlers (play, pause, seekto)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {}
+    };
+
+    setHandler("play", () => {
+      if (!isPlaying) play();
+    });
+    setHandler("pause", () => {
+      if (isPlaying) pause();
+    });
+    setHandler("seekto", (details) => {
+      if (details.seekTime != null) {
+        seek(details.seekTime);
+      }
+    });
+  }, [isPlaying, play, pause, seek]);
+
+  // Update OS System Media Control Position State slider
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    if (!("setPositionState" in navigator.mediaSession)) return;
+
+    if (duration > 0 && Number.isFinite(duration) && Number.isFinite(currentTime)) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0, duration),
+          playbackRate: 1,
+          position: Math.min(Math.max(0, currentTime), duration),
+        });
+      } catch (e) {}
+    }
+  }, [currentTime, duration]);
 
   const setPlaybackRate = useCallback((rate: number) => {
     playbackRateRef.current = rate;

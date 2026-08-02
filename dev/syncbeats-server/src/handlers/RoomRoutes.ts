@@ -3,7 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
-import { requireAuth }    from '../auth/authMiddleware';
+import { requireAuth, optionalAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import prisma             from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
@@ -12,6 +12,11 @@ import ytSearch from 'yt-search';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { streamYoutubeAudio } from './SearchRoutes';
+import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
+
+// Strict YouTube video ID format — 11 alphanumeric/dash/underscore chars only
+const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -20,12 +25,16 @@ const exhaustedRapidKeys = new Set<string>();
 export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
 
-  // GET /rooms/:roomId/youtube-search
-  router.get('/:roomId/youtube-search', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId/youtube-search — auth required, rate limited
+  router.get('/:roomId/youtube-search', requireAuth, searchLimiter, async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {
         res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      if (q.length > 200) {
+        res.status(400).json({ error: 'Search query too long (max 200 chars)' });
         return;
       }
 
@@ -50,12 +59,46 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // GET /rooms/youtube-suggest
-  router.get('/youtube/suggest', async (req: Request, res: Response) => {
+  // GET /rooms/youtube/details?videoId=ID — auth required
+  router.get('/youtube/details', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { videoId } = req.query;
+      if (!videoId || typeof videoId !== 'string') {
+        res.status(400).json({ error: 'Missing videoId' });
+        return;
+      }
+      const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+      if (!YOUTUBE_ID_RE.test(cleanId)) {
+        res.status(400).json({ error: 'Invalid video ID format' });
+        return;
+      }
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}&format=json`;
+      const response = await fetch(oembedUrl);
+      if (!response.ok) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+      const data: any = await response.json();
+      res.json({
+        title: data.title,
+        artist: data.author_name || 'YouTube',
+        thumbnail: data.thumbnail_url || `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg`,
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // GET /rooms/youtube-suggest — auth required, rate limited
+  router.get('/youtube/suggest', requireAuth, searchLimiter, async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string') {
         res.status(400).json({ error: 'Missing search query' });
+        return;
+      }
+      if (q.length > 200) {
+        res.status(400).json({ error: 'Query too long' });
         return;
       }
       const response = await fetch(`http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`);
@@ -78,8 +121,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // GET /rooms/:roomId
-  router.get('/:roomId', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId — auth required (room data is private)
+  router.get('/:roomId', requireAuth, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
     try {
       const [dbRow, participants, queue] = await Promise.all([
@@ -134,23 +177,50 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         : `${frontendUrl}/login?mode=register&returnTo=/room/${roomId}`;
 
       const { AuthService } = await import('../auth/AuthService');
+      const { buildRoomInviteHtml } = await import('../auth/EmailTemplates');
       const authService = new AuthService();
+      const inviterName = inviter?.name || 'A friend';
+      
+      const htmlEmail = buildRoomInviteHtml(inviterName, roomId, inviteLink);
+      const textEmail = `You're invited! ${inviterName} has invited you to join SyncBeats Room #${roomId}. Join here: ${inviteLink}`;
+
       await authService.sendEmail(
         finalEmail,
-        `${inviter?.name || 'A friend'} invited you to a SyncBeats room!`,
-        `<div style="font-family: sans-serif; color: #111;">
-          <h2>You're invited!</h2>
-          <p><strong>${inviter?.name || 'A friend'}</strong> has invited you to join their listening room on SyncBeats.</p>
-          <p><a href="${inviteLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Join Room</a></p>
-          <p>Or copy and paste this link into your browser: <br/>${inviteLink}</p>
-        </div>`,
-        `You're invited! ${inviter?.name || 'A friend'} has invited you to join their listening room on SyncBeats. Join here: ${inviteLink}`
+        `🎵 ${inviterName} invited you to SyncBeats Room #${roomId}`,
+        htmlEmail,
+        textEmail
       );
 
       res.json({ success: true, inviteId: invite.id });
     } catch (err) {
       console.error(`[Rooms] POST /${roomId}/invite error:`, err);
       res.status(500).json({ error: 'Failed to send invite' });
+    }
+  });
+
+  // POST /rooms/default — fetch existing active room hosted by this user or create a persistent default room
+  router.post('/default', requireAuth, async (req: Request, res: Response) => {
+    const hostUserId = req.user!.sub;
+    try {
+      // Check for an existing active room hosted by this user
+      let existingRoom = await repo.findActiveByHost(hostUserId);
+      if (existingRoom) {
+        roomManager.getOrCreate(existingRoom.id);
+        console.log(`[Rooms] Reusing existing default room ${existingRoom.id} for user ${hostUserId}`);
+        res.json({ roomId: existingRoom.id, createdAt: existingRoom.created_at, isNew: false });
+        return;
+      }
+
+      // If no active room exists, create a new persistent room
+      const roomId = Math.floor(100000 + Math.random() * 900000).toString();
+      const dbRoom = await repo.create(roomId, hostUserId);
+      roomManager.getOrCreate(roomId);
+      console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
+      res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
+    } catch (err) {
+      console.error('[Rooms] default room error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
     }
   });
 
@@ -207,65 +277,121 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
+      // Cap at 500 tracks to prevent server overload
+      const MAX_TRACKS = 500;
+      const tracks = playlist.tracks.slice(0, MAX_TRACKS);
+      const wasCapped = playlist.tracks.length > MAX_TRACKS;
+
       const room = roomManager.getOrCreate(roomId);
-      let enqueuedCount = 0;
-      const currentQueueLen = room.getQueue().length;
 
-      for (let i = 0; i < playlist.tracks.length; i++) {
-        const track = playlist.tracks[i];
-        let trackUrl = '';
-        const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
-        const pidParam = `pid=${playlistId}`;
-        const queryParams = [thumbParam, pidParam].filter(Boolean).join('&');
-        const qs = `?${queryParams}`;
+      // ── Step 1: Check if room already has items (for isCurrent logic) ──
+      const [existingCurrent, lastItem] = await Promise.all([
+        prisma.roomQueueItem.findFirst({
+          where: { roomId, isCurrent: true },
+          select: { id: true }
+        }),
+        prisma.roomQueueItem.findFirst({
+          where: { roomId },
+          orderBy: { queueIndex: 'desc' },
+          select: { queueIndex: true }
+        })
+      ]);
 
-        // If it's a lazy loaded track without youtubeId, use our special scheme
-        if (!track.youtubeId) {
-          // Resolve the very first track synchronously so playback can start instantly
-          if (i === 0 && currentQueueLen === 0) {
-            console.log(`[Rooms] Resolving first lazy track synchronously: ${track.title}`);
-            try {
-              const ytResult = await matchToYouTubeFallback(track.title, track.artist || '');
-              if (ytResult && ytResult.youtubeId) {
-                trackUrl = `youtube:${ytResult.youtubeId}${qs}`;
-                await prisma.playlistTrack.update({
-                  where: { id: track.id },
-                  data: { youtubeId: ytResult.youtubeId }
-                });
-              } else {
-                trackUrl = `spotify-lazy:${track.id}${qs}`;
-              }
-            } catch (e) {
-              console.warn(`[Rooms] Sync resolve failed for first track:`, e);
-              trackUrl = `spotify-lazy:${track.id}${qs}`;
-            }
+      const isFirstTrack = !existingCurrent;
+      let nextQueueIndex = (lastItem?.queueIndex ?? -1) + 1;
+
+      // ── Step 2: Resolve first track synchronously if queue is empty ──
+      // This ensures playback can start immediately
+      let firstTrackUrl = '';
+      const firstTrack = tracks[0];
+      const firstThumb = firstTrack.thumbnail ? `thumb=${encodeURIComponent(firstTrack.thumbnail)}` : '';
+      const firstPidParam = `pid=${playlistId}`;
+      const firstQs = `?${[firstThumb, firstPidParam].filter(Boolean).join('&')}`;
+
+      if (isFirstTrack && !firstTrack.youtubeId) {
+        console.log(`[Rooms] Resolving first lazy track synchronously: ${firstTrack.title}`);
+        try {
+          const ytResult = await matchToYouTubeFallback(firstTrack.title, firstTrack.artist || '');
+          if (ytResult?.youtubeId) {
+            firstTrackUrl = `youtube:${ytResult.youtubeId}${firstQs}`;
+            await prisma.playlistTrack.update({
+              where: { id: firstTrack.id },
+              data: { youtubeId: ytResult.youtubeId }
+            }).catch(() => {});
           } else {
-            trackUrl = `spotify-lazy:${track.id}${qs}`;
+            firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
           }
-        } else {
-          trackUrl = `youtube:${track.youtubeId}${qs}`;
+        } catch {
+          firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
         }
-
-        const { item, activated } = await repo.enqueueTrack(roomId, userId, {
-          trackUrl,
-          title: track.title,
-          artist: track.artist || undefined,
-          fileName: `playlist_track.yt`,
-          mimeType: 'video/youtube', // We treat them all as youtube eventually
-          sizeBytes: 0,
-        });
-
-        room.addToQueue(item);
-        enqueuedCount++;
-
-        // Small delay to prevent database locks on massive playlists
-        if (enqueuedCount % 10 === 0) {
-          await new Promise(r => setTimeout(r, 50));
-        }
+      } else if (firstTrack.youtubeId) {
+        firstTrackUrl = `youtube:${firstTrack.youtubeId}${firstQs}`;
+      } else {
+        firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
       }
 
-      console.log(`[Rooms] Enqueued ${enqueuedCount} tracks from playlist ${playlistId} in room ${roomId}`);
-      res.json({ success: true, enqueuedCount });
+      // ── Step 3: Build all queue item data in memory ──
+      const allItemData: any[] = [];
+
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        let trackUrl: string;
+
+        if (i === 0) {
+          trackUrl = firstTrackUrl;
+        } else {
+          const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
+          const pidParam = `pid=${playlistId}`;
+          const qs = `?${[thumbParam, pidParam].filter(Boolean).join('&')}`;
+          trackUrl = track.youtubeId ? `youtube:${track.youtubeId}${qs}` : `spotify-lazy:${track.id}${qs}`;
+        }
+
+        allItemData.push({
+          roomId,
+          uploaderUserId: userId,
+          trackUrl,
+          title: track.title || 'Unknown Track',
+          artist: track.artist || null,
+          fileName: 'playlist_track.yt',
+          mimeType: 'video/youtube',
+          sizeBytes: BigInt(0),
+          queueIndex: nextQueueIndex + i,
+          isCurrent: isFirstTrack && i === 0,
+        });
+      }
+
+      // ── Step 4: Bulk insert in chunks of 200 ──
+      // (createMany doesn't return IDs, so we fetch them after)
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < allItemData.length; i += CHUNK_SIZE) {
+        const chunk = allItemData.slice(i, i + CHUNK_SIZE);
+        // Workaround for Prisma createMany bug that causes Postgres syntax errors/binary corruption
+        await prisma.$transaction(
+          chunk.map((item: any) => prisma.roomQueueItem.create({ data: item }))
+        );
+      }
+
+      // ── Step 5: Activate first track in room table if this is the first item ──
+      if (isFirstTrack) {
+        await prisma.room.update({
+          where: { id: roomId },
+          data: { trackUrl: firstTrackUrl, playbackState: 'PAUSED', positionMs: 0n }
+        }).catch(() => {});
+      }
+
+      // ── Step 6: Fetch the final queue from DB and sync room state once ──
+      const latestQueue = await repo.getQueue(roomId);
+      room.syncQueue(latestQueue, latestQueue.find(q => q.isCurrent)?.id ?? null);
+
+      // Emit single queueChanged event to all clients
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+
+      console.log(`[Rooms] Enqueued ${tracks.length} tracks from playlist ${playlistId} in room ${roomId} (bulk insert)`);
+      res.json({ 
+        success: true, 
+        enqueuedCount: tracks.length,
+        ...(wasCapped ? { warning: `Playlist capped at ${MAX_TRACKS} tracks` } : {})
+      });
     } catch (err) {
       console.error('[Rooms] enqueue playlist error:', err);
       res.status(500).json({ error: 'Failed to enqueue playlist' });
@@ -367,13 +493,34 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       await repo.clearUpcomingQueue(roomId);
       
       const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.get(roomId);
-      if (room) {
-        room.syncQueue(latestQueue, null);
-      }
+      const room = roomManager.getOrCreate(roomId);
+      room.syncQueue(latestQueue, null);
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+
       res.json({ ok: true });
     } catch (err) {
       console.error('[Rooms] clear queue error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // POST /rooms/:roomId/reset (Reset room completely — clear all queue & reset playback)
+  router.post('/:roomId/reset', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const roomId = req.params['roomId'] as string;
+      await repo.clearEntireQueue(roomId);
+      
+      const room = roomManager.getOrCreate(roomId);
+      room.resetRoom();
+      io.to(roomId).emit('room:queueChanged', { queue: [] });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId).emit('room:reset', { roomId });
+
+      res.json({ ok: true, message: 'Room has been reset successfully.' });
+    } catch (err) {
+      console.error('[Rooms] reset room error:', err);
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });
     }
@@ -445,8 +592,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // POST /rooms/:roomId/enqueue-youtube
-  router.post('/:roomId/enqueue-youtube', requireAuth, async (req: Request, res: Response) => {
+  // POST /rooms/:roomId/enqueue-youtube — rate limited
+  router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
     try {
       const { roomId } = req.params;
       const { youtubeUrl, title: customTitle } = req.body as { youtubeUrl?: string; title?: string };
@@ -454,6 +601,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       if (!youtubeUrl) {
         res.status(400).json({ error: 'Missing youtubeUrl' });
+        return;
+      }
+      if (customTitle && customTitle.length > 255) {
+        res.status(400).json({ error: 'Title too long (max 255 chars)' });
         return;
       }
 
@@ -485,7 +636,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
           const oembedRes = await fetch(oembedUrl);
           if (oembedRes.ok) {
             const data = await oembedRes.json() as { title?: string };
-            if (data.title) title = data.title;
+            // Sanitize: external APIs can return strings with null bytes (0x00)
+            if (data.title) title = data.title.replace(/\0/g, '').trim() || title;
           }
         } catch (e) {
           console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);
@@ -513,6 +665,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const room = roomManager.getOrCreate(roomId as string);
       room.addToQueue(item);
 
+      const latestQueue = await repo.getQueue(roomId as string);
+      io.to(roomId as string).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId as string).emit('room:stateChanged', { state: room.snapshot() });
+
       console.log(`[Rooms] Enqueued YouTube video ${videoId} in room ${roomId}`);
       res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
     } catch (err) {
@@ -522,8 +678,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // POST /rooms/:roomId/enqueue-magnet
-  router.post('/:roomId/enqueue-magnet', requireAuth, async (req: Request, res: Response) => {
+  // POST /rooms/:roomId/enqueue-magnet — rate limited
+  router.post('/:roomId/enqueue-magnet', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
     try {
       const roomId = req.params['roomId'] as string;
       const { magnetUri, title, artist } = req.body as { magnetUri?: string; title?: string; artist?: string };
@@ -546,6 +702,10 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const room = roomManager.getOrCreate(roomId);
       room.addToQueue(item);
 
+      const latestQueue = await repo.getQueue(roomId);
+      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
+      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+
       res.status(201).json({ item, queued: !activated });
     } catch (err) {
       console.error('[Rooms] enqueue-magnet error:', err);
@@ -554,7 +714,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  router.get('/:roomId/yt-proxy', async (req: Request, res: Response) => {
+  // GET /rooms/:roomId/yt-proxy — CRITICAL: optionalAuth (supports ?token= query or guest streaming) + rate limited + videoId validation
+  router.get('/:roomId/yt-proxy', optionalAuth, ytProxyLimiter, async (req: Request, res: Response) => {
     try {
       const { videoId } = req.query;
       if (!videoId || typeof videoId !== 'string') {
@@ -562,138 +723,24 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      console.log(`[Proxy] Resolving YouTube audio for video: ${videoId}`);
-      
-      const tmpDir = path.resolve(process.cwd(), 'tmp');
-      if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir);
-      }
-      
-      const outputFile = path.resolve(tmpDir, `${videoId}.m4a`);
-      
-      // If already downloaded (cached), just serve it
-      if (fs.existsSync(outputFile)) {
-        console.log(`[Proxy] Serving cached audio for: ${videoId}`);
-        res.setHeader('Content-Type', 'audio/x-m4a');
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-        return res.sendFile(outputFile);
+      // Strict format check — prevents path traversal and shell injection
+      const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+      if (!YOUTUBE_ID_RE.test(cleanId)) {
+        res.status(400).json({ error: 'Invalid video ID format' });
+        return;
       }
 
-      // Try local yt-dlp first (free, unlimited, caches files)
-      const ytDlpPath = path.resolve(process.cwd(), 'yt-dlp');
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      
-      console.log(`[Proxy] File not cached. Spawning yt-dlp to download: ${videoId}`);
-      
-      const ytDlp = spawn(ytDlpPath, ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, url]);
-
-      let ytDlpError = "";
-      ytDlp.stderr?.on('data', (chunk) => {
-        ytDlpError += chunk.toString();
-      });
-
-      ytDlp.on('close', async (code: number) => {
-        if (code === 0 && fs.existsSync(outputFile)) {
-          console.log(`[Proxy] Native yt-dlp download completed for: ${videoId}`);
-          if (!res.headersSent) {
-            res.setHeader('Content-Type', 'audio/x-m4a');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.m4a"`);
-            res.sendFile(outputFile);
-          }
-        } else {
-          console.warn(`[Proxy] Local yt-dlp failed or exited with code ${code}. Stderr: ${ytDlpError.trim()}`);
-          console.warn(`[Proxy] Falling back to RapidAPI with load-balanced rotation...`);
-          
-          try {
-            const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
-            if (!keysStr) {
-              throw new Error('RAPID_API_KEYS or RAPID_API_KEY is missing from environment variables');
-            }
-
-            const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
-            
-            // Circuit Breaker: Filter out known rate-limited/quota-exhausted keys
-            let activeKeys = keys.filter(k => !exhaustedRapidKeys.has(k));
-            if (activeKeys.length === 0) {
-              console.log('[Proxy] All RapidAPI keys were marked exhausted. Resetting pool for retry.');
-              exhaustedRapidKeys.clear();
-              activeKeys = keys;
-            }
-
-            // Load Balancing: Shuffle active keys to distribute quota hits uniformly
-            const shuffledKeys = activeKeys.sort(() => 0.5 - Math.random());
-            let downloadLink = '';
-
-            for (const key of shuffledKeys) {
-              try {
-                const options = {
-                  method: 'GET',
-                  headers: {
-                    'x-rapidapi-key': key,
-                    'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
-                  }
-                };
-
-                const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, options);
-                if (apiRes.status === 429 || apiRes.status === 403) {
-                  console.warn(`[Proxy] Key rotation: key ${key.substring(0, 5)}... hit quota limit (${apiRes.status}). Marking exhausted.`);
-                  exhaustedRapidKeys.add(key);
-                  continue;
-                }
-
-                if (!apiRes.ok) {
-                  const errText = await apiRes.text().catch(() => "");
-                  console.warn(`[Proxy] RapidAPI request failed for key ${key.substring(0, 5)}...: status=${apiRes.status}, body=${errText}`);
-                  continue;
-                }
-
-                const data = (await apiRes.json()) as { link?: string; msg?: string; error?: string };
-                if (data.link) {
-                  downloadLink = data.link;
-                  console.log(`[Proxy] Successfully resolved download link using shuffled key: ${key.substring(0, 5)}...`);
-                  break;
-                } else {
-                  console.warn(`[Proxy] RapidAPI key ${key.substring(0, 5)}... resolved but missing link. Response:`, JSON.stringify(data));
-                }
-              } catch (keyErr) {
-                console.warn(`[Proxy] Key evaluation error:`, keyErr);
-              }
-            }
-
-            if (!downloadLink) {
-              throw new Error('All RapidAPI keys failed to return a valid download link.');
-            }
-
-            console.log(`[Proxy] Piping audio from RapidAPI stream...`);
-            const audioRes = await fetch(downloadLink);
-            if (!audioRes.ok || !audioRes.body) {
-              throw new Error(`Failed to fetch MP3 stream from RapidAPI link.`);
-            }
-
-            res.setHeader('Content-Type', 'audio/mpeg');
-            res.setHeader('Content-Disposition', `attachment; filename="youtube_${videoId}.mp3"`);
-
-            if (audioRes.headers.has('content-length')) {
-              res.setHeader('Content-Length', audioRes.headers.get('content-length')!);
-            }
-
-            const { Readable } = require('stream');
-            const readable = Readable.fromWeb(audioRes.body as any);
-            readable.pipe(res);
-          } catch (fallbackErr) {
-            console.error('[Proxy] RapidAPI fallback also failed:', fallbackErr);
-            if (!res.headersSent) {
-              res.status(500).json({ error: `Audio resolution failed: ${(fallbackErr as Error).message}` });
-            }
-          }
-        }
-      });
-
+      console.log(`[Proxy] Live memory streaming audio for YouTube video: ${cleanId}`);
+      await streamYoutubeAudio(cleanId, req, res);
     } catch (err) {
-      console.error('[Proxy] yt-proxy error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Truncated YouTube ID')) {
+        console.warn(`[Proxy] Suppressed truncated ID request: ${req.query['videoId']}`);
+      } else {
+        console.error('[Proxy] yt-proxy error:', err);
+      }
       if (!res.headersSent) {
-        res.status(500).json({ error: msg });
+        res.status(400).json({ error: msg });
       }
     }
   });

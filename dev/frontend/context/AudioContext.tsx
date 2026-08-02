@@ -22,6 +22,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   return <AudioContext.Provider value={player}>{children}</AudioContext.Provider>;
 }
 
+export function useOptionalAudio(): AudioCtx | null {
+  return useContext(AudioContext);
+}
+
 export function useAudio(): AudioCtx {
   const ctx = useContext(AudioContext);
   if (!ctx) throw new Error("useAudio must be used inside <AudioProvider>");

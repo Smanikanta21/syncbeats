@@ -353,7 +353,7 @@ private struct VerifyEmailView: View {
                 Button(action: onResend) {
                     HStack(spacing: 8) {
                         if isResending { ProgressView().controlSize(.small) }
-                        Text(didResend ? "Email sent ✓" : "Resend email")
+                        Text(didResend ? "Email sent" : "Resend email")
                     }
                     .frame(maxWidth: .infinity)
                 }

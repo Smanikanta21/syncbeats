@@ -3,29 +3,26 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AuthStore.self) var authStore
     @Environment(\.colorScheme) var scheme
-    @State private var serverAddress = "https://sync.syncbeats.dev"
-    @State private var pingTime = 18
-    @State private var selectedAudioOutput = "MacBook Pro Speakers"
-    
-    let audioOutputs = [
-        "MacBook Pro Speakers",
-        "Studio Monitor (USB-C)",
-        "AirPods Pro (Bluetooth)",
-        "System Output (Default)"
-    ]
-    
+    @State private var room = RoomSocket.shared
+
+    /// Real backend address the app is talking to (APIClient is the single source).
+    private var serverAddress: String { APIClient.shared.baseURL }
+    /// Live latency from the NTP burst; 0 until the first sync completes.
+    private var pingTime: Int { room.latencyMs }
+    private var isConnected: Bool { room.isConnected }
+
     var userName: String {
         if case let .signedIn(user) = authStore.state {
             return user.name
         }
-        return "Abhinay Manikanta"
+        return "—"
     }
-    
+
     var userEmail: String {
         if case let .signedIn(user) = authStore.state {
             return user.email
         }
-        return "abhinay@syncbeats.dev"
+        return "—"
     }
     
     var body: some View {
@@ -94,16 +91,16 @@ struct SettingsView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(scheme == .dark ? .white : .black)
                         Spacer()
-                        
-                        // Status dot + Ping
+
+                        // Status dot + Ping — reflects the live NTP sync state.
                         HStack(spacing: 6) {
                             Circle()
-                                .fill(Color.green)
+                                .fill(isConnected ? Color.green : Color.gray)
                                 .frame(width: 6, height: 6)
-                            
-                            Text("\(pingTime) ms")
+
+                            Text(isConnected ? "\(pingTime) ms" : "Not connected")
                                 .font(Theme.Fonts.mono())
-                                .foregroundColor(.green)
+                                .foregroundColor(isConnected ? .green : Theme.Colors.textMuted(for: scheme))
                         }
                     }
                 }
@@ -116,25 +113,23 @@ struct SettingsView: View {
                 Text("Audio Configuration")
                     .font(Theme.Fonts.headline(size: 16))
                     .foregroundColor(scheme == .dark ? .white : .black)
-                
+
                 VStack(alignment: .leading, spacing: Theme.Spacing.rowGap) {
                     HStack {
                         Text("Output Device")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(scheme == .dark ? .white : .black)
-                        
+
                         Spacer()
-                        
-                        Picker("", selection: $selectedAudioOutput) {
-                            ForEach(audioOutputs, id: \.self) { output in
-                                Text(output).tag(output)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 220)
+
+                        // Audio plays through the macOS system output; change it in
+                        // System Settings ▸ Sound. Drift correction handles the rest.
+                        Text("System Output")
+                            .font(Theme.Fonts.mono())
+                            .foregroundColor(Theme.Colors.textMuted(for: scheme))
                     }
-                    
-                    Text("Select a hardware device to bind audio clock. Dynamic drift correction automatically handles AirPods and external monitors.")
+
+                    Text("Audio is bound to your system output device. Dynamic drift correction automatically handles AirPods and external monitors.")
                         .font(.system(size: 11))
                         .foregroundColor(Theme.Colors.textMuted(for: scheme))
                 }

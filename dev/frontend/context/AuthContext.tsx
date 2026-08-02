@@ -4,7 +4,7 @@
 // Persists token in cookies, exposes user + helpers to all children.
 
 import {
-  createContext, useContext, useEffect, useState, useCallback,
+  createContext, useContext, useEffect, useState, useCallback, useMemo,
   type ReactNode,
 } from "react";
 import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
@@ -24,6 +24,9 @@ interface AuthContextType {
   replaceDevice: (targetDeviceId: string) => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
   updateSettings: (settings: any) => Promise<void>;
+  /** Patches user.settings in-memory so the useSettings DB-sync effect
+   *  doesn't overwrite local changes with stale login-time data. */
+  patchUserSettings: (settings: any) => void;
   logout:   () => void;
 }
 
@@ -99,6 +102,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return token;
   }, []);
 
+  // Handle Google OAuth 2.0 id_token redirect & postMessage globally
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Inside popup window: notify parent window and close popup
+    if (window.opener && window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.opener.postMessage({ type: "GOOGLE_ID_TOKEN", idToken }, window.location.origin);
+        window.close();
+        return;
+      }
+    }
+
+    // Direct hash redirect on main window
+    if (window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        googleLogin(idToken)
+          .then(() => {
+            const params = new URLSearchParams(window.location.search);
+            const returnTo = params.get("returnTo") || "/hub";
+            window.location.href = returnTo;
+          })
+          .catch((err) => {
+            console.error("[Auth] Google OAuth hash login error:", err);
+          });
+      }
+    }
+
+    // Popup window postMessage handler
+    const handleMessage = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "GOOGLE_ID_TOKEN" && e.data.idToken) {
+        try {
+          await googleLogin(e.data.idToken);
+          const params = new URLSearchParams(window.location.search);
+          const returnTo = params.get("returnTo") || "/hub";
+          window.location.href = returnTo;
+        } catch (err) {
+          console.error("[Auth] Google OAuth popup message error:", err);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [googleLogin]);
+
   const resendVerification = useCallback(async (email?: string) => {
     const target = email?.trim() || user?.email;
     if (!target) throw new Error("Email is required");
@@ -119,8 +174,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSettings = useCallback(async (settings: any) => {
-    const { user: updated } = await authApi.updateSettings(settings);
-    setUser(updated);
+    // NOTE: intentionally NOT calling setUser(updated) here with a full fetch.
+    // Use patchUserSettings to update user.settings in-memory after a save.
+    await authApi.updateSettings(settings);
+  }, []);
+
+  const patchUserSettings = useCallback((settings: any) => {
+    // Update user.settings in-memory so the useSettings merge effect always
+    // sees fresh data and doesn't overwrite local changes with stale login data.
+    setUser((prev) => prev ? { ...prev, settings } : prev);
   }, []);
 
   const replaceDevice = useCallback(async (targetDeviceId: string) => {
@@ -139,8 +201,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  const contextValue = useMemo(() => ({
+    user, device, needsDeviceRename, emailVerified, token, loading,
+    login, register, googleLogin, resendVerification,
+    renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout,
+  }), [user, device, needsDeviceRename, emailVerified, token, loading,
+    login, register, googleLogin, resendVerification,
+    renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout]);
+
   return (
-    <AuthContext.Provider value={{ user, device, needsDeviceRename, emailVerified, token, loading, login, register, googleLogin, resendVerification, renameDevice, replaceDevice, updateProfile, updateSettings, logout }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

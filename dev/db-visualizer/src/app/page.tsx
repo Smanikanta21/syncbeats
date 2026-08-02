@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import DashboardView from "@/components/DashboardView";
+import DebugLogsView from "@/components/DebugLogsView";
+import AdminLockScreen from "@/components/AdminLockScreen";
 
 type Field = { name: string; type: string; kind: string; isId: boolean; isRequired: boolean };
 type TableInfo = { name: string; dbName: string; fields: Field[]; count: number };
 
 export default function Home() {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [activeTable, setActiveTable] = useState<TableInfo | null>(null);
   const [tableData, setTableData] = useState<any[]>([]);
@@ -20,8 +26,25 @@ export default function Home() {
   const [editingCell, setEditingCell] = useState<{rowId: any, rowIndex: number, field: string, value: any} | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'tables' | 'recycle_bin'>('tables');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'logs' | 'tables' | 'recycle_bin'>('dashboard');
   const [recycleBinData, setRecycleBinData] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/login')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated) {
+          setIsUnlocked(true);
+        }
+        setCheckingAuth(false);
+      })
+      .catch(() => setCheckingAuth(false));
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/login', { method: 'DELETE' });
+    setIsUnlocked(false);
+  };
 
 
 
@@ -156,6 +179,21 @@ export default function Home() {
 
 
 
+  if (checkingAuth) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-zinc-950 text-white font-mono text-sm">
+        <div className="flex items-center gap-3">
+          <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+          <span>Verifying SyncBeats Admin session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isUnlocked) {
+    return <AdminLockScreen onUnlock={() => setIsUnlocked(true)} />;
+  }
+
   return (
     <div className={cn('flex', 'h-screen', 'bg-background', 'text-foreground', 'font-sans', 'overflow-hidden')}>
       
@@ -176,7 +214,7 @@ export default function Home() {
       )}>
         <div className={cn('p-6', 'border-b', 'border-[var(--glass-border)]', 'flex', 'justify-between', 'items-center')}>
           <h1 className={cn('text-xl', 'font-black', 'tracking-tighter', 'text-foreground')}>
-            SYNC<span className="text-zinc-500">DB</span>
+            SYNC<span className="text-emerald-400">DB</span>
           </h1>
           <button 
             className={cn('md:hidden', 'text-zinc-400', 'hover:text-foreground')}
@@ -186,55 +224,115 @@ export default function Home() {
           </button>
         </div>
         
-        {/* Desktop list */}
-        <div className={cn('flex', 'flex-col', 'flex-1', 'overflow-y-auto', 'p-2')}>
-          {loading && tables.length === 0 ? <span className={cn('p-4', 'text-sm', 'text-zinc-500')}>Loading tables...</span> : tables.map(table => (
-            <button
-              key={table.name}
-              onClick={() => {
-                setActiveTable(table);
-                setRowSearch('');
-                setViewMode('tables');
-                setSidebarOpen(false);
-              }}
-              className={`flex items-center justify-between p-3 mb-1 rounded-xl text-left transition-all ${
-                viewMode === 'tables' && activeTable?.name === table.name ? 'bg-foreground text-background shadow-md' : 'text-zinc-400 hover:bg-foreground/5 hover:text-foreground'
-              }`}
-            >
-              <span className={cn('font-medium', 'text-sm')}>{table.name}</span>
-              <span className={cn('text-xs', 'px-2', 'py-1', 'bg-foreground/10', 'rounded-full')}>{table.count}</span>
-            </button>
-          ))}
-          <div className={cn('mt-auto', 'p-6', 'border-t', 'border-[var(--glass-border)]', 'text-xs', 'text-zinc-500', 'flex', 'flex-col', 'gap-2')}>
-             <button 
+        {/* Navigation list */}
+        <div className={cn('flex', 'flex-col', 'flex-1', 'overflow-y-auto', 'p-3', 'space-y-1')}>
+          {/* Main Dashboard view button */}
+          <button
+            onClick={() => {
+              setViewMode('dashboard');
+              setSidebarOpen(false);
+            }}
+            className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              viewMode === 'dashboard'
+                ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20'
+                : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            Dashboard & Map
+          </button>
+
+          {/* Debug Logs view button */}
+          <button
+            onClick={() => {
+              setViewMode('logs');
+              setSidebarOpen(false);
+            }}
+            className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              viewMode === 'logs'
+                ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20'
+                : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            Debug Logs & Audit
+          </button>
+
+          <div className="pt-4 pb-1 px-3 text-[10px] font-extrabold uppercase text-zinc-500 tracking-wider">
+            Database Tables ({tables.length})
+          </div>
+
+          {loading && tables.length === 0 ? (
+            <span className={cn('p-3', 'text-xs', 'text-zinc-500')}>Loading tables...</span>
+          ) : (
+            tables.map(table => (
+              <button
+                key={table.name}
+                onClick={() => {
+                  setActiveTable(table);
+                  setRowSearch('');
+                  setViewMode('tables');
+                  setSidebarOpen(false);
+                }}
+                className={`flex items-center justify-between p-3 rounded-xl text-left transition-all ${
+                  viewMode === 'tables' && activeTable?.name === table.name
+                    ? 'bg-foreground text-background font-bold shadow-md'
+                    : 'text-zinc-400 hover:bg-foreground/5 hover:text-foreground'
+                }`}
+              >
+                <span className={cn('font-medium', 'text-sm')}>{table.name}</span>
+                <span className={cn('text-xs', 'px-2', 'py-1', 'bg-foreground/10', 'rounded-full')}>{table.count}</span>
+              </button>
+            ))
+          )}
+
+          <div className={cn('mt-auto', 'pt-4', 'border-t', 'border-[var(--glass-border)]', 'text-xs', 'text-zinc-500', 'flex', 'flex-col', 'gap-1')}>
+            <button 
               onClick={() => {
                 setViewMode('recycle_bin');
                 setSidebarOpen(false);
               }}
-              className={cn('w-full', 'py-2', 'px-3', 'text-sm', 'text-left', 'hover:bg-foreground/5', 'rounded-lg', 'transition-colors', viewMode === 'recycle_bin' ? 'bg-foreground/10 text-foreground font-bold' : '')}
+              className={cn('w-full', 'py-2.5', 'px-3', 'text-sm', 'text-left', 'hover:bg-foreground/5', 'rounded-xl', 'transition-colors', 'flex', 'items-center', 'gap-2', viewMode === 'recycle_bin' ? 'bg-foreground/10 text-foreground font-bold' : '')}
             >
-              🗑️ Recycle Bin
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              Recycle Bin
             </button>
 
+            <button 
+              onClick={handleLogout}
+              className="w-full py-2.5 px-3 text-xs text-left text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Lock Console
+            </button>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'min-h-0', 'bg-transparent', 'relative', 'z-10', 'p-2', 'md:p-2')}>
-        {/* Header */}
-        <div className={cn('py-2' , 'px-4' , 'shrink-0', 'flex', 'items-center', 'justify-between', 'glass-panel', 'rounded-t-3xl', 'border-b-0')}>
-          <div className="flex items-center gap-4">
-            <button 
-              className={cn('md:hidden', 'p-2', '-ml-2', 'text-zinc-400', 'hover:text-foreground', 'transition-colors')}
-              onClick={() => setSidebarOpen(true)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
-            </button>
-            <div>
-              <h2 className={cn('text-xl', 'md:text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>
-                {viewMode === 'recycle_bin' ? 'Recycle Bin' : (activeTable?.name || 'Select a table')}
-              </h2>
+      {viewMode === 'dashboard' ? (
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative z-10 overflow-hidden">
+          <DashboardView />
+        </div>
+      ) : viewMode === 'logs' ? (
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative z-10 p-2 md:p-4 overflow-hidden">
+          <DebugLogsView />
+        </div>
+      ) : (
+        <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'min-h-0', 'bg-transparent', 'relative', 'z-10', 'p-2', 'md:p-2')}>
+          {/* Header */}
+          <div className={cn('py-2' , 'px-4' , 'shrink-0', 'flex', 'items-center', 'justify-between', 'glass-panel', 'rounded-t-3xl', 'border-b-0')}>
+            <div className="flex items-center gap-4">
+              <button 
+                className={cn('md:hidden', 'p-2', '-ml-2', 'text-zinc-400', 'hover:text-foreground', 'transition-colors')}
+                onClick={() => setSidebarOpen(true)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              </button>
+              <div>
+                <h2 className={cn('text-xl', 'md:text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>
+                  {viewMode === 'recycle_bin' ? 'Recycle Bin' : (activeTable?.name || 'Select a table')}
+                </h2>
               {viewMode === 'tables' && (
                 <div className={cn('text-sm', 'text-zinc-400', 'mt-1', 'flex', 'items-center', 'gap-2')}>
                   {selectedRows.size > 0 ? (
@@ -549,6 +647,7 @@ export default function Home() {
           )}
         </div>
       </div>
+      )}
       
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
