@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
@@ -11,20 +11,28 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Toaster } from "sonner";
 import SmoothScrolling from "../components/SmoothScrolling";
 import Preloader from "../components/Preloader";
+import { ToastProvider } from "../components/ToastProvider";
+import { ConnectionProvider } from "../context/ConnectionContext";
+import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
+import { cn } from "@/lib/utils";
+import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
+import { BeatProvider } from "../context/BeatContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfitFont = Outfit({
+  variable: "--font-sans",
   subsets: ["latin"],
   preload: true,
   display: "swap",
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
   preload: true,
   display: "swap",
+  weight: ["400", "600", "700"],
 });
 
 const BASE_URL = "https://syncbeats.app";
@@ -32,8 +40,9 @@ const BASE_URL = "https://syncbeats.app";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#000000" },
@@ -42,6 +51,11 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SyncBeats",
+  },
   title: {
     template: "%s | SyncBeats",
     default: "SyncBeats | One track. Every phone. Zero lag.",
@@ -80,10 +94,16 @@ export const metadata: Metadata = {
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
   },
+  manifest: "/manifest.json",
   icons: {
-    icon: [{ url: "/syncbeats-icon.svg", type: "image/svg+xml" }],
-    shortcut: "/syncbeats-icon.svg",
-    apple: "/syncbeats-icon.svg",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/syncbeats-icon.svg", type: "image/svg+xml" }
+    ],
+    shortcut: "/apple-touch-icon.png",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ],
   },
   applicationName: "SyncBeats",
   authors: [{ name: "SyncBeats", url: BASE_URL }],
@@ -135,7 +155,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      className={`${outfitFont.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <head>
         {/* JSON-LD structured data */}
@@ -193,37 +213,43 @@ export default function RootLayout({
 
 
 
-      <body className="transition-colors duration-300 bg-background text-foreground">
+      <body className={cn('transition-colors', 'duration-300', 'bg-background', 'text-foreground')}>
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
-        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className={cn('fixed', 'inset-0', 'pointer-events-none', 'z-0')}>
           
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
-          <div className="hidden md:block absolute inset-0">
-            <div id="ambient-bass"   className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-violet-600/10 dark:bg-violet-900/20 blur-[120px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-mid"    className="absolute top-[20%] right-[-20%] w-[60vw] h-[60vw] bg-emerald-500/10 dark:bg-emerald-900/20 blur-[150px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div id="ambient-treble" className="absolute bottom-[-20%] left-[20%] w-[70vw] h-[70vw] bg-blue-500/10 dark:bg-blue-900/20 blur-[130px] rounded-full mix-blend-screen" style={{ willChange: "transform, opacity", transition: "transform 80ms linear, opacity 80ms linear", transformOrigin: "center" }} />
-            <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+          <div className={cn('hidden', 'md:block', 'absolute', 'inset-0')}>
+
+            <div className={cn('absolute', 'inset-0', 'opacity-[0.015]', 'dark:opacity-[0.03]')} style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 
           {/* MOBILE LAYER (Optimized, lightweight) */}
-          <div className="block md:hidden absolute inset-0">
-            <div className="absolute top-[-10%] left-[-10%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-violet-600/15 dark:from-violet-900/25 to-transparent mix-blend-screen animate-pulse duration-[16000ms] will-change-transform" />
-            <div className="absolute top-[20%] right-[-20%] w-[80vw] h-[80vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-emerald-500/15 dark:from-emerald-900/25 to-transparent mix-blend-screen animate-pulse duration-[24000ms] delay-1000 will-change-transform" />
-            <div className="absolute bottom-[-20%] left-[20%] w-[90vw] h-[90vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-blue-500/15 dark:from-blue-900/25 to-transparent mix-blend-screen animate-pulse duration-[20000ms] delay-500 will-change-transform" />
-            <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.08]" style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
+          <div className={cn('block', 'md:hidden', 'absolute', 'inset-0')}>
+            <div className={cn('absolute', 'top-[0%]', 'left-[0%]', 'w-[70vw]', 'h-[70vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-violet-600/15', 'dark:from-violet-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[16000ms]', 'will-change-transform')} style={{ transform: 'translate(-15%, -15%)' }} />
+            <div className={cn('absolute', 'top-[20%]', 'right-[0%]', 'w-[80vw]', 'h-[80vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-emerald-500/15', 'dark:from-emerald-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[24000ms]', 'delay-1000', 'will-change-transform')} style={{ transform: 'translateX(15%)' }} />
+            <div className={cn('absolute', 'bottom-[0%]', 'left-[20%]', 'w-[90vw]', 'h-[90vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-blue-500/15', 'dark:from-blue-900/25', 'to-transparent', 'mix-blend-screen', 'animate-pulse', 'duration-[20000ms]', 'delay-500', 'will-change-transform')} style={{ transform: 'translateY(15%)' }} />
+            <div className={cn('absolute', 'inset-0', 'opacity-[0.05]', 'dark:opacity-[0.08]')} style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
           </div>
 
         </div>
         <SmoothScrolling>
           <Preloader />
+          {process.env.NODE_ENV !== 'development' && <IOSHomeScreenPrompt />}
           <ThemeProvider>
-            <AuthProvider>
-              <AudioProvider>
-                <VisualizerProvider>
-                  <div className="relative z-10 w-full">{children}</div>
-                </VisualizerProvider>
-              </AudioProvider>
-            </AuthProvider>
+            <ConnectionProvider>
+              <ConnectionStatusModal />
+              <AuthProvider>
+                <AudioProvider>
+                  <BeatProvider>
+                    <VisualizerProvider>
+                      <ToastProvider>
+                        <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
+                      </ToastProvider>
+                    </VisualizerProvider>
+                  </BeatProvider>
+                </AudioProvider>
+              </AuthProvider>
+            </ConnectionProvider>
           </ThemeProvider>
           <Toaster position="bottom-right" theme="system" richColors closeButton />
           <Analytics />

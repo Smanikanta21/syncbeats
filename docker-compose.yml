@@ -29,7 +29,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT:-4000}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connection_limit=10&connect_timeout=15}
       # Auth
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -46,6 +46,7 @@ services:
       RAPID_API_KEYS: ${RAPID_API_KEYS:-}
     volumes:
       - uploads:/app/uploads
+      - ./yt-dlp-cache:/root/.cache/yt-dlp
 
   frontend:
     image: ghcr.io/smanikanta21/syncbeats-frontend:${IMAGE_TAG:-latest}
@@ -70,7 +71,15 @@ services:
       - "${STUDIO_PORT:-5555}:5555"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
 
 volumes:
   pgdata:
   uploads:
+
+networks:
+  default:
+    enable_ipv6: true

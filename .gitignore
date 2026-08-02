@@ -63,3 +63,11 @@ build/
 *.dSYM
 Pods/
 docs/MACOS_APP_DESIGN.md
+
+# Cookies & Cache
+cookies.txt
+dev/syncbeats-server/cookies.txt
+*-player-script.js
+dev/syncbeats-server/*-player-script.js
+yt-dlp-cache/
+

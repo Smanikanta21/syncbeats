@@ -9,25 +9,30 @@ import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
 import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
-import { useAmbientLight } from "../../../../hooks/useAmbientLight";
+
+import { useSyncInfo } from "../../../../context/SyncContext";
+import { useConnection } from "../../../../context/ConnectionContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
+import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
 import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
-import { useSyncInfo } from "../../../../context/SyncContext";
 
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
+  const { isOnline, isServerReachable, retryNow } = useConnection();
   const resolvedParams = use(params);
   const roomId = resolvedParams.id;
 
-  // Drive the global ambient background blobs reactively with music frequency data
-  useAmbientLight();
+  const [isTimedOut, setIsTimedOut] = useState(false);
+
+
 
   const {
     isConnected,
     joinStatus,
+    isReconnecting,
     snapshot,
     participants,
     currentSocketId,
@@ -54,7 +59,23 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const isConnecting = joinStatus === "connecting" || joinStatus === "pending";
-  const connectionError = joinStatus === "denied";
+  const connectionError = joinStatus === "denied" || isTimedOut;
+
+  // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
+  useEffect(() => {
+    if (isConnected || (joinStatus as string) === "joined" || joinStatus === "denied") {
+      setIsTimedOut(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (!isConnected && (joinStatus as string) !== "joined") {
+        setIsTimedOut(true);
+      }
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [isConnected, joinStatus]);
 
   // Auto-redirect if not logged in
   useEffect(() => {
@@ -71,7 +92,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   }, [audio.isReady, setReady, isConnected]);
 
   // Sync volume from server if modified remotely
-  const myParticipant = participants.find(p => p.socketId === currentSocketId);
+  const myParticipant = participants?.find(p => p.socketId === currentSocketId);
   useEffect(() => {
     if (myParticipant?.volume !== undefined) {
       const curVol = audio.getVolume ? audio.getVolume() : audio.volume;
@@ -139,7 +160,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   // Build device sequence from all participants
   useEffect(() => {
-    if (participants.length > 0) {
+    if (participants && participants.length > 0) {
       setDeviceSequence(participants.map(p => p.socketId));
     }
   }, [participants, setDeviceSequence]);
@@ -153,36 +174,75 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   const handleLeave = useCallback(() => {
     leave();
-    router.push("/hub");
+    router.push("/");
   }, [leave, router]);
 
 
 
   // Browsers require a physical click to unlock AudioContext
-  const isLocalPlayBlocked = snapshot?.isPlaying && !audio.audioUnlocked;
+  const isLocalPlayBlocked = snapshot?.isPlaying && !audio.audioUnlocked && audio.audioCtx?.state !== 'running';
 
   return (
     <main
       role="main"
       aria-label="SyncBeats Room"
-      className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0")}
+      className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0", "bg-background", "transition-colors", "duration-1000", "ease-in-out")}
     >
 
-      {/* Loading state */}
+      {/* Full-screen loader: only shown on the FIRST join (no snapshot yet), not on reconnects */}
       <FullscreenLoader
-        isVisible={authLoading || (!isConnected && !connectionError)}
-        message={joinStatus === "pending" ? "Waiting for host to let you in..." : isConnecting ? "Connecting to peers…" : "Loading…"}
+        isVisible={(authLoading || (!isConnected && !connectionError && !snapshot)) && !isTimedOut}
+        message={joinStatus === "pending" ? "Waiting for host to let you in..." : isConnecting ? "Connecting to room…" : "Loading…"}
       />
 
-      {/* Denied state */}
-      {connectionError && (
-        <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-[99999]">
-          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+      {/* Subtle reconnecting banner — shown when socket drops while already in room */}
+      {isReconnecting && !isConnected && (
+        <div className="fixed top-safe-top left-0 right-0 z-[9999] flex justify-center pt-16 pointer-events-none">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/80 backdrop-blur-xl border border-foreground/10 shadow-lg text-sm font-medium text-foreground/70">
+            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
+            Reconnecting…
           </div>
-          <h2 className="text-xl font-bold mb-2">Join Request Denied</h2>
-          <p className="text-foreground/50 text-sm mb-6">The host declined your request to join this private room.</p>
-          <button onClick={() => router.push('/hub')} className="px-6 py-2 bg-foreground/10 rounded-full font-bold text-sm hover:bg-foreground/20 transition-colors">Return to Hub</button>
+        </div>
+      )}
+
+      {/* Denied / Connection Error state */}
+      {connectionError && (
+        <div className="fixed inset-0 bg-background/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center z-[99999]">
+          <div className="w-20 h-20 rounded-3xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-5 shadow-2xl">
+            <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-black mb-2 tracking-tight">
+            {joinStatus === "denied" ? "Join Request Denied" : "Room Connection Timed Out"}
+          </h2>
+          <p className="text-foreground/60 text-sm mb-7 max-w-sm font-medium leading-relaxed">
+            {joinStatus === "denied"
+              ? "The host declined your request to join this private room."
+              : "Unable to establish a connection to this room. The server might be unreachable or your connection timed out."}
+          </p>
+          <div className="flex items-center gap-3">
+            {isTimedOut && (
+              <button
+                onClick={() => {
+                  setIsTimedOut(false);
+                  retryNow();
+                }}
+                className="px-6 py-3 bg-foreground text-background rounded-2xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg"
+              >
+                Retry Connection
+              </button>
+            )}
+            <button
+              onClick={() => router.push('/hub')}
+              className="px-6 py-3 bg-foreground/10 hover:bg-foreground/20 rounded-2xl font-bold text-sm transition-all"
+            >
+              Return to Hub
+            </button>
+          </div>
         </div>
       )}
 
@@ -201,8 +261,11 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
-      {/* Main room UI */}
-      {isConnected && (
+      {/* Spatial Beat Nodes (Visual representation of beat pulses mapped behind room elements) */}
+      <SpatialBeatNodes />
+
+      {/* Main room UI — mounted once we have a snapshot, kept alive through reconnects */}
+      {(isConnected || snapshot) && (
         <RoomDashboard
           roomId={roomId}
           snapshot={snapshot}

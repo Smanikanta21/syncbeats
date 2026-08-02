@@ -38,6 +38,10 @@ export class RoomManager {
     return Array.from(this.rooms.keys());
   }
 
+  getAllRooms(): Room[] {
+    return Array.from(this.rooms.values());
+  }
+
   remove(roomId: string): void {
     this.rooms.delete(roomId);
   }

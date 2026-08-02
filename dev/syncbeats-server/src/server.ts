@@ -21,6 +21,7 @@ import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
 import { createMusicBridgeRoutes } from './handlers/MusicBridgeRoutes';
 import playlistRoutes from './handlers/PlaylistRoutes';
 import { createUserRoutes } from './handlers/UserRoutes';
+import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
 import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
@@ -28,8 +29,28 @@ import { RoomRepository }      from './db/RoomRepository';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
 
+// ─── Timestamp all console output in Indian Standard Time (IST / UTC+5:30) ────
+(['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
+  const original = console[method].bind(console);
+  (console as any)[method] = (...args: unknown[]) => {
+    const istDate = new Date(Date.now() + 5.5 * 3600 * 1000);
+    const ts = istDate.toISOString().replace('T', ' ').slice(0, 19);
+    original(`[${ts} IST]`, ...args);
+  };
+});
+
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (process.env.NODE_ENV?.toLowerCase() === 'development') return true;
+  if (FRONTEND_URL && origin === FRONTEND_URL) return true;
+  if (origin.includes('syncbeats.app')) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return true;
+  return false;
+};
 
 export class SyncBeatsServer {
   private app        = express();
@@ -37,18 +58,17 @@ export class SyncBeatsServer {
   private io         = new Server(this.httpServer, {
     cors: { 
       origin: (origin, callback) => {
-        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
-          callback(null, true);
-        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          callback(null, false);
         }
       },
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id']
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range']
     },
+    transports: ['polling', 'websocket'],
   });
 
   private roomManager = RoomManager.getInstance();
@@ -59,6 +79,7 @@ export class SyncBeatsServer {
     this.socketHandler = new SocketHandler(
       this.io, this.roomManager, this.roomRepo
     );
+    this.app.set('io', this.io);
     this.setupMiddleware();
     this.setupRoutes();
     this.setupRedisAdapter();
@@ -82,6 +103,8 @@ export class SyncBeatsServer {
   }
 
   private setupMiddleware(): void {
+    this.app.set('trust proxy', 1);
+
     // Basic security headers
     this.app.use(helmet({
       crossOriginResourcePolicy: false, // Allow fetching media across origins (like AudioContext)
@@ -89,17 +112,15 @@ export class SyncBeatsServer {
 
     this.app.use(cors({
       origin: (origin, callback) => {
-        if (!origin || process.env.NODE_ENV?.toLowerCase() === 'development') {
-          callback(null, true);
-        } else if (origin === process.env.FRONTEND_URL || origin.includes('syncbeats.app')) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          callback(null, false);
         }
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
     }));
     this.app.use(express.json());
@@ -168,6 +189,7 @@ export class SyncBeatsServer {
     this.app.use('/spotify', createSpotifyRoutes());
     this.app.use('/api/bridge', createMusicBridgeRoutes());
     this.app.use('/api/playlists', playlistRoutes);
+    this.app.use('/feedback', createFeedbackRoutes());
   }
 
   private setupSocketIO(): void {

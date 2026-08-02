@@ -9,7 +9,8 @@ enum APIError: Error {
 
 class APIClient {
     static let shared = APIClient()
-    var baseURL = "http://localhost:4000"
+    var baseURL = "https://dev-api.syncbeats.app"
+//    var baseURL = "http://172.20.10.3:4000"
     
     // JWT token to inject into Authorization header
     var token: String? = nil
@@ -78,4 +79,47 @@ class APIClient {
         let data = try await makeRequest(path: path, method: "PATCH", body: bodyData)
         return try JSONDecoder().decode(T.self, from: data)
     }
+    
+    func put<T: Decodable, B: Encodable>(path: String, body: B) async throws -> T {
+        let bodyData = try JSONEncoder().encode(body)
+        let data = try await makeRequest(path: path, method: "PUT", body: bodyData)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+    
+    func delete<T: Decodable>(path: String) async throws -> T {
+        let data = try await makeRequest(path: path, method: "DELETE")
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    func deleteNoResponse(path: String) async throws {
+        _ = try await makeRequest(path: path, method: "DELETE")
+    }
+    
+    // MARK: - Devices
+    func fetchMyDevices() async throws -> [UserDevice] {
+        let response: DevicesResponse = try await get(path: "/devices/mine")
+        return response.devices
+    }
+}
+
+// MARK: - Models for Devices
+struct UserDevice: Codable, Identifiable {
+    let id: String
+    let device_key: String
+    let name: String
+    let user_agent: String?
+    let created_at: String
+    let updated_at: String
+    let last_seen_at: String
+    let isOnline: Bool
+    let roomId: String?
+    
+    var isWeb: Bool {
+        guard let ua = user_agent?.lowercased() else { return false }
+        return !ua.contains("syncbeats")
+    }
+}
+
+struct DevicesResponse: Codable {
+    let devices: [UserDevice]
 }

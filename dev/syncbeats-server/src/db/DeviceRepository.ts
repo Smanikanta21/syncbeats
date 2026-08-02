@@ -7,6 +7,7 @@ export interface PublicDevice {
   device_key:   string;
   name:         string;
   user_agent:   string | null;
+  ip:           string | null;
   created_at:   Date;
   updated_at:   Date;
   last_seen_at: Date;
@@ -17,7 +18,8 @@ export class DeviceRepository {
     userId: string,
     deviceKey: string,
     userAgent: string | null,
-    ownerName: string
+    ownerName: string,
+    ip: string | null = null
   ): Promise<{ device: PublicDevice; created: boolean }> {
     const existing = await prisma.device.findUnique({
       where: { userId_deviceKey: { userId, deviceKey } }
@@ -26,7 +28,7 @@ export class DeviceRepository {
     if (existing) {
       const updated = await prisma.device.update({
         where: { id: existing.id },
-        data: { lastSeenAt: new Date(), userAgent }
+        data: { lastSeenAt: new Date(), userAgent, ...(ip ? { ip } : {}) }
       });
       return { device: this.mapDevice(updated), created: false };
     }
@@ -41,30 +43,50 @@ export class DeviceRepository {
       });
 
       if (sameAgentDevice) {
-        const reused = await prisma.device.update({
-          where: { id: sameAgentDevice.id },
-          data: {
-            deviceKey,
-            lastSeenAt: new Date(),
-            userAgent: normalizedUserAgent,
-          },
-        });
-        return { device: this.mapDevice(reused), created: false };
+        try {
+          const reused = await prisma.device.update({
+            where: { id: sameAgentDevice.id },
+            data: {
+              deviceKey,
+              lastSeenAt: new Date(),
+              userAgent: normalizedUserAgent,
+              ...(ip ? { ip } : {}),
+            },
+          });
+          return { device: this.mapDevice(reused), created: false };
+        } catch (e: any) {
+          if (e?.code === 'P2002') {
+            const found = await prisma.device.findUnique({
+              where: { userId_deviceKey: { userId, deviceKey } }
+            });
+            if (found) return { device: this.mapDevice(found), created: false };
+          }
+        }
       }
     }
 
     const defaultName = this.buildDefaultDeviceName(ownerName, userAgent);
 
-    const created = await prisma.device.create({
-      data: {
-        userId,
-        deviceKey,
-        name: defaultName,
-        userAgent: normalizedUserAgent,
+    try {
+      const created = await prisma.device.create({
+        data: {
+          userId,
+          deviceKey,
+          name: defaultName,
+          userAgent: normalizedUserAgent,
+          ip,
+        }
+      });
+      return { device: this.mapDevice(created), created: true };
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        const found = await prisma.device.findUnique({
+          where: { userId_deviceKey: { userId, deviceKey } }
+        });
+        if (found) return { device: this.mapDevice(found), created: false };
       }
-    });
-
-    return { device: this.mapDevice(created), created: true };
+      throw e;
+    }
   }
 
   async listByUser(userId: string): Promise<PublicDevice[]> {
@@ -165,6 +187,7 @@ export class DeviceRepository {
       device_key: d.deviceKey,
       name: d.name,
       user_agent: d.userAgent,
+      ip: d.ip ?? null,
       created_at: d.createdAt,
       updated_at: d.updatedAt,
       last_seen_at: d.lastSeenAt,

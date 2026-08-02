@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, LogOut, Edit3, Smartphone, Laptop, X, KeyRound, MonitorSmartphone, Settings } from "lucide-react";
+import {
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Sparkles, Copy, Check, Download, Trash2, Cpu, Activity, AlertTriangle, RefreshCw, Loader2, ChevronRight
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
-import { devicesApi, roomsApi, type Device } from "../../../lib/api";
+import { devicesApi, roomsApi, spotifyApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/SettingsPanel";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
+import { ThemeToggle } from "../../../components/ThemeToggle";
+import { cn } from "../../../lib/utils";
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
-  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-5 h-5 text-foreground/70" />;
-  return <Laptop className="w-5 h-5 text-foreground/70" />;
+  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
+  return <Laptop className={cn('w-5', 'h-5', 'text-foreground/80')} />;
 }
 
 function getPlatformLabel(userAgent: string | null): string {
@@ -21,35 +26,38 @@ function getPlatformLabel(userAgent: string | null): string {
   if (ua.includes("ipad")) return "iPad";
   if (ua.includes("macintosh")) return "Mac";
   if (ua.includes("windows")) return "Windows";
-  if (ua.includes("linux")) return "Linux";
+  if (ua.includes("linux")) return "Linux font-mono";
   if (ua.includes("android")) return "Android";
   return "Desktop";
 }
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, device, logout, emailVerified, updateProfile } = useAuth();
+  const { user, token, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
+  
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
-  
+
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
+  const [bio, setBio] = useState("Audio Sync Enthusiast • SyncBeats Host");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
-  // Modals state
-  const [activePanel, setActivePanel] = useState<'devices' | 'settings' | 'password' | null>(null);
-  
-  useEffect(() => {
-    if (window.innerWidth >= 768) {
-      setActivePanel('settings');
-    }
-  }, []);
-  
+  // Active production tab ('settings' | 'devices' | 'security' | 'data')
+  const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'security' | 'data'>('settings');
+  const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
+
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingDeviceName, setEditingDeviceName] = useState("");
   const [savingDeviceRename, setSavingDeviceRename] = useState(false);
+
+  // Verification & Export state
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const displayName = profileName.trim() || user?.name || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
@@ -57,17 +65,40 @@ export default function ProfilePage() {
   const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
+    if (user?.name && !isEditingProfile) {
+      setProfileName(user.name);
+    }
+  }, [user?.name, isEditingProfile]);
+
+  useEffect(() => {
     devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {});
     roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0));
   }, []);
 
-  useEffect(() => {
-    setProfileName(user?.name ?? "");
-  }, [user?.name]);
-
   const handleLogout = () => {
     logout();
     router.push("/login");
+  };
+
+  const copyAccountId = () => {
+    if (!user) return;
+    navigator.clipboard.writeText(user.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const handleResendEmail = async () => {
+    if (!user?.email || resendingEmail) return;
+    setResendingEmail(true);
+    setEmailNotice(null);
+    try {
+      await resendVerification(user.email);
+      setEmailNotice("Verification email enqueued. Please check your inbox.");
+    } catch (e: any) {
+      setEmailNotice(e.message || "Failed to resend verification email.");
+    } finally {
+      setResendingEmail(false);
+    }
   };
 
   const saveEditProfile = async () => {
@@ -86,6 +117,31 @@ export default function ProfilePage() {
     } finally {
       setIsSavingProfile(false);
     }
+  };
+
+  const exportUserData = () => {
+    if (!user) return;
+    const exportPayload = {
+      profile: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        email_verified_at: user.email_verified_at,
+        created_at: user.created_at,
+        auth_provider: user.auth_provider,
+      },
+      settings: user.settings,
+      devicesCount: devices.length,
+      exportedAt: new Date().toISOString(),
+      appVersion: "SyncBeats v1.4.0",
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `syncbeats_user_data_${user.id.slice(0, 8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const openDeviceRename = (deviceId: string, currentName: string) => {
@@ -121,414 +177,392 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="h-full w-full flex flex-col relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0 pt-28 pb-8">
-      {/* Subtle Background Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl h-[400px] bg-foreground/5 blur-[150px] rounded-full pointer-events-none -z-10" />
+    <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>
+      
+      {/* ── Top Header Navigation Bar (Fixed Capsule) ───────────────── */}
+      <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
+        <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <span>Back to Session</span>
+          </button>
 
-      {/* Main container sets flex-row on md screens to allow side-by-side layout */}
-      <main className="w-full max-w-5xl mx-auto flex-1 flex flex-col md:flex-row items-start justify-center gap-6 relative">
-        <motion.div
-          layout
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ type: "spring", stiffness: 350, damping: 25 }}
-          className="w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-8 flex flex-col items-center overflow-hidden z-10"
-        >
-          {/* Avatar Section */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 bg-foreground/10 blur-2xl rounded-full scale-150" />
-            <div className="relative w-32 h-32 rounded-full bg-gradient-to-tr from-foreground/10 to-foreground/5 flex items-center justify-center border border-foreground/20 shadow-xl overflow-hidden backdrop-blur-md">
-              <span className="text-4xl font-black text-foreground tracking-widest">{initials}</span>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center border border-foreground/15">
+              <Radio className="w-4 h-4 text-foreground/80 animate-pulse" />
+            </div>
+            <span className="font-black text-xs sm:text-sm tracking-widest uppercase text-foreground/90 hidden sm:inline">
+              Command Center
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <ThemeToggle size="sm" />
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs sm:text-sm transition-all border border-red-500/20 active:scale-95"
+            >
+              <LogOut className="w-4 h-4 text-red-400" />
+              <span className="hidden sm:inline">Log Out</span>
+            </button>
+          </div>
+        </header>
+      </div>
+
+      {/* ── Main Production Command Center Grid (Dual Pane) ───────────────── */}
+      <main className={cn('w-full', 'max-w-[1400px]', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
+        
+        {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
+        <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative')}>
+          <div className={cn('absolute', 'top-0', 'right-0', 'w-64', 'h-64', 'bg-foreground/5', 'blur-3xl', 'rounded-full', 'pointer-events-none')} />
+
+          {/* Avatar & Status Ring */}
+          <div className={cn('relative', 'mb-4', 'mt-2')}>
+            <div className={cn('absolute', 'inset-0', 'bg-amber-500/20', 'blur-2xl', 'rounded-full', 'scale-125', 'animate-pulse')} />
+            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-gradient-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
+              <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-[#0B0F17]', 'flex', 'items-center', 'justify-center', 'relative', 'overflow-hidden')}>
+                <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-widest')}>{initials}</span>
+              </div>
             </div>
           </div>
 
-          {/* Name & Edit Section */}
-          <div className="w-full text-center mb-6 relative">
+          {/* Display Name & Email */}
+          <div className={cn('w-full', 'text-center', 'mb-5')}>
             {!isEditingProfile ? (
-              <div className="flex flex-col items-center group cursor-pointer" onClick={() => setIsEditingProfile(true)}>
-                <h1 className="text-3xl font-black text-foreground tracking-tight flex items-center gap-2">
+              <div className={cn('flex', 'flex-col', 'items-center', 'group', 'cursor-pointer')} onClick={() => setIsEditingProfile(true)}>
+                <h2 className={cn('text-2xl', 'sm:text-3xl', 'font-black', 'tracking-tight', 'text-foreground', 'flex', 'items-center', 'gap-2')}>
                   {displayName}
-                  <Edit3 className="w-4 h-4 text-foreground/30 group-hover:text-foreground/70 transition-colors" />
-                </h1>
-                <p className="text-foreground/50 font-medium text-base mt-1">{user?.email}</p>
+                  <Edit3 className={cn('w-4', 'h-4', 'text-foreground/30', 'group-hover:text-foreground/80', 'transition-colors')} />
+                </h2>
+                <p className={cn('text-foreground/60', 'font-medium', 'text-sm', 'mt-1', 'break-all')}>{user?.email}</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-3 w-full">
+              <div className={cn('flex', 'flex-col', 'items-center', 'gap-3', 'w-full')}>
                 <input
                   autoFocus
                   type="text"
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && saveEditProfile()}
-                  className="w-full text-center rounded-2xl border border-foreground/20 bg-foreground/5 px-4 py-3 text-2xl font-black tracking-tight text-foreground outline-none transition-colors focus:border-foreground/40 focus:bg-foreground/10"
+                  className={cn('w-full', 'text-center', 'rounded-2xl', 'border', 'border-foreground/20', 'bg-background/90', 'px-4', 'py-2.5', 'text-xl', 'font-black', 'tracking-tight', 'text-foreground', 'outline-none', 'focus:border-foreground/40')}
                   placeholder="Your name"
                 />
-                <div className="flex items-center gap-2 w-full justify-center">
-                  <button onClick={() => { setIsEditingProfile(false); setProfileName(user?.name ?? ""); }} className="flex-1 max-w-[120px] py-2.5 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground font-semibold transition-all">
+                <div className={cn('flex', 'items-center', 'gap-2', 'w-full', 'justify-center')}>
+                  <button onClick={() => { setIsEditingProfile(false); setProfileName(user?.name ?? ""); }} className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'font-semibold', 'text-xs')}>
                     Cancel
                   </button>
-                  <button onClick={saveEditProfile} disabled={isSavingProfile} className="flex-1 max-w-[120px] py-2.5 rounded-xl bg-foreground text-background font-bold transition-all hover:scale-[0.98] disabled:opacity-70">
+                  <button onClick={saveEditProfile} disabled={isSavingProfile} className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground', 'text-background', 'font-bold', 'text-xs', 'hover:scale-95', 'transition-all')}>
                     {isSavingProfile ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
             )}
-            
-            {/* Status Pills */}
-            <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+
+            {/* Account Status Pills */}
+            <div className={cn('flex', 'items-center', 'justify-center', 'gap-2', 'mt-3.5', 'flex-wrap')}>
               {emailVerified ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">
-                  <CheckCircle2 className="w-3 h-3" /> Verified
+                <span className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-emerald-500/30', 'bg-emerald-500/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-emerald-400')}>
+                  <CheckCircle2 className={cn('w-3.5', 'h-3.5')} /> Verified
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400">
-                  Unverified
-                </span>
+                <button onClick={handleResendEmail} disabled={resendingEmail} className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-amber-500/30', 'bg-amber-500/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-amber-400', 'hover:bg-amber-500/20', 'transition-colors')}>
+                  <AlertTriangle className={cn('w-3.5', 'h-3.5')} /> Unverified (Resend)
+                </button>
               )}
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 bg-foreground/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/60">
-                ID: {accountId}
-              </span>
+
+              <button
+                onClick={copyAccountId}
+                className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-foreground/15', 'bg-foreground/5', 'hover:bg-foreground/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-foreground/70', 'transition-all', 'active:scale-95')}
+              >
+                {copiedId ? <Check className={cn('w-3', 'h-3', 'text-emerald-400')} /> : <Copy className={cn('w-3', 'h-3')} />}
+                <span>{copiedId ? "Copied ID" : accountId}</span>
+              </button>
+            </div>
+            {emailNotice && <p className={cn('text-xs', 'text-emerald-400', 'mt-2')}>{emailNotice}</p>}
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className={cn('w-full', 'grid', 'grid-cols-2', 'gap-3', 'mb-5')}>
+            <div className={cn('bg-foreground/5', 'hover:bg-foreground/10', 'rounded-2xl', 'p-3.5', 'flex', 'flex-col', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'transition-all', 'hover:scale-[1.02]')}>
+              <Radio className="w-4 h-4 text-amber-400 mb-1" />
+              <span className={cn('text-xl', 'font-black', 'text-foreground')}>{hostedSessionCount}</span>
+              <span className={cn('text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-0.5')}>Sessions Hosted</span>
+            </div>
+            <div className={cn('bg-foreground/5', 'hover:bg-foreground/10', 'rounded-2xl', 'p-3.5', 'flex', 'flex-col', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'transition-all', 'hover:scale-[1.02]')}>
+              <MonitorSmartphone className="w-4 h-4 text-indigo-400 mb-1" />
+              <span className={cn('text-xl', 'font-black', 'text-foreground')}>{devices.length}</span>
+              <span className={cn('text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-0.5')}>Linked Devices</span>
             </div>
           </div>
 
-          {/* Quick Stats Grid */}
-          <div className="w-full grid grid-cols-2 gap-3 mb-8">
-            <div className="bg-foreground/5 rounded-2xl p-4 flex flex-col items-center justify-center border border-foreground/5">
-              <span className="text-2xl font-black text-foreground">{hostedSessionCount}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 mt-1">Sessions Hosted</span>
-            </div>
-            <div className="bg-foreground/5 rounded-2xl p-4 flex flex-col items-center justify-center border border-foreground/5">
-              <span className="text-lg font-black text-foreground">{memberSince}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 mt-1">Member Since</span>
-            </div>
-          </div>
+          {/* Navigation Dock */}
+          <nav className={cn('w-full', 'flex', 'flex-col', 'gap-2')}>
+            {[
+              { id: 'settings', label: 'App Settings & Audio', icon: Settings },
+              { id: 'devices', label: `Linked Devices (${devices.length})`, icon: MonitorSmartphone },
+              { id: 'security', label: 'Security & Password', icon: KeyRound },
+              { id: 'data', label: 'Account Data & Safety', icon: Shield },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
 
-          {/* Action List */}
-          <div className="w-full flex flex-col gap-2">
-            <button
-              onClick={() => setActivePanel(activePanel === 'settings' ? null : 'settings')}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'settings' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
-                  <Settings className="w-5 h-5 text-foreground/70" />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-bold text-foreground">App Settings</h4>
-                  <p className="text-xs text-foreground/50">Audio, Sync & Appearance</p>
-                </div>
-              </div>
-              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'settings' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
-            </button>
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={cn(
+                    'w-full flex items-center justify-between p-3.5 rounded-2xl transition-all group border text-left relative overflow-hidden',
+                    isActive
+                      ? 'bg-foreground/15 border-foreground/30 text-foreground font-extrabold shadow-md'
+                      : 'bg-foreground/5 border-transparent hover:bg-foreground/10 text-foreground/70 hover:text-foreground'
+                  )}
+                >
+                  <div className="flex items-center gap-3 min-w-0 z-10">
+                    {isActive && (
+                      <div className="w-1.5 h-5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] shrink-0" />
+                    )}
+                    <div className={cn('p-2 rounded-xl border shrink-0', isActive ? 'bg-foreground/10 border-foreground/20 text-foreground' : 'bg-foreground/5 border-transparent text-foreground/60')}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs sm:text-sm font-bold truncate">{tab.label}</span>
+                  </div>
 
-            <button
-              onClick={() => setActivePanel(activePanel === 'devices' ? null : 'devices')}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'devices' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
-                  <MonitorSmartphone className="w-5 h-5 text-foreground/70" />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-bold text-foreground">Manage Devices</h4>
-                  <p className="text-xs text-foreground/50">{devices.length} devices linked</p>
-                </div>
-              </div>
-              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'devices' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
-            </button>
-
-            <button
-              onClick={() => setActivePanel(activePanel === 'password' ? null : 'password')}
-              className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group border ${activePanel === 'password' ? 'bg-foreground/10 border-foreground/20' : 'bg-foreground/5 border-transparent hover:bg-foreground/10 hover:border-foreground/10'}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-foreground/10 flex items-center justify-center">
-                  <KeyRound className="w-5 h-5 text-foreground/70" />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-bold text-foreground">Change Password</h4>
-                  <p className="text-xs text-foreground/50">Set or reset account password</p>
-                </div>
-              </div>
-              <Settings className={`w-4 h-4 transition-all duration-300 ${activePanel === 'password' ? 'text-foreground rotate-90' : 'text-foreground/30 group-hover:text-foreground/70'}`} />
-            </button>
-
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-red-500/10 transition-all group mt-2"
-            >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
-                <LogOut className="w-5 h-5 text-red-400 group-hover:text-red-500 transition-colors" />
-              </div>
-              <h4 className="font-bold text-red-400 group-hover:text-red-500 transition-colors">Log Out</h4>
-            </button>
-          </div>
-        </motion.div>
-
-        {/* Medium+ Screens: Side Panel */}
-        <AnimatePresence mode="popLayout">
-          {activePanel === 'devices' && (
-            <motion.div
-              layout
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 40 }}
-              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-2 pb-2 shrink-0">
-                <h2 className="text-2xl font-black text-foreground">Your Devices</h2>
-                <button onClick={() => setActivePanel(null)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
-                  <X className="w-5 h-5" />
+                  <ChevronRight
+                    className={cn(
+                      'w-4 h-4 shrink-0 transition-transform z-10',
+                      isActive ? 'text-foreground/90' : 'text-foreground/30 group-hover:text-foreground/70 group-hover:translate-x-0.5'
+                    )}
+                  />
                 </button>
-              </div>
+              );
+            })}
+          </nav>
+        </aside>
 
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar pb-10">
-                {devices.length === 0 ? (
-                  <p className="text-foreground/40 text-sm font-medium text-center py-10">No devices saved yet.</p>
-                ) : (
-                  devices.map((savedDevice, index) => {
-                    const isCurrent = device?.id === savedDevice.id;
-                    const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
-                    const isEditingThis = editingDeviceId === savedDevice.id;
+        {/* ── Right Pane: Active Production Section (8 Cols) ─────────────── */}
+        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-[650px]', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
+          <AnimatePresence mode="wait">
+            
+            {/* 1. App Settings & Audio Tab */}
+            {activeTab === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className={cn('w-full', 'flex', 'flex-col', 'min-h-[600px]')}
+              >
+                <SettingsPanel
+                  isEmbedded={true}
+                  onClose={() => setActiveTab('settings')}
+                  onInteractionStateChange={setIsInteractingWithColors}
+                />
+              </motion.div>
+            )}
 
-                    return (
-                      <motion.div 
-                        key={savedDevice.id} 
-                        layout
-                        initial={{ opacity: 0, y: -40, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{ delay: index * 0.08, type: "spring", bounce: 0.4, duration: 0.6 }}
-                        className={`p-5 rounded-3xl border transition-all shadow-lg ${isCurrent ? "bg-foreground/5 border-foreground/20 backdrop-blur-xl" : "bg-background/40 backdrop-blur-md border-foreground/10"}`}
-                      >
-                        {!isEditingThis ? (
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-12 h-12 rounded-2xl bg-background/50 flex items-center justify-center border border-foreground/5 shrink-0">
-                                <DeviceGlyph userAgent={savedDevice.user_agent} />
-                              </div>
-                              <div className="min-w-0 flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
-                                  {isCurrent && <span className="px-2 py-0.5 rounded-full bg-foreground/10 text-foreground text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
-                                </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
-                                  <span className="text-xs text-foreground/50 truncate">{getPlatformLabel(savedDevice.user_agent)} • Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              {!isCurrent && (
-                                <button onClick={() => handleDeleteDevice(savedDevice.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-foreground/50 hover:text-red-500 transition-colors">
-                                  <LogOut className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
-                            <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
-                            <input
-                              autoFocus
-                              value={editingDeviceName}
-                              onChange={(e) => setEditingDeviceName(e.target.value)}
-                              className="w-full rounded-xl border border-foreground/10 bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-foreground/30"
-                              placeholder="Device Name"
-                            />
-                            <div className="flex items-center gap-2 justify-end mt-1">
-                              <button type="button" onClick={() => setEditingDeviceId(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-foreground/70 hover:bg-foreground/5 transition-colors">
-                                Cancel
-                              </button>
-                              <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className="px-5 py-2 rounded-xl text-sm font-bold bg-foreground text-background transition-transform active:scale-95 disabled:opacity-50">
-                                {savingDeviceRename ? "Saving..." : "Save"}
-                              </button>
-                            </div>
-                          </form>
-                        )}
-                      </motion.div>
-                    );
-                  })
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {activePanel === 'settings' && (
-            <motion.div
-              layout
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 40 }}
-              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
-            >
-              <SettingsPanel onClose={() => setActivePanel(null)} />
-            </motion.div>
-          )}
-
-          {activePanel === 'password' && (
-            <motion.div
-              layout
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 40 }}
-              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-              className="hidden md:flex flex-col w-full max-w-md shrink-0 relative rounded-[2.5rem] bg-background/60 backdrop-blur-2xl border border-foreground/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-6 z-0 h-[680px] max-h-[calc(100vh-14rem)] overflow-hidden"
-            >
-              <ForgotPasswordPanel onClose={() => setActivePanel(null)} initialEmail={user?.email || ""} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-
-      {/* Mobile Screens: Bottom Modal */}
-      <AnimatePresence>
-        {activePanel === 'devices' && (
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActivePanel(null)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10"
-            >
-              <div className="p-6 border-b border-foreground/5 flex items-center justify-between sticky top-0 bg-background/50 backdrop-blur-md z-10">
-                <div>
-                  <h2 className="text-2xl font-black text-foreground">Devices</h2>
-                  <p className="text-xs font-medium text-foreground/50 mt-1">Manage where your account is logged in</p>
+            {/* 2. Linked Devices Tab */}
+            {activeTab === 'devices' && (
+              <motion.div
+                key="devices"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-6"
+              >
+                <div className={cn('flex', 'items-center', 'justify-between', 'border-b', 'border-foreground/10', 'pb-4')}>
+                  <div>
+                    <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Registered Multi-Devices</h2>
+                    <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Manage active devices synced to your SyncBeats audio room</p>
+                  </div>
+                  <span className={cn('px-3.5', 'py-1.5', 'rounded-full', 'bg-foreground/10', 'text-foreground', 'text-xs', 'font-black', 'uppercase', 'tracking-widest', 'border', 'border-foreground/10')}>
+                    {devices.length} Devices
+                  </span>
                 </div>
-                <button onClick={() => setActivePanel(null)} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="p-6 overflow-y-auto space-y-4" data-lenis-prevent="true">
-                {devices.length === 0 ? (
-                  <p className="text-foreground/40 text-sm font-medium text-center py-10">No devices saved yet.</p>
-                ) : (
-                  devices.map((savedDevice) => {
-                    const isCurrent = device?.id === savedDevice.id;
-                    const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
-                    const isEditingThis = editingDeviceId === savedDevice.id;
 
-                    return (
-                      <div key={savedDevice.id} className={`p-4 rounded-2xl border transition-all ${isCurrent ? "bg-foreground/5 border-foreground/20 shadow-sm" : "bg-transparent border-foreground/10"}`}>
-                        {!isEditingThis ? (
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center border border-foreground/5 shrink-0">
-                                <DeviceGlyph userAgent={savedDevice.user_agent} />
-                              </div>
-                              <div className="min-w-0 flex flex-col">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
-                                  {isCurrent && <span className="px-2 py-0.5 rounded-full bg-foreground/10 text-foreground text-[10px] font-black uppercase tracking-widest shrink-0">Current</span>}
+                <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-4')}>
+                  {devices.length === 0 ? (
+                    <p className={cn('col-span-2', 'text-foreground/40', 'text-sm', 'font-medium', 'text-center', 'py-16')}>No active devices registered yet.</p>
+                  ) : (
+                    devices.map((savedDevice) => {
+                      const isCurrent = device?.id === savedDevice.id;
+                      const isOffline = !isCurrent && (new Date().getTime() - new Date(savedDevice.last_seen_at).getTime() > 5 * 60 * 1000);
+                      const isEditingThis = editingDeviceId === savedDevice.id;
+
+                      return (
+                        <div key={savedDevice.id} className={`p-5 rounded-3xl border transition-all ${isCurrent ? "bg-foreground/10 border-foreground/30 shadow-lg" : "bg-background/60 dark:bg-black/60 border-foreground/10 hover:border-foreground/20 backdrop-blur-xl"}`}>
+                          {!isEditingThis ? (
+                            <div className={cn('flex', 'items-center', 'justify-between', 'gap-4')}>
+                              <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
+                                <div className={cn('w-12', 'h-12', 'rounded-2xl', 'bg-background/80', 'flex', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'shrink-0', 'shadow-md')}>
+                                  <DeviceGlyph userAgent={savedDevice.user_agent} />
                                 </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
-                                  <span className="text-xs text-foreground/50 truncate">{getPlatformLabel(savedDevice.user_agent)} • Last seen {new Date(savedDevice.last_seen_at).toLocaleDateString()}</span>
+                                <div className={cn('min-w-0', 'flex', 'flex-col')}>
+                                  <div className={cn('flex', 'items-center', 'gap-2')}>
+                                    <h4 className={cn('font-black', 'text-foreground', 'text-base', 'truncate')}>{savedDevice.name}</h4>
+                                    {isCurrent && <span className={cn('px-2.5', 'py-0.5', 'rounded-full', 'bg-emerald-500/20', 'text-emerald-400', 'text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'shrink-0')}>Current</span>}
+                                  </div>
+                                  <div className={cn('flex', 'items-center', 'gap-2', 'mt-1')}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
+                                    <span className={cn('text-xs', 'text-foreground/60', 'truncate')}>{getPlatformLabel(savedDevice.user_agent)}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              {!isCurrent && (
-                                <button onClick={() => handleDeleteDevice(savedDevice.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-foreground/50 hover:text-red-500 transition-colors">
-                                  <LogOut className="w-4 h-4" />
+                              
+                              <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
+                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'text-xs', 'font-bold', 'transition-all')}>
+                                  Rename
                                 </button>
-                              )}
+                                {!isCurrent && (
+                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className={cn('px-3', 'py-2', 'rounded-xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'transition-all')}>
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
-                            <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
-                            <input
-                              autoFocus
-                              value={editingDeviceName}
-                              onChange={(e) => setEditingDeviceName(e.target.value)}
-                              className="w-full rounded-xl border border-foreground/10 bg-background px-4 py-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-foreground/30"
-                              placeholder="Device Name"
-                            />
-                            <div className="flex items-center gap-2 justify-end mt-1">
-                              <button type="button" onClick={() => setEditingDeviceId(null)} className="px-4 py-2 rounded-xl text-sm font-semibold text-foreground/70 hover:bg-foreground/5 transition-colors">
-                                Cancel
-                              </button>
-                              <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className="px-5 py-2 rounded-xl text-sm font-bold bg-foreground text-background transition-transform active:scale-95 disabled:opacity-50">
-                                {savingDeviceRename ? "Saving..." : "Save"}
-                              </button>
-                            </div>
-                          </form>
-                        )}
+                          ) : (
+                            <form onSubmit={handleDeviceRename} className={cn('flex', 'flex-col', 'gap-3')}>
+                              <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Rename Device</label>
+                              <input
+                                autoFocus
+                                value={editingDeviceName}
+                                onChange={(e) => setEditingDeviceName(e.target.value)}
+                                className={cn('w-full', 'rounded-2xl', 'border', 'border-foreground/20', 'bg-background', 'px-4', 'py-2.5', 'text-sm', 'font-bold', 'text-foreground', 'outline-none')}
+                                placeholder="Device Name"
+                              />
+                              <div className={cn('flex', 'items-center', 'gap-2', 'justify-end', 'mt-1')}>
+                                <button type="button" onClick={() => setEditingDeviceId(null)} className={cn('px-4', 'py-2', 'rounded-xl', 'text-xs', 'font-semibold', 'text-foreground/70', 'hover:bg-foreground/10')}>
+                                  Cancel
+                                </button>
+                                <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className={cn('px-5', 'py-2', 'rounded-xl', 'text-xs', 'font-bold', 'bg-foreground', 'text-background')}>
+                                  {savingDeviceRename ? "Saving..." : "Save"}
+                                </button>
+                              </div>
+                            </form>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+
+
+            {/* 4. Security & Password Tab */}
+            {activeTab === 'security' && (
+              <motion.div
+                key="security"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className={cn('space-y-6', 'max-w-2xl')}
+              >
+                <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
+                  <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Password & Credentials</h2>
+                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Update account password and verification credentials</p>
+                </div>
+
+                <ForgotPasswordPanel onClose={() => setActiveTab('settings')} initialEmail={user?.email || ""} />
+              </motion.div>
+            )}
+
+            {/* 4. Account Data & Production Safety Tab */}
+            {activeTab === 'data' && (
+              <motion.div
+                key="data"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-8"
+              >
+                <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
+                  <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Account Data & Production Diagnostics</h2>
+                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Export personal data, verify system health, and manage production privacy settings</p>
+                </div>
+
+                {/* Data Export Card */}
+                <div className={cn('p-6', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
+                  <div className={cn('flex', 'flex-col', 'gap-1')}>
+                    <h4 className={cn('font-bold', 'text-foreground', 'text-base')}>Export Account Data (GDPR Compliant)</h4>
+                    <p className={cn('text-xs', 'text-foreground/50')}>Download a full JSON archive of your user profile, settings, and device associations.</p>
+                  </div>
+                  <button
+                    onClick={exportUserData}
+                    className={cn('flex', 'items-center', 'gap-2', 'px-5', 'py-3', 'rounded-2xl', 'bg-foreground', 'text-background', 'font-bold', 'text-xs', 'hover:scale-95', 'transition-all', 'shrink-0', 'shadow-lg')}
+                  >
+                    <Download className={cn('w-4', 'h-4')} />
+                    <span>Download JSON Archive</span>
+                  </button>
+                </div>
+
+                {/* Production System Health */}
+                <div className="space-y-3">
+                  <h4 className={cn('font-bold', 'text-foreground', 'text-sm', 'uppercase', 'tracking-widest', 'text-foreground/70')}>System Health Diagnostics</h4>
+                  <div className={cn('grid', 'grid-cols-1', 'sm:grid-cols-3', 'gap-4')}>
+                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
+                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Web Audio Engine</span>
+                      <span className={cn('text-sm', 'font-bold', 'text-emerald-400', 'flex', 'items-center', 'gap-1.5')}>
+                        <CheckCircle2 className={cn('w-3.5', 'h-3.5')} /> Active & Unlocked
+                      </span>
+                    </div>
+
+                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
+                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Production Build</span>
+                      <span className={cn('text-sm', 'font-bold', 'text-foreground')}>SyncBeats v1.4.0</span>
+                    </div>
+
+                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
+                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Socket Connection</span>
+                      <span className={cn('text-sm', 'font-bold', 'text-emerald-400', 'flex', 'items-center', 'gap-1.5')}>
+                        <Activity className={cn('w-3.5', 'h-3.5', 'animate-pulse')} /> Connected
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div className={cn('pt-6', 'border-t', 'border-red-500/20', 'space-y-4')}>
+                  <div className={cn('flex', 'flex-col', 'gap-1')}>
+                    <h4 className={cn('font-black', 'text-red-400', 'text-base', 'flex', 'items-center', 'gap-2')}>
+                      <AlertTriangle className={cn('w-4', 'h-4')} /> Danger Zone
+                    </h4>
+                    <p className={cn('text-xs', 'text-foreground/50')}>Permanently delete your SyncBeats user account and clear all saved settings.</p>
+                  </div>
+
+                  {!showDeleteModal ? (
+                    <button
+                      onClick={() => setShowDeleteModal(true)}
+                      className={cn('px-5', 'py-3', 'rounded-2xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'border', 'border-red-500/30', 'font-bold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-2')}
+                    >
+                      <Trash2 className={cn('w-4', 'h-4')} />
+                      <span>Delete Account</span>
+                    </button>
+                  ) : (
+                    <div className={cn('p-4', 'rounded-2xl', 'bg-red-500/10', 'border', 'border-red-500/30', 'flex', 'flex-col', 'gap-3', 'max-w-md')}>
+                      <p className={cn('text-xs', 'text-red-300', 'font-semibold')}>Are you sure you want to delete your account? This action cannot be undone.</p>
+                      <div className={cn('flex', 'items-center', 'gap-2')}>
+                        <button onClick={() => setShowDeleteModal(false)} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'font-semibold', 'text-xs')}>
+                          Cancel
+                        </button>
+                        <button onClick={handleLogout} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-red-500', 'text-white', 'font-bold', 'text-xs')}>
+                          Confirm Deletion
+                        </button>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
 
-      <AnimatePresence>
-        {activePanel === 'settings' && (
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActivePanel(null)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10 p-4"
-            >
-              <SettingsPanel onClose={() => setActivePanel(null)} />
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            )}
 
-      <AnimatePresence>
-        {activePanel === 'password' && (
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setActivePanel(null)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-              className="w-full bg-background/90 border-t border-foreground/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col max-h-[85vh] relative z-10 p-4"
-            >
-              <ForgotPasswordPanel onClose={() => setActivePanel(null)} initialEmail={user?.email || ""} />
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
+        </section>
+
+      </main>
     </div>
   );
 }

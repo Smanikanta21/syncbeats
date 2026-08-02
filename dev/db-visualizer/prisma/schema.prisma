@@ -6,6 +6,9 @@ datasource db {
   provider = "postgresql"
 }
 
+
+
+
 model User {
   id                         String            @id @default(cuid())
   name                       String
@@ -45,6 +48,7 @@ model Device {
   deviceKey  String   @map("device_key")
   name       String
   userAgent  String?  @map("user_agent")
+  ip         String?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
@@ -54,6 +58,7 @@ model Device {
   @@index([userId])
   @@map("devices")
 }
+
 
 model Room {
   id               String            @id
@@ -242,3 +247,22 @@ model RoomInvite {
   @@index([inviteeEmail])
   @@map("room_invites")
 }
+
+model BeatEventsCache {
+  spotifyId String   @id @map("spotify_id")
+  events    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  @@map("beat_events_cache")
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("admin_audit_logs")
+}
+

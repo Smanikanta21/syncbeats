@@ -5,8 +5,9 @@ export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-
-  // VM deployment uses Nginx reverse proxy from /api -> backend.
+  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
   return '/api';
 }
 
@@ -17,7 +18,7 @@ const AUTH_COOKIE_KEY = 'sb_token';
 const AUTH_STORAGE_KEY = 'sb_token';
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 
-function getDeviceId(): string | null {
+export function getDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
 
   const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
@@ -68,6 +69,16 @@ export class ApiError extends Error {
   }
 }
 
+let lastServerErrorDispatch = 0;
+
+function notifyServerError(message: string) {
+  const now = Date.now();
+  if (typeof window !== 'undefined' && now - lastServerErrorDispatch > 10000) {
+    lastServerErrorDispatch = now;
+    window.dispatchEvent(new CustomEvent("syncbeats-server-error", { detail: { message } }));
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -83,7 +94,22 @@ async function request<T>(
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      signal: AbortSignal.timeout(8000), // 8s timeout — prevents requests from hanging indefinitely
+    });
+  } catch (err: any) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      notifyServerError("SyncBeats Server is not responding");
+      throw new ApiError("Server not responding — please check your connection and try again.", 0);
+    }
+    notifyServerError("Cannot reach SyncBeats Server");
+    throw new ApiError("Cannot reach SyncBeats Server. Please check your network connection.", 0);
+  }
+
   let data;
   try {
     data = await res.json();
@@ -91,10 +117,13 @@ async function request<T>(
     data = {};
   }
   if (!res.ok) {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      notifyServerError("SyncBeats Server is temporarily unavailable");
+    }
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
       if (typeof window !== 'undefined') {
-        window.alert(`[API Error] ${errorMsg}`);
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message: `API Error: ${errorMsg}`, type: "error" } }));
       }
     }
     throw new ApiError(errorMsg, res.status);
@@ -267,6 +296,9 @@ export const usersApi = {
 };
 
 export const roomsApi = {
+  default: () =>
+    request<{ roomId: string; createdAt: string; isNew?: boolean }>('/rooms/default', { method: 'POST', body: '{}' }, true),
+
   create: () =>
     request<{ roomId: string; createdAt: string }>('/rooms', { method: 'POST', body: '{}' }, true),
 
@@ -297,10 +329,10 @@ export const roomsApi = {
       body: JSON.stringify({ youtubeUrl, title }),
     }, true),
 
-  enqueueMagnet: (roomId: string, magnetUri: string, title?: string) =>
+  enqueueMagnet: (roomId: string, magnetUri: string, title?: string, artist?: string) =>
     request<any>(`/rooms/${roomId}/enqueue-magnet`, {
       method: 'POST',
-      body: JSON.stringify({ magnetUri, title }),
+      body: JSON.stringify({ magnetUri, title, artist }),
     }, true),
 
   reorderQueue: (roomId: string, itemId: string, newIndex: number) =>
@@ -317,6 +349,16 @@ export const roomsApi = {
   clearQueue: (roomId: string) =>
     request<any>(`/rooms/${roomId}/queue`, {
       method: 'DELETE',
+    }, true),
+
+  reset: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/reset`, {
+      method: 'POST',
+    }, true),
+
+  resetRoom: (roomId: string) =>
+    request<{ ok: boolean }>(`/rooms/${roomId}/reset`, {
+      method: 'POST',
     }, true),
 
   searchYoutube: (roomId: string, query: string) =>
@@ -356,6 +398,35 @@ export const roomsApi = {
 
   suggestYoutube: (query: string) =>
     request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),
+};
+
+export const spotifyApi = {
+  getStatus: () => request<{ connected: boolean }>('/spotify/status', {}, true),
+  getConnectUrl: () => `${BASE}/spotify/auth?token=${getAuthToken()}`,
+  disconnect: () => request<{ ok: boolean }>('/spotify/disconnect', { method: 'DELETE' }, true),
+  getUserSpotifyPlaylists: async (): Promise<any[]> => {
+    try {
+      const data = await request<{ playlists: any[] }>('/spotify/my-playlists', {}, true);
+      return (data.playlists || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        coverUrl: p.coverUrl,
+        trackCount: p.tracks?.length || 0,
+        tracks: p.tracks || [],
+        owner: 'SyncBeats',
+      }));
+    } catch {
+      return [];
+    }
+  },
+  getAccountPlaylists: async (): Promise<any[]> => {
+    try {
+      const data = await request<{ playlists: any[] }>('/spotify/playlists', {}, true);
+      return data.playlists || [];
+    } catch {
+      return [];
+    }
+  },
 };
 
 export const devicesApi = {

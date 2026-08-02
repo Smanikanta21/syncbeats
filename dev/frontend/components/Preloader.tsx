@@ -28,7 +28,6 @@ export default function Preloader() {
 
   let msg = undefined;
   if (pathname === "/login") msg = "Authenticating ...";
-  else if (pathname?.startsWith("/room/")) msg = "Preparing Room...";
 
-  return <FullscreenLoader isVisible={isLoading} message={msg} isMainEntry={isMainEntry} />;
+  return <FullscreenLoader isVisible={isLoading && pathname !== "/" && !pathname?.startsWith("/room/")} message={msg} isMainEntry={isMainEntry} />;
 }

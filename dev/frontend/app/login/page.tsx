@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useEffect, useRef } from "react";
+import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FullscreenLoader } from "../../components/FullscreenLoader";
@@ -14,8 +14,8 @@ export default function AuthPage() {
   const router  = useRouter();
   const { login, register, googleLogin } = useAuth();
   const [googleReady, setGoogleReady] = useState(false);
-  const googleLoginButtonRef = useRef<HTMLDivElement | null>(null);
-  const googleSignupButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleLoginButtonRef  = useRef<HTMLDivElement>(null);
+  const googleSignupButtonRef = useRef<HTMLDivElement>(null);
 
   // Form state
   const [name,     setName]     = useState("");
@@ -188,108 +188,95 @@ export default function AuthPage() {
     return baseClass;
   };
 
-  useEffect(() => {
+  // Handle Google OAuth 2.0 Popup & Redirect Flow
+  const handleGoogleOAuth = useCallback(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
-
-    let cancelled = false;
-
-    const initGoogle = () => {
-      const google = (window as any).google;
-      if (!google?.accounts?.id || cancelled) return;
-
-      console.log("[GSI DEBUG] Initializing Google Auth with:");
-      console.log("[GSI DEBUG] Client ID:", clientId);
-      console.log("[GSI DEBUG] Origin:", window.location.origin);
-
-      google.accounts.id.initialize({
-        client_id: clientId,
-        auto_select: false,
-        use_fedcm_for_prompt: false,
-        callback: async (response: { credential?: string }) => {
-          if (!response.credential) return;
-          setError(null);
-          setLoading(true);
-          try {
-            const params = new URLSearchParams(window.location.search);
-            const returnTo = params.get('returnTo') || '/hub';
-            const token = await googleLogin(response.credential);
-            if (returnTo.startsWith('syncbeats://')) {
-              window.location.href = `${returnTo}?token=${token}`;
-            } else {
-              router.push(returnTo);
-            }
-          } catch (err) {
-            setError((err as Error).message);
-            setLoading(false);
-          }
-        },
-      });
-
-      google.accounts.id.prompt();
-
-      setGoogleReady(true);
-    };
-
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) {
-      initGoogle();
-      return () => {
-        cancelled = true;
-        if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
-          (window as any).google.accounts.id.cancel();
-        }
-      };
+    if (!clientId) {
+      setError("Google Client ID is not configured.");
+      return;
     }
 
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = initGoogle;
-    document.head.appendChild(script);
+    const redirectUri = window.location.origin;
+    const nonce = Math.random().toString(36).substring(2);
 
-    return () => {
-      cancelled = true;
-      if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
-        (window as any).google.accounts.id.cancel();
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'id_token',
+      scope: 'openid email profile',
+      nonce: nonce,
+      prompt: 'select_account'
+    }).toString();
+
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const popup = window.open(
+      googleAuthUrl,
+      'google_oauth_popup',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+    );
+
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      window.location.href = googleAuthUrl;
+    }
+  }, []);
+
+  // Listen for id_token from Google OAuth popup window or hash redirect
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const processIdToken = async (idToken: string) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const returnTo = params.get('returnTo') || '/hub';
+        const token = await googleLogin(idToken);
+        if (returnTo.startsWith('syncbeats://')) {
+          window.location.href = `${returnTo}?token=${token}`;
+        } else {
+          router.push(returnTo);
+        }
+      } catch (err: any) {
+        setError(err.message || "Google sign-in failed");
+        setLoading(false);
       }
     };
-  }, [googleLogin, router]);
 
-  // Handle Dynamic Google Button Rendering on Tab Switch
-  useEffect(() => {
-    if (!googleReady || typeof window === "undefined") return;
-    const google = (window as any).google;
-    if (!google) return;
-
-    // Small delay allows AnimatePresence to inject the new form into the DOM
-    const timer = setTimeout(() => {
-      if (isLogin && googleLoginButtonRef.current) {
-        googleLoginButtonRef.current.innerHTML = "";
-        google.accounts.id.renderButton(googleLoginButtonRef.current, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: "continue_with",
-          width: 320,
-        });
-      } else if (!isLogin && googleSignupButtonRef.current) {
-        googleSignupButtonRef.current.innerHTML = "";
-        google.accounts.id.renderButton(googleSignupButtonRef.current, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: "signup_with",
-          width: 320,
-        });
+    // If running inside popup window -> send message to opener & close popup
+    if (window.opener && window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.opener.postMessage({ type: "GOOGLE_ID_TOKEN", idToken }, window.location.origin);
+        window.close();
+        return;
       }
-    }, 400); // 400ms ensures AnimatePresence mode="wait" (300ms duration) fully mounts the new ref
+    }
 
-    return () => clearTimeout(timer);
-  }, [isLogin, googleReady]);
+    // Direct hash redirect on main page
+    if (window.location.hash.includes("id_token=")) {
+      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+      const idToken = hashParams.get("id_token");
+      if (idToken) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        processIdToken(idToken);
+      }
+    }
+
+    // Popup window postMessage listener
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "GOOGLE_ID_TOKEN" && e.data.idToken) {
+        processIdToken(e.data.idToken);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [googleLogin, router]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
@@ -394,10 +381,7 @@ export default function AuthPage() {
                     {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className="w-5 h-5" /></>}
                   </motion.button>
 
-                  <div className="pt-1 flex justify-center">
-                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
-                    <div ref={googleLoginButtonRef} />
-                  </div>
+                  <GoogleButton refEl={googleLoginButtonRef} onGoogleOAuth={handleGoogleOAuth} loading={loading} />
                 </form>
 
                 <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
@@ -506,11 +490,7 @@ export default function AuthPage() {
                     {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className="w-4 h-4" /></>}
                   </motion.button>
 
-                  <div className="pt-2 flex flex-col items-center gap-2">
-                    <span className="text-xs uppercase tracking-[0.25em] text-foreground/40">Or use Google</span>
-                    {!googleReady && <span className="text-xs text-foreground/50">Loading Google...</span>}
-                    <div ref={googleSignupButtonRef} />
-                  </div>
+                  <GoogleButton refEl={googleSignupButtonRef} onGoogleOAuth={handleGoogleOAuth} loading={loading} />
                 </form>
 
                 <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
@@ -555,6 +535,44 @@ export default function AuthPage() {
           </AnimatePresence>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+function GoogleButton({
+  onGoogleOAuth,
+  loading
+}: {
+  refEl?: React.RefObject<HTMLDivElement | null>;
+  onGoogleOAuth: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 w-full my-4 py-2">
+      {/* Divider */}
+      <div className="flex items-center gap-3 w-full">
+        <div className="flex-1 h-px bg-foreground/10" />
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/30">or</span>
+        <div className="flex-1 h-px bg-foreground/10" />
+      </div>
+
+      {/* Primary OAuth Button */}
+      <div className="relative w-full">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onGoogleOAuth}
+          className="w-full h-14 flex items-center justify-center gap-3 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 active:scale-[0.98] text-foreground text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-wait shadow-sm cursor-pointer"
+        >
+          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+          Continue with Google
+        </button>
+      </div>
     </div>
   );
 }

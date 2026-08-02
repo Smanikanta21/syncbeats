@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
+import { useAsync } from "../../hooks/useAsync";
+import { getServerUrl, getAuthToken } from "../../lib/api";
 import { Trash2, Disc, Play, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+import { ConfirmModal } from "../ConfirmModal";
+
 
 interface ImportedPlaylist {
   id: string;
@@ -44,16 +47,16 @@ export function SpotifyIslandTab({
   const [playingPlaylistId, setPlayingPlaylistId] = useState<string | null>(null);
 
   const fetchImported = useCallback(async () => {
-    if (!token) return;
+    const authToken = token || getAuthToken();
+    if (!authToken) return;
     try {
+      const SERVER = getServerUrl();
       const r = await fetch(`${SERVER}/spotify/my-playlists`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
       if (r.ok) {
         const data = await r.json();
-        const spotifyPlaylists = data.playlists?.filter(
-          (p: any) => p.sourceType === "SPOTIFY" || p.sourceType === "SPOTIFY_BRIDGE"
-        ) || [];
+        const spotifyPlaylists = data.playlists || [];
         setImported(spotifyPlaylists);
       }
     } catch (e) {
@@ -82,6 +85,7 @@ export function SpotifyIslandTab({
     setErrorDetails(null);
 
     try {
+      const SERVER = getServerUrl();
       const r = await fetch(`${SERVER}/api/bridge/import`, {
         method: "POST",
         headers: {
@@ -122,49 +126,78 @@ export function SpotifyIslandTab({
     }
   };
 
-  const handlePlayPlaylist = async (playlistId: string) => {
-    if (!token || !roomId) return;
-    setPlayingPlaylistId(playlistId);
-    try {
-      const enqueueRes = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ playlistId }),
-      });
-      if (!enqueueRes.ok) throw new Error("Failed to enqueue playlist");
-
-      if (onClose) onClose();
-    } catch (e) {
-      console.error("Failed to play playlist:", e);
-      setPlayingPlaylistId(null);
+  // Single-flight play handler — prevents double-enqueue on rapid clicks
+  const playAsync = useAsync(async (playlistId: string) => {
+    if (!token || !roomId) throw new Error('Not authenticated');
+    const SERVER = getServerUrl();
+    const enqueueRes = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ playlistId }),
+    });
+    if (!enqueueRes.ok) {
+      const data = await enqueueRes.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to add playlist to queue.");
     }
-  };
+    return enqueueRes.json();
+  });
+
+  const handlePlayPlaylist = useCallback(async (playlistId: string) => {
+    try {
+      await playAsync.run(playlistId);
+      if (onClose) onClose();
+    } catch (e: any) {
+      console.error("Failed to play playlist:", e);
+    }
+  }, [playAsync, onClose]);
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
 
   const handleDeletePlaylist = async (playlist: ImportedPlaylist) => {
     if (!token) return;
-    
-    if (playlist.tracks.length > 0) {
-      const confirmDelete = window.confirm(`This playlist has ${playlist.tracks.length} songs. Are you sure you want to delete it?`);
-      if (!confirmDelete) return;
-    }
 
-    try {
-      const r = await fetch(`${SERVER}/spotify/my-playlists/${playlist.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (r.ok) {
-        setImported(prev => prev.filter(p => p.id !== playlist.id));
-      } else {
-        throw new Error("Failed to delete");
+    const performDelete = async () => {
+      try {
+        const SERVER = getServerUrl();
+        const r = await fetch(`${SERVER}/spotify/my-playlists/${playlist.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (r.ok) {
+          setImported(prev => prev.filter(p => p.id !== playlist.id));
+          window.dispatchEvent(new CustomEvent("toast", { detail: { message: "Playlist deleted successfully", type: "success" } }));
+        } else {
+          throw new Error("Failed to delete");
+        }
+      } catch (e) {
+        console.error("Delete error", e);
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message: "Failed to delete playlist.", type: "error" } }));
       }
-    } catch (e) {
-      console.error("Delete error", e);
-      alert("Failed to delete playlist.");
+    };
+
+    if (playlist.tracks.length > 0) {
+      setConfirmConfig({
+        isOpen: true,
+        title: "Delete Playlist",
+        message: `This playlist has ${playlist.tracks.length} songs. Are you sure you want to delete it?`,
+        onConfirm: performDelete,
+      });
+    } else {
+      await performDelete();
     }
   };
 
@@ -288,10 +321,11 @@ export function SpotifyIslandTab({
             <p className="text-[#1DB954] text-xs font-bold">Import Successful!</p>
             <button 
               onClick={() => handlePlayPlaylist(success.playlistId)}
-              disabled={playingPlaylistId === success.playlistId}
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105 active:scale-100 bg-[#1DB954] text-white flex items-center justify-center mx-auto"
+              disabled={playAsync.isPending}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105 active:scale-100 bg-[#1DB954] text-white flex items-center justify-center mx-auto gap-1.5 disabled:opacity-60 disabled:cursor-wait"
             >
-               {playingPlaylistId === success.playlistId ? "Adding to Queue..." : "Play Playlist Now"}
+              {playAsync.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {playAsync.isPending ? "Adding to Queue..." : "Play Playlist Now"}
             </button>
           </div>
         )}
@@ -303,7 +337,7 @@ export function SpotifyIslandTab({
             <div className="grid grid-cols-1 gap-2">
               {imported.map((p) => (
                 <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/[0.03] border border-foreground/[0.05] hover:bg-foreground/[0.06] transition-colors group">
-                  <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => handlePlayPlaylist(p.id)}>
+                  <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => !playAsync.isPending && handlePlayPlaylist(p.id)}>
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt={p.name} loading="eager" decoding="sync" className="w-12 h-12 rounded-lg object-cover" />
                     ) : (
@@ -312,11 +346,8 @@ export function SpotifyIslandTab({
                       </div>
                     )}
                     <div className="absolute inset-0 bg-background/40 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      {playingPlaylistId === p.id ? (
-                        <svg className="animate-spin w-5 h-5 text-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                      {playAsync.isPending ? (
+                        <Loader2 className="w-5 h-5 text-foreground animate-spin" />
                       ) : (
                         <Play className="w-5 h-5 text-foreground fill-foreground" />
                       )}
@@ -341,6 +372,14 @@ export function SpotifyIslandTab({
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

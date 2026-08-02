@@ -1,3 +1,5 @@
+import { Heart } from "lucide-react";
+
 export function Footer() {
   return (
     <footer className="border-t border-foreground/5 bg-background/40 backdrop-blur-2xl pt-20 pb-10 px-4 sm:px-6 lg:px-8 mt-10 relative z-10">
@@ -15,6 +17,10 @@ export function Footer() {
             <h4 className="text-foreground font-bold mb-2">Support</h4>
             <a href="/contact" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Contact Us</a>
             <a href="https://github.com/Smanikanta21/syncbeats/issues" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Report an Issue</a>
+            <a href="/sponsor" target="_blank" rel="noreferrer" className="text-pink-400 hover:text-pink-300 transition-colors text-sm font-semibold flex items-center gap-1.5">
+              <Heart className="w-3.5 h-3.5 fill-pink-500/30 text-pink-400" />
+              Sponsor on GitHub
+            </a>
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Social</h4>

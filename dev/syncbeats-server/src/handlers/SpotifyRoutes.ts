@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
-import prisma from '../db/prisma';
+import prisma, { sanitizeNullBytes } from '../db/prisma';
 import { RoomRepository } from '../db/RoomRepository';
 import { RoomManager } from '../core/RoomManager';
 
@@ -15,7 +15,7 @@ const roomManager = RoomManager.getInstance();
 const SPOTIFY_CLIENT_ID     = process.env.SPOTIFY_CLIENT_ID!;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!;
 const BACKEND_URL           = process.env.BACKEND_URL || 'http://localhost:4000';
-const SPOTIFY_REDIRECT_URI  = `${BACKEND_URL}/spotify/callback`;
+const SPOTIFY_REDIRECT_URI  = process.env.SPOTIFY_REDIRECT_URI || `${BACKEND_URL}/spotify/callback`;
 const SPOTIFY_SCOPES        = 'playlist-read-private playlist-read-collaborative user-library-read';
 
 // ── Token helpers ────────────────────────────────────────────────────────────
@@ -84,6 +84,40 @@ export async function spotifyFetch(url: string, accessToken: string): Promise<an
   });
   if (!res.ok) throw new Error(`Spotify API error ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+/**
+ * Gets a valid Spotify OAuth access token for a given user from the DB.
+ * Automatically refreshes the token if expired.
+ * Returns null if the user has not connected their Spotify account.
+ */
+export async function getUserSpotifyToken(userId: string): Promise<string | null> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { spotifyAccessToken: true, spotifyRefreshToken: true },
+    });
+    if (!user?.spotifyAccessToken) return null;
+
+    // Try the stored token first — if it's expired, refresh it
+    try {
+      const testRes = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${user.spotifyAccessToken}` },
+      });
+      if (testRes.ok) return user.spotifyAccessToken;
+    } catch { /* fall through to refresh */ }
+
+    // Token expired — refresh
+    if (user.spotifyRefreshToken) {
+      const newToken = await refreshSpotifyToken(user.spotifyRefreshToken);
+      await prisma.user.update({ where: { id: userId }, data: { spotifyAccessToken: newToken } });
+      return newToken;
+    }
+    return null;
+  } catch (e: any) {
+    console.warn('[SpotifyRoutes] getUserSpotifyToken failed:', e?.message);
+    return null;
+  }
 }
 
 // ── YouTube search match ─────────────────────────────────────────────────────
@@ -174,11 +208,11 @@ export function createSpotifyRoutes(): Router {
           spotifyRefreshToken: tokens.refresh_token,
         },
       });
-      // Redirect back to the Spotify import page with success
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/spotify-import?spotify_connected=true`);
+      // Redirect back to profile Spotify tab with success
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=spotify&spotify_connected=true`);
     } catch (err) {
       console.error('[Spotify] Callback error:', err);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/spotify-import?spotify_error=token_failed`);
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=spotify&spotify_error=token_failed`);
     }
   });
 
@@ -358,10 +392,10 @@ export function createSpotifyRoutes(): Router {
       const playlist = await prisma.playlist.create({
         data: {
           userId:     req.user.sub,
-          name:       playlistName,
-          coverUrl,
+          name:       sanitizeNullBytes(playlistName) || 'Imported Spotify Playlist',
+          coverUrl:   sanitizeNullBytes(coverUrl),
           sourceType: 'SPOTIFY',
-          sourceId:   playlistId,
+          sourceId:   sanitizeNullBytes(playlistId),
         },
       });
 
@@ -390,9 +424,29 @@ export function createSpotifyRoutes(): Router {
         }
       }
 
-      // Bulk-insert only successfully matched tracks
-      const toInsert = matched.filter(t => t.youtubeId);
-      await prisma.playlistTrack.createMany({ data: toInsert });
+      // Bulk-insert only successfully matched tracks with sanitization and chunked fallback
+      const cleanStr = (s: any): string => (typeof s === 'string' ? s.replace(/\0/g, '').replace(/\u0000/g, '').trim() : '');
+      const toInsert = matched
+        .filter(t => t.youtubeId)
+        .map(t => ({
+          ...t,
+          title: cleanStr(t.title) || 'Unknown Track',
+          artist: cleanStr(t.artist) || 'Unknown Artist',
+          thumbnail: cleanStr(t.thumbnail) || null,
+          youtubeId: cleanStr(t.youtubeId)
+        }));
+
+      for (let i = 0; i < toInsert.length; i += 50) {
+        const chunk = toInsert.slice(i, i + 50);
+        try {
+          await prisma.playlistTrack.createMany({ data: chunk });
+        } catch (chunkErr) {
+          console.warn(`[Spotify] Bulk insert chunk ${i} failed, falling back to individual inserts:`, chunkErr);
+          for (const item of chunk) {
+            await prisma.playlistTrack.create({ data: item }).catch(() => {});
+          }
+        }
+      }
 
       res.json({
         ok:           true,
@@ -408,44 +462,70 @@ export function createSpotifyRoutes(): Router {
 
   // GET /spotify/my-playlists — get all SyncBeats playlists for the user
   router.get('/my-playlists', requireAuth, async (req: any, res: any) => {
-    const playlists = await prisma.playlist.findMany({
-      where: { userId: req.user.sub },
-      include: {
-        tracks: {
-          orderBy: { position: 'asc' },
-          include: {
-            song: {
-              select: {
-                id:               true,
-                title:            true,
-                artist:           true,
-                youtubeId:        true,
-                youtubeThumbnail: true,
-                albumArt:         true,
-                album:            true,
-                duration:         true,
-              }
+    try {
+      const userId = sanitizeNullBytes(req.user?.sub || req.user?.id);
+      if (!userId) return res.json({ playlists: [] });
+
+      const playlists = await prisma.playlist.findMany({
+        where: { userId },
+        select: {
+          id:          true,
+          name:        true,
+          description: true,
+          coverUrl:    true,
+          sourceType:  true,
+          sourceId:    true,
+          createdAt:   true,
+          tracks: {
+            orderBy: { position: 'asc' },
+            select: {
+              id:        true,
+              title:     true,
+              artist:    true,
+              thumbnail: true,
+              youtubeId: true,
+              position:  true,
             }
           }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Clean up empty bridged playlists that might have failed to import in the past
-    const emptyBridgedPlaylists = playlists.filter(
-      p => p.tracks.length === 0 && (p.sourceType === 'SPOTIFY_BRIDGE' || p.sourceType === 'SPOTIFY')
-    );
-    
-    if (emptyBridgedPlaylists.length > 0) {
-      await prisma.playlist.deleteMany({
-        where: { id: { in: emptyBridgedPlaylists.map(p => p.id) } }
+        },
+        orderBy: { createdAt: 'desc' },
       });
-      console.log(`[SpotifyRoutes] Cleaned up ${emptyBridgedPlaylists.length} empty imported playlists for user ${req.user.sub}`);
-    }
 
-    const validPlaylists = playlists.filter(p => p.tracks.length > 0 || (p.sourceType !== 'SPOTIFY_BRIDGE' && p.sourceType !== 'SPOTIFY'));
-    res.json({ playlists: validPlaylists });
+      // Clean up empty bridged playlists that might have failed to import in the past
+      const emptyBridgedPlaylists = playlists.filter(
+        p => p.tracks.length === 0 && (p.sourceType === 'SPOTIFY_BRIDGE' || p.sourceType === 'SPOTIFY')
+      );
+      
+      if (emptyBridgedPlaylists.length > 0) {
+        for (const p of emptyBridgedPlaylists) {
+          await prisma.playlist.delete({ where: { id: p.id } }).catch(() => {});
+        }
+        console.log(`[SpotifyRoutes] Cleaned up ${emptyBridgedPlaylists.length} empty imported playlists for user ${userId}`);
+      }
+
+      const validPlaylists = playlists
+        .map(p => ({
+          ...p,
+          tracks: (p.tracks || []).map(t => ({
+            ...t,
+            song: {
+              id:               t.id,
+              title:            t.title,
+              artist:           t.artist,
+              youtubeId:        t.youtubeId,
+              youtubeThumbnail: t.thumbnail,
+              albumArt:         t.thumbnail,
+              album:            '',
+              duration:         '0:00',
+            }
+          }))
+        }))
+        .filter(p => p.tracks.length > 0 || (p.sourceType !== 'SPOTIFY_BRIDGE' && p.sourceType !== 'SPOTIFY'));
+      res.json({ playlists: validPlaylists });
+    } catch (err: any) {
+      console.error('[SpotifyRoutes] error fetching my-playlists:', err?.message || err);
+      res.json({ playlists: [] });
+    }
   });
 
   // DELETE /spotify/disconnect — remove Spotify tokens
@@ -504,6 +584,109 @@ export function createSpotifyRoutes(): Router {
     } catch (err) {
       console.error('[SpotifyRoutes] Delete error:', err);
       res.status(500).json({ error: 'Failed to delete playlist.' });
+    }
+  });
+
+  // GET /spotify/audio-analysis - Fetch and cache Spotify audio analysis
+  router.get('/audio-analysis', async (req: any, res: any) => {
+    let spotifyId = req.query.spotifyId as string;
+    const youtubeId = req.query.youtubeId as string;
+    const trackUrl = req.query.trackUrl as string;
+
+    if (!spotifyId) {
+      if (youtubeId) {
+        const song = await prisma.song.findFirst({ where: { youtubeId: youtubeId } });
+        if (song?.spotifyId) spotifyId = song.spotifyId;
+      } else if (trackUrl) {
+        const match = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([^_?&]+)/);
+        if (match) {
+          const song = await prisma.song.findFirst({ where: { youtubeId: match[1] } });
+          if (song?.spotifyId) spotifyId = song.spotifyId;
+        } else if (trackUrl.includes('spotify.com') || trackUrl.includes('spotify:')) {
+          const spMatch = trackUrl.match(/spotify:track:([a-zA-Z0-9]+)/) || trackUrl.match(/open\.spotify\.com\/track\/([a-zA-Z0-9]+)/);
+          if (spMatch) spotifyId = spMatch[1];
+        }
+      }
+    }
+
+    if (!spotifyId) {
+      res.status(404).json({ error: 'Could not resolve a valid Spotify ID for this track' });
+      return;
+    }
+
+    try {
+      // 1. Check cache
+      let cached: any = null;
+      try {
+        cached = await prisma.beatEventsCache.findUnique({
+          where: { spotifyId: spotifyId }
+        });
+      } catch (err) {
+        // Table beat_events_cache might not exist in database yet; continue gracefully
+      }
+
+      if (cached) {
+        res.json({ events: cached.events });
+        return;
+      }
+
+      // 2. Fetch from Spotify
+      const token = await getAppSpotifyToken();
+      const analysisUrl = `https://api.spotify.com/v1/audio-analysis/${spotifyId}`;
+      const analysis = await spotifyFetch(analysisUrl, token);
+
+      // 3. Process segments & beats
+      const beats = analysis.beats || [];
+      const segments = analysis.segments || [];
+
+      const events: any[] = [];
+      let segmentIdx = 0;
+
+      for (const beat of beats) {
+        const beatStart = beat.start;
+        // Find segment overlapping this beat
+        while (segmentIdx < segments.length && segments[segmentIdx].start + segments[segmentIdx].duration < beatStart) {
+          segmentIdx++;
+        }
+        
+        if (segmentIdx >= segments.length) break;
+        const seg = segments[segmentIdx];
+        
+        // Very basic heuristic based on Spotify's timbre vector
+        // timbre[1]: brightness (negative = darker/bassier, positive = brighter/trebley)
+        const t1 = seg.timbre[1] || 0;
+        
+        let beatType = 'mid';
+        if (t1 < -20) beatType = 'bass';
+        else if (t1 > 30) beatType = 'treble';
+        else if (seg.loudness_max > -8) beatType = 'bass'; // loud hits often kick drums
+
+        const intensity = Math.min(1, Math.max(0, (seg.loudness_max + 60) / 60));
+
+        events.push({
+          timestamp: beat.start * 1000,
+          beatType,
+          intensity,
+          source: 'spotify-analysis'
+        });
+      }
+
+      // 4. Save to cache (if table exists)
+      try {
+        await prisma.beatEventsCache.create({
+          data: {
+            spotifyId: spotifyId,
+            events: events
+          }
+        });
+      } catch (err) {
+        // Ignore cache save error if table is missing
+      }
+
+      res.json({ events });
+    } catch (err: any) {
+      console.error('[SpotifyRoutes] audio-analysis error:', err);
+      res.status(500).json({ error: 'Failed to fetch audio analysis' });
     }
   });
 

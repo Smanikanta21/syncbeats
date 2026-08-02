@@ -9,7 +9,7 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {},
-  allowedDevOrigins: ['192.168.29.45'],
+  allowedDevOrigins: ['172.20.10.3','172.20.10.7'],
   images: {
     remotePatterns: [
       {

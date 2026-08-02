@@ -23,25 +23,65 @@
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
 
+  html,
   body {
+    min-height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
     background: var(--background);
     color: var(--foreground);
-    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-family: var(--font-sans), 'Outfit', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
+  html.lenis,
+  html.lenis-smooth {
+    height: auto !important;
+  }
+
+  html.lenis body,
+  html.lenis-smooth body {
+    height: auto !important;
+  }
+
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: hidden;
   }
 
   @media (max-width: 768px) {
-    /* Mobile-specific adjustments if necessary */
+    /* Prevent iOS Mobile Safari auto-zoom on input focus */
+    input[type="text"],
+    input[type="search"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
   }
 }
+
 
 @layer utilities {
   .glass-panel {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
-    transition: all .3s cubic-bezier(.4, 0, .2, 1);
+    transition: background .3s cubic-bezier(.4, 0, .2, 1),
+      border-color .3s cubic-bezier(.4, 0, .2, 1),
+      box-shadow .3s cubic-bezier(.4, 0, .2, 1),
+      transform .2s cubic-bezier(.4, 0, .2, 1);
   }
 
   @keyframes fadeInUp {
@@ -79,6 +119,15 @@
     box-shadow: 0 0 10px rgba(0,0,0,0.2);
     cursor: pointer;
   }
+
+  /* Hide scrollbar for Chrome, Safari, Edge, Firefox while keeping scroll functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 @theme {
@@ -86,4 +135,19 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+@keyframes ambientBreathing {
+  0%, 100% {
+    opacity: 0.12;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.48;
+    transform: scale(1.05);
+  }
+}
+
+.animate-ambient-breathing {
+  animation: ambientBreathing 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

@@ -3,10 +3,12 @@
 import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { getSocket } from '../lib/socket';
-import { roomsApi, RoomDetailsResponse } from '../lib/api';
+import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
+import { toast } from 'sonner';
+import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -37,12 +39,16 @@ interface UseRoomReturn {
   approveJoin:  (targetSocketId: string, displayName: string) => void;
   denyJoin:     (targetSocketId: string) => void;
   notifyHost:   () => void;
+  resetRoom:    () => void;
+  removeFromQueue: (itemId: string) => void;
   syncInFlightRef: React.MutableRefObject<boolean>;
   hasClockSync: React.MutableRefObject<boolean>;
   /** Current network quality tier for this device — updates reactively */
   networkQuality: NetworkQuality;
   /** Smart next-track prefetch state */
   prefetch: PrefetchState;
+  /** True only during a reconnect when we already have a snapshot — use for a subtle banner, not a full-screen loader */
+  isReconnecting: boolean;
 }
 
 // NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
@@ -61,12 +67,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean, userId?: string }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
   const [allReady] = useState(true); // Default true since barrier sync is removed
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
-  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
+  const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({}); 
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
@@ -88,21 +95,50 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     if (trackUrl) {
-      console.log("[DEBUG] getTrackTitle searching for url:", trackUrl);
-      console.log("[DEBUG] queue urls:", queue.map(i => i.trackUrl));
-      const match = queue.find((item) => item.trackUrl === trackUrl);
-      if (match?.title) {
-        console.log("[DEBUG] getTrackTitle found match:", match.title);
+      const extractId = (url: string): string | null => {
+        if (!url) return null;
+        const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
+        if (m) return m[1];
+        if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
+        return null;
+      };
+
+      const playingId = extractId(trackUrl);
+      const match = queue.find((item) => {
+        if (item.trackUrl === trackUrl) return true;
+        const itemId = extractId(item.trackUrl);
+        return playingId !== null && itemId !== null && playingId === itemId;
+      });
+
+      if (match?.title && !match.title.startsWith('youtube:') && match.title !== 'Track') {
         return match.title;
+      }
+
+      if (playingId) {
+        const fetchedTitle = getYoutubeTrackTitle(playingId);
+        if (fetchedTitle) return fetchedTitle;
+        return playingId;
       }
     }
     
     const currentQueueItem = queue.find((item) => item.isCurrent);
-    if (currentQueueItem?.title) return currentQueueItem.title;
+    if (currentQueueItem?.title && !currentQueueItem.title.startsWith('youtube:') && currentQueueItem.title !== 'Track') {
+      return currentQueueItem.title;
+    }
     
     if (!trackUrl) return "Unknown Track";
-    const fileName = trackUrl.split('/').pop() ?? '';
-    return fileName.split('?')[0].replace(/\.[^.]+$/, '').replace(/^\d+_/, '').replace(/_/g, ' ') || 'Track';
+    const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
+    const fileName = clean.split('/').pop() ?? '';
+    const rawId = fileName.split('?')[0].replace(/\.[^.]+$/, '');
+    const isYouTubeId = /^[a-zA-Z0-9_-]{11}$/.test(rawId);
+    if (isYouTubeId) {
+      const fetchedTitle = getYoutubeTrackTitle(rawId);
+      if (fetchedTitle) return fetchedTitle;
+      return rawId;
+    }
+    const formatted = rawId.replace(/^\d+_/, '').replace(/_/g, ' ');
+    if (formatted && !formatted.startsWith('youtube:')) return formatted;
+    return "SyncBeats Track";
   }, []);
 
   const loadAndSetTrack = useCallback(async (trackUrl: string | null | undefined, title: string) => {
@@ -118,6 +154,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     let parts: Participant[] = [];
 
     if (details.live) {
+      const parsedLiveCreated = details.live.createdAt ? (typeof details.live.createdAt === 'number' ? details.live.createdAt : new Date(details.live.createdAt).getTime()) : undefined;
+      const liveCreatedMs = parsedLiveCreated ?? (details.db?.created_at ? new Date(details.db.created_at).getTime() : undefined);
+      const fallbackDurationMs = typeof liveCreatedMs === 'number' ? Math.max(0, Date.now() - liveCreatedMs) : undefined;
+      const durationMs = details.live.sessionDurationMs ?? fallbackDurationMs;
+
       snap = {
         roomId:       details.live.roomId,
         trackUrl:     details.live.trackUrl,
@@ -129,6 +170,9 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         pendingPlay:  details.live.pendingPlay ?? false,
         hostId:       details.live.hostId,
         timestamp:    details.live.timestamp,
+        createdAt:    liveCreatedMs,
+        sessionDurationMs: durationMs,
+        accumulatedSessionTime: details.live.accumulatedSessionTime ?? (durationMs ? Math.floor(durationMs / 1000) : undefined),
         participants: details.live.participants as Participant[],
         queue:        details.live.queue as TrackQueueItem[],
         spatial:      (details.live.spatial as DeviceSpatialState[]) || [],
@@ -138,6 +182,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       };
       parts = details.live.participants as Participant[];
     } else if (details.db) {
+      const dbCreatedMs = details.db.created_at ? new Date(details.db.created_at).getTime() : Date.now();
+      const durationMs = Math.max(0, Date.now() - dbCreatedMs);
       snap = {
         roomId,
         trackUrl:     details.db.track_url,
@@ -149,6 +195,9 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         pendingPlay:  false,
         hostId:       details.db.host_id,
         timestamp:    Date.now(),
+        createdAt:    dbCreatedMs,
+        sessionDurationMs: durationMs,
+        accumulatedSessionTime: Math.floor(durationMs / 1000),
         participants: details.participants.map(p => ({ ...p, isReady: false })),
         queue:        details.queue as TrackQueueItem[],
         spatial:      [],
@@ -195,7 +244,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     // Read adaptive params snapshot for this burst
     const p = paramsRef.current; // paramsRef is a stable ref — no dep needed
-    const offsetSamples: number[] = [];
+    const offsetSamples: { offset: number; rtt: number }[] = [];
     const rttSamples:    number[] = []; // ALL rtts (including rejected) for quality classification
 
     for (let i = 0; i < p.NTP_SAMPLE_COUNT; i++) {
@@ -205,17 +254,18 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       rttSamples.push(rtt); // always collect, even noisy ones
       if (rtt <= p.NTP_RTT_GATE_MS) {
         const offset = t1 - (t0 + t3) / 2;
-        offsetSamples.push(offset);
+        offsetSamples.push({ offset, rtt });
       }
       await new Promise(r => setTimeout(r, p.NTP_PING_GAP_MS));
     }
 
     if (offsetSamples.length > 0) {
-      const sorted = [...offsetSamples].sort((a, b) => a - b);
-      const q1 = sorted[Math.floor(sorted.length * 0.25)];
-      const q3 = sorted[Math.floor(sorted.length * 0.75)];
-      const filtered = sorted.filter(o => o >= q1 && o <= q3);
-      const median = filtered[Math.floor(filtered.length / 2)] ?? sorted[Math.floor(sorted.length / 2)];
+      // Sort by RTT ascending to select samples with minimum network delay/asymmetry
+      const sortedByRtt = [...offsetSamples].sort((a, b) => a.rtt - b.rtt);
+      // Select top 35% lowest latency samples
+      const bestSamples = sortedByRtt.slice(0, Math.max(1, Math.ceil(sortedByRtt.length * 0.35)));
+      const bestOffsets = bestSamples.map(s => s.offset).sort((a, b) => a - b);
+      const median = bestOffsets[Math.floor(bestOffsets.length / 2)];
       
       clockOffsetRef.current = median;
       setClockOffset(median);
@@ -266,7 +316,15 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     const correctDrift = () => {
       const snap = snapshotRef.current;
-      if (!snap || !snap.isPlaying || snap.startEpoch == null) return;
+
+      // PAUSE BUG FIX: If snapshot is paused/stopped, guarantee local audio player is paused!
+      if (!snap || !snap.isPlaying || snap.startEpoch == null) {
+        if (audioRef.current.isPlaying) {
+          audioRef.current.pauseAt(snap?.pauseOffset ?? audioRef.current.getTruePosition());
+        }
+        return;
+      }
+
       if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
 
       const nowServer = getServerNow();
@@ -283,44 +341,43 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       const drift = expected - actual; // Positive = we are behind server, Negative = we are ahead
       const driftMs = Math.abs(drift) * 1000;
 
-      const isYoutube = snap.trackUrl?.startsWith("youtube:");
-      // Read adaptive tolerances — poor-network devices get wider windows
-      // to reduce jarring seeks, while keeping pitch perfect at 1.0x
       const { DRIFT_HARD_SEEK_MS } = paramsRef.current;
-      const hardSeekTolerance = DRIFT_HARD_SEEK_MS;
+      const hardSeekTolerance = Math.min(DRIFT_HARD_SEEK_MS, 45); // Max 45ms hard seek for tight sync
 
       if (driftMs > hardSeekTolerance) {
-        // Severe drift: Crossfade seek to avoid jarring jumps
+        // Severe drift (>45ms): Quick crossfade seek to immediately close the gap
         if (!audioRef.current.audioCtx || !audioRef.current.gainNode) {
-          // Fallback: just hard seek
           audioRef.current.playNow(expected);
           if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
         } else {
-          // WebAudio Crossfade: Fade out over 50ms, seek, fade in over 50ms
           const { audioCtx, gainNode } = audioRef.current;
           const currentVol = audioRef.current.volume / 100;
           
-          // Fade out
           gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
           gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
           
           setTimeout(() => {
-            // Seek precisely (add the 50ms delay to expected)
             const newExpected = Math.max(0, (getServerNow() - snap.startEpoch!) / 1000);
             audioRef.current.playNow(newExpected);
             if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
             
-            // Fade in
             const newAudioCtx = audioRef.current.audioCtx!;
             const newGainNode = audioRef.current.gainNode!;
             newGainNode.gain.cancelScheduledValues(newAudioCtx.currentTime);
             newGainNode.gain.setValueAtTime(0.01, newAudioCtx.currentTime);
-            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.05);
-          }, 50);
+            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.03);
+          }, 30);
+        }
+      } else if (driftMs > 2) {
+        // Micro-rate phase lock (2ms - 45ms gap):
+        // Micro-adjust playback speed by ±0.5% - 2% to continuously pull devices into <1ms phase lock!
+        const nudgeRate = 1.0 + Math.max(-0.02, Math.min(0.02, drift * 0.45));
+        if (audioRef.current.setPlaybackRate) {
+          audioRef.current.setPlaybackRate(nudgeRate);
         }
       } else {
-        // Tolerable drift: Keep normal playback rate (1.0)
+        // Perfect sync phase (< 2ms gap)!
         if (audioRef.current.setPlaybackRate) {
           audioRef.current.setPlaybackRate(1);
         }
@@ -345,9 +402,17 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     document.addEventListener('ytBufferEnd', handleYtBufferEnd);
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        correctDrift();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       clearInterval(driftInterval);
       document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []); // paramsRef is a stable ref, correctDrift is a closure — intentional empty dep
 
@@ -357,11 +422,19 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     const handleConnect = () => {
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
-      setJoinStatus('connecting');
+      // If we already have a snapshot (we've been in this room before), this is a
+      // RECONNECT not a first join. Keep joinStatus as-is and use isReconnecting
+      // so the room UI stays visible with only a subtle banner shown.
+      if (snapshotRef.current) {
+        setIsReconnecting(true);
+      } else {
+        setJoinStatus('connecting');
+      }
       socket.emit('room:join', { 
         roomId, 
         displayName, 
         userId,
+        deviceId: getDeviceId(),
         isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
       });
       runNtpBurst();
@@ -369,6 +442,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     const handleDisconnect = () => {
       setIsConnected(false);
+      setIsReconnecting(false);
       audioRef.current.pauseAt(audioRef.current.getTruePosition());
     };
 
@@ -380,10 +454,36 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     const handleSnapshot = (snap: RoomSnapshot) => {
       setJoinStatus('joined');
+      setIsReconnecting(false); // Reconnect complete — clear the banner
       setSnapshot(snap);
       setParticipants(snap.participants);
+
+      // Dispatch welcome beat burst for local user entering room
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("syncbeats:welcome-burst"));
+      }
+
+      const logListenHistory = (url: string, queueItems?: TrackQueueItem[]) => {
+        if (!userId || !url) return;
+        const currentItem = queueItems?.find(q => q.isCurrent || q.trackUrl === url);
+        const title = currentItem?.title || getTrackTitle(url, queueItems);
+        const artist = currentItem?.artist || currentItem?.addedByName || '';
+        const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
+        const youtubeId = url.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
+
+        historyApi.logListen(userId, {
+          youtubeId,
+          title,
+          artist,
+          thumbnail,
+        }).catch(() => {});
+      };
+
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+        logListenHistory(snap.trackUrl, snap.queue);
+      } else if (!snap.trackUrl) {
+        audioRef.current.clearTrack();
       }
     };
     socket.on('room:snapshot', handleSnapshot);
@@ -393,19 +493,90 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       setParticipants(snap.participants);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+        if (userId && snap.trackUrl) {
+          const currentItem = snap.queue?.find(q => q.isCurrent || q.trackUrl === snap.trackUrl);
+          const title = currentItem?.title || getTrackTitle(snap.trackUrl, snap.queue);
+          const artist = currentItem?.artist || currentItem?.addedByName || '';
+          const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
+          const youtubeId = snap.trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
+
+          historyApi.logListen(userId, {
+            youtubeId,
+            title,
+            artist,
+            thumbnail,
+          }).catch(() => {});
+        }
+      } else if (!snap.trackUrl) {
+        audioRef.current.clearTrack();
       }
     };
     socket.on('room:stateChanged', handleStateChanged);
 
+    const handleQueueChanged = (data: { queue: TrackQueueItem[] } | TrackQueueItem[]) => {
+      // Legacy handler kept for shape compatibility — handleQueueChangedNew below is the authoritative one.
+      // Only handle if data is an array (old server format), the new format is handled below.
+      if (Array.isArray(data)) {
+        const newQueue = data;
+        setSnapshot(prev => prev ? { ...prev, queue: newQueue } : prev);
+      }
+    };
+    socket.on('room:queueChanged', handleQueueChanged);
+
+    const handleReset = () => {
+      audioRef.current.clearTrack();
+      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false } : prev);
+    };
+    socket.on('room:reset', handleReset);
+
     const handleParticipantJoined = (p: Participant) => {
-      setParticipants(prev => prev.find(x => x.socketId === p.socketId) ? prev : [...prev, p]);
+      setParticipants(prev => {
+        if (prev.find(x => x.socketId === p.socketId)) return prev;
+        return [...prev, p];
+      });
+
+      // Notify room members via room-activity event (no emojis / no toast popup)
+      if (p.socketId !== socket.id) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("syncbeats:room-activity", {
+            detail: { type: "join", displayName: p.displayName }
+          }));
+          window.dispatchEvent(new CustomEvent("syncbeats:welcome-burst"));
+        }
+      }
     };
     socket.on('room:participantJoined', handleParticipantJoined);
 
     const handleParticipantLeft = (socketId: string) => {
-      setParticipants(prev => prev.filter(x => x.socketId !== socketId));
+      setParticipants(prev => {
+        const leaving = prev.find(x => x.socketId === socketId);
+        if (leaving && leaving.socketId !== socket.id) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("syncbeats:room-activity", {
+              detail: { type: "leave", displayName: leaving.displayName }
+            }));
+          }
+        }
+        return prev.filter(x => x.socketId !== socketId);
+      });
     };
     socket.on('room:participantLeft', handleParticipantLeft);
+
+    // Register OS System Media Controls (macOS Menu Bar / Control Center / iOS / Android)
+    if (typeof window !== "undefined" && "mediaSession" in navigator) {
+      const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, handler);
+        } catch (e) {}
+      };
+
+      setHandler("previoustrack", () => {
+        prevTrack();
+      });
+      setHandler("nexttrack", () => {
+        nextTrack();
+      });
+    }
 
     const handleUploadProgress = ({ title, progress }: { title: string; progress: number }) => {
       if (progress >= 100) {
@@ -421,18 +592,32 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:sync_progress', handleSyncProgress);
 
+    const handleTitleResolved = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.ytId && detail?.title && audioRef.current.trackUrl) {
+        if (audioRef.current.trackUrl.includes(detail.ytId)) {
+          loadAndSetTrack(audioRef.current.trackUrl, detail.title);
+        }
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("syncbeats:title-resolved", handleTitleResolved);
+    }
+
     const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
       loadAndSetTrack(trackUrl, title);
     };
     socket.on('room:trackSet', handleTrackSet);
 
-    const handleQueueChanged = ({ queue }: { queue: TrackQueueItem[] }) => {
+    const handleQueueChangedNew = ({ queue }: { queue: TrackQueueItem[] }) => {
       setSnapshot((prev) => prev ? { ...prev, queue } : prev);
 
       const newCurrentItem = queue.find((item) => item.isCurrent);
 
       if (queue.length === 0) {
-        audioRef.current.clearTrack();
+        if (!snapshotRef.current?.isPlaying && !audioRef.current.isPlaying) {
+          audioRef.current.clearTrack();
+        }
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
         if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
@@ -440,10 +625,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         }
       }
     };
-    socket.on('room:queueChanged', handleQueueChanged);
+    socket.on('room:queueChanged', handleQueueChangedNew);
 
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
-      setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING } : prev);
+      setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
+      if (payload.trackUrl && audioRef.current.trackUrl !== payload.trackUrl) {
+        loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
+      }
       audioRef.current.scheduleStart(payload, clockOffsetRef.current);
     };
     socket.on('playback:schedule', handleSchedule);
@@ -490,8 +678,17 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:hostChanged', handleHostChanged);
 
-    const handleDevicePing = ({ message, from }: { message: string, from: string }) => {
-      alert(message);
+    const handleRoomReset = () => {
+      audioRef.current.clearTrack();
+      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false, state: PlaybackState.IDLE, startEpoch: null, pauseOffset: 0 } : prev);
+      setIncomingTrack(null);
+    };
+    socket.on('room:reset', handleRoomReset);
+
+    const handleDevicePing = ({ message }: { message: string, from: string }) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent("toast", { detail: { message, type: "info" } }));
+      }
     };
     socket.on('device:ping', handleDevicePing);
 
@@ -516,6 +713,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:participantLeft', handleParticipantLeft);
       socket.off('room:trackSet', handleTrackSet);
       socket.off('room:queueChanged', handleQueueChanged);
+      socket.off('room:reset', handleReset);
       socket.off('playback:schedule', handleSchedule);
       socket.off('playback:pause', handlePause);
       socket.off('room:joinPendingApproval', handlePendingApproval);
@@ -587,7 +785,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     if (me) audioRef.current.setVolume(me.volume);
   }, [snapshot, currentSocketId]);
 
-  // ── Smart track prefetcher ──────────────────────────────────────────────────
+  // Smart track prefetcher
   const prefetch = useTrackPrefetcher({
     snapshot,
     currentTime: audio.currentTime,
@@ -605,6 +803,31 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
+
+  // Handle Track Completion (audioEnded) — auto-loop, auto-advance, or pause when queue finishes
+  useEffect(() => {
+    const handleAudioEnded = () => {
+      const snap = snapshotRef.current;
+      if (!snap) return;
+
+      const repeatMode = snap.repeatMode ?? "off";
+      const q = snap.queue ?? [];
+      const currentIdx = q.findIndex(item => item.isCurrent);
+      const hasNextInQueue = currentIdx >= 0 && currentIdx < q.length - 1;
+
+      if (repeatMode === "track") {
+        seek(0);
+        play();
+      } else if (hasNextInQueue || repeatMode === "all") {
+        nextTrack();
+      } else {
+        pause();
+      }
+    };
+
+    window.addEventListener("audioEnded", handleAudioEnded);
+    return () => window.removeEventListener("audioEnded", handleAudioEnded);
+  }, [seek, play, nextTrack, pause]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
@@ -624,5 +847,23 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  return { snapshot, participants, isConnected, joinStatus, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
+  const removeFromQueue = useCallback(async (itemId: string) => {
+    socket.emit('room:removeFromQueue', { roomId, itemId });
+    try {
+      await roomsApi.removeFromQueue(roomId, itemId);
+    } catch (err) {
+      console.warn('[useRoom] removeFromQueue API error:', err);
+    }
+  }, [roomId, socket]);
+
+  const resetRoom = useCallback(async () => {
+    socket.emit('room:reset', { roomId });
+    try {
+      await roomsApi.reset(roomId);
+    } catch (err) {
+      console.warn('[useRoom] resetRoom API error:', err);
+    }
+  }, [roomId, socket]);
+
+  return { snapshot, participants, isConnected, joinStatus, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }
