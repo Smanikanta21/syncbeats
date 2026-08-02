@@ -372,23 +372,42 @@ jobs:
 
       - name: Reload nginx and cleanup
         run: |
-          ssh -o StrictHostKeyChecking=yes \
-            ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          sudo nginx -t && sudo systemctl reload nginx
-          # Prune old dangling images to free disk space safely without spiking CPU/RAM
-          docker image prune -f
-          ENDSSH
+          SSH_TARGET="${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}"
+          SSH_OPTS="-o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ConnectionAttempts=1 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          REMOTE_CMD='sudo nginx -t && sudo systemctl reload nginx && docker image prune -f'
+
+          for attempt in 1 2 3; do
+            if ssh $SSH_OPTS "$SSH_TARGET" "$REMOTE_CMD"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "SSH attempt $attempt failed, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+
+          echo "Failed to connect to deployment VM after 3 attempts."
+          exit 1
 
       - name: Stop dev containers if deploying main
         if: github.ref_name == 'main'
         run: |
-          ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
-          if [ -d "$HOME/sync-beats-dev" ]; then
-            echo "Tearing down dev environment..."
-            docker compose --project-directory "$HOME/sync-beats-dev" down || true
-            rm -rf "$HOME/sync-beats-dev"
-          fi
-          ENDSSH
+          SSH_TARGET="${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}"
+          SSH_OPTS="-o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ConnectionAttempts=1 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          REMOTE_CMD='if [ -d "$HOME/sync-beats-dev" ]; then echo "Tearing down dev environment..."; docker compose --project-directory "$HOME/sync-beats-dev" down || true; rm -rf "$HOME/sync-beats-dev"; fi'
+
+          for attempt in 1 2 3; do
+            if ssh $SSH_OPTS "$SSH_TARGET" "$REMOTE_CMD"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "SSH attempt $attempt failed, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+
+          echo "Failed to connect to deployment VM after 3 attempts."
+          exit 1
 
   rollback:
     name: Rollback on Failure
