@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
+import { cn } from "@/lib/utils";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -196,7 +197,10 @@ export default function AuthPage() {
       return;
     }
 
-    const redirectUri = window.location.origin;
+    let redirectUri = window.location.origin;
+    if (redirectUri.includes("www.syncbeats.app")) {
+      redirectUri = redirectUri.replace("www.syncbeats.app", "syncbeats.app");
+    }
     const nonce = Math.random().toString(36).substring(2);
 
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
@@ -279,7 +283,7 @@ export default function AuthPage() {
   }, [googleLogin, router]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative px-4 sm:px-6 lg:px-8 overflow-hidden z-0">
+    <div className={cn('min-h-screen', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'px-4', 'sm:px-6', 'lg:px-8', 'overflow-hidden', 'z-0')}>
       <FullscreenLoader isVisible={loading} message={isLogin ? "Authenticating ..." : "Signing Up..."} />
 
       {/* Background ambient lighting removed (now in layout) */}
@@ -289,13 +293,13 @@ export default function AuthPage() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="absolute top-8 left-8 z-50"
+        className={cn('absolute', 'top-8', 'left-8', 'z-50')}
       >
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
-            <Disc className="w-4 h-4 text-foreground/80 animate-[spin_4s_linear_infinite]" />
+        <Link href="/" className={cn('flex', 'items-center', 'gap-2', 'group')}>
+          <div className={cn('w-8', 'h-8', 'rounded-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'transition-colors')}>
+            <Disc className={cn('w-4', 'h-4', 'text-foreground/80', 'animate-[spin_4s_linear_infinite]')} />
           </div>
-          <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
+          <span className={cn('text-sm', 'font-bold', 'tracking-widest', 'text-foreground/60', 'group-hover:text-foreground', 'transition-colors')}>HOME</span>
         </Link>
       </motion.div>
 
@@ -319,37 +323,37 @@ export default function AuthPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3 }}
-                className="w-full max-w-sm mx-auto"
+                className={cn('w-full', 'max-w-sm', 'mx-auto')}
               >
-                <div className="mb-10 text-center md:text-left">
-                  <h2 className="text-4xl font-black mb-3 text-foreground">Welcome Back</h2>
-                  <p className="text-foreground/50 font-medium">Log in to manage your synced sessions.</p>
+                <div className={cn('mb-10', 'text-center', 'md:text-left')}>
+                  <h2 className={cn('text-4xl', 'font-black', 'mb-3', 'text-foreground')}>Welcome Back</h2>
+                  <p className={cn('text-foreground/50', 'font-medium')}>Log in to manage your synced sessions.</p>
                 </div>
 
                 {error && (
-                  <div className="mb-6 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
-                    <AlertCircle className="w-4 h-4 shrink-0" />{error}
+                  <div className={cn('mb-6', 'flex', 'items-center', 'gap-2', 'text-sm', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}>
+                    <AlertCircle className={cn('w-4', 'h-4', 'shrink-0')} />{error}
                   </div>
                 )}
 
                 <form className="space-y-6" onSubmit={handleAuth}>
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Email Address</label>
+                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Email Address</label>
                     <motion.div
                       key={`login-email-${shakeNonce}`}
                       animate={shakeTargets.includes("login-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}><Mail className={cn('h-5', 'w-5', 'text-foreground/50')} /></div>
                       <input type="email" tabIndex={1} value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClass, true)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Password</label>
-                      <Link href="/forgot-password" tabIndex={4} className="text-xs font-medium text-foreground/50 hover:text-foreground/80 transition-colors">Forgot?</Link>
+                    <div className={cn('flex', 'items-center', 'justify-between', 'ml-1')}>
+                      <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'uppercase', 'tracking-wider')}>Password</label>
+                      <Link href="/forgot-password" tabIndex={4} className={cn('text-xs', 'font-medium', 'text-foreground/50', 'hover:text-foreground/80', 'transition-colors')}>Forgot?</Link>
                     </div>
                     <motion.div
                       key={`login-password-${shakeNonce}`}
@@ -357,15 +361,15 @@ export default function AuthPage() {
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-5', 'w-5', 'text-foreground/50')} /></div>
                       <input type={showLoginPassword ? "text" : "password"} tabIndex={2} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
                       <button
                         type="button"
                         tabIndex={-1}
                         onClick={() => setShowLoginPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-4 text-foreground/50 hover:text-foreground"
+                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-4', 'text-foreground/50', 'hover:text-foreground')}
                       >
-                        {showLoginPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        {showLoginPassword ? <EyeOff className={cn('h-5', 'w-5')} /> : <Eye className={cn('h-5', 'w-5')} />}
                       </button>
                     </motion.div>
                   </div>
@@ -376,17 +380,17 @@ export default function AuthPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     disabled={loading}
-                    className="w-full h-14 mt-4 bg-black text-white font-bold rounded-2xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
+                    className={cn('w-full', 'h-14', 'mt-4', 'bg-black', 'text-white', 'font-bold', 'rounded-2xl', 'hover:scale-[1.02]', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-[0_0_20px_rgba(255,255,255,0.05)]', 'disabled:opacity-60', 'disabled:cursor-wait')}
                   >
-                    {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className="w-5 h-5" /></>}
+                    {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className={cn('w-5', 'h-5')} /></>}
                   </motion.button>
 
                   <GoogleButton refEl={googleLoginButtonRef} onGoogleOAuth={handleGoogleOAuth} loading={loading} />
                 </form>
 
-                <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
+                <p className={cn('mt-8', 'text-center', 'text-foreground/50', 'text-sm', 'font-medium', 'md:hidden')}>
                   Don&apos;t have an account?{" "}
-                  <button onClick={() => switchMode(false)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign up</button>
+                  <button onClick={() => switchMode(false)} className={cn('text-foreground/80', 'font-semibold', 'hover:text-foreground', 'transition-colors')}>Sign up</button>
                 </p>
               </motion.div>
             ) : (
@@ -397,84 +401,84 @@ export default function AuthPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
-                className="w-full max-w-sm mx-auto"
+                className={cn('w-full', 'max-w-sm', 'mx-auto')}
               >
-                <div className="mb-8 text-center md:text-left">
-                  <h2 className="text-4xl font-black mb-2 text-foreground">Join SyncBeats</h2>
-                  <p className="text-foreground/50 font-medium">Create an account to start syncing audio.</p>
+                <div className={cn('mb-8', 'text-center', 'md:text-left')}>
+                  <h2 className={cn('text-4xl', 'font-black', 'mb-2', 'text-foreground')}>Join SyncBeats</h2>
+                  <p className={cn('text-foreground/50', 'font-medium')}>Create an account to start syncing audio.</p>
                 </div>
 
                 {error && (
-                  <div className="mb-5 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
-                    <AlertCircle className="w-4 h-4 shrink-0" />{error}
+                  <div className={cn('mb-5', 'flex', 'items-center', 'gap-2', 'text-sm', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}>
+                    <AlertCircle className={cn('w-4', 'h-4', 'shrink-0')} />{error}
                   </div>
                 )}
 
                 <form className="space-y-4" onSubmit={handleAuth}>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Full Name</label>
+                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Full Name</label>
                     <motion.div
                       key={`signup-name-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-name") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="h-4 w-4 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><User className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
                       <input type="text" tabIndex={1} value={name} onChange={e => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Email Address</label>
+                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Email Address</label>
                     <motion.div
                       key={`signup-email-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Mail className="h-4 w-4 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Mail className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
                       <input type="email" tabIndex={2} value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClassSm, false)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
                     </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Password</label>
+                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Password</label>
                     <motion.div
                       key={`signup-password-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
                       <input type={showSignupPassword ? "text" : "password"} tabIndex={3} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         tabIndex={-1}
                         onClick={() => setShowSignupPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-3 text-foreground/50 hover:text-foreground"
+                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-3', 'text-foreground/50', 'hover:text-foreground')}
                       >
-                        {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showSignupPassword ? <EyeOff className={cn('h-4', 'w-4')} /> : <Eye className={cn('h-4', 'w-4')} />}
                       </button>
                     </motion.div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/60 ml-1 uppercase tracking-wider">Confirm Password</label>
+                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Confirm Password</label>
                     <motion.div
                       key={`signup-confirm-password-${shakeNonce}`}
                       animate={shakeTargets.includes("signup-confirm-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
                       transition={{ duration: 0.35 }}
                       className="relative"
                     >
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="h-4 w-4 text-foreground/50" /></div>
+                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
                       <input type={showSignupConfirmPassword ? "text" : "password"} tabIndex={4} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
                       <button
                         type="button"
                         tabIndex={-1}
                         onClick={() => setShowSignupConfirmPassword((value) => !value)}
-                        className="absolute inset-y-0 right-0 pr-3 text-foreground/50 hover:text-foreground"
+                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-3', 'text-foreground/50', 'hover:text-foreground')}
                       >
-                        {showSignupConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showSignupConfirmPassword ? <EyeOff className={cn('h-4', 'w-4')} /> : <Eye className={cn('h-4', 'w-4')} />}
                       </button>
                     </motion.div>
                   </div>
@@ -485,17 +489,17 @@ export default function AuthPage() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     disabled={loading}
-                    className="w-full h-12 mt-4 bg-black text-white font-bold rounded-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.05)] disabled:opacity-60 disabled:cursor-wait"
+                    className={cn('w-full', 'h-12', 'mt-4', 'bg-black', 'text-white', 'font-bold', 'rounded-xl', 'hover:scale-[1.02]', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-[0_0_20px_rgba(255,255,255,0.05)]', 'disabled:opacity-60', 'disabled:cursor-wait')}
                   >
-                    {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className="w-4 h-4" /></>}
+                    {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className={cn('w-4', 'h-4')} /></>}
                   </motion.button>
 
                   <GoogleButton refEl={googleSignupButtonRef} onGoogleOAuth={handleGoogleOAuth} loading={loading} />
                 </form>
 
-                <p className="mt-8 text-center text-foreground/50 text-sm font-medium md:hidden">
+                <p className={cn('mt-8', 'text-center', 'text-foreground/50', 'text-sm', 'font-medium', 'md:hidden')}>
                   Already have an account?{" "}
-                  <button type="button" onClick={() => switchMode(true)} className="text-foreground/80 font-semibold hover:text-foreground transition-colors">Sign in</button>
+                  <button type="button" onClick={() => switchMode(true)} className={cn('text-foreground/80', 'font-semibold', 'hover:text-foreground', 'transition-colors')}>Sign in</button>
                 </p>
               </motion.div>
             )}
@@ -506,28 +510,28 @@ export default function AuthPage() {
         <div
           className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background/5 backdrop-blur-xl transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
         >
-          <div className="absolute inset-0 flex items-center justify-center opacity-30">
-            <div className="absolute w-200 h-200 border border-foreground/5 rounded-full animate-[spin_40s_linear_infinite]" />
-            <div className="absolute w-150 h-150 border border-foreground/10 rounded-full animate-[spin_30s_linear_infinite_reverse]" />
-            <div className="absolute w-100 h-100 bg-foreground/5 blur-[80px] rounded-full pointer-events-none" />
+          <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'opacity-30')}>
+            <div className={cn('absolute', 'w-200', 'h-200', 'border', 'border-foreground/5', 'rounded-full', 'animate-[spin_40s_linear_infinite]')} />
+            <div className={cn('absolute', 'w-150', 'h-150', 'border', 'border-foreground/10', 'rounded-full', 'animate-[spin_30s_linear_infinite_reverse]')} />
+            <div className={cn('absolute', 'w-100', 'h-100', 'bg-foreground/5', 'blur-[80px]', 'rounded-full', 'pointer-events-none')} />
           </div>
 
           <AnimatePresence mode="wait">
             {isLogin ? (
-              <motion.div key="branding-login" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className="relative z-10 flex flex-col items-center max-w-sm">
-                <Disc className="w-20 h-20 text-foreground/80 mb-8 animate-[spin_10s_linear_infinite]" />
-                <h2 className="text-4xl font-black mb-4 text-foreground">New Here?</h2>
-                <p className="text-foreground/60 mb-10 text-lg leading-relaxed">Sign up to host rooms, save your history, and turn your devices into the ultimate soundsystem.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(false)} className="h-12 px-8 rounded-full border border-white/20 text-foreground font-bold hover:bg-foreground/10 transition-colors">
+              <motion.div key="branding-login" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className={cn('relative', 'z-10', 'flex', 'flex-col', 'items-center', 'max-w-sm')}>
+                <Disc className={cn('w-20', 'h-20', 'text-foreground/80', 'mb-8', 'animate-[spin_10s_linear_infinite]')} />
+                <h2 className={cn('text-4xl', 'font-black', 'mb-4', 'text-foreground')}>New Here?</h2>
+                <p className={cn('text-foreground/60', 'mb-10', 'text-lg', 'leading-relaxed')}>Sign up to host rooms, save your history, and turn your devices into the ultimate soundsystem.</p>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(false)} className={cn('h-12', 'px-8', 'rounded-full', 'border', 'border-white/20', 'text-foreground', 'font-bold', 'hover:bg-foreground/10', 'transition-colors')}>
                   Create an Account
                 </motion.button>
               </motion.div>
             ) : (
-              <motion.div key="branding-signup" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className="relative z-10 flex flex-col items-center max-w-sm">
-                <Info className="w-16 h-16 text-foreground/80 mb-8" />
-                <h2 className="text-4xl font-black mb-4 text-foreground">Welcome Back!</h2>
-                <p className="text-foreground/60 mb-10 text-lg leading-relaxed">Already a part of the platform? Log back in to access your synced sessions and continue the party.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(true)} className="h-12 px-8 rounded-full border border-white/20 text-foreground font-bold hover:bg-foreground/10 transition-colors">
+              <motion.div key="branding-signup" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className={cn('relative', 'z-10', 'flex', 'flex-col', 'items-center', 'max-w-sm')}>
+                <Info className={cn('w-16', 'h-16', 'text-foreground/80', 'mb-8')} />
+                <h2 className={cn('text-4xl', 'font-black', 'mb-4', 'text-foreground')}>Welcome Back!</h2>
+                <p className={cn('text-foreground/60', 'mb-10', 'text-lg', 'leading-relaxed')}>Already a part of the platform? Log back in to access your synced sessions and continue the party.</p>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(true)} className={cn('h-12', 'px-8', 'rounded-full', 'border', 'border-white/20', 'text-foreground', 'font-bold', 'hover:bg-foreground/10', 'transition-colors')}>
                   Sign In Instead
                 </motion.button>
               </motion.div>
@@ -548,23 +552,23 @@ function GoogleButton({
   loading: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 w-full my-4 py-2">
+    <div className={cn('flex', 'flex-col', 'items-center', 'gap-3', 'w-full', 'my-4', 'py-2')}>
       {/* Divider */}
-      <div className="flex items-center gap-3 w-full">
-        <div className="flex-1 h-px bg-foreground/10" />
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/30">or</span>
-        <div className="flex-1 h-px bg-foreground/10" />
+      <div className={cn('flex', 'items-center', 'gap-3', 'w-full')}>
+        <div className={cn('flex-1', 'h-px', 'bg-foreground/10')} />
+        <span className={cn('text-[11px]', 'font-semibold', 'uppercase', 'tracking-widest', 'text-foreground/30')}>or</span>
+        <div className={cn('flex-1', 'h-px', 'bg-foreground/10')} />
       </div>
 
       {/* Primary OAuth Button */}
-      <div className="relative w-full">
+      <div className={cn('relative', 'w-full')}>
         <button
           type="button"
           disabled={loading}
           onClick={onGoogleOAuth}
-          className="w-full h-14 flex items-center justify-center gap-3 rounded-full bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 active:scale-[0.98] text-foreground text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-wait shadow-sm cursor-pointer"
+          className={cn('w-full', 'h-14', 'flex', 'items-center', 'justify-center', 'gap-3', 'rounded-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:bg-foreground/10', 'active:scale-[0.98]', 'text-foreground', 'text-sm', 'font-semibold', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait', 'shadow-sm', 'cursor-pointer')}
         >
-          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+          <svg className={cn('w-5', 'h-5', 'shrink-0')} viewBox="0 0 24 24" aria-hidden="true">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
