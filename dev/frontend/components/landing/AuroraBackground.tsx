@@ -7,36 +7,36 @@ export function AuroraBackground() {
       {/* Opaque dark matte base — covers root layout background */}
       <div className="absolute inset-0 bg-[#050507]" />
 
-      {/* Aurora Layer 1 — Mint (slow, top-left drift) */}
+      {/* Aurora Layer 1 — Mint (Brightened & Vibrant) */}
       <div
-        className="absolute w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] top-[-20%] left-[-10%] rounded-full opacity-[0.12] md:opacity-[0.18] mix-blend-screen"
+        className="absolute w-[85vw] h-[85vw] max-w-[900px] max-h-[900px] top-[-20%] left-[-10%] rounded-full opacity-[0.35] md:opacity-[0.50] mix-blend-screen"
         style={{
           background:
-            "radial-gradient(circle, #00FFB2 0%, transparent 70%)",
+            "radial-gradient(circle, #00FFB2 0%, #10b981 50%, transparent 70%)",
           filter: "blur(60px)",
           animation: "aurora-drift-1 20s ease-in-out infinite",
           willChange: "transform",
         }}
       />
 
-      {/* Aurora Layer 2 — Violet (medium, center-right drift) */}
+      {/* Aurora Layer 2 — Violet/Cyan (Brightened & Vibrant) */}
       <div
-        className="absolute w-[70vw] h-[70vw] max-w-[700px] max-h-[700px] top-[30%] right-[-15%] rounded-full opacity-[0.10] md:opacity-[0.15] mix-blend-screen"
+        className="absolute w-[75vw] h-[75vw] max-w-[800px] max-h-[800px] top-[30%] right-[-15%] rounded-full opacity-[0.30] md:opacity-[0.45] mix-blend-screen"
         style={{
           background:
-            "radial-gradient(circle, #7B61FF 0%, transparent 70%)",
-          filter: "blur(80px)",
+            "radial-gradient(circle, #38bdf8 0%, #7B61FF 50%, transparent 70%)",
+          filter: "blur(75px)",
           animation: "aurora-drift-2 15s ease-in-out infinite",
           willChange: "transform",
         }}
       />
 
-      {/* Aurora Layer 3 — Coral (fast, bottom drift) */}
+      {/* Aurora Layer 3 — Coral/Emerald (Brightened) */}
       <div
-        className="absolute w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] bottom-[-10%] left-[20%] rounded-full opacity-[0.08] md:opacity-[0.12] mix-blend-screen"
+        className="absolute w-[65vw] h-[65vw] max-w-[700px] max-h-[700px] bottom-[-10%] left-[20%] rounded-full opacity-[0.25] md:opacity-[0.38] mix-blend-screen"
         style={{
           background:
-            "radial-gradient(circle, #FF3D71 0%, transparent 70%)",
+            "radial-gradient(circle, #059669 0%, #FF3D71 55%, transparent 70%)",
           filter: "blur(70px)",
           animation: "aurora-drift-3 12s ease-in-out infinite",
           willChange: "transform",

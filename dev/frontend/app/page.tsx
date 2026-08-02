@@ -16,6 +16,7 @@ import { FeaturesExplanation } from "../components/FeaturesExplanation";
 import { getSocket } from "../lib/socket";
 import { roomsApi } from "../lib/api";
 import { cn } from "@/lib/utils";
+import { DynamicAuroraButton } from "../components/DynamicAuroraButton";
 
 
 const MouseGradient = dynamic(() => import("../components/MouseGradient").then(mod => mod.MouseGradient), { ssr: false });
@@ -116,19 +117,19 @@ export default function LandingPage() {
         <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} className={cn('flex', 'items-center', 'gap-3', 'md:gap-4')}>
           {user ? (
             <Magnetic>
-              <Link href="/hub" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full glass-panel flex items-center justify-center text-sm font-bold tracking-widest uppercase hover:scale-105 transition-all`}>
+              <DynamicAuroraButton href="/hub" className={`${isScrolled ? 'h-10 px-6 text-xs' : 'h-12 px-8 text-xs md:text-sm'}`}>
                 Launch Hub
-              </Link>
+              </DynamicAuroraButton>
             </Magnetic>
           ) : (
             <>
-            <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-10 px-4' : 'h-12 px-6'} rounded-full items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:bg-foreground/5 transition-all`}>
+            <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-10 px-4' : 'h-12 px-6'} rounded-full items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase text-foreground/80 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent transition-all duration-300`}>
               Login
             </Link>
             <Magnetic>
-              <Link href="/login" className={`${isScrolled ? 'h-10 px-6' : 'h-12 px-8'} rounded-full bg-foreground text-background flex items-center justify-center text-xs md:text-sm font-bold tracking-widest uppercase hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg`}>
+              <DynamicAuroraButton href="/login" className={`${isScrolled ? 'h-10 px-6 text-xs' : 'h-12 px-8 text-xs md:text-sm'}`}>
                 Start Session
-              </Link>
+              </DynamicAuroraButton>
             </Magnetic>
             </>
           )}
@@ -462,9 +463,9 @@ export default function LandingPage() {
                  <label htmlFor="message" className={cn('block', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/60', 'mb-2')}>Message</label>
                   <textarea id="message" rows={4} className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'resize-none', 'placeholder:text-foreground/40')} placeholder="How can we help?" />
                </div>
-               <button className={cn('w-full', 'h-14', 'bg-foreground', 'text-background', 'rounded-xl', 'font-bold', 'tracking-widest', 'uppercase', 'flex', 'items-center', 'justify-center', 'gap-2', 'hover:scale-[1.02]', 'active:scale-[0.98]', 'transition-all', 'mt-2', 'shadow-lg')}>
-                 <Send className={cn('w-4', 'h-4')} /> Send Message
-               </button>
+                <DynamicAuroraButton type="submit" className="w-full h-14 rounded-2xl gap-3 text-xs md:text-sm mt-2">
+                  <Send className="w-4 h-4 text-zinc-950 fill-zinc-950" /> Send Message
+                </DynamicAuroraButton>
              </div>
            </div>
         </div>

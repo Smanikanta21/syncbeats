@@ -3,6 +3,16 @@ name: Syncbeats CD
 on:
   push:
     branches: [main, nodejs-dev]
+    paths:
+      - 'dev/syncbeats-server/**'
+      - 'dev/db-visualizer/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/syncbeats-CD.yml'
+    paths-ignore:
+      - 'dev/frontend/**'
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 concurrency:
