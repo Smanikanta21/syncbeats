@@ -230,7 +230,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
 
-      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-32"}>
+      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
         {(!loading && user) ? children : null}
       </div>
 

@@ -1456,7 +1456,12 @@ export function DynamicIsland() {
       : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
 
     return (
-      <div className={cn('fixed', 'top-4', 'sm:top-6', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}>
+      <div 
+        className={cn('fixed', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}
+        style={{
+          top: "max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+        }}
+      >
         <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
           <Link href="/hub" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
             <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>

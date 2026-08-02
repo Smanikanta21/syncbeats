@@ -93,7 +93,12 @@ export default function LandingPage() {
 
 
       {/* Dynamic Snapping Navbar Wrapper */}
-      <div className={cn('fixed', 'top-0', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none', 'pt-6')}>
+      <div 
+        className={cn('fixed', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}
+        style={{
+          top: "max(1rem, env(safe-area-inset-top, 0px))",
+        }}
+      >
         <motion.header 
           initial={false}
           animate={{
