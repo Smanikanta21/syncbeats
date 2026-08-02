@@ -12,11 +12,11 @@
  * The tier is computed once and never changes during a session.
  */
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 export type PerfTier = "low" | "mid" | "high";
 
-function detectTier(): PerfTier {
+function detectInitialTier(): PerfTier {
   if (typeof window === "undefined") return "high"; // SSR — assume full quality
 
   // Respect user's explicit accessibility preference first
@@ -24,7 +24,6 @@ function detectTier(): PerfTier {
   if (prefersReduced) return "low";
 
   const cores = navigator.hardwareConcurrency ?? 4;
-  // navigator.deviceMemory is not in all TS libs yet, cast via any
   const memGb: number = (navigator as any).deviceMemory ?? 4;
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -38,8 +37,6 @@ function detectTier(): PerfTier {
   return "high";
 }
 
-let _cachedTier: PerfTier | null = null;
-
 export function useDevicePerf(): {
   tier: PerfTier;
   isLow: boolean;
@@ -47,24 +44,82 @@ export function useDevicePerf(): {
   isHigh: boolean;
   /** Target ms between rAF frames — 16ms (60fps) for high, 33ms (30fps) for mid/low */
   frameInterval: number;
-  /** Max blobs to render */
-  maxBlobs: number;
-  /** Whether to skip the wander position update (heavier per-frame work) */
-  skipWander: boolean;
+  /** Blur class for performance optimization */
+  blurClass: string;
+  /** Backdrop blur class */
+  backdropBlurClass: string;
+  /** Current measured real-time FPS */
+  fps: number;
 } {
-  const tier = useMemo(() => {
-    if (_cachedTier) return _cachedTier;
-    _cachedTier = detectTier();
-    return _cachedTier;
+  const [tier, setTier] = useState<PerfTier>(() => detectInitialTier());
+  const [fps, setFps] = useState<number>(60);
+  const frameTimesRef = useRef<number[]>([]);
+  const lastTimeRef = useRef<number>(typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+  // Real-time FPS monitoring to auto-throttle on CPU slowdown / low-end devices
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let animId: number;
+    let lowFpsCount = 0;
+    let highFpsCount = 0;
+
+    const measureFps = (now: number) => {
+      const delta = now - lastTimeRef.current;
+      lastTimeRef.current = now;
+
+      if (delta > 0 && delta < 200) {
+        frameTimesRef.current.push(1000 / delta);
+        if (frameTimesRef.current.length > 60) {
+          frameTimesRef.current.shift();
+        }
+      }
+
+      // Check average FPS every 60 frames (~1 sec)
+      if (frameTimesRef.current.length >= 30) {
+        const avgFps = Math.round(
+          frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length
+        );
+        setFps(avgFps);
+
+        // Auto-throttle downgrade if FPS drops below 35 FPS consistently
+        if (avgFps < 35) {
+          lowFpsCount++;
+          highFpsCount = 0;
+          if (lowFpsCount >= 3) { // 3 consecutive low readings
+            setTier((prev) => (prev === "high" ? "mid" : "low"));
+            lowFpsCount = 0;
+          }
+        } else if (avgFps > 55) {
+          highFpsCount++;
+          lowFpsCount = 0;
+          if (highFpsCount >= 8) { // 8 consecutive high readings
+            setTier((prev) => {
+              const initial = detectInitialTier();
+              if (prev === "low" && initial !== "low") return "mid";
+              if (prev === "mid" && initial === "high") return "high";
+              return prev;
+            });
+            highFpsCount = 0;
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(measureFps);
+    };
+
+    animId = requestAnimationFrame(measureFps);
+    return () => cancelAnimationFrame(animId);
   }, []);
 
-  return {
+  return useMemo(() => ({
     tier,
     isLow: tier === "low",
     isMid: tier === "mid",
     isHigh: tier === "high",
-    frameInterval: tier === "high" ? 16 : 33, // ~60fps vs ~30fps
-    maxBlobs: tier === "low" ? 2 : tier === "mid" ? 3 : 6,
-    skipWander: tier === "low",
-  };
+    frameInterval: tier === "high" ? 16 : 33,
+    blurClass: tier === "low" ? "blur-[20px]" : tier === "mid" ? "blur-[40px]" : "blur-[60px]",
+    backdropBlurClass: tier === "low" ? "backdrop-blur-md" : tier === "mid" ? "backdrop-blur-xl" : "backdrop-blur-3xl",
+    fps,
+  }), [tier, fps]);
 }

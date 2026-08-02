@@ -50,7 +50,8 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
       const deltaMs = Math.min(100, timestamp - s.prevTimestamp);
       s.prevTimestamp = timestamp;
 
-      if (!audioContext || (!audioContext.isPlaying && !isRoomPlaying)) return;
+      const isPlaying = isRoomPlaying && (audioContext ? audioContext.isPlaying : true);
+      if (!isPlaying) return;
 
       const data = audioContext.getRawAudioData ? audioContext.getRawAudioData() : null;
       let isDataActive = false;
@@ -61,21 +62,25 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
         if (sum > 5) isDataActive = true;
       }
 
+      const isDev = process.env.NEXT_PUBLIC_ENV !== "production" && (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ENV === "development");
+
       // Fallback: If WebAudio FFT data is unavailable or zero (e.g. YouTube stream or CORS limitation),
-      // run a rhythmic beat pulse clock so ambient lighting and spatial nodes ALWAYS dance to the music!
+      // run a smooth rhythmic beat pulse clock so ambient lighting and spatial nodes dance to the music!
       if (!isDataActive || !data) {
         if (!s.lastSyntheticBeatTime) s.lastSyntheticBeatTime = timestamp;
-        if (timestamp - s.lastSyntheticBeatTime > 480) { // ~125 BPM beat pulse
+        const targetInterval = isDev ? 480 : 500; // ~120-125 BPM
+        if (timestamp - s.lastSyntheticBeatTime > targetInterval) {
           s.lastSyntheticBeatTime = timestamp;
           s.syntheticBeatCount = (s.syntheticBeatCount || 0) + 1;
 
           const pattern: Array<"bass" | "mid" | "treble"> = ["bass", "mid", "bass", "treble"];
           const beatType = pattern[s.syntheticBeatCount % pattern.length];
+          const intensity = isDev ? 0.7 + Math.random() * 0.3 : 0.8; // Constant smooth intensity in prod
 
           emitBeat({
             timestamp,
             beatType,
-            intensity: 0.7 + Math.random() * 0.3,
+            intensity,
             source: "realtime-fft",
           });
         }
@@ -156,14 +161,19 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
       });
 
       if (triggeredGroups.length > 0) {
-        // If multiple groups fire within this 16ms frame (simultaneous hit), pick the most surprising one
+        // If multiple groups fire within this 16ms frame, pick the most dominant acoustic onset
         triggeredGroups.sort((a, b) => b.maxRatio - a.maxRatio);
         const winner = triggeredGroups[0];
         
+        // Smooth intensity clamping in production mode for silky visual transitions
+        const finalIntensity = isDev 
+          ? winner.intensity 
+          : Math.min(1, Math.max(0.35, winner.intensity));
+
         emitBeat({
           timestamp: audioContext.audioCtx?.currentTime ? audioContext.audioCtx.currentTime * 1000 : performance.now(),
           beatType: winner.type,
-          intensity: winner.intensity,
+          intensity: finalIntensity,
           source: 'realtime-fft'
         });
       }

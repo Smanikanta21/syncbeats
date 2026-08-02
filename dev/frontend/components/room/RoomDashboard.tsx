@@ -234,7 +234,7 @@ export function RoomDashboard({
 
   const queue = snapshot?.queue ?? [];
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
-  const isRoomReady = participants.every(p => p.isReady);
+  const isRoomReady = (participants ?? []).every(p => p.isReady);
 
   useBeatScheduler(currentQueueItem?.trackUrl);
   // Live Session Uptime State (updates every second when room is active)
@@ -274,12 +274,12 @@ export function RoomDashboard({
   }, [accumTime, sessDurationMs, createdAt]);
 
   useEffect(() => {
-    if (!snapshot || participants.length === 0) return;
+    if (!snapshot || (participants ?? []).length === 0) return;
     const interval = setInterval(() => {
       setLiveSessionSec(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [snapshot, participants.length]);
+  }, [snapshot, participants?.length]);
 
   const formattedSessionTime = (() => {
     const hrs = Math.floor(liveSessionSec / 3600);
@@ -302,29 +302,7 @@ export function RoomDashboard({
     ? getTrackThumbnailUrl(currentQueueItem)
     : getTrackThumbnailUrl({ coverUrl: audioCoverUrl || undefined });
 
-  useEffect(() => {
-    const thumbUrl = currentThumbnail;
-    const trackId = currentTrackId || audioTrackTitle || thumbUrl;
-    if (!thumbUrl || !trackId || lastExtractedTrackRef.current === trackId) return;
 
-    lastExtractedTrackRef.current = trackId;
-    if (!settings.dynamicBackgroundColors) return;
-
-    extractTwoColorsFromImage(thumbUrl).then(([c1, c2]) => {
-      if (c1 && c2) {
-        updateSettings({
-          gradientSettings: {
-            nodes: [
-              { id: "1", color: c1, position: 0, x: 25, y: 30 },
-              { id: "2", color: c2, position: 50, x: 75, y: 40 },
-              { id: "3", color: c1, position: 100, x: 50, y: 75 }
-            ]
-          }
-        });
-      }
-    }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrackId, currentThumbnail, audioTrackTitle]);
 
   // Clear jump loading state when the queue actually updates from server
   const prevQueueRef = useRef(queue);

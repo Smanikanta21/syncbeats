@@ -177,6 +177,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setupAudioGraph();
+      if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+        setAudioUnlocked(true);
+      }
     }
   }, [setupAudioGraph]);
 
@@ -283,29 +286,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }, 50);
   }, []);
 
-  // ── Media Session & Background Keep-Alive Audio Engine ─────────────────────
-  const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!keepAliveAudioRef.current) {
-      const audio = new Audio();
-      // Valid silent WAV data URI for OS system media session
-      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
-      audio.loop = true;
-      audio.volume = 0.01; // Non-zero to maintain OS background media privileges
-      keepAliveAudioRef.current = audio;
-    }
-  }, []);
-
+  // ── Media Session Integration ─────────────────────
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
 
     if (isPlaying) {
-      keepAliveAudioRef.current?.play().catch(() => {});
       navigator.mediaSession.playbackState = "playing";
     } else {
-      keepAliveAudioRef.current?.pause();
       navigator.mediaSession.playbackState = "paused";
     }
   }, [isPlaying]);
@@ -339,7 +326,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   useEffect(() => {
     const unlock = () => { 
       unlockAudio();
-      keepAliveAudioRef.current?.play().catch(() => {});
     };
     document.addEventListener('touchstart', unlock, { passive: true });
     document.addEventListener('click', unlock, { passive: true });
@@ -895,8 +881,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [audioUnlocked]);
 
   useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = Math.max(0, Math.min(1, volume / 100));
+    if (gainNodeRef.current && audioCtxRef.current) {
+      const targetGain = Math.max(0, Math.min(1, volume / 100));
+      const currTime = audioCtxRef.current.currentTime;
+      try {
+        gainNodeRef.current.gain.cancelScheduledValues(currTime);
+        gainNodeRef.current.gain.setValueAtTime(gainNodeRef.current.gain.value, currTime);
+        gainNodeRef.current.gain.linearRampToValueAtTime(targetGain, currTime + 0.05);
+      } catch (err) {
+        gainNodeRef.current.gain.value = targetGain;
+      }
     }
   }, [volume]);
 

@@ -50,6 +50,7 @@ export interface AppSettings {
   reducedMotion: boolean;
   ambientEnabled?: boolean;
   showDebugAudio?: boolean;
+  liquidMotion?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -92,6 +93,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reducedMotion: false,
   ambientEnabled: true,
   showDebugAudio: false,
+  liquidMotion: true,
 };
 
 const SETTINGS_STORAGE_KEY = "syncbeats_app_settings";
@@ -169,6 +171,18 @@ export function useSettings() {
             ...DEFAULT_SETTINGS.islandCustomizer,
             ...(parsed.islandCustomizer || {}),
           },
+          gradientSettings: {
+            ...DEFAULT_SETTINGS.gradientSettings,
+            ...(parsed.gradientSettings || {}),
+          },
+          ambientColors: {
+            ...DEFAULT_SETTINGS.ambientColors,
+            ...(parsed.ambientColors || {}),
+          },
+          ambientPositions: {
+            ...DEFAULT_SETTINGS.ambientPositions,
+            ...(parsed.ambientPositions || {}),
+          },
         });
       }
     };
@@ -186,6 +200,18 @@ export function useSettings() {
             islandCustomizer: {
               ...DEFAULT_SETTINGS.islandCustomizer,
               ...(parsed.islandCustomizer || {}),
+            },
+            gradientSettings: {
+              ...DEFAULT_SETTINGS.gradientSettings,
+              ...(parsed.gradientSettings || {}),
+            },
+            ambientColors: {
+              ...DEFAULT_SETTINGS.ambientColors,
+              ...(parsed.ambientColors || {}),
+            },
+            ambientPositions: {
+              ...DEFAULT_SETTINGS.ambientPositions,
+              ...(parsed.ambientPositions || {}),
             },
           });
         }
@@ -207,33 +233,54 @@ export function useSettings() {
   }, [settings]);
 
   const userSettings = auth?.user?.settings;
-  const isInitialDbSyncRef = useRef(true);
 
-  // Sync settings with the database user object once on initial mount
+  // Sync settings with the database user object when available
   useEffect(() => {
-    if (userSettings && isInitialDbSyncRef.current) {
-      isInitialDbSyncRef.current = false;
-      try {
-        const dbSettings = typeof userSettings === "string" 
-          ? JSON.parse(userSettings) 
-          : userSettings;
-        
-        if (dbSettings && typeof dbSettings === "object") {
-          const localStr = typeof window !== "undefined" ? localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
-          let merged = { ...DEFAULT_SETTINGS, ...dbSettings };
-          if (localStr) {
-            try {
-              const localSettings = JSON.parse(localStr);
-              merged = { ...merged, ...localSettings };
-            } catch {}
-          }
-          setSettingsState(merged);
-          settingsRef.current = merged;
-          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+    if (!userSettings) return;
+    try {
+      const dbSettings = typeof userSettings === "string" 
+        ? JSON.parse(userSettings) 
+        : userSettings;
+      
+      if (dbSettings && typeof dbSettings === "object") {
+        const localStr = typeof window !== "undefined" ? localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
+        let localSettings: any = {};
+        if (localStr) {
+          try {
+            localSettings = JSON.parse(localStr);
+          } catch {}
         }
-      } catch (e) {
-        console.warn("Failed to parse DB settings", e);
+        const merged: AppSettings = {
+          ...DEFAULT_SETTINGS,
+          ...dbSettings,
+          ...localSettings,
+          islandCustomizer: {
+            ...DEFAULT_SETTINGS.islandCustomizer,
+            ...(dbSettings.islandCustomizer || {}),
+            ...(localSettings.islandCustomizer || {}),
+          },
+          gradientSettings: {
+            ...DEFAULT_SETTINGS.gradientSettings,
+            ...(dbSettings.gradientSettings || {}),
+            ...(localSettings.gradientSettings || {}),
+          },
+          ambientColors: {
+            ...DEFAULT_SETTINGS.ambientColors,
+            ...(dbSettings.ambientColors || {}),
+            ...(localSettings.ambientColors || {}),
+          },
+          ambientPositions: {
+            ...DEFAULT_SETTINGS.ambientPositions,
+            ...(dbSettings.ambientPositions || {}),
+            ...(localSettings.ambientPositions || {}),
+          },
+        };
+        setSettingsState(merged);
+        settingsRef.current = merged;
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
       }
+    } catch (e) {
+      console.warn("Failed to parse DB settings", e);
     }
   }, [userSettings]);
 
@@ -244,7 +291,7 @@ export function useSettings() {
         clearTimeout(syncTimeoutRef.current);
         if (auth?.user) {
           authApi.updateSettings(settingsRef.current)
-            .then(() => auth.patchUserSettings(settingsRef.current))
+            .then(() => auth.patchUserSettings?.(settingsRef.current))
             .catch(() => {});
         }
       }
@@ -272,6 +319,11 @@ export function useSettings() {
     settingsRef.current = newSettings;
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
     
+    // Immediately patch auth context user.settings in memory so all hook subscribers stay updated
+    if (auth?.patchUserSettings) {
+      auth.patchUserSettings(newSettings);
+    }
+
     // Mark this as an internal update so our own custom event handler ignores it
     isInternalUpdateRef.current = true;
     window.dispatchEvent(new Event("syncbeats-settings-updated"));
@@ -283,7 +335,7 @@ export function useSettings() {
       syncTimeoutRef.current = setTimeout(() => {
         authApi.updateSettings(newSettings)
           .then(() => {
-            auth.patchUserSettings(newSettings);
+            auth.patchUserSettings?.(newSettings);
           })
           .catch((err) => {
             console.warn("Failed to sync settings to server:", err);

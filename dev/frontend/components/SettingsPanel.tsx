@@ -9,6 +9,7 @@ interface SettingsPanelProps {
   onClose?: () => void;
   onlyVisuals?: boolean;
   onInteractionStateChange?: (interacting: boolean) => void;
+  isEmbedded?: boolean;
 }
 
 const DEFAULT_NODE_POSITIONS: Record<number, { x: number; y: number }[]> = {
@@ -345,7 +346,12 @@ function RoomPreview({
   );
 }
 
-export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionStateChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  onClose,
+  onlyVisuals = false,
+  onInteractionStateChange,
+  isEmbedded = false,
+}: SettingsPanelProps) {
   const { settings, updateSettings: rawUpdateSettings } = useSettings();
   const { user, updateSettings: saveDbSettings } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
@@ -355,6 +361,10 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
   const [hasUserEdited, setHasUserEdited] = useState(false);
 
   const baselineSettingsRef = useRef<string>(JSON.stringify(settings));
+
+  const isDev = process.env.NEXT_PUBLIC_ENV !== "production" && (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ENV === "development");
+  const liquidMotion = settings.liquidMotion ?? true;
+  const showSpatialCanvas = isDev || !liquidMotion;
 
   // If user hasn't edited anything yet, update baseline whenever settings sync from DB/auth
   useEffect(() => {
@@ -613,8 +623,13 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
       </div>
 
       <div 
-        className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'space-y-6', 'pr-2', 'custom-scrollbar', 'pb-10', 'mt-2', 'overscroll-contain')} 
-        data-lenis-prevent="true"
+        className={cn(
+          'space-y-6 mt-2',
+          isEmbedded
+            ? 'w-full'
+            : 'flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar pb-10 overscroll-contain'
+        )} 
+        {...(!isEmbedded && { 'data-lenis-prevent': 'true' })}
       >
         
         {/* Gradient & Lighting Theme Editor */}
@@ -633,17 +648,19 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
             Select a pro palette preset or customize gradient color stops to dynamically style your room's ambient lighting and visualizer background.
           </p>
 
-          {/* Interactive Demo Room Canvas with Draggable 2D Light Nodes */}
-          <div className="mb-5">
-            <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1.5 flex items-center justify-between">
-              <span>Interactive Demo Room Screen (Spatial Lighting)</span>
-              <span className="text-[9px] text-foreground/50 font-bold uppercase">Drag Nodes to Reposition</span>
+          {/* Interactive Demo Room Canvas with Draggable 2D Light Nodes (Development or Static Node Mode Only) */}
+          {showSpatialCanvas && (
+            <div className="mb-5">
+              <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1.5 flex items-center justify-between">
+                <span>Interactive Demo Room Screen (Spatial Lighting)</span>
+                <span className="text-[9px] text-foreground/50 font-bold uppercase">Drag Nodes to Reposition</span>
+              </div>
+              <RoomPreview
+                onInteractionStateChange={onInteractionStateChange}
+                onUpdateSettings={updateSettings}
+              />
             </div>
-            <RoomPreview
-              onInteractionStateChange={onInteractionStateChange}
-              onUpdateSettings={updateSettings}
-            />
-          </div>
+          )}
 
           {/* Live Gradient Preview Bar */}
           <div className="mb-5">
@@ -703,7 +720,7 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
           </div>
 
           {/* Audio Visualizer Debug Overlay (HUD) Toggle Switch (Dev Only) */}
-          {process.env.NODE_ENV === "development" && (
+          {process.env.NEXT_PUBLIC_ENV !== "production" && process.env.NODE_ENV === "development" && (
             <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10 mb-5">
               <div className="space-y-0.5 pr-2">
                 <div className="flex items-center gap-2">
@@ -731,6 +748,34 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
               </button>
             </div>
           )}
+
+          {/* Auto Liquid Motion Drift Toggle */}
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10 mb-5">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold text-foreground">Auto Liquid Motion Drift</span>
+              </div>
+              <span className="text-[10px] text-foreground/50 mt-0.5 max-w-[280px]">
+                Nodes smoothly glide and flow across the room like liquid lava in sync with the track's beat.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateSettings({ liquidMotion: !(settings.liquidMotion ?? true) })}
+              className={cn(
+                "relative w-12 h-6 rounded-full transition-colors duration-200 border border-foreground/10 cursor-pointer p-0.5 shrink-0",
+                (settings.liquidMotion ?? true) ? "bg-amber-500 border-amber-400" : "bg-foreground/10"
+              )}
+            >
+              <div
+                className={cn(
+                  "w-4 h-4 rounded-full bg-white transition-transform duration-200 shadow-md",
+                  (settings.liquidMotion ?? true) ? "translate-x-6" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
 
           {/* Quick Color Count Presets Switcher */}
           <div className="mb-5 p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10">
@@ -1003,25 +1048,6 @@ export function SettingsPanel({ onClose, onlyVisuals = false, onInteractionState
             </div>
           </div>
           <div className={cn('mt-6')}>
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/5 mb-4">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-foreground">Dynamic Colors from Cover Art</span>
-                <span className="text-[10px] text-foreground/50 mt-0.5 max-w-[200px]">Automatically extract and use colors from the currently playing track's artwork.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => updateSettings({ dynamicBackgroundColors: !settings.dynamicBackgroundColors })}
-                className={`relative w-12 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-foreground/20 shrink-0 ${
-                  settings.dynamicBackgroundColors ? "bg-emerald-500 border-emerald-400" : "bg-foreground/10"
-                }`}
-              >
-                <span
-                  className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 absolute top-1 ${
-                    settings.dynamicBackgroundColors ? "translate-x-7" : "translate-x-1"
-                  }`}
-                />
-              </button>
-            </div>
             <button 
               onClick={() => updateSettings({
                 gradientSettings: {

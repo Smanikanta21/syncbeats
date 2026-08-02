@@ -616,9 +616,15 @@ export function createSpotifyRoutes(): Router {
 
     try {
       // 1. Check cache
-      const cached = await prisma.beatEventsCache.findUnique({
-        where: { spotifyId: spotifyId }
-      });
+      let cached: any = null;
+      try {
+        cached = await prisma.beatEventsCache.findUnique({
+          where: { spotifyId: spotifyId }
+        });
+      } catch (err) {
+        // Table beat_events_cache might not exist in database yet; continue gracefully
+      }
+
       if (cached) {
         res.json({ events: cached.events });
         return;
@@ -665,13 +671,17 @@ export function createSpotifyRoutes(): Router {
         });
       }
 
-      // 4. Save to cache
-      await prisma.beatEventsCache.create({
-        data: {
-          spotifyId: spotifyId,
-          events: events
-        }
-      });
+      // 4. Save to cache (if table exists)
+      try {
+        await prisma.beatEventsCache.create({
+          data: {
+            spotifyId: spotifyId,
+            events: events
+          }
+        });
+      } catch (err) {
+        // Ignore cache save error if table is missing
+      }
 
       res.json({ events });
     } catch (err: any) {

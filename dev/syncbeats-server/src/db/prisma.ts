@@ -66,4 +66,20 @@ const prisma = (globalForPrisma._prisma ?? createPrismaClient()) as unknown as P
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma._prisma = prisma;
 
+// Auto-create beat_events_cache table if it doesn't exist yet in PostgreSQL database
+void (async () => {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "beat_events_cache" (
+        "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+        "spotify_id" TEXT NOT NULL UNIQUE,
+        "events" JSONB NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  } catch (err: any) {
+    // Ignore schema auto-creation notice
+  }
+})();
+
 export default prisma;

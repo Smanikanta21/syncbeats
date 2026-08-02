@@ -160,7 +160,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   // Build device sequence from all participants
   useEffect(() => {
-    if (participants.length > 0) {
+    if (participants && participants.length > 0) {
       setDeviceSequence(participants.map(p => p.socketId));
     }
   }, [participants, setDeviceSequence]);
@@ -180,7 +180,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
 
   // Browsers require a physical click to unlock AudioContext
-  const isLocalPlayBlocked = snapshot?.isPlaying && !audio.audioUnlocked;
+  const isLocalPlayBlocked = snapshot?.isPlaying && !audio.audioUnlocked && audio.audioCtx?.state !== 'running';
 
   return (
     <main
