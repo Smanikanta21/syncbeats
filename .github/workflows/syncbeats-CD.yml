@@ -310,7 +310,8 @@ jobs:
             docker network create sync-beats_default || true
 
           # Bring down any running containers (ignore errors from stale/missing networks)
-          docker compose --project-directory "$APP" down 2>/dev/null || true
+          docker compose --project-directory "$APP" stop 2>/dev/null || true
+          docker compose --project-directory "$APP" down --remove-orphans 2>/dev/null || true
 
           if [ "${{ github.ref_name }}" = "main" ]; then
             docker compose --project-directory "$APP" up -d postgres
@@ -414,7 +415,8 @@ jobs:
           ssh -o StrictHostKeyChecking=yes ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} <<'ENDSSH'
           if [ -d "$HOME/sync-beats-dev" ]; then
             echo "Tearing down dev environment..."
-            docker compose --project-directory "$HOME/sync-beats-dev" down || true
+            docker compose --project-directory "$HOME/sync-beats-dev" stop 2>/dev/null || true
+            docker compose --project-directory "$HOME/sync-beats-dev" down --remove-orphans 2>/dev/null || true
             rm -rf "$HOME/sync-beats-dev"
           fi
           ENDSSH
