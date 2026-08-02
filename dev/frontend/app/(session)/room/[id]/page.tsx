@@ -186,7 +186,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     <main
       role="main"
       aria-label="SyncBeats Room"
-      className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0")}
+      className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0", "bg-background", "transition-colors", "duration-1000", "ease-in-out")}
     >
 
       {/* Full-screen loader: only shown on the FIRST join (no snapshot yet), not on reconnects */}
@@ -261,6 +261,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
+      {/* Spatial Beat Nodes (Visual representation of beat pulses mapped behind room elements) */}
+      <SpatialBeatNodes />
+
       {/* Main room UI — mounted once we have a snapshot, kept alive through reconnects */}
       {(isConnected || snapshot) && (
         <RoomDashboard
@@ -314,9 +317,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           }}
         />
       )}
-
-      {/* Spatial Beat Nodes (Visual representation of beat pulses mapped to node positions) */}
-      <SpatialBeatNodes />
 
       {/* Host Join Requests UI */}
       {isHost && pendingRequests.length > 0 && (

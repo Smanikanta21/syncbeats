@@ -1,6 +1,7 @@
 // db/RoomRepository.ts — Prisma-based implementation
 
 import prisma, { sanitizeNullBytes } from './prisma';
+import { Prisma } from '@prisma/client';
 import { Participant, TrackQueueItem } from '../types';
 import { sanitizeString } from '../auth/UserRepository';
 
@@ -633,10 +634,10 @@ export class RoomRepository {
 
       const newQueue = [...history, targetItem, ...remaining];
 
-      // Build values for single atomic raw SQL bulk update (takes ~5ms for 500+ items!)
-      const sqlValues = newQueue
-        .map((item, idx) => `('${item.id.replace(/'/g, "''")}', ${idx}, ${item.id === itemId})`)
-        .join(',');
+      // Build parameterized tuples for atomic bulk update
+      const valueTuples = newQueue.map(
+        (item, idx) => Prisma.sql`(${item.id}::text, ${idx}::int, ${item.id === itemId}::boolean)`
+      );
 
       // 1. Shift affected items to negative indices in 1 fast query to prevent unique constraint collisions
       await tx.$executeRaw`
@@ -646,13 +647,13 @@ export class RoomRepository {
       `;
 
       // 2. Perform 1 fast bulk SQL UPDATE query for all items
-      await tx.$executeRawUnsafe(`
+      await tx.$executeRaw`
         UPDATE room_queue_items AS r
         SET queue_index = v.new_idx,
             is_current = v.is_curr
-        FROM (VALUES ${sqlValues}) AS v(id, new_idx, is_curr)
+        FROM (VALUES ${Prisma.join(valueTuples)}) AS v(id, new_idx, is_curr)
         WHERE r.id = v.id;
-      `);
+      `;
 
       // Update room state
       await tx.room.update({
@@ -768,30 +769,29 @@ export class RoomRepository {
       const maxIdx = Math.max(oldIndexArray, safeNewIndex);
       const affectedItems = queueItems.slice(minIdx, maxIdx + 1);
 
-      // Build values for single atomic raw SQL bulk update
-      const affectedUpdates = affectedItems.map((item, i) => {
+      // Build parameterized tuples for atomic bulk update
+      const affectedTuples = affectedItems.map((item, i) => {
         const newQueueIdx = minIdx + i;
-        return `('${item.id.replace(/'/g, "''")}', ${newQueueIdx})`;
+        return Prisma.sql`(${item.id}::text, ${newQueueIdx}::int)`;
       });
 
-      if (affectedUpdates.length > 0) {
-        const sqlValues = affectedUpdates.join(',');
-        const itemIds = affectedItems.map(item => `'${item.id.replace(/'/g, "''")}'`).join(',');
+      if (affectedTuples.length > 0) {
+        const itemIds = affectedItems.map(item => item.id);
 
         // 1. Shift affected items to negative indices
-        await tx.$executeRawUnsafe(`
+        await tx.$executeRaw`
           UPDATE room_queue_items
           SET queue_index = -queue_index - 100000
-          WHERE id IN (${itemIds});
-        `);
+          WHERE id = ANY(${itemIds});
+        `;
 
         // 2. Apply final queueIndex order in 1 fast atomic SQL query
-        await tx.$executeRawUnsafe(`
+        await tx.$executeRaw`
           UPDATE room_queue_items AS r
           SET queue_index = v.new_idx
-          FROM (VALUES ${sqlValues}) AS v(id, new_idx)
+          FROM (VALUES ${Prisma.join(affectedTuples)}) AS v(id, new_idx)
           WHERE r.id = v.id;
-        `);
+        `;
       }
       
       return true;

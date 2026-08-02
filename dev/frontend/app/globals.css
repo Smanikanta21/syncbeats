@@ -136,3 +136,18 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+
+@keyframes ambientBreathing {
+  0%, 100% {
+    opacity: 0.12;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.48;
+    transform: scale(1.05);
+  }
+}
+
+.animate-ambient-breathing {
+  animation: ambientBreathing 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

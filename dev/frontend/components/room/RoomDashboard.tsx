@@ -343,7 +343,7 @@ export function RoomDashboard({
 
   return (
     <div 
-      className="fixed inset-0 flex flex-col overflow-hidden select-none w-full h-full" 
+      className="fixed inset-0 flex flex-col overflow-hidden select-none w-full h-full relative z-10" 
       style={{ 
         paddingTop: "max(env(safe-area-inset-top), 4px)", 
         paddingBottom: "max(env(safe-area-inset-bottom), 4px)" 
