@@ -176,6 +176,17 @@ export default function ProfilePage() {
     }
   };
 
+  const handleBackToSession = useCallback(async () => {
+    try {
+      const res = await roomsApi.default();
+      if (res?.roomId) {
+        router.push(`/room/${res.roomId}`);
+        return;
+      }
+    } catch {}
+    router.push('/hub');
+  }, [router]);
+
   return (
     <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>
       
@@ -183,8 +194,8 @@ export default function ProfilePage() {
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
         <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
           <button
-            onClick={() => router.back()}
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group"
+            onClick={handleBackToSession}
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             <span>Back to Session</span>

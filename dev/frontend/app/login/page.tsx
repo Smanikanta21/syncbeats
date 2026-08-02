@@ -7,13 +7,25 @@ import { FullscreenLoader } from "../../components/FullscreenLoader";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
-import { authApi } from "../../lib/api";
+import { authApi, roomsApi } from "../../lib/api";
 import { cn } from "@/lib/utils";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const router  = useRouter();
-  const { login, register, googleLogin } = useAuth();
+  const { user, loading: authLoading, login, register, googleLogin } = useAuth();
+
+  // If user is already authenticated, force route directly to active room or hub
+  useEffect(() => {
+    if (!authLoading && user) {
+      roomsApi.default()
+        .then((res) => {
+          if (res?.roomId) router.replace(`/room/${res.roomId}`);
+          else router.replace("/hub");
+        })
+        .catch(() => router.replace("/hub"));
+    }
+  }, [user, authLoading, router]);
   const [googleReady, setGoogleReady] = useState(false);
   const googleLoginButtonRef  = useRef<HTMLDivElement>(null);
   const googleSignupButtonRef = useRef<HTMLDivElement>(null);
