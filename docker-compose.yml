@@ -71,6 +71,10 @@ services:
       - "${STUDIO_PORT:-5555}:5555"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
 
 volumes:
   pgdata:
