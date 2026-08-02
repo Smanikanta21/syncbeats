@@ -52,16 +52,20 @@ export function IOSHomeScreenPrompt() {
           transition={{ type: "spring", stiffness: 350, damping: 25 }}
           className="relative z-10 w-full max-w-sm"
         >
-          <div className="bg-background/95 dark:bg-black/95 border border-primary/30 p-6 rounded-[32px] shadow-[0_30px_90px_rgba(0,0,0,0.8)] flex flex-col items-center text-center">
+          <div className="glass-panel bg-zinc-950/90 dark:bg-zinc-950/90 border border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_30px_90px_rgba(0,0,0,0.85)] flex flex-col items-center text-center relative overflow-hidden backdrop-blur-2xl">
+            {/* Soft Ambient Inner Glow */}
+            <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/15 rounded-full blur-[60px] pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-teal-500/15 rounded-full blur-[60px] pointer-events-none" />
+
             {/* Top Icon Badge */}
-            <div className="relative mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center shadow-lg">
-                <Smartphone className="w-8 h-8 text-primary animate-pulse" />
+            <div className="relative mb-5">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center shadow-lg">
+                <Smartphone className="w-8 h-8 text-emerald-400 animate-pulse" />
               </div>
               <span className="absolute -bottom-1 -right-1 flex h-5 w-5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-5 w-5 bg-primary items-center justify-center">
-                  <Sparkles className="w-3 h-3 text-white" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-5 w-5 bg-emerald-500 items-center justify-center">
+                  <Sparkles className="w-3 h-3 text-zinc-950" />
                 </span>
               </span>
             </div>
@@ -69,15 +73,15 @@ export function IOSHomeScreenPrompt() {
             <h2 className="text-lg font-black text-foreground tracking-tight uppercase mb-1">
               Add to Home Screen Required
             </h2>
-            <p className="text-xs text-foreground/60 mb-5 leading-relaxed">
+            <p className="text-xs text-foreground/60 mb-6 leading-relaxed">
               To use SyncBeats on iOS with full-screen 3D spatial audio and zero Safari address bars, you must add this app to your Home Screen.
             </p>
 
             {/* Step-by-Step Guidance Cards */}
-            <div className="w-full space-y-2.5 mb-6 text-left">
+            <div className="w-full space-y-3 mb-6 text-left relative z-10">
               {/* Step 1 */}
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-foreground/5 border border-foreground/10">
-                <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
                   <Share className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="flex flex-col min-w-0">
@@ -87,8 +91,8 @@ export function IOSHomeScreenPrompt() {
               </div>
 
               {/* Step 2 */}
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-foreground/5 border border-foreground/10">
-                <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/25 flex items-center justify-center shrink-0">
                   <PlusSquare className="w-4 h-4 text-purple-400" />
                 </div>
                 <div className="flex flex-col min-w-0">
@@ -98,8 +102,8 @@ export function IOSHomeScreenPrompt() {
               </div>
 
               {/* Step 3 */}
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-foreground/5 border border-foreground/10">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center shrink-0">
                   <Check className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="flex flex-col min-w-0">
@@ -110,7 +114,7 @@ export function IOSHomeScreenPrompt() {
             </div>
 
             {/* Bottom Animated Pointer Arrow pointing down to Safari toolbar */}
-            <div className="flex flex-col items-center gap-1 text-primary animate-bounce mt-1">
+            <div className="flex flex-col items-center gap-1 text-emerald-400 animate-bounce mt-1">
               <span className="text-[10px] font-black uppercase tracking-widest">Tap Share Below</span>
               <ArrowDown className="w-5 h-5 stroke-[2.5]" />
             </div>
