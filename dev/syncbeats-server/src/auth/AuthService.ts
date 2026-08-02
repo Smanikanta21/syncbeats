@@ -133,7 +133,7 @@ export class AuthService {
     await this.issueEmailVerification(user, true);
   }
 
-  async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
+  async login(email: string, password: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
     const row = await this.repo.findByEmail(email);
     if (!row) throw new Error('User not found , Register first');
 
@@ -156,11 +156,11 @@ export class AuthService {
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
     const token = this.signToken(loggedInUser);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
     return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 
-  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {
+  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
     const audience = process.env.GOOGLE_CLIENT_ID;
     if (!audience) throw new Error('GOOGLE_CLIENT_ID is not configured');
 
@@ -205,7 +205,7 @@ export class AuthService {
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
     const token = this.signToken(loggedInUser);
-    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name) : null;
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
     return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
   }
 

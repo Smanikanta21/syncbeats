@@ -1875,6 +1875,7 @@ export function DynamicIsland() {
                         onImportingStateChange={setIsImportingPlaylist}
                         onHasContentChange={setHasSearchContent}
                         onErrorStateChange={setSearchError}
+                        isPlaying={audio.isPlaying}
                         onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
                       />
                     </motion.div>

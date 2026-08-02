@@ -11,6 +11,9 @@ import { cn } from "../../lib/utils";
 import { SearchSkeleton } from "../loaders/SearchSkeleton";
 import { AppFeedback } from "../feedback/AppFeedback";
 
+import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
+import { getSocket } from "../../lib/socket";
+
 interface SearchTabProps {
   roomId: string;
   initialMode: "youtube" | "spotify" | null;
@@ -24,11 +27,12 @@ interface SearchTabProps {
   onImportingStateChange?: (isImporting: boolean) => void;
   onHasContentChange?: (hasContent: boolean) => void;
   onErrorStateChange?: (error: string | null) => void;
+  isPlaying?: boolean;
 }
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
-export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange }: SearchTabProps) {
+export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange, isPlaying = false }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -467,12 +471,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-  const handlePlay = async (result: any) => {
+  const [promptTrack, setPromptTrack] = useState<any | null>(null);
+
+  const executeEnqueueAndPlay = async (result: any, shouldPlayNow: boolean) => {
     if (addedSongs.has(result.url)) {
       setDownloadError("Song already exists in the queue!");
       return;
     }
-    setEnqueuing(result.url); setDownloadError(null);
+    setEnqueuing(result.url);
+    setDownloadError(null);
+
     try {
       let videoId = "";
       if (result.url.startsWith("youtube:")) {
@@ -480,8 +488,15 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       } else {
         videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
       }
-      await upload.downloadYoutubeToP2P(roomId, videoId, result.title, result.uploaderName);
+
+      // Fast enqueue via YouTube API (~50ms)
+      const res = await roomsApi.enqueueYoutube(roomId, videoId, result.title);
       setAddedSongs(prev => new Set(prev).add(result.url));
+
+      // If user selected "Play Now", trigger immediate jump to the enqueued item
+      if (shouldPlayNow && res && (res as any).item?.id) {
+        getSocket().emit("playback:jumpTo", { roomId, trackId: (res as any).item.id });
+      }
 
       if (user?.id) {
         historyApi.logListen(user.id, {
@@ -498,7 +513,18 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     } catch (err: any) {
       setDownloadError(err.message?.includes("RapidAPI") || err.message?.includes("FATAL")
         ? "This track is age-restricted or blocked. Try another." : err.message || "Failed to load.");
-    } finally { setEnqueuing(null); }
+    } finally {
+      setEnqueuing(null);
+    }
+  };
+
+  const handlePlay = (result: any) => {
+    if (isPlaying) {
+      // React instantly with prompt when a song is currently playing
+      setPromptTrack(result);
+    } else {
+      executeEnqueueAndPlay(result, true);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1248,6 +1274,19 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Instant Play or Add to Queue Prompt Modal */}
+      <PlayOrEnqueueModal
+        isOpen={!!promptTrack}
+        track={promptTrack}
+        onPlayNow={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, true);
+        }}
+        onAddToQueue={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, false);
+        }}
+        onClose={() => setPromptTrack(null)}
+      />
     </div>
   );
 }

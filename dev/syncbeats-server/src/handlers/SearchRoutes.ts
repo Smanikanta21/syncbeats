@@ -416,47 +416,61 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     return res.sendFile(outputFile);
   }
 
-  // ── Cache MISS — download via yt-dlp (exact main branch arguments) ──────
+  // ── Cache MISS — download via parallel multi-source check (yt-dlp + RapidAPI) ──────
   const watchUrl = `https://www.youtube.com/watch?v=${targetYoutubeId}`;
-  console.log(`[Search] Downloading audio via yt-dlp for: ${watchUrl}`);
+  console.log(`[Search] Parallel fetching audio for: ${watchUrl}`);
 
-  // Exact args matching main branch: ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl]
-  const ytDlpArgs = ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl];
+  let isHandled = false;
+  const sendSuccess = (sourceName: string) => {
+    if (isHandled) return;
+    isHandled = true;
+    console.log(`[Search] Fastest source won: ${sourceName} for ${targetYoutubeId}`);
+    if (!res.headersSent) res.sendFile(outputFile);
+  };
 
-  const ytDlp = spawn(ytDlpPath, ytDlpArgs);
-  let stderr = '';
-  ytDlp.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+  // Promise 1: yt-dlp execution
+  const ytDlpPromise = new Promise<boolean>((resolve) => {
+    const ytDlpArgs = ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl];
+    const ytDlp = spawn(ytDlpPath, ytDlpArgs);
+    ytDlp.on('close', (code: number) => {
+      if (code === 0 && fs.existsSync(outputFile)) {
+        sendSuccess('yt-dlp');
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+    ytDlp.on('error', () => resolve(false));
+  });
 
-  ytDlp.on('close', async (code: number) => {
-    if (code === 0 && fs.existsSync(outputFile)) {
-      console.log(`[Search] yt-dlp download complete for ${targetYoutubeId}`);
-      if (!res.headersSent) res.sendFile(outputFile);
+  // Promise 2: RapidAPI execution (runs concurrently in parallel)
+  const rapidPromise = (async () => {
+    // Slight 250ms offset to prioritize local yt-dlp if it's already cached or instantaneous
+    await new Promise(r => setTimeout(r, 250));
+    if (isHandled) return false;
+    const rapidOutputFile = path.resolve(tmpDir, `${targetYoutubeId}_rapid.m4a`);
+    const success = await fetchViaRapidAPI(targetYoutubeId, rapidOutputFile);
+    if (success && fs.existsSync(rapidOutputFile) && !isHandled) {
+      try {
+        fs.renameSync(rapidOutputFile, outputFile);
+      } catch (e) {
+        // If rename fails because outputFile was created by yt-dlp, keep existing
+      }
+      sendSuccess('RapidAPI');
+      return true;
+    }
+    return false;
+  })();
+
+  const results = await Promise.allSettled([ytDlpPromise, rapidPromise]);
+  if (!isHandled) {
+    isHandled = true;
+    if (fs.existsSync(outputFile)) {
+      res.sendFile(outputFile);
     } else {
-      console.warn(`[Search] yt-dlp failed for ${targetYoutubeId} (code ${code}), trying RapidAPI fallback...`);
-      try { fs.unlinkSync(outputFile); } catch {}
-
-      const rapidSuccess = await fetchViaRapidAPI(targetYoutubeId, outputFile);
-      if (rapidSuccess && fs.existsSync(outputFile)) {
-        console.log(`[Search] RapidAPI fallback complete for ${targetYoutubeId}`);
-        if (!res.headersSent) res.sendFile(outputFile);
-        return;
-      }
-
-      if (!res.headersSent) {
-        res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
-      }
+      res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
     }
-  });
-
-  ytDlp.on('error', async (err: Error) => {
-    console.error('[Search] yt-dlp spawn error, trying RapidAPI fallback:', err);
-    const rapidSuccess = await fetchViaRapidAPI(targetYoutubeId, outputFile);
-    if (rapidSuccess && fs.existsSync(outputFile)) {
-      if (!res.headersSent) res.sendFile(outputFile);
-      return;
-    }
-    if (!res.headersSent) res.status(500).json({ error: 'yt-dlp not available' });
-  });
+  }
 }
 
 const exhaustedRapidKeys = new Set<string>();

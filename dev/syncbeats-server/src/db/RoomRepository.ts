@@ -419,7 +419,15 @@ export class RoomRepository {
            sortedTracks.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
          }
          
-         // Shift queueIndexes using concurrent batch updates
+         // 2-Pass update to prevent unique constraint (room_id, queue_index) collisions
+         await Promise.all(
+           sortedTracks.map((track, i) => 
+             prisma.roomQueueItem.update({
+               where: { id: track.id },
+               data: { queueIndex: -(i + 1) }
+             })
+           )
+         );
          await Promise.all(
            sortedTracks.map((track, i) => 
              prisma.roomQueueItem.update({
@@ -623,37 +631,40 @@ export class RoomRepository {
       let remaining: typeof allItems = [];
 
       if (targetIdx <= currentIdx) {
-        // User clicked a song in History
+        // User clicked a song in History (before current song)
         history = allItems.slice(0, targetIdx);
         remaining = allItems.slice(targetIdx).filter(i => i.id !== itemId);
       } else {
-        // User clicked a song in Up Next
-        history = allItems.slice(0, currentIdx + 1).filter(i => i.id !== itemId);
+        // User clicked a song in Up Next (after current song)
+        // History remains items before and including current song
+        history = allItems.slice(0, currentIdx + 1);
         remaining = allItems.slice(currentIdx + 1).filter(i => i.id !== itemId);
       }
 
       const newQueue = [...history, targetItem, ...remaining];
 
-      // Build parameterized tuples for atomic bulk update
-      const valueTuples = newQueue.map(
-        (item, idx) => Prisma.sql`(${item.id}::text, ${idx}::int, ${item.id === itemId}::boolean)`
+      // 1. Shift all items to unique temporary negative indices to prevent unique constraint (room_id, queue_index) collision
+      await Promise.all(
+        newQueue.map((item, idx) =>
+          tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: { queueIndex: -(idx + 1) },
+          })
+        )
       );
 
-      // 1. Shift affected items to negative indices in 1 fast query to prevent unique constraint collisions
-      await tx.$executeRaw`
-        UPDATE room_queue_items
-        SET queue_index = -queue_index - 100000
-        WHERE room_id = ${roomId};
-      `;
-
-      // 2. Perform 1 fast bulk SQL UPDATE query for all items
-      await tx.$executeRaw`
-        UPDATE room_queue_items AS r
-        SET queue_index = v.new_idx,
-            is_current = v.is_curr
-        FROM (VALUES ${Prisma.join(valueTuples)}) AS v(id, new_idx, is_curr)
-        WHERE r.id = v.id;
-      `;
+      // 2. Set final target indices and current track state
+      await Promise.all(
+        newQueue.map((item, idx) =>
+          tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: {
+              queueIndex: idx,
+              isCurrent: item.id === itemId,
+            },
+          })
+        )
+      );
 
       // Update room state
       await tx.room.update({
@@ -764,35 +775,25 @@ export class RoomRepository {
       const safeNewIndex = Math.max(0, Math.min(newIndex, queueItems.length));
       queueItems.splice(safeNewIndex, 0, movingItem);
       
-      // Persist the new sequence indices
-      const minIdx = Math.min(oldIndexArray, safeNewIndex);
-      const maxIdx = Math.max(oldIndexArray, safeNewIndex);
-      const affectedItems = queueItems.slice(minIdx, maxIdx + 1);
+      // 1. Shift all items to unique temporary negative indices to prevent unique constraint (room_id, queue_index) collision
+      await Promise.all(
+        queueItems.map((item, i) =>
+          tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: { queueIndex: -(i + 1) }
+          })
+        )
+      );
 
-      // Build parameterized tuples for atomic bulk update
-      const affectedTuples = affectedItems.map((item, i) => {
-        const newQueueIdx = minIdx + i;
-        return Prisma.sql`(${item.id}::text, ${newQueueIdx}::int)`;
-      });
-
-      if (affectedTuples.length > 0) {
-        const itemIds = affectedItems.map(item => item.id);
-
-        // 1. Shift affected items to negative indices
-        await tx.$executeRaw`
-          UPDATE room_queue_items
-          SET queue_index = -queue_index - 100000
-          WHERE id = ANY(${itemIds});
-        `;
-
-        // 2. Apply final queueIndex order in 1 fast atomic SQL query
-        await tx.$executeRaw`
-          UPDATE room_queue_items AS r
-          SET queue_index = v.new_idx
-          FROM (VALUES ${Prisma.join(affectedTuples)}) AS v(id, new_idx)
-          WHERE r.id = v.id;
-        `;
-      }
+      // 2. Set final target indices
+      await Promise.all(
+        queueItems.map((item, i) =>
+          tx.roomQueueItem.update({
+            where: { id: item.id },
+            data: { queueIndex: i }
+          })
+        )
+      );
       
       return true;
     }, {

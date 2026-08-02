@@ -7,11 +7,23 @@ import { loginLimiter, registerLimiter, forgotPasswordLimiter, verificationResen
 
 const authService = new AuthService();
 
-function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: string | null } {
+function getClientIp(req: Request): string | null {
+  const forwarded = req.header('x-forwarded-for');
+  if (forwarded) {
+    const ips = forwarded.split(',').map(s => s.trim());
+    if (ips.length > 0 && ips[0]) return ips[0];
+  }
+  const realIp = req.header('x-real-ip');
+  if (realIp) return realIp.trim();
+  return req.ip || req.socket.remoteAddress || null;
+}
+
+function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: string | null; ip: string | null } {
   const deviceId = req.header('x-device-id');
   return {
     deviceKey: deviceId?.trim() || null,
     userAgent: req.header('user-agent') || null,
+    ip: getClientIp(req),
   };
 }
 
@@ -68,8 +80,8 @@ export function createAuthRoutes(): Router {
       return;
     }
     try {
-      const { deviceKey, userAgent } = getDeviceContext(req);
-      const result = await authService.login(email.trim().toLowerCase(), password, deviceKey, userAgent);
+      const { deviceKey, userAgent, ip } = getDeviceContext(req);
+      const result = await authService.login(email.trim().toLowerCase(), password, deviceKey, userAgent, ip);
       res.json(result);
     } catch (err) {
       console.error('[Auth] login error:', err);
@@ -86,8 +98,8 @@ export function createAuthRoutes(): Router {
       return;
     }
     try {
-      const { deviceKey, userAgent } = getDeviceContext(req);
-      const result = await authService.googleLogin(credential, deviceKey, userAgent);
+      const { deviceKey, userAgent, ip } = getDeviceContext(req);
+      const result = await authService.googleLogin(credential, deviceKey, userAgent, ip);
       res.json(result);
     } catch (err) {
       console.error('[Auth] google error:', err);

@@ -56,7 +56,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   audioLatencyOffsetMs: 0,
   syncAggressiveness: "high",
-  keepScreenAwake: true,
+  keepScreenAwake: false,
   islandCustomizer: {
     glowColor: "violet",
     autoShrinkDelaySec: 6,

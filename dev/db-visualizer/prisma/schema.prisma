@@ -4,7 +4,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
+
+
+
 
 model User {
   id                         String            @id @default(cuid())
@@ -45,6 +49,7 @@ model Device {
   deviceKey  String   @map("device_key")
   name       String
   userAgent  String?  @map("user_agent")
+  ip         String?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
@@ -54,6 +59,7 @@ model Device {
   @@index([userId])
   @@map("devices")
 }
+
 
 model Room {
   id               String            @id
@@ -250,3 +256,14 @@ model BeatEventsCache {
   
   @@map("beat_events_cache")
 }
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("admin_audit_logs")
+}
+

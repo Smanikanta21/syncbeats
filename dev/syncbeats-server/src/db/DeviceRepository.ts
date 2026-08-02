@@ -7,6 +7,7 @@ export interface PublicDevice {
   device_key:   string;
   name:         string;
   user_agent:   string | null;
+  ip:           string | null;
   created_at:   Date;
   updated_at:   Date;
   last_seen_at: Date;
@@ -17,7 +18,8 @@ export class DeviceRepository {
     userId: string,
     deviceKey: string,
     userAgent: string | null,
-    ownerName: string
+    ownerName: string,
+    ip: string | null = null
   ): Promise<{ device: PublicDevice; created: boolean }> {
     const existing = await prisma.device.findUnique({
       where: { userId_deviceKey: { userId, deviceKey } }
@@ -26,7 +28,7 @@ export class DeviceRepository {
     if (existing) {
       const updated = await prisma.device.update({
         where: { id: existing.id },
-        data: { lastSeenAt: new Date(), userAgent }
+        data: { lastSeenAt: new Date(), userAgent, ...(ip ? { ip } : {}) }
       });
       return { device: this.mapDevice(updated), created: false };
     }
@@ -48,6 +50,7 @@ export class DeviceRepository {
               deviceKey,
               lastSeenAt: new Date(),
               userAgent: normalizedUserAgent,
+              ...(ip ? { ip } : {}),
             },
           });
           return { device: this.mapDevice(reused), created: false };
@@ -71,6 +74,7 @@ export class DeviceRepository {
           deviceKey,
           name: defaultName,
           userAgent: normalizedUserAgent,
+          ip,
         }
       });
       return { device: this.mapDevice(created), created: true };
@@ -183,6 +187,7 @@ export class DeviceRepository {
       device_key: d.deviceKey,
       name: d.name,
       user_agent: d.userAgent,
+      ip: d.ip ?? null,
       created_at: d.createdAt,
       updated_at: d.updatedAt,
       last_seen_at: d.lastSeenAt,

@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
@@ -19,18 +19,20 @@ import { cn } from "@/lib/utils";
 import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
 import { BeatProvider } from "../context/BeatContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfitFont = Outfit({
+  variable: "--font-sans",
   subsets: ["latin"],
   preload: true,
   display: "swap",
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
   preload: true,
   display: "swap",
+  weight: ["400", "600", "700"],
 });
 
 const BASE_URL = "https://syncbeats.app";
@@ -153,7 +155,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      className={`${outfitFont.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <head>
         {/* JSON-LD structured data */}

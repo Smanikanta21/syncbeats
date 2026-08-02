@@ -482,14 +482,17 @@ export function RoomDashboard({
                   </div>
                 </div>
               </div>
-              {/* Session Duration Pill */}
-              <div className="flex items-center justify-between bg-background/40 rounded-lg border border-foreground/10 px-2 py-1 mt-0.5">
-                <span className="text-[9px] font-bold text-foreground/50 uppercase tracking-widest flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {/* Session Duration Pill — High Contrast */}
+              <div className="flex items-center justify-between bg-foreground/[0.08] dark:bg-white/10 backdrop-blur-md rounded-xl border border-foreground/15 dark:border-white/20 px-2.5 py-1.5 mt-1 shadow-sm">
+                <span className="text-[10px] font-extrabold text-foreground/80 dark:text-white/90 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
                   Session Time
                 </span>
-                <div className="flex items-center gap-1 font-mono text-[11px] font-extrabold text-cyan-400">
-                  <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
+                <div className="flex items-center gap-1.5 font-mono text-[12px] font-extrabold text-foreground dark:text-white bg-foreground/10 dark:bg-white/15 px-2 py-0.5 rounded-lg border border-foreground/10 dark:border-white/15">
+                  <Clock className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
                   <span>{formattedSessionTime}</span>
                 </div>
               </div>
@@ -616,10 +619,14 @@ export function RoomDashboard({
               </button>
             </div>
 
-            {/* Live Session Time Badge */}
-            <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 px-2 py-1 rounded-xl shrink-0">
-              <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
-              <span className="font-mono text-[11px] font-black text-cyan-400">{formattedSessionTime}</span>
+            {/* Live Session Time Badge — High Contrast */}
+            <div className="flex items-center gap-1.5 bg-foreground/10 dark:bg-white/15 border border-foreground/15 dark:border-white/20 px-2.5 py-1 rounded-xl shrink-0 backdrop-blur-md shadow-sm">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
+              <Clock className="w-3 h-3 text-emerald-500 dark:text-emerald-400 shrink-0" />
+              <span className="font-mono text-[11px] font-extrabold text-foreground dark:text-white tracking-wide">{formattedSessionTime}</span>
             </div>
 
             {/* Quick Actions (Theme & Profile) */}
