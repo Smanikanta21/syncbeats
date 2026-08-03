@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import DashboardView from "@/components/DashboardView";
 import DebugLogsView from "@/components/DebugLogsView";
+import EmailDesignerView from "@/components/EmailDesignerView";
 import AdminLockScreen from "@/components/AdminLockScreen";
+import { TableRowSkeleton } from "@/components/Skeleton";
 
 type Field = { name: string; type: string; kind: string; isId: boolean; isRequired: boolean };
 type TableInfo = { name: string; dbName: string; fields: Field[]; count: number };
@@ -20,13 +22,14 @@ export default function Home() {
   const [dataLoading, setDataLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rowSearch, setRowSearch] = useState('');
   const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc'|'desc'} | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [editingCell, setEditingCell] = useState<{rowId: any, rowIndex: number, field: string, value: any} | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'dashboard' | 'logs' | 'tables' | 'recycle_bin'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'logs' | 'email' | 'tables' | 'recycle_bin'>('dashboard');
   const [recycleBinData, setRecycleBinData] = useState<any[]>([]);
 
   useEffect(() => {
@@ -207,39 +210,57 @@ export default function Home() {
 
       {/* Sidebar */}
       <div className={cn(
-        'w-64', 'glass-panel', 'border-r-0', 'rounded-r-3xl', 'my-2', 'ml-2', 'flex', 'flex-col', 'shrink-0', 'overflow-hidden', 'shadow-2xl', 'z-40',
-        'fixed', 'inset-y-0', 'left-0', 'transition-transform', 'duration-300',
+        sidebarCollapsed ? 'w-20' : 'w-64', 'glass-panel', 'border-r-0', 'rounded-r-3xl', 'my-2', 'ml-2', 'flex', 'flex-col', 'shrink-0', 'overflow-hidden', 'shadow-2xl', 'z-40',
+        'fixed', 'inset-y-0', 'left-0', 'transition-all', 'duration-300',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative', 'md:translate-x-0'
       )}>
-        <div className={cn('p-6', 'border-b', 'border-[var(--glass-border)]', 'flex', 'justify-between', 'items-center')}>
-          <h1 className={cn('text-xl', 'font-black', 'tracking-tighter', 'text-foreground')}>
-            SYNC<span className="text-emerald-400">DB</span>
-          </h1>
-          <button 
-            className={cn('md:hidden', 'text-zinc-400', 'hover:text-foreground')}
-            onClick={() => setSidebarOpen(false)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+        <div className={cn('p-4', 'border-b', 'border-[var(--glass-border)]', 'flex', 'items-center', 'justify-between')}>
+          {!sidebarCollapsed && (
+            <h1 className={cn('text-xl', 'font-black', 'tracking-tighter', 'text-foreground', 'truncate')}>
+              SYNC<span className="text-emerald-400">DB</span>
+            </h1>
+          )}
+          
+          <div className="flex items-center gap-1 mx-auto md:mx-0">
+            {/* Desktop Hamburger Collapse Toggle */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden md:flex p-2 rounded-xl text-zinc-400 hover:bg-foreground/5 hover:text-white transition-colors"
+              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+            </button>
+
+            {/* Mobile Close Button */}
+            <button 
+              className={cn('md:hidden', 'p-2', 'text-zinc-400', 'hover:text-foreground')}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
         </div>
         
         {/* Navigation list */}
-        <div className={cn('flex', 'flex-col', 'flex-1', 'overflow-y-auto', 'p-3', 'space-y-1')}>
+        <div className={cn('flex', 'flex-col', 'flex-1', 'overflow-y-auto', 'p-2', 'space-y-1.5')}>
           {/* Main Dashboard view button */}
           <button
             onClick={() => {
               setViewMode('dashboard');
               setSidebarOpen(false);
             }}
+            title="Dashboard & Map"
             className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              sidebarCollapsed ? 'justify-center' : ''
+            } ${
               viewMode === 'dashboard'
                 ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20'
                 : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
             }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-            Dashboard & Map
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            {!sidebarCollapsed && <span>Dashboard & Map</span>}
           </button>
 
           {/* Debug Logs view button */}
@@ -248,43 +269,64 @@ export default function Home() {
               setViewMode('logs');
               setSidebarOpen(false);
             }}
+            title="Debug Logs & Audit"
             className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              sidebarCollapsed ? 'justify-center' : ''
+            } ${
               viewMode === 'logs'
-                ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20'
+                ? 'bg-foreground text-background font-black shadow-lg'
                 : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
             }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
-            Debug Logs & Audit
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            {!sidebarCollapsed && <span>Debug Logs & Audit</span>}
           </button>
 
-          <div className="pt-4 pb-1 px-3 text-[10px] font-extrabold uppercase text-zinc-500 tracking-wider">
-            Database Tables ({tables.length})
-          </div>
+          {/* Email Studio view button */}
+          <button
+            onClick={() => {
+              setViewMode('email');
+              setSidebarOpen(false);
+            }}
+            title="Email Studio IDE"
+            className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              sidebarCollapsed ? 'justify-center' : ''
+            } ${
+              viewMode === 'email'
+                ? 'bg-foreground text-background font-black shadow-lg'
+                : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            {!sidebarCollapsed && <span>Email Studio IDE</span>}
+          </button>
 
-          {loading && tables.length === 0 ? (
-            <span className={cn('p-3', 'text-xs', 'text-zinc-500')}>Loading tables...</span>
-          ) : (
-            tables.map(table => (
-              <button
-                key={table.name}
-                onClick={() => {
-                  setActiveTable(table);
-                  setRowSearch('');
-                  setViewMode('tables');
-                  setSidebarOpen(false);
-                }}
-                className={`flex items-center justify-between p-3 rounded-xl text-left transition-all ${
-                  viewMode === 'tables' && activeTable?.name === table.name
-                    ? 'bg-foreground text-background font-bold shadow-md'
-                    : 'text-zinc-400 hover:bg-foreground/5 hover:text-foreground'
-                }`}
-              >
-                <span className={cn('font-medium', 'text-sm')}>{table.name}</span>
-                <span className={cn('text-xs', 'px-2', 'py-1', 'bg-foreground/10', 'rounded-full')}>{table.count}</span>
-              </button>
-            ))
-          )}
+          {/* Single Database Tables Hub Item */}
+          <button
+            onClick={() => {
+              if (tables.length > 0 && !activeTable) setActiveTable(tables[0]);
+              setViewMode('tables');
+              setSidebarOpen(false);
+            }}
+            title="Database Tables Inspector"
+            className={`flex items-center gap-3 p-3 rounded-xl text-left font-bold text-sm transition-all ${
+              sidebarCollapsed ? 'justify-center' : ''
+            } ${
+              viewMode === 'tables'
+                ? 'bg-white text-zinc-950 font-extrabold shadow-lg'
+                : 'text-zinc-400 hover:bg-foreground/5 hover:text-white'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            {!sidebarCollapsed && (
+              <div className="flex items-center justify-between w-full">
+                <span>Database Tables</span>
+                <span className="px-2 py-0.5 text-[10px] bg-zinc-800 text-zinc-300 rounded-full font-mono font-bold">
+                  {tables.length}
+                </span>
+              </div>
+            )}
+          </button>
 
           <div className={cn('mt-auto', 'pt-4', 'border-t', 'border-[var(--glass-border)]', 'text-xs', 'text-zinc-500', 'flex', 'flex-col', 'gap-1')}>
             <button 
@@ -292,18 +334,24 @@ export default function Home() {
                 setViewMode('recycle_bin');
                 setSidebarOpen(false);
               }}
-              className={cn('w-full', 'py-2.5', 'px-3', 'text-sm', 'text-left', 'hover:bg-foreground/5', 'rounded-xl', 'transition-colors', 'flex', 'items-center', 'gap-2', viewMode === 'recycle_bin' ? 'bg-foreground/10 text-foreground font-bold' : '')}
+              title="Recycle Bin"
+              className={`w-full py-2.5 px-3 text-sm text-left hover:bg-foreground/5 rounded-xl transition-colors flex items-center gap-3 ${
+                sidebarCollapsed ? 'justify-center' : ''
+              } ${viewMode === 'recycle_bin' ? 'bg-foreground/10 text-foreground font-bold' : 'text-zinc-400'}`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-              Recycle Bin
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              {!sidebarCollapsed && <span>Recycle Bin</span>}
             </button>
 
             <button 
               onClick={handleLogout}
-              className="w-full py-2.5 px-3 text-xs text-left text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium flex items-center gap-2"
+              title="Lock Console"
+              className={`w-full py-2.5 px-3 text-xs text-left text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium flex items-center gap-3 ${
+                sidebarCollapsed ? 'justify-center' : ''
+              }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Lock Console
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              {!sidebarCollapsed && <span>Lock Console</span>}
             </button>
           </div>
         </div>
@@ -312,11 +360,24 @@ export default function Home() {
       {/* Main Content Area */}
       {viewMode === 'dashboard' ? (
         <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative z-10 overflow-hidden">
-          <DashboardView />
+          <DashboardView
+            onNavigateTable={(tableName, searchStr) => {
+              const targetTab = tables.find((t) => t.name.toLowerCase() === tableName.toLowerCase()) || tables[0];
+              if (targetTab) {
+                setActiveTable(targetTab);
+                if (searchStr) setRowSearch(searchStr);
+                setViewMode("tables");
+              }
+            }}
+          />
         </div>
       ) : viewMode === 'logs' ? (
         <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative z-10 p-2 md:p-4 overflow-hidden">
           <DebugLogsView />
+        </div>
+      ) : viewMode === 'email' ? (
+        <div className="flex-1 flex flex-col min-w-0 h-full bg-transparent relative z-10 overflow-hidden">
+          <EmailDesignerView onOpenSidebar={() => setSidebarOpen(true)} />
         </div>
       ) : (
         <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'min-h-0', 'bg-transparent', 'relative', 'z-10', 'p-2', 'md:p-2')}>
@@ -370,6 +431,36 @@ export default function Home() {
             </button>
           )}
         </div>
+
+        {/* Table Selector Hub Bar */}
+        {viewMode === 'tables' && (
+          <div className="px-4 py-2.5 glass-panel border-y-0 bg-zinc-950/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
+            <span className="text-[10px] font-extrabold uppercase text-zinc-500 tracking-wider shrink-0 mr-1">
+              Select Table:
+            </span>
+            {tables.map((tbl) => (
+              <button
+                key={tbl.name}
+                onClick={() => {
+                  setActiveTable(tbl);
+                  setRowSearch('');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 flex items-center gap-2 ${
+                  activeTable?.name === tbl.name
+                    ? 'bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20'
+                    : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span>{tbl.name}</span>
+                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                  activeTable?.name === tbl.name ? 'bg-zinc-950/30 text-zinc-950 font-extrabold' : 'bg-zinc-950 text-zinc-400'
+                }`}>
+                  {tbl.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Search bar between title and tables */}
         {viewMode === 'tables' && (
@@ -474,7 +565,16 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody className={cn('divide-y', 'divide-[var(--glass-border)]', 'bg-transparent')}>
-                  {tableData
+                  {dataLoading ? (
+                    <>
+                      <TableRowSkeleton />
+                      <TableRowSkeleton />
+                      <TableRowSkeleton />
+                      <TableRowSkeleton />
+                      <TableRowSkeleton />
+                      <TableRowSkeleton />
+                    </>
+                  ) : tableData
                     .filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(rowSearch.toLowerCase())))
                     .sort((a, b) => {
                       if (!sortConfig) return 0;

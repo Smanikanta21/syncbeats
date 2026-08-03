@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const levelParam = searchParams.get("level") || "ALL";
+  const sourceParam = searchParams.get("source") || "ALL";
   const limitParam = parseInt(searchParams.get("limit") || "100", 10);
 
   try {
@@ -19,21 +20,48 @@ export async function GET(req: NextRequest) {
     });
 
     const formattedLogs = logs.map((log) => {
-      let level: "ERROR" | "WARN" | "INFO" | "SECURITY" = "INFO";
-      const actionUpper = log.action.toUpperCase();
-      const detailsUpper = (log.details || "").toUpperCase();
+      let level: "SUCCESS" | "ERROR" | "WARN" | "INFO" | "SECURITY" = "INFO";
+      const act = log.action.toUpperCase();
+      const det = (log.details || "").toUpperCase();
 
-      if (actionUpper.includes("ERROR") || detailsUpper.includes("ERROR") || detailsUpper.includes("FAILED")) {
+      // Extract source
+      let source: "FRONTEND" | "BACKEND" | "DATABASE" = "BACKEND";
+      if (act.includes("[FRONTEND]")) {
+        source = "FRONTEND";
+      } else if (act.includes("[DATABASE]") || act.includes("DB_")) {
+        source = "DATABASE";
+      } else {
+        source = "BACKEND";
+      }
+
+      // Check explicit errors first
+      if (
+        det.includes("FAILED ADMIN PASSCODE") ||
+        det.includes("AUTHENTICATION REQUIRED") ||
+        det.includes("UNAUTHORIZED") ||
+        det.includes("EXCEPTION") ||
+        (det.includes("FAILED:") && !det.includes("FAILED: 0") && !det.includes("FAILED:0")) ||
+        act.includes("ERROR") ||
+        act.includes("WARN_SECURITY")
+      ) {
         level = "ERROR";
-      } else if (actionUpper.includes("WARN") || detailsUpper.includes("WARN") || detailsUpper.includes("UNAUTHORIZED")) {
+      } else if (act.includes("WARN") || det.includes("WARN") || det.includes("RATE_LIMIT")) {
         level = "WARN";
-      } else if (actionUpper.includes("LOGIN") || actionUpper.includes("AUTH") || actionUpper.includes("SECURITY")) {
+      } else if (
+        det.includes("SUCCESSFULLY") ||
+        det.includes("FAILED: 0") ||
+        det.includes("FAILED:0") ||
+        act.includes("SUCCESS")
+      ) {
+        level = "SUCCESS";
+      } else if (act.includes("LOGIN") || act.includes("AUTH") || act.includes("SECURITY")) {
         level = "SECURITY";
       }
 
       return {
         id: log.id,
-        action: log.action,
+        action: log.action.replace(/^\[(FRONTEND|BACKEND|DATABASE)\]\s*/i, ""),
+        source,
         level,
         message: log.details || "No details provided",
         ip: log.ip || "127.0.0.1",
@@ -41,12 +69,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const filtered = levelParam === "ALL" 
-      ? formattedLogs 
-      : formattedLogs.filter((l) => l.level === levelParam);
+    const filtered = formattedLogs.filter((l) => {
+      const matchLevel = levelParam === "ALL" || l.level === levelParam;
+      const matchSource = sourceParam === "ALL" || l.source === sourceParam;
+      return matchLevel && matchSource;
+    });
 
     const counts = {
       total: formattedLogs.length,
+      frontend: formattedLogs.filter((l) => l.source === "FRONTEND").length,
+      backend: formattedLogs.filter((l) => l.source === "BACKEND").length,
+      database: formattedLogs.filter((l) => l.source === "DATABASE").length,
+      success: formattedLogs.filter((l) => l.level === "SUCCESS").length,
       errors: formattedLogs.filter((l) => l.level === "ERROR").length,
       warnings: formattedLogs.filter((l) => l.level === "WARN").length,
       security: formattedLogs.filter((l) => l.level === "SECURITY").length,

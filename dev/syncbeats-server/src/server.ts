@@ -28,6 +28,7 @@ import { RoomRepository }      from './db/RoomRepository';
 
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
+import { AuditLogger } from './services/AuditLogger';
 
 // ─── Timestamp all console output in Indian Standard Time (IST / UTC+5:30) ────
 (['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
@@ -124,6 +125,28 @@ export class SyncBeatsServer {
       optionsSuccessStatus: 200,
     }));
     this.app.use(express.json());
+
+    // Global Request Audit Logging Middleware
+    this.app.use((req, res, next) => {
+      if (req.path.startsWith('/files') || req.path.startsWith('/health') || req.method === 'OPTIONS') {
+        return next();
+      }
+      const start = Date.now();
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
+        const status = res.statusCode;
+        const isErr = status >= 400;
+        const msg = `${req.method} ${req.originalUrl} ${status} (${duration}ms)`;
+        
+        if (isErr) {
+          void AuditLogger.error(`[BACKEND] HTTP_${status}`, msg, ip);
+        } else {
+          void AuditLogger.info(`[BACKEND] HTTP_${status}`, msg, ip);
+        }
+      });
+      next();
+    });
 
     // Serve uploaded audio files with proper HTTP byte-range streaming.
     // express.static advertises Accept-Ranges but doesn't implement partial content

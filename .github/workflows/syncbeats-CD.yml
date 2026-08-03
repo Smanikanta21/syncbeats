@@ -158,6 +158,7 @@ jobs:
           V_SPOTIFY_CLIENT_ID:     ${{ secrets.SPOTIFY_CLIENT_ID }}
           V_SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           V_AUTH_FROM_EMAIL:       ${{ vars.AUTH_FROM_EMAIL }}
+          V_UPDATES_FROM_EMAIL:    ${{ vars.UPDATES_FROM_EMAIL }}
           V_RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           V_NEXT_PUBLIC_SERVER_URL: ${{ vars.NEXT_PUBLIC_SERVER_URL }}
           V_RAPID_API_KEY:         ${{ secrets.RAPID_API_KEY }}
@@ -187,7 +188,8 @@ jobs:
             echo "BACKEND_URL=${V_BACKEND_URL}"
             echo "SPOTIFY_CLIENT_ID=${V_SPOTIFY_CLIENT_ID}"
             echo "SPOTIFY_CLIENT_SECRET=${V_SPOTIFY_CLIENT_SECRET}"
-            echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL}"
+            echo "AUTH_FROM_EMAIL=${V_AUTH_FROM_EMAIL:-auth@syncbeats.app}"
+            echo "UPDATES_FROM_EMAIL=${V_UPDATES_FROM_EMAIL:-updates@syncbeats.app}"
             echo "RESEND_API_KEY=${V_RESEND_API_KEY}"
             echo "NEXT_PUBLIC_SERVER_URL=${V_NEXT_PUBLIC_SERVER_URL}"
             echo "RAPID_API_KEY=${V_RAPID_API_KEY}"

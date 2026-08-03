@@ -18,6 +18,7 @@ import { VisualizerProvider } from "../context/VisualizerContext";
 import { cn } from "@/lib/utils";
 import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
 import { BeatProvider } from "../context/BeatContext";
+import "../lib/logger";
 
 const outfitFont = Outfit({
   variable: "--font-sans",

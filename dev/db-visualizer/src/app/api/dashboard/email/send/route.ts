@@ -7,14 +7,14 @@ export async function POST(req: NextRequest) {
   if (authErr) return authErr;
 
   try {
-    const { subject, htmlContent, recipientMode, selectedUserIds, customEmails, testEmail } = await req.json();
+    const { subject, htmlContent, recipientMode, selectedUserIds, customEmails, testEmail, senderEmail } = await req.json();
 
     if (!subject || !htmlContent) {
       return NextResponse.json({ error: "Subject and htmlContent are required" }, { status: 400 });
     }
 
     const apiKey = process.env.RESEND_API_KEY;
-    const fromAddress = process.env.AUTH_FROM_EMAIL || "auth@syncbeats.app";
+    const fromAddress = senderEmail?.trim() || process.env.UPDATES_FROM_EMAIL || process.env.AUTH_FROM_EMAIL || "updates@syncbeats.app";
 
     if (!apiKey) {
       return NextResponse.json(

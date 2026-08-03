@@ -41,7 +41,7 @@ async function resolveIp(ip: string) {
     cleanIp.startsWith("172.30.") ||
     cleanIp === "localhost"
   ) {
-    return resolvePrivateIp(cleanIp);
+    return null;
   }
 
   if (geoCache.has(cleanIp)) {

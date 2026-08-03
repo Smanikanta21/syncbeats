@@ -208,6 +208,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       if (existingRoom) {
         roomManager.getOrCreate(existingRoom.id);
         console.log(`[Rooms] Reusing existing default room ${existingRoom.id} for user ${hostUserId}`);
+        void AuditLogger.info('ROOM_DEFAULT', `Room #${existingRoom.id} active for user ${req.user?.email || hostUserId}`, req.ip);
         res.json({ roomId: existingRoom.id, createdAt: existingRoom.created_at, isNew: false });
         return;
       }
@@ -217,10 +218,12 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const dbRoom = await repo.create(roomId, hostUserId);
       roomManager.getOrCreate(roomId);
       console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
+      void AuditLogger.info('ROOM_CREATE', `Created new room #${roomId} for user ${req.user?.email || hostUserId}`, req.ip);
       res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
     } catch (err) {
       console.error('[Rooms] default room error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      void AuditLogger.error('ROOM_CREATE_ERROR', `Failed to create room: ${msg}`, req.ip);
       res.status(500).json({ error: msg });
     }
   });
@@ -235,10 +238,12 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const dbRoom = await repo.create(roomId, hostUserId);
       roomManager.getOrCreate(roomId);
       console.log(`[Rooms] Created room ${roomId} by user ${hostUserId}`);
+      void AuditLogger.info('ROOM_CREATE', `Created room #${roomId} by user ${req.user?.email || hostUserId}`, req.ip);
       res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at });
     } catch (err) {
       console.error('[Rooms] create error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      void AuditLogger.error('ROOM_CREATE_ERROR', `Failed to create room: ${msg}`, req.ip);
       res.status(500).json({ error: msg });
     }
   });

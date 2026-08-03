@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LogEntrySkeleton } from "./Skeleton";
 
 interface LogEntry {
   id: string;
   action: string;
-  level: "ERROR" | "WARN" | "INFO" | "SECURITY";
+  source?: "FRONTEND" | "BACKEND" | "DATABASE";
+  level: "SUCCESS" | "ERROR" | "WARN" | "INFO" | "SECURITY";
   message: string;
   ip: string;
   timestamp: string;
@@ -13,6 +15,9 @@ interface LogEntry {
 
 interface LogCounts {
   total: number;
+  frontend?: number;
+  backend?: number;
+  database?: number;
   errors: number;
   warnings: number;
   security: number;
@@ -23,6 +28,7 @@ export default function DebugLogsView() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [counts, setCounts] = useState<LogCounts>({ total: 0, errors: 0, warnings: 0, security: 0, info: 0 });
   const [levelFilter, setLevelFilter] = useState<string>("ALL");
+  const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
@@ -30,7 +36,7 @@ export default function DebugLogsView() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch(`/api/dashboard/logs?level=${levelFilter}`);
+      const res = await fetch(`/api/dashboard/logs?level=${levelFilter}&source=${sourceFilter}`);
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -45,13 +51,13 @@ export default function DebugLogsView() {
 
   useEffect(() => {
     fetchLogs();
-  }, [levelFilter]);
+  }, [levelFilter, sourceFilter]);
 
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
-  }, [autoRefresh, levelFilter]);
+  }, [autoRefresh, levelFilter, sourceFilter]);
 
   const handleClearLogs = async () => {
     if (!confirm("Are you sure you want to clear all audit debug logs?")) return;
@@ -79,15 +85,17 @@ export default function DebugLogsView() {
 
   const getLevelBadgeClass = (level: string) => {
     switch (level) {
+      case "SUCCESS":
+        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-bold";
       case "ERROR":
-        return "bg-red-500/20 text-red-400 border-red-500/30";
+        return "bg-red-500/20 text-red-400 border-red-500/30 font-bold";
       case "WARN":
-        return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+        return "bg-amber-500/20 text-amber-400 border-amber-500/30 font-bold";
       case "SECURITY":
-        return "bg-purple-500/20 text-purple-400 border-purple-500/30";
+        return "bg-purple-500/20 text-purple-400 border-purple-500/30 font-bold";
       case "INFO":
       default:
-        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+        return "bg-blue-500/20 text-blue-400 border-blue-500/30 font-bold";
     }
   };
 
@@ -118,16 +126,16 @@ export default function DebugLogsView() {
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-emerald-400 animate-ping" : "bg-zinc-600"}`} />
-            {autoRefresh ? "Auto-refreshing (3s)" : "Paused"}
+            <span>Auto-refreshing (3s)</span>
           </button>
 
           {/* Refresh Button */}
           <button
             onClick={fetchLogs}
             className="p-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl border border-zinc-800 transition-colors"
-            title="Refresh logs"
+            title="Refresh Logs Now"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "animate-spin" : ""}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
 
           {/* Clear Logs Button */}
@@ -142,34 +150,65 @@ export default function DebugLogsView() {
       </div>
 
       {/* Bar Controls & Filters */}
-      <div className="p-4 bg-zinc-950/60 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
-        {/* Level Filters */}
-        <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl p-1">
-          {[
-            { id: "ALL", label: `All (${counts.total})` },
-            { id: "ERROR", label: `Errors (${counts.errors})` },
-            { id: "WARN", label: `Warnings (${counts.warnings})` },
-            { id: "SECURITY", label: `Security (${counts.security})` },
-            { id: "INFO", label: `Info (${counts.info})` },
-          ].map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setLevelFilter(f.id)}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                levelFilter === f.id
-                  ? f.id === "ERROR"
-                    ? "bg-red-500 text-white shadow-md shadow-red-500/20"
-                    : f.id === "WARN"
-                    ? "bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20"
-                    : f.id === "SECURITY"
-                    ? "bg-purple-500 text-white shadow-md shadow-purple-500/20"
-                    : "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      <div className="p-4 bg-zinc-950/60 border-b border-zinc-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Source Filters */}
+          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-2xl p-1 gap-1">
+            {[
+              { id: "ALL", label: `All Sources` },
+              { id: "FRONTEND", label: `Frontend (${counts.frontend || 0})` },
+              { id: "BACKEND", label: `Backend (${counts.backend || 0})` },
+              { id: "DATABASE", label: `Database (${counts.database || 0})` },
+            ].map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSourceFilter(s.id)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  sourceFilter === s.id
+                    ? s.id === "FRONTEND"
+                      ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                      : s.id === "DATABASE"
+                      ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                      : "bg-indigo-500 text-white shadow-md shadow-indigo-500/20"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Level Filters */}
+          <div className="flex flex-wrap items-center bg-zinc-900 border border-zinc-800 rounded-2xl p-1 gap-1">
+            {[
+              { id: "ALL", label: `All (${counts.total})` },
+              { id: "SUCCESS", label: `Success (${(counts as any).success || 0})` },
+              { id: "ERROR", label: `Errors (${counts.errors})` },
+              { id: "WARN", label: `Warnings (${counts.warnings})` },
+              { id: "SECURITY", label: `Security (${counts.security})` },
+              { id: "INFO", label: `Info (${counts.info})` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setLevelFilter(f.id)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                  levelFilter === f.id
+                    ? f.id === "ERROR"
+                      ? "bg-red-500 text-white shadow-md shadow-red-500/20"
+                      : f.id === "WARN"
+                      ? "bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20"
+                      : f.id === "SECURITY"
+                      ? "bg-purple-500 text-white shadow-md shadow-purple-500/20"
+                      : f.id === "SUCCESS"
+                      ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                      : "bg-blue-500 text-white shadow-md shadow-blue-500/20"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Search */}
@@ -185,8 +224,17 @@ export default function DebugLogsView() {
       </div>
 
       {/* Terminal View Feed */}
-      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed space-y-1 bg-zinc-950">
-        {filteredLogs.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed space-y-2 bg-zinc-950">
+        {loading ? (
+          <div className="space-y-2">
+            <LogEntrySkeleton />
+            <LogEntrySkeleton />
+            <LogEntrySkeleton />
+            <LogEntrySkeleton />
+            <LogEntrySkeleton />
+            <LogEntrySkeleton />
+          </div>
+        ) : filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-50"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
             <p>No log records match your filter criteria.</p>
@@ -202,6 +250,19 @@ export default function DebugLogsView() {
                 {/* Timestamp */}
                 <span className="text-zinc-500 shrink-0 text-[11px]">
                   [{new Date(log.timestamp).toLocaleTimeString()}]
+                </span>
+
+                {/* Source Badge */}
+                <span
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-black border shrink-0 ${
+                    log.source === "FRONTEND"
+                      ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+                      : log.source === "DATABASE"
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                      : "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                  }`}
+                >
+                  {log.source || "BACKEND"}
                 </span>
 
                 {/* Level Badge */}

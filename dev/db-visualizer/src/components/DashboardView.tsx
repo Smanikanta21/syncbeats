@@ -2,15 +2,20 @@
 
 import { useEffect, useState } from "react";
 import WorldMap, { GeoLocationItem } from "./WorldMap";
-import EmailDesignerModal from "./EmailDesignerModal";
+import { MetricCardSkeleton, MapSkeleton, TableRowSkeleton } from "./Skeleton";
+interface DashboardViewProps {
+  onNavigateTable?: (tableName: string, searchStr?: string) => void;
+}
 
-export default function DashboardView() {
+export default function DashboardView({ onNavigateTable }: DashboardViewProps) {
   const [windowFilter, setWindowFilter] = useState("15m");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [geoLocations, setGeoLocations] = useState<GeoLocationItem[]>([]);
   const [userSearch, setUserSearch] = useState("");
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   const fetchDashboardStats = async (windowParam: string) => {
     setLoading(true);
@@ -82,13 +87,13 @@ export default function DashboardView() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              SYNCBEATS <span className="text-emerald-400">Dashboard</span>
+              SYNCBEATS <span className="text-white">Dashboard</span>
             </h1>
-            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-zinc-300 bg-zinc-800 border border-zinc-700 rounded-lg">
               Live Console
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-1">Real-time user analytics, device activity, IP locations & email broadcast system</p>
+          <p className="text-xs sm:text-sm text-zinc-400 mt-1">Real-time user analytics, device activity, IP locations & system health</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -105,80 +110,118 @@ export default function DashboardView() {
             ].map((t) => (
               <button
                 key={t.id}
-                onClick={() => setWindowFilter(t.id)}
+                onClick={() => {
+                  setShowCustomPicker(false);
+                  setWindowFilter(t.id);
+                }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  windowFilter === t.id
-                    ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
+                  windowFilter === t.id && !showCustomPicker
+                    ? "bg-white text-zinc-950 shadow-md"
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
                 {t.label}
               </button>
             ))}
+
+            <button
+              onClick={() => setShowCustomPicker(!showCustomPicker)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                showCustomPicker ? "bg-white text-zinc-950 shadow-md" : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Custom...
+            </button>
           </div>
 
-          {/* Email Sender Button */}
-          <button
-            onClick={() => setIsEmailModalOpen(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-zinc-950 font-bold rounded-2xl text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-            HTML Email Designer
-          </button>
+          {showCustomPicker && (
+            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-2 text-xs">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-2 py-1 text-xs focus:outline-none"
+              />
+              <span className="text-zinc-500">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-2 py-1 text-xs focus:outline-none"
+              />
+              <button
+                onClick={() => fetchDashboardStats(`custom_${customStartDate}_${customEndDate}`)}
+                className="px-3 py-1 bg-white text-zinc-950 font-bold rounded-xl text-xs shadow-md"
+              >
+                Apply Range
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Metrics Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Total Users */}
-        <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Users</span>
-            <span className="p-2 rounded-xl bg-zinc-800 text-emerald-400">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </span>
-          </div>
-          <div className="text-3xl font-extrabold text-white">{loading ? "..." : data?.metrics?.totalUsers || 0}</div>
-          <p className="text-[11px] text-zinc-400 mt-2">Registered accounts in database</p>
-        </div>
+        {loading ? (
+          <>
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+          </>
+        ) : (
+          <>
+            {/* Total Users */}
+            <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
+              <div className="flex items-center justify-between text-zinc-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Total Users</span>
+                <span className="p-2 rounded-xl bg-zinc-800 text-emerald-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+              </div>
+              <div className="text-3xl font-extrabold text-white">{data?.metrics?.totalUsers || 0}</div>
+              <p className="text-[11px] text-zinc-400 mt-2">Registered accounts in database</p>
+            </div>
 
-        {/* Active in Window */}
-        <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Active ({windowFilter})</span>
-            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
-            </span>
-          </div>
-          <div className="text-3xl font-extrabold text-emerald-400">{loading ? "..." : data?.metrics?.activeInWindowCount || 0}</div>
-          <p className="text-[11px] text-zinc-400 mt-2">Active in selected time window</p>
-        </div>
+            {/* Active in Window */}
+            <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
+              <div className="flex items-center justify-between text-zinc-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Active ({windowFilter})</span>
+                <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+                </span>
+              </div>
+              <div className="text-3xl font-extrabold text-emerald-400">{data?.metrics?.activeInWindowCount || 0}</div>
+              <p className="text-[11px] text-zinc-400 mt-2">Active in selected time window</p>
+            </div>
 
-        {/* Online Now */}
-        <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Online Now</span>
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-          </div>
-          <div className="text-3xl font-extrabold text-white">{loading ? "..." : data?.metrics?.onlineNowCount || 0}</div>
-          <p className="text-[11px] text-zinc-400 mt-2">Connected in last 5 minutes</p>
-        </div>
+            {/* Online Now */}
+            <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
+              <div className="flex items-center justify-between text-zinc-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Online Now</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+              </div>
+              <div className="text-3xl font-extrabold text-white">{data?.metrics?.onlineNowCount || 0}</div>
+              <p className="text-[11px] text-zinc-400 mt-2">Connected in last 5 minutes</p>
+            </div>
 
-        {/* Total Devices */}
-        <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Devices & Locations</span>
-            <span className="p-2 rounded-xl bg-zinc-800 text-teal-400">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-            </span>
-          </div>
-          <div className="text-3xl font-extrabold text-white">{loading ? "..." : data?.metrics?.totalDevices || 0}</div>
-          <p className="text-[11px] text-zinc-400 mt-2">{geoLocations.length} Geocoded IP locations</p>
-        </div>
+            {/* Total Devices */}
+            <div className="p-6 bg-zinc-900/80 border border-zinc-800/80 rounded-3xl shadow-xl backdrop-blur-xl">
+              <div className="flex items-center justify-between text-zinc-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Devices & Locations</span>
+                <span className="p-2 rounded-xl bg-zinc-800 text-teal-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                </span>
+              </div>
+              <div className="text-3xl font-extrabold text-white">{data?.metrics?.totalDevices || 0}</div>
+              <p className="text-[11px] text-zinc-400 mt-2">{geoLocations.length} Geocoded IP locations</p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* World Map Section */}
-      <WorldMap locations={geoLocations} />
+      {loading && geoLocations.length === 0 ? <MapSkeleton /> : <WorldMap locations={geoLocations} />}
 
       {/* Device OS & Browser Distribution Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -273,7 +316,14 @@ export default function DashboardView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {filteredUsers.length === 0 ? (
+              {loading ? (
+                <>
+                  <TableRowSkeleton />
+                  <TableRowSkeleton />
+                  <TableRowSkeleton />
+                  <TableRowSkeleton />
+                </>
+              ) : filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-zinc-500">
                     No users match your criteria.
@@ -285,10 +335,18 @@ export default function DashboardView() {
                   const geo = firstDev?.ip ? geoLocations.find((g) => g.ip === firstDev.ip) : null;
 
                   return (
-                    <tr key={u.id} className="hover:bg-zinc-800/40 transition-colors">
+                    <tr
+                      key={u.id}
+                      onClick={() => onNavigateTable && onNavigateTable("User", u.email)}
+                      className="hover:bg-zinc-800/60 transition-colors cursor-pointer group"
+                      title="Click to inspect user in Database Tables"
+                    >
                       {/* User Info */}
                       <td className="py-4 px-4">
-                        <div className="font-bold text-white text-sm">{u.name}</div>
+                        <div className="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                          <span>{u.name}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono opacity-0 group-hover:opacity-100 transition-opacity">Inspect →</span>
+                        </div>
                         <div className="text-zinc-400 text-xs font-mono">{u.email}</div>
                       </td>
 
@@ -312,7 +370,7 @@ export default function DashboardView() {
 
                       {/* Auth Provider */}
                       <td className="py-4 px-4">
-                        <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-[11px]">
+                        <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-[11px] uppercase font-bold">
                           {u.authProvider}
                         </span>
                       </td>
@@ -326,9 +384,9 @@ export default function DashboardView() {
                             {u.devices.slice(0, 2).map((d: any, idx: number) => (
                               <div key={idx} className="flex items-center gap-2">
                                 <span className="font-medium text-white">{d.name}</span>
-                                <span className="text-[10px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md">{d.os}</span>
-                                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                  {geo ? geo.flag : "🌐"} {d.ip}
+                                <span className="text-[10px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md font-mono">{d.os}</span>
+                                <span className="text-[10px] font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-md">
+                                  {d.ip}
                                 </span>
                               </div>
                             ))}
@@ -350,11 +408,11 @@ export default function DashboardView() {
       </div>
 
       {/* Email Designer Modal */}
-      <EmailDesignerModal
+      {/* <EmailDesignerModal
         isOpen={isEmailModalOpen}
         onClose={() => setIsEmailModalOpen(false)}
         users={data?.users || []}
-      />
+      /> */}
     </div>
   );
 }

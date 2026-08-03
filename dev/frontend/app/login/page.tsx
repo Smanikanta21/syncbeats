@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { authApi, roomsApi } from "../../lib/api";
 import { cn } from "@/lib/utils";
+import { logger } from "../../lib/logger";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -247,15 +248,18 @@ export default function AuthPage() {
       setError(null);
       setLoading(true);
       try {
+        logger.info("GOOGLE_OAUTH_SUBMIT", "Google OAuth credential submitted");
         const params = new URLSearchParams(window.location.search);
         const returnTo = params.get('returnTo') || '/hub';
         const token = await googleLogin(idToken);
+        logger.success("GOOGLE_OAUTH_SUCCESS", "Google OAuth authentication succeeded");
         if (returnTo.startsWith('syncbeats://')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
           router.push(returnTo);
         }
       } catch (err: any) {
+        logger.error("GOOGLE_OAUTH_FAILED", err.message || "Google sign-in failed");
         setError(err.message || "Google sign-in failed");
         setLoading(false);
       }
