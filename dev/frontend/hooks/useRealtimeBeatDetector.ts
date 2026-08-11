@@ -87,13 +87,21 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
         return;
       }
 
+      const scale = (data ? data.length : 256) / 256;
       let sub = 0, bass = 0, lowMids = 0, mids = 0, upperMids = 0, highs = 0;
-      let subSum = 0; for (let i = 0; i <= 4; i++) subSum += data[i]; sub = subSum / 5 / 255;
-      let bassSum = 0; for (let i = 5; i <= 12; i++) bassSum += data[i]; bass = bassSum / 8 / 255;
-      let lowMidSum = 0; for (let i = 13; i <= 24; i++) lowMidSum += data[i]; lowMids = lowMidSum / 12 / 255;
-      let midSum = 0; for (let i = 25; i <= 48; i++) midSum += data[i]; mids = midSum / 24 / 255;
-      let upperMidSum = 0; for (let i = 49; i <= 80; i++) upperMidSum += data[i]; upperMids = upperMidSum / 32 / 255;
-      let highSum = 0; for (let i = 81; i <= Math.min(180, data.length - 1); i++) highSum += data[i]; highs = highSum / Math.min(100, data.length - 81) / 255;
+      const getAvg = (start: number, end: number) => {
+        const sIdx = Math.floor(start * scale);
+        const eIdx = Math.min(data.length - 1, Math.ceil(end * scale));
+        let sum = 0, count = 0;
+        for (let i = sIdx; i <= eIdx; i++) { sum += data[i] || 0; count++; }
+        return count > 0 ? (sum / count) / 255 : 0;
+      };
+      sub       = getAvg(0, 4);
+      bass      = getAvg(5, 12);
+      lowMids   = getAvg(13, 24);
+      mids      = getAvg(25, 48);
+      upperMids = getAvg(49, 80);
+      highs     = getAvg(81, Math.min(180, Math.floor(data.length * 0.9)));
 
       const rawValues = [sub, bass, lowMids, mids, upperMids, highs];
       const normValues = [0, 0, 0, 0, 0, 0];

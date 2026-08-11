@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
-import { RoomVisualizer } from "./RoomVisualizer";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
@@ -388,18 +387,9 @@ export function RoomDashboard({
             />
           </GlassCard>
 
-          {/* Bottom: EQ + Visualizer */}
-          <GlassCard className="h-[280px] shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
-            <div className="flex-[3] min-h-0 flex flex-col">
-              <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} onOpenVisuals={() => setShowVisualsPanel(true)} />
-            </div>
-            <div className="h-[1px] w-full bg-foreground/[0.05] shrink-0 my-2" />
-            <div className="flex-[1] min-h-0 flex flex-col">
-              <RoomVisualizer
-                isPlaying={isPlaying}
-                hasTrack={audio.hasTrack}
-              />
-            </div>
+          {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
+          <GlassCard className="h-[260px] shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+                  <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
           </GlassCard>
         </div>
 
@@ -691,16 +681,10 @@ export function RoomDashboard({
           )}
           {mobileTab === "playing" && (
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col">
-              <div className="h-full flex flex-col gap-2 min-h-0">
-                <GlassCard className="flex-[3] p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
-                  <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} onOpenVisuals={() => setShowVisualsPanel(true)} />
-                </GlassCard>
-                <GlassCard className="flex-[2] p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
-                  <RoomVisualizer
-                    isPlaying={audio.isPlaying}
-                    hasTrack={!!currentQueueItem}
-                  />
+              className="flex-1 min-h-0 px-2 flex flex-col items-center justify-center">
+              <div className="w-full max-w-md my-auto flex flex-col min-h-0">
+                <GlassCard className="w-full h-[210px] sm:h-[240px] p-3 sm:p-4 flex flex-col min-h-0 shrink-0" isPlaying={isPlaying}>
+                      <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
                 </GlassCard>
               </div>
             </motion.div>

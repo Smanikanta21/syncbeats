@@ -601,72 +601,27 @@ export class RoomRepository {
 
   async jumpToQueueItem(roomId: string, itemId: string): Promise<TrackQueueItem | null> {
     return prisma.$transaction(async (tx) => {
-      const allItems = await tx.roomQueueItem.findMany({
-        where: { roomId },
-        orderBy: { queueIndex: 'asc' },
+      const targetItem = await tx.roomQueueItem.findFirst({
+        where: { roomId, id: itemId },
         include: { uploader: { select: { name: true } } }
       });
 
-      const targetItem = allItems.find(i => i.id === itemId);
       if (!targetItem) return null;
 
-      const currentIdx = allItems.findIndex(i => i.isCurrent);
-      const targetIdx = allItems.findIndex(i => i.id === itemId);
+      // 1. Unset current status on any previously playing queue item
+      await tx.roomQueueItem.updateMany({
+        where: { roomId, isCurrent: true },
+        data: { isCurrent: false },
+      });
 
-      if (currentIdx === -1) {
-        await tx.roomQueueItem.updateMany({ where: { roomId }, data: { isCurrent: false } });
-        await tx.roomQueueItem.update({ where: { id: itemId }, data: { isCurrent: true } });
-        await tx.room.update({
-          where: { id: roomId },
-          data: {
-            trackUrl: sanitizeNullBytes(targetItem.trackUrl),
-            playbackState: 'PAUSED',
-            positionMs: 0n,
-          },
-        });
-        return this.mapQueueItem({ ...targetItem, isCurrent: true });
-      }
+      // 2. Set target item as current
+      const updatedTarget = await tx.roomQueueItem.update({
+        where: { id: itemId },
+        data: { isCurrent: true },
+        include: { uploader: { select: { name: true } } }
+      });
 
-      let history: typeof allItems = [];
-      let remaining: typeof allItems = [];
-
-      if (targetIdx <= currentIdx) {
-        // User clicked a song in History (before current song)
-        history = allItems.slice(0, targetIdx);
-        remaining = allItems.slice(targetIdx).filter(i => i.id !== itemId);
-      } else {
-        // User clicked a song in Up Next (after current song)
-        // History remains items before and including current song
-        history = allItems.slice(0, currentIdx + 1);
-        remaining = allItems.slice(currentIdx + 1).filter(i => i.id !== itemId);
-      }
-
-      const newQueue = [...history, targetItem, ...remaining];
-
-      // 1. Shift all items to unique temporary negative indices to prevent unique constraint (room_id, queue_index) collision
-      await Promise.all(
-        newQueue.map((item, idx) =>
-          tx.roomQueueItem.update({
-            where: { id: item.id },
-            data: { queueIndex: -(idx + 1) },
-          })
-        )
-      );
-
-      // 2. Set final target indices and current track state
-      await Promise.all(
-        newQueue.map((item, idx) =>
-          tx.roomQueueItem.update({
-            where: { id: item.id },
-            data: {
-              queueIndex: idx,
-              isCurrent: item.id === itemId,
-            },
-          })
-        )
-      );
-
-      // Update room state
+      // 3. Update room state to new track
       await tx.room.update({
         where: { id: roomId },
         data: {
@@ -676,10 +631,9 @@ export class RoomRepository {
         },
       });
 
-      const newTargetIndex = history.length;
-      return this.mapQueueItem({ ...targetItem, isCurrent: true, queueIndex: newTargetIndex });
+      return this.mapQueueItem(updatedTarget);
     }, {
-      timeout: 15000
+      timeout: 30000
     });
   }
 

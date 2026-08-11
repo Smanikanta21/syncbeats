@@ -595,6 +595,14 @@ export class SocketHandler {
       socket.to(roomId).emit('spatial:update', { deviceId, position });
     });
 
+    // ── Equalizer State Multi-Device Sync ─────────────────────────────────
+
+    socket.on('room:eqUpdate', ({ roomId, gains }: { roomId: string; gains: number[] }) => {
+      if (!roomId || !Array.isArray(gains)) return;
+      // Broadcast EQ gains to all other devices in the room
+      socket.to(roomId).emit('room:eqUpdate', { gains });
+    });
+
     // ── Disconnect ───────────────────────────────────────────────────────
 
     socket.on('disconnect', (reason) => {

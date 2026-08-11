@@ -692,6 +692,13 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('device:ping', handleDevicePing);
 
+    const handleEqUpdate = ({ gains }: { gains: number[] }) => {
+      if (gains && Array.isArray(gains) && audioRef.current?.setAllEqBands) {
+        audioRef.current.setAllEqBands(gains);
+      }
+    };
+    socket.on('room:eqUpdate', handleEqUpdate);
+
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
@@ -723,6 +730,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);
       socket.off('device:ping', handleDevicePing);
+      socket.off('room:eqUpdate', handleEqUpdate);
       socket.off('error', handleError);
     };
   }, [applyRoomDetails, roomId, displayName, socket, runNtpBurst]);
@@ -804,30 +812,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
   const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
 
-  // Handle Track Completion (audioEnded) — auto-loop, auto-advance, or pause when queue finishes
-  useEffect(() => {
-    const handleAudioEnded = () => {
-      const snap = snapshotRef.current;
-      if (!snap) return;
 
-      const repeatMode = snap.repeatMode ?? "off";
-      const q = snap.queue ?? [];
-      const currentIdx = q.findIndex(item => item.isCurrent);
-      const hasNextInQueue = currentIdx >= 0 && currentIdx < q.length - 1;
-
-      if (repeatMode === "track") {
-        seek(0);
-        play();
-      } else if (hasNextInQueue || repeatMode === "all") {
-        nextTrack();
-      } else {
-        pause();
-      }
-    };
-
-    window.addEventListener("audioEnded", handleAudioEnded);
-    return () => window.removeEventListener("audioEnded", handleAudioEnded);
-  }, [seek, play, nextTrack, pause]);
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
     socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
 
