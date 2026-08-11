@@ -8,6 +8,10 @@ export default function Magnetic({ children, className = "inline-flex" }: { chil
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const handleMouse = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ignore touch / mobile events so touch taps aren't swallowed by mouse displacement state updates
+    if (typeof window !== "undefined" && (window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768)) {
+      return;
+    }
     const { clientX, clientY } = e;
     if (!ref.current) return;
     const { height, width, left, top } = ref.current.getBoundingClientRect();

@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   MessageSquare,
   LogOut,
+  UserPlus,
   X,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -16,7 +17,7 @@ import { cn } from "../../lib/utils";
 export type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
 
 export interface MenuItem {
-  id: MobileTab | "leave";
+  id: MobileTab | "leave" | "join";
   label: string;
   sublabel: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -50,6 +51,14 @@ export const MENU_ITEMS: MenuItem[] = [
     color: "from-emerald-500 to-teal-500",
   },
   {
+    id: "join",
+    label: "Join Room",
+    sublabel: "Enter 6-Digit Code",
+    icon: UserPlus,
+    iconName: "UserPlus",
+    color: "from-emerald-400 to-teal-400",
+  },
+  {
     id: "queue",
     label: "Queue",
     sublabel: "Live Playlists",
@@ -79,6 +88,7 @@ interface MobileRadialNavigatorProps {
   activeTab: MobileTab;
   onSelectTab: (tabId: MobileTab) => void;
   onLeaveRoom?: () => void;
+  onOpenJoinModal?: () => void;
   unreadChatCount?: number;
   className?: string;
 }
@@ -87,6 +97,7 @@ export function MobileRadialNavigator({
   activeTab,
   onSelectTab,
   onLeaveRoom,
+  onOpenJoinModal,
   unreadChatCount = 0,
   className,
 }: MobileRadialNavigatorProps) {
@@ -152,8 +163,8 @@ export function MobileRadialNavigator({
     };
   }, []);
 
-  // Arc angles for 6 items in bottom-right quarter circle:
-  // Spanning from 90° (pointing straight up) to 180° (pointing left)
+  // Arc angles for items in bottom-right quarter circle:
+  // Spanning from 92° (pointing straight up) to 182° (pointing left)
   const getItemArcAngle = useCallback((index: number, total: number) => {
     const startAngle = 92;  // vertical up
     const endAngle = 182;   // horizontal left
@@ -170,10 +181,14 @@ export function MobileRadialNavigator({
       } else if (typeof window !== "undefined") {
         window.location.href = "/";
       }
+    } else if (item.id === "join") {
+      if (onOpenJoinModal) {
+        onOpenJoinModal();
+      }
     } else {
-      onSelectTab(item.id);
+      onSelectTab(item.id as MobileTab);
     }
-  }, [onLeaveRoom, onSelectTab, setMenuOpen]);
+  }, [onLeaveRoom, onOpenJoinModal, onSelectTab, setMenuOpen]);
 
   // High precision magnetic snap evaluation logic
   const processPoint = useCallback(
@@ -196,7 +211,6 @@ export function MobileRadialNavigator({
       if (angle < 0) angle += 360;
 
       const numItems = MENU_ITEMS.length;
-
       let closestIdx: number | null = null;
       let minAngularDiff = 999;
 
@@ -279,47 +293,32 @@ export function MobileRadialNavigator({
 
   // Pointer Down on Trigger Button
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const target = e.currentTarget;
+    isDraggingRef.current = true;
     pointerIdRef.current = e.pointerId;
+    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
 
     try {
-      target.setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
 
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      centerCoordRef.current = {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      };
-    }
+    centerCoordRef.current = getCenterCoord();
 
-    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
-    isDraggingRef.current = true;
-
-    // Toggle menu state immediately on click/press
-    const nextState = !isOpenRef.current;
-    setMenuOpen(nextState);
-
-    if (nextState) {
-      processPoint(e.clientX, e.clientY);
+    if (!isOpen) {
+      setMenuOpen(true);
+      if (typeof window !== "undefined" && navigator.vibrate) {
+        try {
+          navigator.vibrate(20);
+        } catch {}
+      }
     }
   };
 
-  // Pointer Move on Trigger Button
   const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!isDraggingRef.current && !isOpenRef.current) return;
-    e.preventDefault();
+    if (!isDraggingRef.current) return;
     processPoint(e.clientX, e.clientY);
   };
 
-  // Pointer Up / Release on Trigger Button
   const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    
     if (pointerIdRef.current !== null) {
       try {
         e.currentTarget.releasePointerCapture(pointerIdRef.current);
@@ -344,7 +343,7 @@ export function MobileRadialNavigator({
     lastHapticIndexRef.current = null;
 
     if (currentSnapped !== null && MENU_ITEMS[currentSnapped]) {
-      // Released over a snapped item -> select that tab!
+      // Released over a snapped item -> select that item/action!
       handleItemSelect(MENU_ITEMS[currentSnapped]);
     } else if (dragDistance > 12) {
       // Dragged into space outside any item -> close menu
@@ -374,7 +373,7 @@ export function MobileRadialNavigator({
 
   return (
     <>
-      {/* ── Floating Trigger Button (Compact w-12 h-12 Ergonomic Thumb Target) ── */}
+      {/* ── Floating Trigger Button ── */}
       <div className={cn("fixed bottom-5 right-5 z-50 md:hidden select-none", className)}>
         <motion.button
           ref={triggerRef}
@@ -382,71 +381,51 @@ export function MobileRadialNavigator({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
-          whileTap={{ scale: 0.90 }}
-          animate={unreadChatCount > 0 && activeTab !== "chat" && !isOpen ? {
-            rotate: [0, -14, 14, -10, 10, -5, 5, 0],
-            scale: [1, 1.18, 0.94, 1.1, 0.98, 1.04, 1],
-            transition: { duration: 0.8, repeat: Infinity, repeatDelay: 1.8 }
-          } : { rotate: 0, scale: 1 }}
+          onClick={() => {
+            if (!isDraggingRef.current) {
+              setMenuOpen(!isOpen);
+            }
+          }}
+          whileTap={{ scale: 0.92 }}
           className={cn(
-            "relative w-12 h-12 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-md border transition-all duration-200 touch-none cursor-pointer",
+            "relative w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 cursor-pointer touch-none border-none outline-none",
             isOpen
-              ? "bg-primary text-primary-foreground border-white/40 ring-4 ring-primary/40 scale-105 shadow-[0_0_25px_rgba(168,85,247,0.6)]"
-              : unreadChatCount > 0 && activeTab !== "chat"
-              ? "bg-gradient-to-r from-pink-600 to-rose-600 text-white border-pink-400/80 ring-4 ring-pink-500/40 shadow-[0_0_25px_rgba(236,72,153,0.7)]"
-              : "bg-background/90 dark:bg-black/90 text-foreground border-foreground/15 hover:bg-background"
+              ? "bg-foreground text-background ring-4 ring-foreground/20 scale-105"
+              : "bg-black/90 text-white border border-white/20 hover:scale-105 shadow-[0_0_25px_rgba(0,0,0,0.6)]"
           )}
-          style={{ touchAction: "none", willChange: "transform, opacity" }}
-          aria-label="Mobile Magnetic Radial Menu Navigator"
+          aria-label="Mobile Navigation Menu"
         >
           <AnimatePresence mode="wait">
             {isOpen ? (
               <motion.div
-                key="open"
+                key="close"
                 initial={{ rotate: -90, opacity: 0 }}
                 animate={{ rotate: 0, opacity: 1 }}
                 exit={{ rotate: 90, opacity: 0 }}
-                transition={{ duration: 0.12 }}
+                transition={{ duration: 0.15 }}
               >
-                <X className={cn('w-5', 'h-5', 'text-white')} />
+                <X className="w-6 h-6 text-background" />
               </motion.div>
             ) : (
               <motion.div
-                key="closed"
+                key="icon"
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
-                transition={{ duration: 0.12 }}
-                className={cn('flex', 'flex-col', 'items-center', 'justify-center')}
+                transition={{ duration: 0.15 }}
+                className="relative"
               >
-                <ActiveIcon className={cn('w-5', 'h-5', 'text-primary')} />
+                <ActiveIcon className="w-6 h-6 text-white" />
+                {unreadChatCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-pink-500 rounded-full border-2 border-black" />
+                )}
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Unread Message Count Badge on Mobile Button */}
-          {unreadChatCount > 0 && activeTab !== "chat" && !isOpen && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: [1, 1.25, 1] }}
-              transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
-              className={cn('absolute', '-top-1.5', '-left-1.5', 'flex', 'h-5', 'min-w-[20px]', 'px-1.5', 'items-center', 'justify-center', 'rounded-full', 'bg-pink-500', 'text-white', 'text-[10px]', 'font-black', 'border-2', 'border-background', 'shadow-lg', 'z-50', 'pointer-events-none')}
-            >
-              {unreadChatCount}
-            </motion.span>
-          )}
-
-          {/* Glowing pulse ring indicator */}
-          {!isOpen && unreadChatCount === 0 && (
-            <span className={cn('absolute', '-top-0.5', '-right-0.5', 'flex', 'h-3', 'w-3')}>
-              <span className={cn('animate-ping', 'absolute', 'inline-flex', 'h-full', 'w-full', 'rounded-full', 'bg-primary', 'opacity-75')}></span>
-              <span className={cn('relative', 'inline-flex', 'rounded-full', 'h-3', 'w-3', 'bg-primary', 'border-2', 'border-background')}></span>
-            </span>
-          )}
         </motion.button>
       </div>
 
-      {/* ── Semi-Circle Radial Menu & Backdrop Overlay ── */}
+      {/* ── Semi-Circle Radial Gesture Menu Overlay ── */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -506,20 +485,21 @@ export function MobileRadialNavigator({
               </svg>
             )}
 
-            {/* Arc Items Rendered in Compact 110px Semi-Circle Arc */}
+            {/* Arc Items Rendered in Compact Semi-Circle Arc */}
             <div className={cn('absolute', 'inset-0', 'pointer-events-none')}>
               {MENU_ITEMS.map((item, idx) => {
                 const angle = getItemArcAngle(idx, MENU_ITEMS.length);
                 const rad = (angle * Math.PI) / 180;
-                const radius = 110; // compact radial distance from center
+                const radius = 115; // compact radial distance from center
 
                 const posX = center.x + radius * Math.cos(rad);
                 const posY = center.y - radius * Math.sin(rad);
 
                 const isSnapped = snappedIndex === idx;
                 const isActiveTab = activeTab === item.id;
-                const Icon = item.icon;
                 const isLeave = item.id === "leave";
+                const isJoin = item.id === "join";
+                const Icon = item.icon;
 
                 return (
                   <motion.div
@@ -532,7 +512,7 @@ export function MobileRadialNavigator({
                     }}
                     animate={{
                       opacity: 1,
-                      scale: isSnapped ? 1.30 : isActiveTab ? 1.10 : 1,
+                      scale: isSnapped ? 1.25 : 1,
                       x: posX - 20,
                       y: posY - 20,
                     }}
@@ -553,6 +533,8 @@ export function MobileRadialNavigator({
                       "absolute w-10 h-10 rounded-full flex flex-col items-center justify-center border-none shadow-xl backdrop-blur-md transition-all duration-150 pointer-events-auto cursor-pointer select-none",
                       isLeave
                         ? "bg-red-500/90 text-white shadow-[0_0_20px_rgba(239,68,68,0.6)]"
+                        : isJoin
+                        ? "bg-emerald-500/90 text-white shadow-[0_0_20px_rgba(16,185,129,0.6)]"
                         : isSnapped
                         ? "bg-primary text-primary-foreground ring-4 ring-primary/50 shadow-[0_0_30px_rgba(168,85,247,0.8)] z-30"
                         : isActiveTab
@@ -572,20 +554,6 @@ export function MobileRadialNavigator({
                         {unreadChatCount}
                       </span>
                     )}
-
-                    {/* Item label under icon */}
-                    {/* <span
-                      className={cn(
-                        "absolute right-8 -top-4 text-[6px] font-extrabold uppercase tracking-wider whitespace-nowrap px-1.5 py-0.5 rounded-full backdrop-blur-md transition-all duration-150 pointer-events-none",
-                        isLeave
-                          ? "bg-red-600 text-white opacity-100 shadow-md"
-                          : isSnapped
-                          ? "bg-primary text-white opacity-100 scale-110 shadow-lg"
-                          : "bg-background/90 text-foreground/80 opacity-90"
-                      )}
-                    >
-                      {item.label}
-                    </span> */}
                   </motion.div>
                 );
               })}

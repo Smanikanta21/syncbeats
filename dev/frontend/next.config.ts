@@ -7,7 +7,7 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: process.env.VERCEL ? undefined : "standalone",
   turbopack: {},
   allowedDevOrigins: ['172.20.10.3','172.20.10.7'],
   images: {

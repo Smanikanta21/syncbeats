@@ -21,6 +21,7 @@ import { FullscreenPrompt } from "./FullscreenPrompt";
 import { MobileRadialNavigator } from "./MobileRadialNavigator";
 import { SettingsPanel } from "../SettingsPanel";
 import { ThemeToggle } from "../ThemeToggle";
+import { JoinRoomModal } from "../JoinRoomModal";
 import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
@@ -255,6 +256,7 @@ export function RoomDashboard({
   })();
 
   const [liveSessionSec, setLiveSessionSec] = useState(initialSessionSec);
+  const [showJoinModal, setShowJoinModal] = useState(false);
 
   const accumTime = snapshot?.accumulatedSessionTime;
   const sessDurationMs = snapshot?.sessionDurationMs;
@@ -408,20 +410,19 @@ export function RoomDashboard({
             <div className="shrink-0 flex flex-col gap-2 bg-foreground/[0.02] p-2 rounded-xl border border-foreground/[0.05]">
               <div className="flex justify-between items-center px-1">
                 <span className="text-[10px] font-bold tracking-widest text-foreground/50 uppercase">Room Info</span>
-                <div className="flex items-center gap-1.5">
-                  {isHost && (
-                    <button 
-                      onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-                      className="p-1 rounded-full font-bold transition-colors bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 flex items-center justify-center"
-                      title="Invite Friends (+)"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button 
+                    onClick={() => setShowJoinModal(true)}
+                    className="text-[9px] px-2 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 cursor-pointer border border-emerald-500/20 whitespace-nowrap shrink-0"
+                    title="Join another room via Code Ring"
+                  >
+                    <Plus className="w-3 h-3 shrink-0" />
+                    <span className="whitespace-nowrap">Join Room</span>
+                  </button>
                   {isHost && (
                     <button 
                       onClick={handleTogglePrivate}
-                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
+                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors cursor-pointer whitespace-nowrap shrink-0 ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
                       title={isPrivate ? "Click to make room public" : "Click to make room private"}
                     >
                       {isPrivate ? 'Private' : 'Public'}
@@ -429,11 +430,11 @@ export function RoomDashboard({
                   )}
                   <button 
                     onClick={openProfilePage}
-                    className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20"
+                    className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20 cursor-pointer whitespace-nowrap shrink-0"
                     title="View Profile"
                   >
-                    <User className="w-3 h-3" />
-                    Profile
+                    <User className="w-3 h-3 shrink-0" />
+                    <span className="whitespace-nowrap">Profile</span>
                   </button>
                   <ThemeToggle size="sm" />
                 </div>
@@ -463,7 +464,7 @@ export function RoomDashboard({
                           console.error("Failed to copy link.", err);
                         }
                       }}
-                      className={`transition-colors p-1 rounded hover:bg-foreground/5 ${copied ? "text-green-500" : "text-foreground/40 hover:text-foreground/80"}`}
+                      className={`transition-colors p-1 rounded hover:bg-foreground/5 cursor-pointer ${copied ? "text-green-500" : "text-foreground/40 hover:text-foreground/80"}`}
                       title="Copy Invite Link"
                     >
                       {copied ? (
@@ -474,7 +475,7 @@ export function RoomDashboard({
                     </button>
                     <button
                       onClick={() => setShowQR(true)}
-                      className="p-1 rounded hover:bg-foreground/5 text-foreground/40 hover:text-foreground/80 transition-colors"
+                      className="p-1 rounded hover:bg-foreground/5 text-foreground/40 hover:text-foreground/80 transition-colors cursor-pointer"
                       title="Show QR Code"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
@@ -760,6 +761,7 @@ export function RoomDashboard({
       <MobileRadialNavigator
         activeTab={mobileTab}
         onSelectTab={setMobileTab}
+        onOpenJoinModal={() => setShowJoinModal(true)}
         onLeaveRoom={onLeave || (() => { if (typeof window !== "undefined") window.location.href = "/"; })}
       />
 
@@ -815,6 +817,9 @@ export function RoomDashboard({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Signature Circular Join Modal */}
+      <JoinRoomModal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import Magnetic from "../../../components/Magnetic";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 import { FullscreenLoader } from "../../../components/FullscreenLoader";
+import { JoinRoomModal } from "../../../components/JoinRoomModal";
 import { cn } from "@/lib/utils";
 
 interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; host_id: string; participant_count?: number; }
@@ -32,6 +33,7 @@ export default function HubPage() {
   const [redirecting, setRedirecting] = useState(true);
 
   const [joinCode, setJoinCode] = useState("");
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [invitedRooms, setInvitedRooms] = useState<any[]>([]);
@@ -464,8 +466,17 @@ export default function HubPage() {
 
             <button
               type="button"
+              onClick={() => setShowJoinModal(true)}
+              className={cn('mt-3', 'w-full', 'h-12', 'rounded-2xl', 'border', 'border-foreground/15', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'font-black', 'text-xs', 'uppercase', 'tracking-widest', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-md', 'cursor-pointer')}
+            >
+              <Radio className={cn('w-4', 'h-4', 'text-emerald-400', 'animate-pulse')} />
+              <span>Join via Circular Ring</span>
+            </button>
+
+            <button
+              type="button"
               onClick={openScannerModal}
-              className={cn('mt-3', 'w-full', 'md:hidden', 'h-12', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'text-foreground', 'font-semibold', 'hover:bg-foreground/10', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2')}
+              className={cn('mt-2', 'w-full', 'md:hidden', 'h-12', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'text-foreground', 'font-semibold', 'hover:bg-foreground/10', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2')}
             >
               <ScanLine className={cn('w-4', 'h-4')} />
               Scan QR from Phone
@@ -1054,6 +1065,9 @@ export default function HubPage() {
             </div>
           </div>
         )}
+
+        {/* Signature Circular Join Modal */}
+        <JoinRoomModal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} />
 
       </main>
     </div>

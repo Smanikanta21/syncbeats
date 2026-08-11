@@ -5,10 +5,10 @@ export function getServerUrl(){
   if (process.env.NEXT_PUBLIC_SERVER_URL) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
-  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+  if (typeof window !== 'undefined' && window.location.hostname) {
     return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
-  return '/api';
+  return 'http://localhost:4000';
 }
 
 const BASE = getServerUrl();
