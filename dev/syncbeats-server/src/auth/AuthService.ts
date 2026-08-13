@@ -54,7 +54,7 @@ export class AuthService {
   }
 
   private getPublicAppUrl(): string {
-    return process.env.FRONTEND_URL || "https://syncbeats.app";
+    return process.env.FRONTEND_URL || "https://syncbeats.in";
   }
 
   public async sendEmail(to: string, subject: string, html: string, text?: string): Promise<void> {

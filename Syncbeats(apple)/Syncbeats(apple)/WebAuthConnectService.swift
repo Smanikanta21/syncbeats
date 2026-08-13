@@ -38,7 +38,7 @@ final class WebAuthConnectService: NSObject {
     private enum Config {
         /// Public website origin that hosts the login page. In local dev point
         /// this at the Next.js server (e.g. "http://localhost:3000").
-        static let siteURL = "https://syncbeats.app"
+        static let siteURL = "https://syncbeats.in"
         /// Custom scheme registered in Info.plist (CFBundleURLTypes).
         static let callbackScheme = "syncbeats"
         /// Deep link the website redirects back to, carrying `?token=<jwt>`.

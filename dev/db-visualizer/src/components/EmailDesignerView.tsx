@@ -20,7 +20,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "release_update",
     name: "SyncBeats v1.4 Release (Clean & Responsive)",
-    sender: "updates@syncbeats.app",
+    sender: "updates@syncbeats.in",
     subject: "SyncBeats Release v1.4: Spotify Import, Ambient Lighting & Sub-10ms Audio Sync",
     html: `<!DOCTYPE html>
 <html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -128,7 +128,7 @@ export const TEMPLATE_PRESETS = [
               <table border="0" cellspacing="0" cellpadding="0" width="100%">
                 <tr>
                   <td align="center" style="background-color: #ffffff; border-radius: 8px;">
-                    <a href="https://syncbeats.app/hub" target="_blank" class="main-btn" style="display: block; width: 100%; padding: 15px 0; font-size: 14px; font-weight: 800; color: #000000; text-align: center; text-decoration: none; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; box-sizing: border-box;">
+                    <a href="https://syncbeats.in/hub" target="_blank" class="main-btn" style="display: block; width: 100%; padding: 15px 0; font-size: 14px; font-weight: 800; color: #000000; text-align: center; text-decoration: none; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; box-sizing: border-box;">
                       Open SyncBeats Studio &rarr;
                     </a>
                   </td>
@@ -265,7 +265,7 @@ export const TEMPLATE_PRESETS = [
                       Recipient: {{email}}
                     </div>
                     <div style="margin-top: 6px; font-size: 12px; color: #52525b; line-height: 1.5;">
-                      SyncBeats Audio Inc. &bull; <a href="https://syncbeats.app/privacy-policy" style="color: #71717a; text-decoration: underline;">Privacy</a> &bull; <a href="https://syncbeats.app/terms-of-service" style="color: #71717a; text-decoration: underline;">Terms</a>
+                      SyncBeats Audio Inc. &bull; <a href="https://syncbeats.in/privacy-policy" style="color: #71717a; text-decoration: underline;">Privacy</a> &bull; <a href="https://syncbeats.in/terms-of-service" style="color: #71717a; text-decoration: underline;">Terms</a>
                     </div>
                   </td>
                   <td align="right" valign="top">
@@ -290,7 +290,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "welcome_verification",
     name: "Welcome & Account Verification",
-    sender: "auth@syncbeats.app",
+    sender: "auth@syncbeats.in",
     subject: "Welcome to SyncBeats — Verify your email address",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -312,7 +312,7 @@ export const TEMPLATE_PRESETS = [
               <h1 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-bottom: 12px;">Welcome, {{name}}</h1>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">Thank you for registering your account with {{email}}. Click the link below to verify your email address and unlock full room hosting capabilities.</p>
               <div style="margin: 28px 0;">
-                <a href="https://syncbeats.app/verify-email" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Verify Account &rarr;</a>
+                <a href="https://syncbeats.in/verify-email" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Verify Account &rarr;</a>
               </div>
               <p style="font-size: 12px; color: #71717a; border-top: 1px solid #1f1f23; padding-top: 16px;">If you did not request this email, no further action is required.</p>
             </td>
@@ -327,7 +327,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "room_invite",
     name: "Live Room Invitation",
-    sender: "invites@syncbeats.app",
+    sender: "invites@syncbeats.in",
     subject: "You've been invited to join a SyncBeats session",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -349,7 +349,7 @@ export const TEMPLATE_PRESETS = [
               <h2 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-top: 16px; margin-bottom: 12px;">Join live room with {{name}}</h2>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">You have been invited to participate in a high-fidelity synchronized music session on SyncBeats.</p>
               <div style="margin: 28px 0;">
-                <a href="https://syncbeats.app/hub" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Join Room Session &rarr;</a>
+                <a href="https://syncbeats.in/hub" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Join Room Session &rarr;</a>
               </div>
             </td>
           </tr>
@@ -363,7 +363,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "security_alert",
     name: "Security & Device Alert",
-    sender: "security@syncbeats.app",
+    sender: "security@syncbeats.in",
     subject: "Security Alert: New device login for {{email}}",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -385,7 +385,7 @@ export const TEMPLATE_PRESETS = [
               <h2 style="font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 16px; margin-bottom: 12px;">New sign-in detected</h2>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">Hello {{name}}, a new login was authenticated for {{email}} on {{created_at}}.</p>
               <div style="margin: 24px 0;">
-                <a href="https://syncbeats.app/profile" style="background-color: #ef4444; color: #ffffff; font-weight: 700; padding: 12px 24px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 13px;">Manage Session Devices</a>
+                <a href="https://syncbeats.in/profile" style="background-color: #ef4444; color: #ffffff; font-weight: 700; padding: 12px 24px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 13px;">Manage Session Devices</a>
               </div>
             </td>
           </tr>
@@ -399,7 +399,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "custom_canvas",
     name: "Blank HTML/CSS Canvas",
-    sender: "updates@syncbeats.app",
+    sender: "updates@syncbeats.in",
     subject: "SyncBeats Broadcast Update",
     html: `<!DOCTYPE html>
 <html lang="en">

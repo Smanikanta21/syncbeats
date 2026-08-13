@@ -9,7 +9,7 @@ enum APIError: Error {
 
 class APIClient {
     static let shared = APIClient()
-    var baseURL = "https://dev-api.syncbeats.app"
+    var baseURL = "https://dev-api.syncbeats.in"
 //    var baseURL = "http://172.20.10.3:4000"
     
     // JWT token to inject into Authorization header

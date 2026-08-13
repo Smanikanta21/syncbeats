@@ -114,15 +114,15 @@ export default function TermsOfService() {
             </h2>
             <div className="pl-11 space-y-4">
               <p className="text-foreground/70 leading-relaxed font-medium">
-                If you believe your copyright is infringed, notify us in writing at <a href="mailto:legal@syncbeats.app" className="text-foreground underline">legal@syncbeats.app</a>.
+                If you believe your copyright is infringed, notify us in writing at <a href="mailto:legal@syncbeats.in" className="text-foreground underline">legal@syncbeats.in</a>.
               </p>
               <div className="mt-6 p-6 bg-foreground/5 rounded-2xl border border-foreground/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h4 className="font-bold mb-1">Questions about our Terms?</h4>
                   <p className="text-sm text-foreground/60 font-medium">Reach out to our support team.</p>
                 </div>
-                <a href="mailto:support@syncbeats.app" className="inline-flex items-center justify-center px-6 py-3 bg-foreground text-background font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg">
-                  support@syncbeats.app
+                <a href="mailto:support@syncbeats.in" className="inline-flex items-center justify-center px-6 py-3 bg-foreground text-background font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg">
+                  support@syncbeats.in
                 </a>
               </div>
             </div>

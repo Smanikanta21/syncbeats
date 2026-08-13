@@ -324,7 +324,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               { src: thumbUrl, sizes: "96x96", type: "image/jpeg" },
             ]
           : [
-              { src: "https://syncbeats.app/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+              { src: "https://syncbeats.in/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
             ];
 
         navigator.mediaSession.metadata = new MediaMetadata({

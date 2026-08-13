@@ -211,7 +211,9 @@ export default function AuthPage() {
     }
 
     let redirectUri = window.location.origin;
-    if (redirectUri.includes("www.syncbeats.app")) {
+    if (redirectUri.includes("www.syncbeats.in")) {
+      redirectUri = redirectUri.replace("www.syncbeats.in", "syncbeats.in");
+    } else if (redirectUri.includes("www.syncbeats.app")) {
       redirectUri = redirectUri.replace("www.syncbeats.app", "syncbeats.app");
     }
     const nonce = Math.random().toString(36).substring(2);

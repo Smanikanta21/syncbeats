@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "SyncBeats DB",
   description: "Database Visualizer for SyncBeats",
   icons: {
-    icon: [{ url: "https://syncbeats.app/syncbeats-icon.svg", type: "image/svg+xml" }],
-    shortcut: "https://syncbeats.app/syncbeats-icon.svg",
-    apple: "https://syncbeats.app/syncbeats-icon.svg",
+    icon: [{ url: "https://syncbeats.in/syncbeats-icon.svg", type: "image/svg+xml" }],
+    shortcut: "https://syncbeats.in/syncbeats-icon.svg",
+    apple: "https://syncbeats.in/syncbeats-icon.svg",
   },
 };
 

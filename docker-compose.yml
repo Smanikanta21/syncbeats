@@ -40,7 +40,7 @@ services:
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
       # Email
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
-      UPDATES_FROM_EMAIL: ${UPDATES_FROM_EMAIL:-updates@syncbeats.app}
+      UPDATES_FROM_EMAIL: ${UPDATES_FROM_EMAIL:-updates@syncbeats.in}
       RESEND_API_KEY: ${RESEND_API_KEY}
       # RapidAPI Configuration
       RAPID_API_KEY: ${RAPID_API_KEY:-}
@@ -73,7 +73,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
       AUTH_FROM_EMAIL: ${AUTH_FROM_EMAIL}
-      UPDATES_FROM_EMAIL: ${UPDATES_FROM_EMAIL:-updates@syncbeats.app}
+      UPDATES_FROM_EMAIL: ${UPDATES_FROM_EMAIL:-updates@syncbeats.in}
       RESEND_API_KEY: ${RESEND_API_KEY}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
 

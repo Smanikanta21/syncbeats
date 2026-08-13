@@ -91,7 +91,7 @@ export default function AdminLockScreen({ onUnlock }: AdminLockScreenProps) {
         </form>
 
         <div className="mt-8 pt-6 border-t border-zinc-800/60 text-center">
-          <p className="text-xs text-zinc-500">syncbeats.app • Protected Admin Console</p>
+          <p className="text-xs text-zinc-500">syncbeats.in • Protected Admin Console</p>
         </div>
       </div>
     </div>

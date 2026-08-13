@@ -1,6 +1,6 @@
 import { MetadataRoute } from 'next';
 
-const BASE_URL = 'https://syncbeats.app';
+const BASE_URL = 'https://syncbeats.in';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

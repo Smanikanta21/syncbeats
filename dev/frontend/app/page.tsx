@@ -191,7 +191,7 @@ export default function LandingPage() {
                    </div>
                    <div>
                      <p className={cn('text-[10px]', 'md:text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mb-0.5')}>Email</p>
-                     <a href="mailto:support@syncbeats.app" className={cn('text-base', 'md:text-lg', 'font-bold', 'hover:opacity-80', 'transition-opacity')}>support@syncbeats.app</a>
+                     <a href="mailto:support@syncbeats.in" className={cn('text-base', 'md:text-lg', 'font-bold', 'hover:opacity-80', 'transition-opacity')}>support@syncbeats.in</a>
                    </div>
                  </div>
                  <div className={cn('flex', 'items-center', 'gap-4')}>

@@ -28,7 +28,7 @@ export const SignInView: React.FC = () => {
       // Demo fallback login if server is offline during initial test
       authStore.signIn('demo-jwt-token', {
         id: 'user-' + Math.random().toString(36).substring(7),
-        email: email || 'user@syncbeats.app',
+        email: email || 'user@syncbeats.in',
         displayName: displayName || (email ? email.split('@')[0] : 'Windows User'),
       });
     } finally {
