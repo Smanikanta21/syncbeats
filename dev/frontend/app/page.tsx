@@ -182,7 +182,7 @@ export default function LandingPage() {
            </div>
            
            <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-6', 'md:gap-8')}>
-             <div className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'justify-center', 'shadow-lg')}>
+             <div className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'justify-center', 'shadow-lg', 'hover:bg-background/20', 'dark:hover:bg-black/20', 'hover:backdrop-blur-3xl', 'hover:border-foreground/30', 'hover:shadow-2xl', 'transition-all', 'duration-500')}>
                <h3 className={cn('text-xl', 'md:text-2xl', 'font-bold', 'mb-6', 'md:mb-8')}>Get in touch</h3>
                <div className="space-y-6">
                  <div className={cn('flex', 'items-center', 'gap-4')}>
@@ -206,7 +206,7 @@ export default function LandingPage() {
                </div>
              </div>
 
-             <div className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-4', 'md:gap-6', 'shadow-lg')}>
+             <div className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-4', 'md:gap-6', 'shadow-lg', 'hover:bg-background/20', 'dark:hover:bg-black/20', 'hover:backdrop-blur-3xl', 'hover:border-foreground/30', 'hover:shadow-2xl', 'transition-all', 'duration-500')}>
                <div>
                  <label htmlFor="name" className={cn('block', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/60', 'mb-2')}>Name</label>
                   <input type="text" id="name" className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'placeholder:text-foreground/40')} placeholder="Your name" />

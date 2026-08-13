@@ -293,7 +293,7 @@ export function HowItWorksScroll() {
           </div>
 
           {/* Right Column: Desktop-Shaped Horizontal Glass Card */}
-          <div className="w-7/12 h-96 relative rounded-3xl glass-panel border border-foreground/15 overflow-hidden flex items-center justify-center p-6 shadow-2xl">
+          <div className="w-7/12 h-96 relative rounded-3xl glass-panel border border-foreground/15 overflow-hidden flex items-center justify-center p-6 shadow-2xl hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/30 transition-all duration-500">
             <AnimatePresence mode="wait" custom={scrollDirection}>
               {activeStep === 0 && (
                 <motion.div 
@@ -461,7 +461,7 @@ export function HowItWorksScroll() {
           {/* Portrait Mobile-Shaped Smartphone Mockup Card Showcase (Clickable to open JoinRoomModal) */}
           <div 
             onClick={() => setIsJoinModalOpen(true)}
-            className="w-[300px] xs:w-[330px] sm:w-[360px] h-[370px] xs:h-[410px] sm:h-[440px] rounded-[42px] glass-panel border-2 border-foreground/20 shadow-2xl relative overflow-hidden flex items-center justify-center p-5 my-auto cursor-pointer group active:scale-98 transition-transform"
+            className="w-[300px] xs:w-[330px] sm:w-[360px] h-[370px] xs:h-[410px] sm:h-[440px] rounded-[42px] glass-panel border-2 border-foreground/20 shadow-2xl relative overflow-hidden flex items-center justify-center p-5 my-auto cursor-pointer group active:scale-98 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/40 transition-all duration-500"
           >
             {/* Top Phone Speaker Pill Notch */}
             <div className="w-20 h-3.5 rounded-full bg-foreground/20 absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none" />
