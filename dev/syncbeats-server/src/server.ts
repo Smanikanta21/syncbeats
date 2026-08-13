@@ -42,13 +42,15 @@ import { AuditLogger } from './services/AuditLogger';
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const VERCEL_FALLBACK_URL = process.env.VERCEL_FALLBACK_URL || 'https://your-app-name.vercel.app';
 
 const isAllowedOrigin = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (process.env.NODE_ENV?.toLowerCase() === 'development') return true;
   if (FRONTEND_URL && origin === FRONTEND_URL) return true;
-  if (origin.includes('syncbeats.app')) return true;
-  if (origin.endsWith('.vercel.app')) return true;
+  if (VERCEL_FALLBACK_URL && origin === VERCEL_FALLBACK_URL) return true;
+  if (origin.includes('syncbeats.app') || origin.includes('syncbeats.in')) return true;
+  if (origin.endsWith('.vercel.app') || origin.includes('vercel.app')) return true;
   if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return true;
   return false;
 };
@@ -111,7 +113,7 @@ export class SyncBeatsServer {
       crossOriginResourcePolicy: false, // Allow fetching media across origins (like AudioContext)
     }));
 
-    this.app.use(cors({
+    const corsOptions: cors.CorsOptions = {
       origin: (origin, callback) => {
         if (isAllowedOrigin(origin)) {
           callback(null, true);
@@ -123,7 +125,9 @@ export class SyncBeatsServer {
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
-    }));
+    };
+
+    this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
     // Global Request Audit Logging Middleware
@@ -270,7 +274,7 @@ export class SyncBeatsServer {
 
   start(): void {
     this.httpServer.listen(PORT, () => {
-      console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.app/api' : `
+      console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.in/api' : `
         
         |-----------------------------|
         | 'http://localhost:${PORT}'

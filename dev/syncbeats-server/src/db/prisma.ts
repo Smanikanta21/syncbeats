@@ -76,7 +76,8 @@ void (async () => {
         "events" JSONB NOT NULL,
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
-
+    `);
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "admin_audit_logs" (
         "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
         "action" TEXT NOT NULL,

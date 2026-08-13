@@ -7,7 +7,7 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: process.env.VERCEL ? undefined : "standalone",
   turbopack: {},
   allowedDevOrigins: ['172.20.10.3','172.20.10.7'],
   images: {
@@ -25,6 +25,15 @@ const nextConfig: NextConfig = {
         source: '/register',
         destination: '/login',
         permanent: true,
+      },
+    ];
+  },
+  async rewrites() {
+    const backendUrl = process.env.INTERNAL_BACKEND_URL || process.env.NEXT_PUBLIC_SERVER_URL || 'https://api.syncbeats.in';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl.replace(/\/$/, '')}/:path*`,
       },
     ];
   },

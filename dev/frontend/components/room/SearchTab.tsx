@@ -13,6 +13,7 @@ import { AppFeedback } from "../feedback/AppFeedback";
 
 import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
 import { getSocket } from "../../lib/socket";
+import { useVisualizer } from "../../context/VisualizerContext";
 
 interface SearchTabProps {
   roomId: string;
@@ -518,9 +519,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
+  const { dataRef } = useVisualizer();
+
   const handlePlay = (result: any) => {
-    if (isPlaying) {
-      // React instantly with prompt when a song is currently playing
+    const activePlayback = isPlaying || (dataRef?.current?.isPlaying) || false;
+    if (activePlayback) {
+      // Prompt user with PlayOrEnqueueModal when a song is currently playing
       setPromptTrack(result);
     } else {
       executeEnqueueAndPlay(result, true);

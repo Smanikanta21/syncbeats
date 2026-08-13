@@ -154,11 +154,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
     const handleSocketConnectError = (err: Error) => {
       setIsSocketConnected(false);
-      setIsServerReachable(false);
-      // Only set error if not already set to prevent continuous re-render triggers
-      if (!serverErrorRef.current) {
-        setServerError(err.message || "Cannot connect to SyncBeats server");
-      }
+      // Verify HTTP health before declaring server unreachable to prevent false positives on initial mount
+      checkServerHealth().then((reachable) => {
+        if (!reachable) {
+          setIsServerReachable(false);
+          if (!serverErrorRef.current) {
+            setServerError(err.message || "Cannot connect to SyncBeats server");
+          }
+        }
+      });
     };
 
     socket.on("connect", handleSocketConnect);
@@ -173,6 +177,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("syncbeats-server-error", handleApiServerError);
+
+    // Perform initial health check probe on mount
+    checkServerHealth();
 
     // Periodic heartbeat check (every 12 seconds when disconnected)
     const interval = setInterval(() => {

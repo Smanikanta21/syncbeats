@@ -586,11 +586,15 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
 // InviteTab
 // ─────────────────────────────────────────────────────────
 
-const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) => {
+const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; roomId: string; onStateChange?: (query: string, resultsCount: number, loading: boolean) => void }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [inviting, setInviting] = useState<string | null>(null);
+
+  useEffect(() => {
+    onStateChange?.(query, results.length, loading);
+  }, [query, results.length, loading, onStateChange]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -603,7 +607,7 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
         setResults(res.users || []);
         setLoading(false);
       }).catch(() => setLoading(false));
-    }, 500);
+    }, 400);
     return () => clearTimeout(timer);
   }, [query]);
 
@@ -622,16 +626,16 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
   };
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-2', 'pb-4')}>
-      <div className={cn('flex', 'items-center', 'gap-3', 'px-6', 'mb-4', 'shrink-0')}>
-        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
-          <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
+    <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
+      <div className={cn('flex', 'items-center', 'gap-2', 'mb-3', 'shrink-0')}>
+        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
+          <ChevronLeft className={cn('w-4', 'h-4', 'text-white/70')} />
         </button>
-        <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Invite Friends</span>
+        <span className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/60')}>Invite Friends</span>
       </div>
-      <div className={cn('px-6', 'flex-1', 'flex', 'flex-col', 'min-h-0', 'overflow-hidden')}>
-        <div className={cn('relative', 'mb-4', 'shrink-0')}>
-          <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-white/40')} />
+      <div className={cn('flex-1', 'flex', 'flex-col', 'min-h-0', 'overflow-hidden')}>
+        <div className={cn('relative', 'mb-3', 'shrink-0')}>
+          <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-3.5', 'h-3.5', 'text-white/40')} />
           <input
             type="text"
             value={query}
@@ -645,46 +649,46 @@ const InviteTab = ({ onBack, roomId }: { onBack: () => void; roomId: string }) =
               }
             }}
             placeholder="Search name or email..."
-            className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-2', 'pl-10', 'pr-4', 'text-sm', 'text-white', 'placeholder-white/30', 'focus:outline-none', 'focus:border-white/30')}
+            className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
           />
         </div>
         <div className={cn('flex-1', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
           {loading ? (
-            <div className={cn('flex', 'justify-center', 'p-4')}><Loader2 className={cn('w-5', 'h-5', 'animate-spin', 'text-white/40')} /></div>
+            <div className={cn('flex', 'justify-center', 'py-3')}><Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white/40')} /></div>
           ) : results.length > 0 ? (
             results.map((u: any) => (
-              <div key={u.id} className={cn('flex', 'items-center', 'justify-between', 'p-3', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
+              <div key={u.id} className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
                 <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                  <span className={cn('font-bold', 'text-sm', 'truncate')}>{u.name}</span>
-                  <span className={cn('text-xs', 'text-white/40', 'truncate')}>{u.email}</span>
+                  <span className={cn('font-bold', 'text-xs', 'truncate')}>{u.name}</span>
+                  <span className={cn('text-[11px]', 'text-white/40', 'truncate')}>{u.email}</span>
                 </div>
                 <button
                   onClick={() => handleInvite(u)}
                   disabled={inviting === u.id}
-                  className={cn('px-4', 'py-1.5', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50')}
+                  className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50')}
                 >
                   {inviting === u.id ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : "Invite"}
                 </button>
               </div>
             ))
           ) : query.includes("@") ? (
-            <div className={cn('flex', 'items-center', 'justify-between', 'p-3', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5', 'mt-2')}>
+            <div className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
               <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                <span className={cn('text-xs', 'text-white/40', 'mb-1')}>Invite via email</span>
-                <span className={cn('font-bold', 'text-sm', 'truncate')}>{query}</span>
+                <span className={cn('text-[10px]', 'text-white/40', 'mb-0.5')}>Invite via email</span>
+                <span className={cn('font-bold', 'text-xs', 'truncate')}>{query}</span>
               </div>
               <button
                 onClick={() => handleInvite(undefined, query)}
                 disabled={inviting === query}
-                className={cn('px-4', 'py-1.5', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50', 'flex', 'items-center', 'gap-1')}
+                className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50', 'flex', 'items-center', 'gap-1')}
               >
                 {inviting === query ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : <><Send className={cn('w-3', 'h-3')}/> Send</>}
               </button>
             </div>
           ) : query.length > 0 ? (
-            <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-4')}>No users found. Type a full email to invite via email.</div>
+            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>No users found. Type a full email to invite via email.</div>
           ) : (
-            <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-4')}>Search for friends to invite</div>
+            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>Search for friends to invite</div>
           )}
         </div>
       </div>
@@ -819,6 +823,7 @@ const RadialNavigatorPillContent = ({
     else if (snappedItem.iconName === "Users") IconComponent = Users;
     else if (snappedItem.iconName === "LayoutGrid") IconComponent = LayoutGrid;
     else if (snappedItem.iconName === "MessageSquare") IconComponent = MessageSquare;
+    else if (snappedItem.iconName === "UserPlus") IconComponent = UserPlus;
     else if (snappedItem.iconName === "LogOut") IconComponent = LogOut;
   }
 
@@ -1027,7 +1032,7 @@ export function DynamicIsland() {
 
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 
-  const activeGlowKey = (!islandCustomizer.glowColor || islandCustomizer.glowColor === "none") ? "violet" : islandCustomizer.glowColor;
+  const activeGlowKey = islandCustomizer.glowColor || "none";
   const glowHexMap: Record<string, string> = {
     violet: "#a855f7",
     cyan: "#06b6d4",
@@ -1044,11 +1049,11 @@ export function DynamicIsland() {
     emerald: "border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
     amber: "border border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
     dark: "border border-white/[0.08] shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
-    none: "border-none shadow-none",
+    none: "border border-white/10 shadow-none",
   };
   const currentGlowClass = isSearchLoading 
-    ? "border border-white/10"
-    : (glowClassMap[islandCustomizer.glowColor || "violet"] || glowClassMap.violet);
+    ? "border border-white/10 shadow-none"
+    : (glowClassMap[islandCustomizer.glowColor || "none"] || glowClassMap.none);
 
   // ── Island state machine
   // In room: pill / extended / expanded
@@ -1060,6 +1065,9 @@ export function DynamicIsland() {
   const prevReqCountRef = useRef(0);
 
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
+  const [inviteQuery, setInviteQuery] = useState("");
+  const [inviteResultsCount, setInviteResultsCount] = useState(0);
+  const [inviteLoading, setInviteLoading] = useState(false);
   const [initialSearchMode, setInitialSearchMode] = useState<"youtube" | "spotify" | null>(null);
   const [activeSearchMode, setActiveSearchMode] = useState<"youtube" | "spotify" | null | undefined>(undefined);
   const [slideDir, setSlideDir] = useState(1);
@@ -1095,6 +1103,16 @@ export function DynamicIsland() {
     };
     window.addEventListener("radial-navigator:snap", handleRadialSnap as EventListener);
     return () => window.removeEventListener("radial-navigator:snap", handleRadialSnap as EventListener);
+  }, []);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleModalToggle = (e: any) => {
+      setIsModalOpen(!!e.detail?.isOpen);
+    };
+    window.addEventListener("modal:toggle", handleModalToggle as EventListener);
+    return () => window.removeEventListener("modal:toggle", handleModalToggle as EventListener);
   }, []);
 
   useEffect(() => {
@@ -1445,6 +1463,7 @@ export function DynamicIsland() {
   }, [isSyncingNow, islandState]);
 
   // ── Render guard
+  if (isModalOpen) return null;
   if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) return null;
 
   // ── Non-room layout (nav bar)
@@ -1524,13 +1543,31 @@ export function DynamicIsland() {
     searchHeight = 100;
   }
 
+  let inviteHeight = 145;
+  if (inviteResultsCount > 0) {
+    inviteHeight = Math.min(420, 150 + inviteResultsCount * 60);
+  } else if (inviteLoading) {
+    inviteHeight = 180;
+  } else if (inviteQuery.includes("@")) {
+    inviteHeight = 200;
+  } else if (inviteQuery.trim().length > 0) {
+    inviteHeight = 170;
+  } else {
+    inviteHeight = 145;
+  }
+
+  let requestsHeight = 140;
+  if (pendingRequests && pendingRequests.length > 0) {
+    requestsHeight = Math.min(400, 110 + pendingRequests.length * 60);
+  }
+
   const expandedHeightMap: Record<IslandTab, number> = {
     player: 300,
     network: 410,
     search: searchHeight,
-    requests: 310,
+    requests: requestsHeight,
     deviceInfo: 420,
-    invite: 420,
+    invite: inviteHeight,
   };
   const expandedHeight = expandedHeightMap[activeTab] || 380;
 
@@ -1887,7 +1924,15 @@ export function DynamicIsland() {
                   )}
                   {(activeTab === "deviceInfo" || activeTab === "invite") && (
                     <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
-                      <InviteTab onBack={() => setActiveTab("player")} roomId={roomId || ''} />
+                      <InviteTab 
+                        onBack={() => setActiveTab("player")} 
+                        roomId={roomId || ''} 
+                        onStateChange={(q, count, l) => {
+                          setInviteQuery(q);
+                          setInviteResultsCount(count);
+                          setInviteLoading(l);
+                        }}
+                      />
                     </motion.div>
                   )}
                   {activeTab === "requests" && (

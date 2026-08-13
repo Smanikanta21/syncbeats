@@ -19,88 +19,117 @@ interface EmailDesignerViewProps {
 export const TEMPLATE_PRESETS = [
   {
     id: "release_update",
-    name: "Major Platform Release v1.4",
-    sender: "updates@syncbeats.app",
-    subject: "SyncBeats Release v1.4: Spotify Import & Low-Latency Sync",
+    name: "SyncBeats v1.4 Release (Clean & Responsive)",
+    sender: "updates@syncbeats.in",
+    subject: "SyncBeats Release v1.4: Spotify Import, Ambient Lighting & Sub-10ms Audio Sync",
     html: `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SyncBeats Product Update: Spotify Integration & Low-Latency Audio Sync</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="supported-color-schemes" content="dark light">
+  <title>SyncBeats v1.4 — Product Update</title>
   <style>
-    body { margin: 0; padding: 0; background-color: #050507; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    :root {
+      color-scheme: dark light;
+      supported-color-schemes: dark light;
+    }
+    
+    @keyframes barWave1 { 0%, 100% { height: 4px; } 50% { height: 16px; } }
+    @keyframes barWave2 { 0%, 100% { height: 18px; } 50% { height: 6px; } }
+    @keyframes barWave3 { 0%, 100% { height: 8px; } 50% { height: 20px; } }
+    @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.8); } }
+
+    body { margin: 0; padding: 0; background-color: #050507; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     table { border-collapse: collapse; }
-    a { text-decoration: none; }
-    .btn:hover { background-color: #e4e4e7 !important; color: #000000 !important; }
+    a { text-decoration: none; color: inherit; }
+    
+    .w-1 { animation: barWave1 1.2s ease-in-out infinite; }
+    .w-2 { animation: barWave2 0.9s ease-in-out infinite; }
+    .w-3 { animation: barWave3 1.4s ease-in-out infinite; }
+    .live-dot { animation: pulseDot 2s ease-in-out infinite; }
+
+    .main-btn:hover { background-color: #e4e4e7 !important; color: #000000 !important; }
+    
+    /* Responsive styles for mobile devices */
+    @media only screen and (max-width: 600px) {
+      .outer-padding { padding: 20px 12px !important; }
+      .card-padding { padding: 28px 20px !important; }
+      .title-text { font-size: 22px !important; line-height: 1.3 !important; }
+      .telemetry-cell { display: block !important; width: 100% !important; margin-bottom: 12px !important; }
+    }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #050507;">
+<body style="margin: 0; padding: 0; background-color: #050507; color: #fafafa;">
 
-  <!-- Outer Container -->
+  <!-- Main Background Wrapper -->
   <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #050507; table-layout: fixed;">
     <tr>
-      <td align="center" style="padding: 48px 16px;">
+      <td align="center" class="outer-padding" style="padding: 40px 16px;">
 
-        <!-- Main Card Container -->
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #0d0d11; border: 1px solid #27272a; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);">
+        <!-- Center Document Envelope -->
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 580px; background-color: #0d0d11; border: 1px solid #27272a; border-radius: 12px; overflow: hidden;">
 
-          <!-- Top Brand Navigation Header -->
+          <!-- Brand Header Row -->
           <tr>
-            <td style="padding: 36px 36px 24px 36px;" align="left">
+            <td class="card-padding" style="padding: 36px 36px 24px 36px;" align="left">
               <table border="0" cellspacing="0" cellpadding="0" width="100%">
                 <tr>
-                  <td align="left">
+                  <td align="left" valign="middle">
+                    <span style="font-size: 16px; font-weight: 900; letter-spacing: 2px; color: #ffffff; font-family: monospace;">
+                      SYNC<span style="color: #a1a1aa;">BEATS</span>
+                    </span>
+                  </td>
+                  <td align="right" valign="middle">
                     <table border="0" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td style="background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 8px 14px; display: inline-block;">
-                          <span style="font-size: 16px; font-weight: 900; letter-spacing: 2px; color: #ffffff; font-family: monospace;">
-                            SYNC<span style="color: #a1a1aa;">BEATS</span>
+                        <td style="padding-right: 8px;" valign="middle">
+                          <div class="live-dot" style="width: 6px; height: 6px; border-radius: 50%; background-color: #ffffff; display: inline-block;"></div>
+                        </td>
+                        <td valign="middle">
+                          <span style="font-size: 11px; font-weight: 700; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
+                            v1.4 RELEASE
                           </span>
                         </td>
                       </tr>
                     </table>
-                  </td>
-                  <td align="right" valign="middle">
-                    <span style="font-size: 11px; font-weight: 700; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #fafafa; border: 1px solid #3f3f46; padding: 5px 12px; border-radius: 20px; background-color: #18181b;">
-                      RELEASE v1.4
-                    </span>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Horizontal Divider -->
+          <!-- Solid Border Line -->
           <tr>
             <td style="padding: 0 36px;">
-              <div style="height: 1px; background-color: #1f1f23; width: 100%;"></div>
+              <div style="height: 1px; background-color: #27272a; width: 100%;"></div>
             </td>
           </tr>
 
-          <!-- Main Subject Headline & Greeting -->
+          <!-- Headline & Opening Paragraph -->
           <tr>
-            <td style="padding: 32px 36px 16px 36px;" align="left">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.35; color: #ffffff; letter-spacing: -0.4px;">
-                Major Platform Updates Now Live
+            <td class="card-padding" style="padding: 32px 36px 24px 36px;" align="left">
+              <h1 class="title-text" style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.35; color: #ffffff; letter-spacing: -0.4px;">
+                Spotify Import, Ambient Lighting & Sub-10ms Audio Sync
               </h1>
-              <p style="margin-top: 16px; margin-bottom: 0; font-size: 15px; line-height: 1.65; color: #fafafa;">
-                Hello {{name}},
+              <p style="margin-top: 16px; margin-bottom: 0; font-size: 15px; line-height: 1.65; color: #d4d4d8;">
+                Hey {{name}},
               </p>
               <p style="margin-top: 12px; margin-bottom: 0; font-size: 15px; line-height: 1.65; color: #a1a1aa;">
-                We have deployed key feature releases and latency optimizations across SyncBeats designed to enhance your synchronized listening sessions and room navigation.
+                We have deployed key feature updates and low-latency audio algorithms across SyncBeats to streamline your live listening rooms.
               </p>
             </td>
           </tr>
 
-          <!-- Primary Action CTA Button (Monochromatic White) -->
+          <!-- Primary Full-Width Action Button (No awkward multi-line text wrapping!) -->
           <tr>
-            <td style="padding: 24px 36px 32px 36px;" align="left">
-              <table border="0" cellspacing="0" cellpadding="0">
+            <td class="card-padding" style="padding: 0 36px 32px 36px;" align="left">
+              <table border="0" cellspacing="0" cellpadding="0" width="100%">
                 <tr>
-                  <td align="center" style="border-radius: 12px; background-color: #ffffff;">
-                    <a href="https://syncbeats.app/hub" target="_blank" class="btn" style="display: inline-block; padding: 14px 28px; font-size: 14px; font-weight: 700; color: #000000; text-decoration: none; border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; transition: all 0.2s ease;">
-                      Open Command Center
+                  <td align="center" style="background-color: #ffffff; border-radius: 8px;">
+                    <a href="https://syncbeats.in/hub" target="_blank" class="main-btn" style="display: block; width: 100%; padding: 15px 0; font-size: 14px; font-weight: 800; color: #000000; text-align: center; text-decoration: none; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; box-sizing: border-box;">
+                      Open SyncBeats Studio &rarr;
                     </a>
                   </td>
                 </tr>
@@ -108,71 +137,117 @@ export const TEMPLATE_PRESETS = [
             </td>
           </tr>
 
-          <!-- Feature Breakdown Cards -->
+          <!-- Clean Telemetry Data Table (No crammed 3-column wrapping!) -->
           <tr>
-            <td style="padding: 0 36px 32px 36px;">
-              <table width="100%" border="0" cellspacing="0" cellpadding="0">
-
-                <!-- Feature 1: Spotify Import -->
+            <td class="card-padding" style="padding: 0 36px 32px 36px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #141419; border: 1px solid #27272a; border-radius: 8px; padding: 20px 24px;">
                 <tr>
-                  <td style="padding-top: 24px; border-top: 1px solid #1f1f23;">
+                  <td style="padding-bottom: 14px; border-bottom: 1px solid #27272a;">
                     <table width="100%" border="0" cellspacing="0" cellpadding="0">
                       <tr>
                         <td align="left">
-                          <span style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
-                            01 / INTEGRATION
+                          <span style="font-size: 10px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.8px; color: #a1a1aa;">
+                            AUDIO TELEMETRY SPECS
                           </span>
-                          <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 8px;">
-                            Spotify Track & Playlist Import
-                          </div>
-                          <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
-                            Import playlists, albums, and liked tracks directly into live rooms with automatic bitrate resolution.
+                        </td>
+                        <td align="right" valign="middle">
+                          <div style="display: flex; gap: 3px; height: 16px; align-items: flex-end;">
+                            <div class="w-1" style="width: 3px; background-color: #ffffff; border-radius: 1px;"></div>
+                            <div class="w-2" style="width: 3px; background-color: #ffffff; border-radius: 1px;"></div>
+                            <div class="w-3" style="width: 3px; background-color: #ffffff; border-radius: 1px;"></div>
                           </div>
                         </td>
                       </tr>
                     </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 14px;">
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="padding: 6px 0;">
+                          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                            <tr>
+                              <td align="left" style="font-size: 13px; color: #a1a1aa; font-family: monospace;">Sync Latency</td>
+                              <td align="right" style="font-size: 14px; font-weight: 800; color: #ffffff; font-family: monospace;">&lt; 10 ms</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; border-top: 1px solid #1f1f23;">
+                          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                            <tr>
+                              <td align="left" style="font-size: 13px; color: #a1a1aa; font-family: monospace;">Stream Bitrate</td>
+                              <td align="right" style="font-size: 14px; font-weight: 800; color: #ffffff; font-family: monospace;">320 kbps Lossless</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; border-top: 1px solid #1f1f23;">
+                          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                            <tr>
+                              <td align="left" style="font-size: 13px; color: #a1a1aa; font-family: monospace;">Time Drift Correction</td>
+                              <td align="right" style="font-size: 14px; font-weight: 800; color: #ffffff; font-family: monospace;">Automatic (NTP)</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Minimal Line-Separated Feature Rows (No boxed card clutter!) -->
+          <tr>
+            <td class="card-padding" style="padding: 0 36px 36px 36px;">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+
+                <!-- Feature 1: Spotify Import -->
+                <tr>
+                  <td style="padding-top: 24px; border-top: 1px solid #27272a;" align="left">
+                    <div style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
+                      01 / INTEGRATION
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 6px;">
+                      Spotify Track & Playlist Import
+                    </div>
+                    <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
+                      Paste any Spotify track or playlist link directly into live rooms. SyncBeats resolves track metadata automatically with high-bitrate streaming fallback.
+                    </div>
                   </td>
                 </tr>
 
                 <!-- Feature 2: Low-Latency Sync -->
                 <tr>
-                  <td style="padding-top: 24px; border-top: 1px solid #1f1f23; margin-top: 24px;">
-                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td align="left">
-                          <span style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
-                            02 / PERFORMANCE
-                          </span>
-                          <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 8px;">
-                            Sub-Millisecond Clock Synchronization
-                          </div>
-                          <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
-                            Enhanced network time drift compensation maintains sample-accurate playback across desktop and mobile devices.
-                          </div>
-                        </td>
-                      </tr>
-                    </table>
+                  <td style="padding-top: 24px; border-top: 1px solid #27272a; margin-top: 24px;" align="left">
+                    <div style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
+                      02 / PERFORMANCE
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 6px;">
+                      Sub-10ms Clock Synchronization
+                    </div>
+                    <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
+                      Our network time protocol algorithm compensates for latency drift, keeping every connected listener locked to the exact same audio frame.
+                    </div>
                   </td>
                 </tr>
 
-                <!-- Feature 3: Safe-Area Responsiveness -->
+                <!-- Feature 3: Dynamic Ambient RGB Lighting -->
                 <tr>
-                  <td style="padding-top: 24px; border-top: 1px solid #1f1f23; margin-top: 24px;">
-                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td align="left">
-                          <span style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
-                            03 / INTERFACE
-                          </span>
-                          <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 8px;">
-                            Mobile Status Bar Safe-Area Insets
-                          </div>
-                          <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
-                            Updated header alignment supporting hardware safe-area top insets for notch and status bar displays across iOS and Android devices.
-                          </div>
-                        </td>
-                      </tr>
-                    </table>
+                  <td style="padding-top: 24px; border-top: 1px solid #27272a; margin-top: 24px;" align="left">
+                    <div style="font-size: 11px; font-weight: 800; font-family: monospace; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">
+                      03 / VISUAL EXPERIENCE
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 6px; margin-bottom: 6px;">
+                      Dynamic RGB Ambient Lighting
+                    </div>
+                    <div style="font-size: 14px; line-height: 1.6; color: #a1a1aa;">
+                      Room backgrounds shift dynamically to match active track artwork color palettes, delivering a synchronized visual backdrop.
+                    </div>
                   </td>
                 </tr>
 
@@ -182,13 +257,24 @@ export const TEMPLATE_PRESETS = [
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #08080a; padding: 28px 36px; border-top: 1px solid #18181b;" align="left">
-              <div style="font-size: 12px; color: #71717a; line-height: 1.6; font-family: monospace;">
-                Recipient: {{email}}
-              </div>
-              <div style="margin-top: 8px; font-size: 12px; color: #52525b; line-height: 1.6;">
-                SyncBeats Audio Inc. &bull; <a href="https://syncbeats.app/privacy-policy" style="color: #71717a; text-decoration: underline;">Privacy Policy</a> &bull; <a href="https://syncbeats.app/terms-of-service" style="color: #71717a; text-decoration: underline;">Terms of Service</a>
-              </div>
+            <td style="background-color: #08080a; padding: 28px 36px; border-top: 1px solid #27272a;" align="left">
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="left">
+                    <div style="font-size: 12px; color: #71717a; line-height: 1.5; font-family: monospace;">
+                      Recipient: {{email}}
+                    </div>
+                    <div style="margin-top: 6px; font-size: 12px; color: #52525b; line-height: 1.5;">
+                      SyncBeats Audio Inc. &bull; <a href="https://syncbeats.in/privacy-policy" style="color: #71717a; text-decoration: underline;">Privacy</a> &bull; <a href="https://syncbeats.in/terms-of-service" style="color: #71717a; text-decoration: underline;">Terms</a>
+                    </div>
+                  </td>
+                  <td align="right" valign="top">
+                    <span style="font-size: 10px; font-family: monospace; font-weight: 700; color: #a1a1aa; border: 1px solid #27272a; padding: 4px 8px; border-radius: 4px;">
+                      ALL SYSTEMS OPERATIONAL
+                    </span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
@@ -204,7 +290,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "welcome_verification",
     name: "Welcome & Account Verification",
-    sender: "auth@syncbeats.app",
+    sender: "auth@syncbeats.in",
     subject: "Welcome to SyncBeats — Verify your email address",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -226,7 +312,7 @@ export const TEMPLATE_PRESETS = [
               <h1 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-bottom: 12px;">Welcome, {{name}}</h1>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">Thank you for registering your account with {{email}}. Click the link below to verify your email address and unlock full room hosting capabilities.</p>
               <div style="margin: 28px 0;">
-                <a href="https://syncbeats.app/verify-email" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Verify Account &rarr;</a>
+                <a href="https://syncbeats.in/verify-email" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Verify Account &rarr;</a>
               </div>
               <p style="font-size: 12px; color: #71717a; border-top: 1px solid #1f1f23; padding-top: 16px;">If you did not request this email, no further action is required.</p>
             </td>
@@ -241,7 +327,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "room_invite",
     name: "Live Room Invitation",
-    sender: "invites@syncbeats.app",
+    sender: "invites@syncbeats.in",
     subject: "You've been invited to join a SyncBeats session",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -263,7 +349,7 @@ export const TEMPLATE_PRESETS = [
               <h2 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-top: 16px; margin-bottom: 12px;">Join live room with {{name}}</h2>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">You have been invited to participate in a high-fidelity synchronized music session on SyncBeats.</p>
               <div style="margin: 28px 0;">
-                <a href="https://syncbeats.app/hub" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Join Room Session &rarr;</a>
+                <a href="https://syncbeats.in/hub" style="background-color: #ffffff; color: #000000; font-weight: 700; padding: 14px 28px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 14px;">Join Room Session &rarr;</a>
               </div>
             </td>
           </tr>
@@ -277,7 +363,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "security_alert",
     name: "Security & Device Alert",
-    sender: "security@syncbeats.app",
+    sender: "security@syncbeats.in",
     subject: "Security Alert: New device login for {{email}}",
     html: `<!DOCTYPE html>
 <html lang="en">
@@ -299,7 +385,7 @@ export const TEMPLATE_PRESETS = [
               <h2 style="font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 16px; margin-bottom: 12px;">New sign-in detected</h2>
               <p style="font-size: 14px; color: #a1a1aa; line-height: 1.6;">Hello {{name}}, a new login was authenticated for {{email}} on {{created_at}}.</p>
               <div style="margin: 24px 0;">
-                <a href="https://syncbeats.app/profile" style="background-color: #ef4444; color: #ffffff; font-weight: 700; padding: 12px 24px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 13px;">Manage Session Devices</a>
+                <a href="https://syncbeats.in/profile" style="background-color: #ef4444; color: #ffffff; font-weight: 700; padding: 12px 24px; border-radius: 12px; text-decoration: none; display: inline-block; font-size: 13px;">Manage Session Devices</a>
               </div>
             </td>
           </tr>
@@ -313,7 +399,7 @@ export const TEMPLATE_PRESETS = [
   {
     id: "custom_canvas",
     name: "Blank HTML/CSS Canvas",
-    sender: "updates@syncbeats.app",
+    sender: "updates@syncbeats.in",
     subject: "SyncBeats Broadcast Update",
     html: `<!DOCTYPE html>
 <html lang="en">

@@ -158,8 +158,8 @@ export default function PrivacyPolicy() {
                   <h4 className="font-bold mb-1">Questions about privacy?</h4>
                   <p className="text-sm text-foreground/60 font-medium">Reach out to our support team.</p>
                 </div>
-                <a href="mailto:support@syncbeats.app" className="inline-flex items-center justify-center px-6 py-3 bg-foreground text-background font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg">
-                  support@syncbeats.app
+                <a href="mailto:support@syncbeats.in" className="inline-flex items-center justify-center px-6 py-3 bg-foreground text-background font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg">
+                  support@syncbeats.in
                 </a>
               </div>
             </div>

@@ -36,7 +36,7 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "600", "700"],
 });
 
-const BASE_URL = "https://syncbeats.app";
+const BASE_URL = "https://syncbeats.in";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -175,7 +175,7 @@ export default function RootLayout({
       <Script id="google-analytics" strategy="afterInteractive">
         {`
           try {
-            const isDev = window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
+            const isDev = window.location.hostname === 'dev.syncbeats.in' || window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
             let isAdmin = false;
             
             // Read sb_token from cookies
@@ -235,7 +235,7 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <Preloader />
-          {process.env.NODE_ENV !== 'development' && <IOSHomeScreenPrompt />}
+          <IOSHomeScreenPrompt />
           <ThemeProvider>
             <ConnectionProvider>
               <ConnectionStatusModal />

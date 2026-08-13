@@ -1,7 +1,9 @@
 "use client";
 
-import { motion, useScroll, useTransform, useSpring } from "framer-motion";
+import { motion } from "framer-motion";
 import Link from "next/link";
+
+const MotionLink = motion.create(Link);
 
 interface DynamicAuroraButtonProps {
   children: React.ReactNode;
@@ -18,63 +20,30 @@ export function DynamicAuroraButton({
   onClick,
   type = "button",
 }: DynamicAuroraButtonProps) {
-  const { scrollYProgress } = useScroll();
-  const smoothProgress = useSpring(scrollYProgress, { stiffness: 60, damping: 25 });
-
-  // SyncBeats Signature Ambient Glow Colors (Refined & Matching Website Aesthetics)
-  // 0% (Hero): Cobalt Blue
-  // 33% (Features): Electric Violet
-  // 66% (Devices): Cyber Cyan/Teal
-  // 100% (Contact): Neon Emerald
-  const borderGlowColor = useTransform(
-    smoothProgress,
-    [0, 0.33, 0.66, 1],
-    [
-      "rgba(59, 130, 246, 0.70)",   // Cobalt
-      "rgba(139, 92, 246, 0.70)",   // Violet
-      "rgba(20, 184, 166, 0.70)",    // Teal
-      "rgba(16, 185, 129, 0.70)",   // Emerald
-    ]
-  );
-
-  const shadowGlow = useTransform(
-    smoothProgress,
-    [0, 0.33, 0.66, 1],
-    [
-      "0 0 25px rgba(59, 130, 246, 0.35)",
-      "0 0 25px rgba(139, 92, 246, 0.35)",
-      "0 0 25px rgba(20, 184, 166, 0.35)",
-      "0 0 25px rgba(16, 185, 129, 0.35)",
-    ]
-  );
-
-  const hoverShadowGlow = useTransform(
-    smoothProgress,
-    [0, 0.33, 0.66, 1],
-    [
-      "0 0 45px rgba(59, 130, 246, 0.65)",
-      "0 0 45px rgba(139, 92, 246, 0.65)",
-      "0 0 45px rgba(20, 184, 166, 0.65)",
-      "0 0 45px rgba(16, 185, 129, 0.65)",
-    ]
-  );
+  const glassStyle = {
+    background: "rgba(255, 255, 255, 0.08)",
+    backdropFilter: "blur(16px) saturate(180%)",
+    WebkitBackdropFilter: "blur(16px) saturate(180%)",
+    border: "1px solid var(--accent-border, rgba(52, 211, 153, 0.4))",
+    boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.25), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2), 0 0 25px var(--accent-glow, rgba(52, 211, 153, 0.35))",
+  };
 
   if (href) {
     return (
-      <motion.div
-        style={{ borderColor: borderGlowColor, boxShadow: shadowGlow }}
-        whileHover={{ scale: 1.04, boxShadow: hoverShadowGlow.get() }}
-        whileTap={{ scale: 0.96 }}
-        className={`rounded-full border-2 bg-foreground text-background transition-all duration-300 inline-flex items-center justify-center shrink-0 cursor-pointer overflow-hidden ${className}`}
+      <MotionLink
+        href={href}
+        onClick={onClick}
+        style={glassStyle}
+        whileHover={{ 
+          scale: 1.03, 
+          boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 0 45px var(--accent-glow, rgba(52, 211, 153, 0.6))",
+          backgroundColor: "rgba(255, 255, 255, 0.14)"
+        }}
+        whileTap={{ scale: 0.97 }}
+        className={`rounded-full text-foreground font-black tracking-widest uppercase inline-flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${className}`}
       >
-        <Link
-          href={href}
-          onClick={onClick}
-          className="w-full h-full flex items-center justify-center text-background font-black tracking-widest uppercase transition-colors duration-300 whitespace-nowrap"
-        >
-          {children}
-        </Link>
-      </motion.div>
+        {children}
+      </MotionLink>
     );
   }
 
@@ -82,10 +51,14 @@ export function DynamicAuroraButton({
     <motion.button
       type={type}
       onClick={onClick}
-      style={{ borderColor: borderGlowColor, boxShadow: shadowGlow }}
-      whileHover={{ scale: 1.04, boxShadow: hoverShadowGlow.get() }}
-      whileTap={{ scale: 0.96 }}
-      className={`rounded-full border-2 bg-foreground text-background font-black tracking-widest uppercase flex items-center justify-center transition-all duration-300 cursor-pointer overflow-hidden whitespace-nowrap ${className}`}
+      style={glassStyle}
+      whileHover={{ 
+        scale: 1.03, 
+        boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 0 45px var(--accent-glow, rgba(52, 211, 153, 0.6))",
+        backgroundColor: "rgba(255, 255, 255, 0.14)"
+      }}
+      whileTap={{ scale: 0.97 }}
+      className={`rounded-full text-foreground font-black tracking-widest uppercase flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${className}`}
     >
       {children}
     </motion.button>

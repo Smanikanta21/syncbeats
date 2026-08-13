@@ -10,6 +10,7 @@ import Magnetic from "../../../components/Magnetic";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
 import { FullscreenLoader } from "../../../components/FullscreenLoader";
+import { JoinRoomModal } from "../../../components/JoinRoomModal";
 import { cn } from "@/lib/utils";
 
 interface RecentRoom { id: string; created_at: string; playback_state: string; ended_at: string | null; host_id: string; participant_count?: number; }
@@ -32,6 +33,7 @@ export default function HubPage() {
   const [redirecting, setRedirecting] = useState(true);
 
   const [joinCode, setJoinCode] = useState("");
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [isHosting, setIsHosting] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [invitedRooms, setInvitedRooms] = useState<any[]>([]);
@@ -398,21 +400,21 @@ export default function HubPage() {
         </div>
 
         {/* The Action Cards */}
-        <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-8', 'w-full', 'max-w-4xl', 'mx-auto', 'relative', 'z-10')}>
+        <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-5', 'lg:gap-8', 'w-full', 'max-w-4xl', 'mx-auto', 'relative', 'z-10')}>
 
           {/* HOST CARD */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className={cn('glass-panel', 'p-8', 'rounded-[2.5rem]', 'shadow-xl', 'transition-all', 'group', 'flex', 'flex-col', 'items-center', 'text-center', 'relative', 'overflow-hidden')}
+            className={cn('glass-panel', 'p-6', 'lg:p-8', 'rounded-[2rem]', 'lg:rounded-[2.5rem]', 'shadow-xl', 'transition-all', 'group', 'flex', 'flex-col', 'items-center', 'text-center', 'relative', 'overflow-hidden')}
           >
-            <div className={cn('w-20', 'h-20', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'mb-6', 'group-hover:scale-110', 'group-hover:bg-foreground/10', 'transition-all', 'duration-300')}>
-              <Plus className={cn('w-10', 'h-10', 'text-foreground')} />
+            <div className={cn('w-16', 'h-16', 'md:w-14', 'md:h-14', 'lg:w-20', 'lg:h-20', 'rounded-2xl', 'lg:rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'mb-5', 'group-hover:scale-110', 'group-hover:bg-foreground/10', 'transition-all', 'duration-300')}>
+              <Plus className={cn('w-8', 'h-8', 'md:w-7', 'md:h-7', 'lg:w-10', 'lg:h-10', 'text-foreground')} />
             </div>
 
-            <h2 className={cn('text-2xl', 'font-bold', 'text-foreground', 'mb-3')}>Host a Session</h2>
-            <p className={cn('text-foreground/60', 'mb-8', 'max-w-xs', 'mx-auto', 'text-sm', 'leading-relaxed')}>
+            <h2 className={cn('text-xl', 'md:text-lg', 'lg:text-2xl', 'font-bold', 'text-foreground', 'mb-2')}>Host a Session</h2>
+            <p className={cn('text-foreground/60', 'mb-6', 'max-w-xs', 'mx-auto', 'text-sm', 'md:text-xs', 'lg:text-sm', 'leading-relaxed')}>
               Create a massive synchronized room. You&apos;ll control the playlist, volume, and playback.
             </p>
 
@@ -420,7 +422,7 @@ export default function HubPage() {
               <button
                 onClick={handleHost}
                 disabled={isHosting}
-                className={cn('w-full', 'h-14', 'rounded-2xl', 'bg-foreground', 'text-background', 'font-black', 'text-lg', 'hover:scale-[1.02]', 'active:scale-95', 'transition-all', 'shadow-lg', 'disabled:opacity-60')}
+                className={cn('w-full', 'h-12', 'md:h-11', 'lg:h-14', 'rounded-2xl', 'bg-foreground', 'text-background', 'font-black', 'text-base', 'md:text-sm', 'lg:text-lg', 'hover:scale-[1.02]', 'active:scale-95', 'transition-all', 'shadow-lg', 'disabled:opacity-60')}
               >
                 {isHosting ? "Creating Room…" : "Start Session"}
               </button>
@@ -432,14 +434,14 @@ export default function HubPage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
-            className={cn('glass-panel', 'p-8', 'rounded-[2.5rem]', 'shadow-xl', 'transition-all', 'group', 'flex', 'flex-col', 'items-center', 'text-center', 'relative', 'overflow-hidden')}
+            className={cn('glass-panel', 'p-6', 'lg:p-8', 'rounded-[2rem]', 'lg:rounded-[2.5rem]', 'shadow-xl', 'transition-all', 'group', 'flex', 'flex-col', 'items-center', 'text-center', 'relative', 'overflow-hidden')}
           >
-            <div className={cn('w-20', 'h-20', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'mb-6', 'group-hover:scale-110', 'group-hover:bg-foreground/10', 'transition-all', 'duration-300')}>
-              <Search className={cn('w-10', 'h-10', 'text-foreground')} />
+            <div className={cn('w-16', 'h-16', 'md:w-14', 'md:h-14', 'lg:w-20', 'lg:h-20', 'rounded-2xl', 'lg:rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'mb-5', 'group-hover:scale-110', 'group-hover:bg-foreground/10', 'transition-all', 'duration-300')}>
+              <Search className={cn('w-8', 'h-8', 'md:w-7', 'md:h-7', 'lg:w-10', 'lg:h-10', 'text-foreground')} />
             </div>
 
-            <h2 className={cn('text-2xl', 'font-bold', 'text-foreground', 'mb-3')}>Join a Session</h2>
-            <p className={cn('text-foreground/60', 'mb-8', 'max-w-xs', 'mx-auto', 'text-sm', 'leading-relaxed')}>
+            <h2 className={cn('text-xl', 'md:text-lg', 'lg:text-2xl', 'font-bold', 'text-foreground', 'mb-2')}>Join a Session</h2>
+            <p className={cn('text-foreground/60', 'mb-6', 'max-w-xs', 'mx-auto', 'text-sm', 'md:text-xs', 'lg:text-sm', 'leading-relaxed')}>
               Already have a code? Punch it in below to instantly sync your audio to the host.
             </p>
 
@@ -449,27 +451,39 @@ export default function HubPage() {
                 maxLength={6}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:border-foreground/20', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'rounded-2xl', 'pl-6', 'pr-16', 'py-4', 'text-foreground', 'font-bold', 'tracking-[0.2em]', 'text-center', 'focus:outline-none', 'transition-all', 'placeholder:text-foreground/40', 'placeholder:tracking-normal', 'placeholder:font-medium')}
+                className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:border-foreground/20', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'rounded-2xl', 'pl-5', 'pr-14', 'py-3.5', 'text-foreground', 'font-bold', 'tracking-[0.2em]', 'text-center', 'focus:outline-none', 'transition-all', 'placeholder:text-foreground/40', 'placeholder:tracking-normal', 'placeholder:font-medium', 'text-sm')}
                 placeholder="Enter 6-digit Code"
               />
               <button
                 type="submit"
                 disabled={joinCode.length < 3}
                 aria-label="Join Room"
-                className={cn('absolute', 'right-2', 'top-2', 'bottom-2', 'w-12', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'hover:bg-foreground', 'hover:text-background', 'disabled:opacity-30', 'transition-all')}
+                className={cn('absolute', 'right-1.5', 'top-1.5', 'bottom-1.5', 'w-10', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'hover:bg-foreground', 'hover:text-background', 'disabled:opacity-30', 'transition-all')}
               >
-                <ArrowRight className={cn('w-5', 'h-5')} />
+                <ArrowRight className={cn('w-4', 'h-4')} />
               </button>
             </form>
 
-            <button
-              type="button"
-              onClick={openScannerModal}
-              className={cn('mt-3', 'w-full', 'md:hidden', 'h-12', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'text-foreground', 'font-semibold', 'hover:bg-foreground/10', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2')}
-            >
-              <ScanLine className={cn('w-4', 'h-4')} />
-              Scan QR from Phone
-            </button>
+            {/* Secondary actions row — compact on md */}
+            <div className="mt-2.5 w-full flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowJoinModal(true)}
+                className={cn('w-full', 'h-10', 'md:h-9', 'rounded-xl', 'border', 'border-foreground/15', 'bg-foreground/8', 'hover:bg-foreground/18', 'text-foreground', 'font-black', 'text-[10px]', 'uppercase', 'tracking-widest', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-sm', 'cursor-pointer')}
+              >
+                <Radio className={cn('w-3.5', 'h-3.5', 'text-emerald-400', 'animate-pulse')} />
+                <span>Join via Circular Ring</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={openScannerModal}
+                className={cn('w-full', 'md:hidden', 'h-10', 'rounded-xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'text-foreground', 'font-semibold', 'text-xs', 'hover:bg-foreground/10', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-2')}
+              >
+                <ScanLine className={cn('w-3.5', 'h-3.5')} />
+                Scan QR from Phone
+              </button>
+            </div>
           </motion.div>
 
         </div>
@@ -1054,6 +1068,9 @@ export default function HubPage() {
             </div>
           </div>
         )}
+
+        {/* Signature Circular Join Modal */}
+        <JoinRoomModal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} />
 
       </main>
     </div>

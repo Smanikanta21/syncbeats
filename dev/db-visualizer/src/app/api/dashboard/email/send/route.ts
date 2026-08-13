@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     }
 
     const apiKey = process.env.RESEND_API_KEY;
-    const fromAddress = senderEmail?.trim() || process.env.UPDATES_FROM_EMAIL || process.env.AUTH_FROM_EMAIL || "updates@syncbeats.app";
+    const fromAddress = senderEmail?.trim() || process.env.UPDATES_FROM_EMAIL || process.env.AUTH_FROM_EMAIL || "updates@syncbeats.in";
 
     if (!apiKey) {
       return NextResponse.json(

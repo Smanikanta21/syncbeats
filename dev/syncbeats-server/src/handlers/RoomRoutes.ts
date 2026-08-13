@@ -172,7 +172,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       const invite = await repo.createInvite(roomId, inviterId, finalInviteeId, finalEmail);
 
-      const frontendUrl = process.env.FRONTEND_URL || 'https://syncbeats.app';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://syncbeats.in';
       const inviteLink = finalInviteeId 
         ? `${frontendUrl}/room/${roomId}` 
         : `${frontendUrl}/login?mode=register&returnTo=/room/${roomId}`;

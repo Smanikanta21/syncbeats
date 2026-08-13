@@ -52,6 +52,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   getRawAudioData: () => Uint8Array | null;
   eqGains: number[];
   setEqBand: (index: number, gain: number) => void;
+  setAllEqBands: (gains: number[]) => void;
   prefetchTrack?: (url: string) => void;
 }
 
@@ -99,7 +100,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const gainNodeRef = useRef<GainNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
   const eqNodesRef = useRef<BiquadFilterNode[]>([]);
-  const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]); // 60, 230, 910, 3600, 14000 Hz
+  const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]); // 60, 200, 500, 1k, 3k, 8k, 16k Hz
 
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const mediaElSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -130,7 +131,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     gainNodeRef.current = audioCtxRef.current.createGain();
     analyserNodeRef.current = audioCtxRef.current.createAnalyser();
     analyserNodeRef.current.fftSize = 512;
-    analyserNodeRef.current.smoothingTimeConstant = 0.25;
+    analyserNodeRef.current.smoothingTimeConstant = 0.2;
+    analyserNodeRef.current.minDecibels = -95;
+    analyserNodeRef.current.maxDecibels = -10;
 
     // Initialize streaming audio element with crossOrigin = "anonymous" to prevent Web Audio silence trap
     if (typeof window !== 'undefined' && !streamingAudioElRef.current) {
@@ -149,16 +152,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
     }
 
-    // Create 5-band EQ with proper shelf/peak types
-    const freqs = [60, 230, 910, 3600, 14000];
+    // Create 7-band EQ matching AudioEQ component frequencies (60Hz to 10kHz audible treble)
+    const freqs = [60, 200, 500, 1000, 3000, 7000, 10000];
     const eqNodes = freqs.map((freq, i) => {
       const filter = audioCtxRef.current!.createBiquadFilter();
-      if (freq === 60) filter.type = 'lowshelf';
-      else if (freq === 14000) filter.type = 'highshelf';
+      if (i === 0) filter.type = 'lowshelf';
+      else if (i === freqs.length - 1) filter.type = 'highshelf';
       else filter.type = 'peaking';
       filter.frequency.value = freq;
-      // Higher Q (1.4) on mid bands for more audible effect
-      filter.Q.value = (i > 0 && i < 4) ? 1.4 : 1.0;
+      // Q=1.41 for mid bands (musical octave width), 1.0 for shelves
+      filter.Q.value = (i > 0 && i < freqs.length - 1) ? 1.41 : 1.0;
       filter.gain.value = 0;
       return filter;
     });
@@ -232,6 +235,17 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         return next;
       });
     }
+  }, []);
+
+  // Bulk-set all EQ bands at once (used by presets)
+  const setAllEqBands = useCallback((gains: number[]) => {
+    gains.forEach((gain, i) => {
+      if (eqNodesRef.current[i]) {
+        const clamped = Math.max(-12, Math.min(12, gain));
+        eqNodesRef.current[i].gain.value = clamped;
+      }
+    });
+    setEqGains(gains.map(g => Math.max(-12, Math.min(12, g))));
   }, []);
 
   const getAudioData = useCallback(() => {
@@ -310,7 +324,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               { src: thumbUrl, sizes: "96x96", type: "image/jpeg" },
             ]
           : [
-              { src: "https://syncbeats.app/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+              { src: "https://syncbeats.in/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
             ];
 
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -690,51 +704,50 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
 
             // Concurrently fetch stream bytes in background to stash to IDB
-            const response = await fetch(fetchUrl, {
-              headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-            });
-            if (!response.ok) {
-              throw new Error(`Failed to fetch YouTube audio: ${response.status} ${response.statusText}`);
-            }
-            const contentLength = response.headers.get('content-length');
-            const total = contentLength ? parseInt(contentLength, 10) : 0;
-            let loaded = 0;
-            const reader = response.body!.getReader();
-            const chunks: Uint8Array[] = [];
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
-              loaded += value.length;
-              if (total > 0) {
-                const pct = Math.round((loaded / total) * 100);
-                setDownloadProgress(pct);
-                const { getSocket } = require('../lib/socket');
-                const socket = getSocket();
-                const roomId = window.location.pathname.split('/').pop();
-                if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
-              }
-            }
-            const concat = new Uint8Array(loaded);
-            let offset = 0;
-            for (const chunk of chunks) {
-              concat.set(chunk, offset);
-              offset += chunk.length;
-            }
-            arrayBuffer = concat.buffer;
+            try {
+              const response = await fetch(fetchUrl, {
+                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+              });
+              if (response.ok) {
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                let loaded = 0;
+                const reader = response.body!.getReader();
+                const chunks: Uint8Array[] = [];
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  chunks.push(value);
+                  loaded += value.length;
+                  if (total > 0) {
+                    const pct = Math.round((loaded / total) * 100);
+                    setDownloadProgress(pct);
+                    const { getSocket } = require('../lib/socket');
+                    const socket = getSocket();
+                    const roomId = window.location.pathname.split('/').pop();
+                    if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
+                  }
+                }
+                const concat = new Uint8Array(loaded);
+                let offset = 0;
+                for (const chunk of chunks) {
+                  concat.set(chunk, offset);
+                  offset += chunk.length;
+                }
+                arrayBuffer = concat.buffer;
 
-            // Stash to IDB asynchronously
-            const stashedBlob = new Blob([arrayBuffer], { type: 'audio/mp4' });
-            cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
-              console.warn('[AudioPlayer] Background stash to IDB warning:', err);
-            });
+                // Stash to IDB asynchronously
+                const stashedBlob = new Blob([arrayBuffer], { type: 'audio/mp4' });
+                cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
+                  console.warn('[AudioPlayer] Background stash to IDB warning:', err);
+                });
+              }
+            } catch (bgErr) {
+              console.log('[AudioPlayer] Background stream caching bypassed:', bgErr);
+            }
           }
         } else {
           let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
-          if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-            fetchUrl = fetchUrl.replace('http://localhost:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
-            fetchUrl = fetchUrl.replace('http://127.0.0.1:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
-          }
 
           const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
           if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
@@ -980,9 +993,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     const source = audioCtxRef.current.createBufferSource();
     source.buffer = buffer;
-    
-    // Connect through EQ chain
-    const firstNode = eqNodesRef.current.length > 0 ? eqNodesRef.current[0] : analyserNodeRef.current!;
+
+    // ── FIX: Connect source → Gain → EQ chain → Analyser → Destination ──
+    // Previously firstNode was computed but source.connect() still pointed directly
+    // to gainNodeRef, completely bypassing the EQ. Now we wire it correctly.
     source.connect(gainNodeRef.current!);
     
     source.onended = () => {
@@ -1263,6 +1277,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     getAudioData,
     getRawAudioData,
     setEqBand,
+    setAllEqBands,
     prefetchTrack,
     getVolume,
     toggleMute

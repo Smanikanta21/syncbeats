@@ -152,30 +152,30 @@ export function FeaturesExplanation() {
         </p>
       </div>
 
-      <div className="w-full pl-6 md:pl-[10vw]">
-        <div ref={scrollWrapperRef} className="flex flex-col md:flex-row gap-8 md:gap-8 pb-12 pr-[10vw] w-max items-center md:items-stretch">
+      <div className="w-full px-4 md:px-0 md:pl-[10vw]">
+        <div ref={scrollWrapperRef} className="flex flex-col md:flex-row gap-6 md:gap-8 pb-12 md:pr-[10vw] w-full md:w-max items-center md:items-stretch">
           {features.map((feature, i) => (
             <div 
               key={feature.id}
-              className={`feature-card will-change-transform w-[85vw] md:w-[400px] shrink-0 h-[450px] glass-panel rounded-[2.5rem] p-8 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group transition-all duration-500 ${feature.borderHover}`}
+              className={`feature-card will-change-transform w-full max-w-md md:w-[400px] shrink-0 h-auto md:h-[450px] glass-panel rounded-3xl md:rounded-[2.5rem] p-6 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group transition-all duration-500 ${feature.borderHover}`}
             >
-              {/* Vibrant Aurora Background Glow (Reveals & Glows on Hover) */}
-              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-gradient-to-br ${feature.color} rounded-full blur-[65px] opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
+              {/* Vibrant Aurora Background Glow */}
+              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-gradient-to-br ${feature.color} rounded-full blur-[65px] opacity-40 md:opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
               
               {/* Secondary Soft Bottom Aurora Glow */}
-              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-gradient-to-tr ${feature.color} rounded-full blur-[70px] opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
+              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-gradient-to-tr ${feature.color} rounded-full blur-[70px] opacity-20 md:opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
 
-              <div className={`w-16 h-16 rounded-full bg-foreground/5 flex items-center justify-center mb-8 relative z-10 border border-foreground/10 shadow-lg transition-all duration-300 ${feature.accent}`}>
-                <feature.icon className="w-8 h-8 transition-transform duration-300 group-hover:scale-110" />
+              <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-foreground/5 flex items-center justify-center mb-6 md:mb-8 relative z-10 border border-foreground/10 shadow-lg transition-all duration-300 ${feature.accent}`}>
+                <feature.icon className="w-7 h-7 md:w-8 md:h-8 transition-transform duration-300 group-hover:scale-110" />
               </div>
               
-              <h3 className="text-2xl font-black mb-4 relative z-10 transition-colors duration-300 group-hover:text-foreground">{feature.title}</h3>
-              <p className="text-foreground/60 leading-relaxed relative z-10 text-sm md:text-base transition-colors duration-300 group-hover:text-foreground/85">
+              <h3 className="text-xl md:text-2xl font-black mb-3 md:mb-4 relative z-10 transition-colors duration-300 group-hover:text-foreground">{feature.title}</h3>
+              <p className="text-foreground/70 md:text-foreground/60 leading-relaxed relative z-10 text-xs md:text-base mb-6 md:mb-0 transition-colors duration-300 group-hover:text-foreground/85">
                 {feature.description}
               </p>
               
-              <div className="mt-auto relative z-10">
-                <div className={`w-11 h-11 rounded-full border border-foreground/20 flex items-center justify-center transition-all duration-500 ease-out cursor-pointer hover:scale-115 active:scale-95 ${feature.buttonHover}`}>
+              <div className="mt-auto relative z-10 pt-2">
+                <div className={`w-10 h-10 md:w-11 md:h-11 rounded-full border border-foreground/20 flex items-center justify-center transition-all duration-500 ease-out cursor-pointer hover:scale-115 active:scale-95 ${feature.buttonHover}`}>
                   <Play className="w-4 h-4 ml-0.5 fill-current" />
                 </div>
               </div>
