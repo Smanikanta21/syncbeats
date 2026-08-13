@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useState, useMemo } from "react";
-import { SlidersHorizontal, RotateCcw, ChevronDown, Lightbulb, Settings } from "lucide-react";
+import { SlidersHorizontal, RotateCcw, ChevronDown, Lightbulb, Settings, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useSettings, AppSettings } from "../../hooks/useSettings";
 import { useVisualizer } from "../../context/VisualizerContext";
 import { getSocket } from "../../lib/socket";
 import { cn } from "../../lib/utils";
+import { HoverExpandPill } from "../HoverExpandPill";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Apple AirPods-style EQ + Ambient Visualizer
@@ -427,6 +429,20 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
 
   const isModified = eqGains.some(g => g !== 0);
 
+  const [isPresetOpen, setIsPresetOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close preset menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsPresetOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      Render
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
@@ -434,23 +450,56 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
     <div className="w-full h-full flex flex-col relative select-none">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-1.5 shrink-0 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-foreground/40 shrink-0" />
+      <div className="flex items-center justify-between mb-1.5 shrink-0 gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <SlidersHorizontal className="w-3.5 h-3.5 text-foreground/40 shrink-0 hidden xs:block" />
           <span className="text-[10px] font-black tracking-widest uppercase text-foreground/40 hidden sm:block shrink-0">EQ</span>
 
-          <div className="relative shrink-0">
-            <select
-              value={currentPreset}
-              onChange={e => applyPreset(e.target.value)}
-              className="appearance-none bg-foreground/10 border border-foreground/10 text-foreground/80 text-[9px] font-bold uppercase tracking-wider pl-3 pr-6 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/15 transition-colors"
+          {/* Custom Compact Glassmorphic Preset Dropdown */}
+          <div ref={dropdownRef} className="relative shrink-0 z-50">
+            <button
+              type="button"
+              onClick={() => setIsPresetOpen(!isPresetOpen)}
+              className="bg-foreground/10 border border-foreground/15 text-foreground/90 text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/20 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
             >
-              <option value="Custom" disabled hidden>Custom</option>
-              {Object.keys(PRESETS).map(p => (
-                <option key={p} value={p} className="bg-background text-foreground text-xs">{p}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-3 h-3 text-foreground/40 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <span className="truncate max-w-[85px] xs:max-w-none">{currentPreset}</span>
+              <ChevronDown className={cn("w-3 h-3 text-foreground/50 transition-transform duration-200", isPresetOpen && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {isPresetOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute left-0 top-full mt-1.5 w-40 bg-zinc-900/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl p-1 z-[100] max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
+                >
+                  {Object.keys(PRESETS).map(p => {
+                    const isSelected = currentPreset === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          applyPreset(p);
+                          setIsPresetOpen(false);
+                        }}
+                        className={cn(
+                          "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wider uppercase transition-all flex items-center justify-between cursor-pointer",
+                          isSelected
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "text-white/80 hover:bg-white/10 hover:text-white border border-transparent"
+                        )}
+                      >
+                        <span className="truncate">{p}</span>
+                        {isSelected && <Check className="w-3 h-3 text-emerald-400 shrink-0 ml-1" />}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {isModified && (
@@ -461,24 +510,22 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
+        <div className="flex items-center gap-1 shrink-0">
+          <HoverExpandPill
+            icon={Lightbulb}
+            label="Ambient"
             onClick={() => updateSettings({ ambientEnabled: settings.ambientEnabled !== false ? false : true })}
-            className={cn(
-              "text-[9px] px-2.5 h-6 flex items-center gap-1 rounded-full font-bold uppercase transition-colors border cursor-pointer",
-              settings.ambientEnabled !== false
-                ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/25 hover:bg-yellow-500/25"
-                : "bg-foreground/5 text-foreground/40 border-foreground/10 hover:bg-foreground/10"
-            )}>
-            <Lightbulb className="w-3 h-3" />
-            Ambient
-          </button>
+            active={settings.ambientEnabled !== false}
+            activeColor="bg-amber-500/15 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+            title={settings.ambientEnabled !== false ? "Disable Ambient Light" : "Enable Ambient Light"}
+          />
           {onOpenVisuals && (
-            <button onClick={onOpenVisuals}
-              className="text-[9px] px-2.5 h-6 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/8 border border-foreground/10 text-foreground/70 hover:bg-foreground/15 cursor-pointer">
-              <Settings className="w-3 h-3" />
-              Visuals
-            </button>
+            <HoverExpandPill
+              icon={Settings}
+              label="Visuals"
+              onClick={onOpenVisuals}
+              title="Open Visuals Studio"
+            />
           )}
         </div>
       </div>

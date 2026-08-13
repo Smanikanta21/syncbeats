@@ -3,11 +3,13 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus,
+  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus, UserPlus,
   ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
 import { devicesApi, type Device } from "../../lib/api";
+import { cn } from "../../lib/utils";
+import { HoverExpandPill } from "../HoverExpandPill";
 
 interface DevicesPaneProps {
   participants: Participant[];
@@ -15,6 +17,7 @@ interface DevicesPaneProps {
   hostId: string | null;
   myUserId?: string;
   isHost: boolean;
+  isPlaying?: boolean;
   deviceSyncProgress: Record<string, number>;
   onVolumeChange?: (socketId: string, volume: number) => void;
 }
@@ -98,36 +101,43 @@ function OfflineDeviceCard({ device }: { device: Device }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 0.65, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="rounded-xl border border-foreground/[0.05] bg-foreground/[0.02] px-3 py-2.5 flex items-center justify-between gap-3 transition-opacity duration-200"
+      className={cn('rounded-xl', 'border', 'border-foreground/[0.05]', 'bg-foreground/[0.02]', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-foreground/5 text-foreground/40">
-          <DevIcon className="w-4 h-4" />
-          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-foreground/20 rounded-full border border-background" />
+      <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
+        <div className={cn('relative', 'w-8', 'h-8', 'rounded-lg', 'flex', 'items-center', 'justify-center', 'shrink-0', 'bg-foreground/5', 'text-foreground/40')}>
+          <DevIcon className={cn('w-4', 'h-4')} />
+          <div className={cn('absolute', '-bottom-0.5', '-right-0.5', 'w-2', 'h-2', 'bg-foreground/20', 'rounded-full', 'border', 'border-background')} />
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-foreground/60 truncate">{device.name}</span>
+        <div className={cn('flex-1', 'min-w-0')}>
+          <div className={cn('flex', 'items-center', 'gap-1.5')}>
+            <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{device.name}</span>
           </div>
-          <span className="text-[10px] font-semibold text-foreground/35 block mt-0.5">{lastSeenStr}</span>
+          <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-foreground/5 border border-foreground/10 shrink-0">
-        <span className="text-[9px] font-black uppercase tracking-wider text-foreground/40">Offline</span>
+      <div className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-0.5', 'rounded-md', 'bg-foreground/5', 'border', 'border-foreground/10', 'shrink-0')}>
+        <span className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-wider', 'text-foreground/40')}>Offline</span>
       </div>
     </motion.div>
   );
 }
 
-function DeviceCard({
-  p, isMe, isHost, isMySelf, syncProgress, onVolumeChange,
+function ParticipantRow({
+  p,
+  isMe,
+  isHost,
+  isMySelf,
+  isPlaying,
+  syncProgress,
+  onVolumeChange,
 }: {
   p: Participant;
   isMe: boolean;
   isHost: boolean;
   isMySelf: boolean;
+  isPlaying?: boolean;
   syncProgress: number;
   onVolumeChange?: (socketId: string, vol: number) => void;
 }) {
@@ -162,67 +172,68 @@ function DeviceCard({
   const lat = Math.round(p.latency ?? 0);
   const canAdjustVol = isMySelf || isHost;
 
+  // Auto-expand card if a latency spike occurs (>150ms)
+  const prevLatRef = useRef(lat);
+  useEffect(() => {
+    if (lat > 150 && prevLatRef.current <= 150) {
+      setExpanded(true);
+    }
+    prevLatRef.current = lat;
+  }, [lat]);
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className={`rounded-xl border transition-colors duration-200 overflow-hidden ${
-        isMe
-          ? "border-foreground/[0.15] bg-foreground/[0.06]"
-          : "border-foreground/[0.07] bg-foreground/[0.03] hover:bg-foreground/[0.05]"
-      }`}
+      className={cn(
+        "rounded-xl border transition-all duration-300 overflow-hidden",
+        !p.isReady
+          ? "border-red-500/40 bg-red-500/[0.10] animate-[pulse_2s_infinite] shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+          : isMe
+            ? "border-emerald-500/30 bg-emerald-500/[0.07] shadow-[0_0_15px_rgba(16,185,129,0.12)]"
+            : "border-foreground/[0.07] bg-foreground/[0.03] hover:bg-foreground/[0.05]"
+      )}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Main row */}
       <button
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+        className={cn('w-full', 'flex', 'items-center', 'gap-3', 'px-3', 'py-2.5', 'text-left')}
         onClick={() => {
            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
            setExpanded(v => !v);
         }}
       >
         {/* Device Icon */}
-        <div className={`relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-          isMe ? "bg-foreground/15 text-foreground shadow-xs" : "bg-foreground/10 text-foreground/70"
-        }`}>
-          <DevIcon className="w-4 h-4" />
-          {/* Online status indicator */}
-          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-background shadow-[0_0_4px_#4ade80]" />
+        <div className={cn(
+          "relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all",
+          !p.isReady
+            ? "bg-red-500/20 text-red-400 border border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.3)] animate-pulse"
+            : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+        )}>
+          <DevIcon className={cn('w-4', 'h-4')} />
+          {/* Status indicator dot */}
+          <div className={cn(
+            "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background",
+            !p.isReady ? "bg-red-400 shadow-[0_0_4px_#f87171] animate-ping" : "bg-emerald-400 shadow-[0_0_4px_#4ade80]"
+          )} />
         </div>
 
         {/* Info - Device Name ONLY as primary title */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-foreground/90 truncate">{deviceName}</span>
-            {isMe && <span className="text-[8px] font-black tracking-widest text-emerald-500 dark:text-emerald-400 uppercase">Active</span>}
+        <div className={cn('flex-1', 'min-w-0')}>
+          <div className={cn('flex', 'items-center', 'gap-1.5')}>
+            <span className={cn('text-xs', 'font-bold', 'text-foreground/90', 'truncate')}>{deviceName}</span>
           </div>
         </div>
 
         {/* Status */}
-        <div className="flex items-center gap-2 shrink-0">
-          {p.isReady ? (
-            syncProgress > 0 && syncProgress < 100 ? (
-              <div className="flex items-center gap-1">
-                <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />
-                <span className="text-[10px] font-black text-amber-500">{syncProgress}%</span>
-              </div>
-            ) : (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            )
-          ) : (
-            <Loader2 className="w-3.5 h-3.5 text-foreground/30 animate-spin" />
-          )}
-
-          {lat > 0 && (
-            <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black"
-              style={{ color: latencyColor(lat), backgroundColor: latencyColor(lat) + "22" }}
-            >
-              <Wifi className="w-2.5 h-2.5" />
-              {lat}
+        <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
+          {syncProgress > 0 && syncProgress < 100 && (
+            <div className={cn('flex', 'items-center', 'gap-1')}>
+              <Loader2 className={cn('w-3', 'h-3', 'text-amber-500', 'animate-spin')} />
+              <span className={cn('text-[10px]', 'font-black', 'text-amber-500')}>{syncProgress}%</span>
             </div>
           )}
 
@@ -242,11 +253,11 @@ function DeviceCard({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-3 space-y-2.5">
+            <div className={cn('px-3', 'pb-3', 'space-y-2.5')}>
               {/* Volume slider */}
               {canAdjustVol && (
-                <div className="flex items-center gap-2">
-                  <Volume2 className="w-3.5 h-3.5 text-foreground/40 shrink-0" />
+                <div className={cn('flex', 'items-center', 'gap-2')}>
+                  <Volume2 className={cn('w-3.5', 'h-3.5', 'text-foreground/40', 'shrink-0')} />
                   <input
                     type="range"
                     min={0} max={100} step={1}
@@ -257,32 +268,50 @@ function DeviceCard({
                       setLocalVol(v);
                       onVolumeChange?.(p.socketId, v);
                     }}
-                    className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-white"
                     style={{
-                      background: `linear-gradient(to right, rgba(255,255,255,0.8) ${localVol}%, rgba(255,255,255,0.2) ${localVol}%)`,
+                      background: `linear-gradient(to right, #34d399 0%, #34d399 ${localVol}%, rgba(255,255,255,0.15) ${localVol}%, rgba(255,255,255,0.15) 100%)`,
                     }}
+                    className="flex-1 h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(52,211,153,0.9)]"
                   />
-                  <span className="text-[10px] font-black text-foreground/40 w-7 text-right">{localVol}%</span>
+                  <span className={cn('text-[10px]', 'font-black', 'text-foreground/40', 'w-7', 'text-right')}>{localVol}%</span>
                 </div>
               )}
 
               {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Latency</div>
-                  <div className="text-xs font-black" style={{ color: latencyColor(lat) }}>{lat}ms</div>
+              <div className={cn('grid', 'grid-cols-2', 'gap-1.5')}>
+                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5')}>
+                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Latency</div>
+                  <div className={cn('text-xs', 'font-black')} style={{ color: latencyColor(lat) }}>{lat}ms</div>
                 </div>
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Jitter</div>
-                  <div className="text-xs font-black text-foreground/70">{Math.round(p.jitter ?? 0)}ms</div>
+                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5')}>
+                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Jitter</div>
+                  <div className={cn('text-xs', 'font-black', 'text-foreground/70')}>{Math.round(p.jitter ?? 0)}ms</div>
                 </div>
-                <div className="rounded-xl bg-foreground/[0.04] px-2.5 py-1.5 col-span-2">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Status</div>
-                  <div className="text-[11px] font-semibold text-foreground/70">
-                    {p.isBlocked ? "Blocked" : p.isReady ? "Synced & Playing" : "Buffering…"}
+                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5', 'col-span-2')}>
+                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Status</div>
+                  <div className={cn('text-[11px]', 'font-semibold', 'text-foreground/70')}>
+                    {p.isBlocked
+                      ? "Blocked (Audio Unlock Required)"
+                      : p.isReady
+                        ? (isPlaying ? "Synced & Playing" : "Synced & Ready")
+                        : "Syncing / Buffering…"}
                   </div>
                 </div>
               </div>
+
+              {/* Compare & Calibrate Sync Button for User's Devices */}
+              {(isMe || isMySelf) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    document.dispatchEvent(new CustomEvent("island:expand-sync"));
+                  }}
+                  className="w-full mt-2 py-1.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs"
+                >
+                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Compare & Calibrate Sync</span>
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -301,7 +330,7 @@ interface UserGroup {
 }
 
 export function DevicesPane({
-  participants, mySocketId, hostId, myUserId, isHost,
+  participants, mySocketId, hostId, myUserId, isHost, isPlaying = false,
   deviceSyncProgress, onVolumeChange,
 }: DevicesPaneProps) {
   const [accountDevices, setAccountDevices] = useState<Device[]>([]);
@@ -387,35 +416,34 @@ export function DevicesPane({
   }, [userGroups]);
 
   return (
-    <div className="h-full flex flex-col min-h-0">
+    <div className={cn('h-full', 'flex', 'flex-col', 'min-h-0')}>
       {/* Header */}
-      <div className="flex items-center justify-between px-1 pb-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-foreground/60" />
-          <span className="text-xs font-black uppercase tracking-widest text-foreground/50">
+      <div className={cn('flex', 'items-center', 'justify-between', 'px-1', 'pb-3', 'shrink-0')}>
+        <div className={cn('flex', 'items-center', 'gap-2')}>
+          <Activity className={cn('w-4', 'h-4', 'text-foreground/60')} />
+          <span className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
             Account Devices
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button 
+        <div className={cn('flex', 'items-center', 'gap-2')}>
+          <HoverExpandPill
+            icon={UserPlus}
+            label="Invite"
             onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-            className="p-1 rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors flex items-center justify-center"
+            active
+            activeColor="bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-xs"
             title="Invite Friends"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-              {participants.length} online
-            </span>
+          />
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'text-[10px]', 'font-mono', 'font-bold', 'text-emerald-400')}>
+            <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400', 'animate-pulse')} />
+            <span>{participants.length} online</span>
           </div>
         </div>
       </div>
 
       {/* Scrollable list segregated by User */}
       <div
-        className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0"
+        className={cn('flex-1', 'overflow-y-auto', 'space-y-4', 'pr-1', 'min-h-0')}
         style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
       >
         <AnimatePresence>
@@ -426,44 +454,45 @@ export function DevicesPane({
             return (
               <div key={group.key} className="space-y-1.5">
                 {/* User Header */}
-                <div className="flex items-center justify-between px-1 text-xs gap-2 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                <div className={cn('flex', 'items-center', 'justify-between', 'px-1', 'text-xs', 'gap-2', 'min-w-0')}>
+                  <div className={cn('flex', 'items-center', 'gap-1.5', 'min-w-0', 'flex-1', 'overflow-hidden')}>
                     <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 ${
                       group.isMe ? "bg-foreground/20 text-foreground" : "bg-foreground/10 text-foreground/70"
                     }`}>
                       {initials}
                     </div>
-                    <span className="font-bold text-foreground/90 truncate whitespace-nowrap">{group.userName}</span>
+                    <span className={cn('font-bold', 'text-foreground/90', 'truncate', 'whitespace-nowrap')}>{group.userName}</span>
                     {group.isHost && (
-                      <span className="bg-amber-500/20 text-amber-500 border border-amber-500/30 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md shrink-0 whitespace-nowrap">
+                      <span className={cn('bg-amber-500/20', 'text-amber-500', 'border', 'border-amber-500/30', 'text-[8px]', 'font-black', 'uppercase', 'tracking-wider', 'px-1.5', 'py-0.2', 'rounded-md', 'shrink-0', 'whitespace-nowrap')}>
                         Host
                       </span>
                     )}
                     {group.isMe && (
-                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase shrink-0 whitespace-nowrap">
+                      <span className={cn('text-[9px]', 'font-black', 'tracking-widest', 'text-foreground/40', 'uppercase', 'shrink-0', 'whitespace-nowrap')}>
                         (You)
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] font-semibold text-foreground/40 shrink-0 whitespace-nowrap ml-1">
+                  <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/40', 'shrink-0', 'whitespace-nowrap', 'ml-1')}>
                     {groupTotal} {groupTotal === 1 ? "device" : "devices"}
                   </span>
                 </div>
 
                 {/* Devices belonging to this User */}
-                <div className="space-y-1.5 pl-2 border-l border-foreground/10">
+                <div className={cn('space-y-1.5', 'pl-2', 'border-l', 'border-foreground/10')}>
                   {/* Active devices in room */}
                   {group.activeParticipants.map(p => {
                     const isMe = p.socketId === mySocketId;
                     const isThisHost = (p.userId && p.userId === hostId) || p.socketId === hostId;
                     const progress = deviceSyncProgress[p.socketId] ?? 0;
                     return (
-                      <DeviceCard
+                      <ParticipantRow
                         key={p.socketId}
                         p={p}
                         isMe={isMe}
                         isHost={isThisHost}
                         isMySelf={isMe}
+                        isPlaying={isPlaying}
                         syncProgress={progress}
                         onVolumeChange={onVolumeChange}
                       />
@@ -481,7 +510,7 @@ export function DevicesPane({
         </AnimatePresence>
 
         {totalDeviceCount === 0 && (
-          <div className="text-center text-foreground/20 text-xs py-8">
+          <div className={cn('text-center', 'text-foreground/20', 'text-xs', 'py-8')}>
             No devices found
           </div>
         )}

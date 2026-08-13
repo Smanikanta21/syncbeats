@@ -13,6 +13,19 @@ export function FullscreenPrompt() {
 
   useEffect(() => {
     const checkFullscreen = () => {
+      // Detect if running on mobile device or installed PWA standalone mode
+      const isMobileOrPWA = typeof window !== "undefined" && (
+        /mobi|android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (window.navigator as any).standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (navigator.maxTouchPoints > 0 && window.innerWidth < 1024)
+      );
+
+      if (isMobileOrPWA) {
+        setPromptState("hidden");
+        return;
+      }
+
       // Check if browser actually supports fullscreen API
       const isFullscreenSupported = document.fullscreenEnabled || (document as any).webkitFullscreenEnabled;
       

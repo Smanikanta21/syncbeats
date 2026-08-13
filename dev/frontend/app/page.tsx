@@ -117,7 +117,7 @@ export default function LandingPage() {
             </Magnetic>
           ) : (
             <>
-            <Link href="/login" className={`flex ${isScrolled ? 'h-9 px-3 text-xs' : 'h-11 px-4 sm:px-6 text-xs md:text-sm'} rounded-full items-center justify-center font-bold tracking-widest uppercase text-foreground/80 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent transition-all duration-300`}>
+            <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-9 px-3 text-xs' : 'h-11 px-4 sm:px-6 text-xs md:text-sm'} rounded-full items-center justify-center font-bold tracking-widest uppercase text-foreground/80 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent transition-all duration-300`}>
               Login
             </Link>
             <Magnetic>

@@ -275,9 +275,11 @@ export function useSettings() {
             ...(localSettings.ambientPositions || {}),
           },
         };
-        setSettingsState(merged);
-        settingsRef.current = merged;
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+        if (JSON.stringify(merged) !== JSON.stringify(settingsRef.current)) {
+          setSettingsState(merged);
+          settingsRef.current = merged;
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+        }
       }
     } catch (e) {
       console.warn("Failed to parse DB settings", e);
@@ -289,14 +291,9 @@ export function useSettings() {
     return () => {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
-        if (auth?.user) {
-          authApi.updateSettings(settingsRef.current)
-            .then(() => auth.patchUserSettings?.(settingsRef.current))
-            .catch(() => {});
-        }
       }
     };
-  }, [auth]);
+  }, []);
 
   const updateSettings = (updates: Partial<AppSettings>) => {
     const newSettings = {
@@ -315,6 +312,9 @@ export function useSettings() {
         ? { ...settingsRef.current.ambientPositions, ...updates.ambientPositions }
         : settingsRef.current.ambientPositions,
     };
+    if (JSON.stringify(newSettings) === JSON.stringify(settingsRef.current)) {
+      return;
+    }
     setSettingsState(newSettings);
     settingsRef.current = newSettings;
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
@@ -329,18 +329,15 @@ export function useSettings() {
     window.dispatchEvent(new Event("syncbeats-settings-updated"));
     setTimeout(() => { isInternalUpdateRef.current = false; }, 0);
 
-    // Sync to backend immediately with 200ms debounce
+    // Sync to backend with 500ms debounce
     if (auth?.user) {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
         authApi.updateSettings(newSettings)
-          .then(() => {
-            auth.patchUserSettings?.(newSettings);
-          })
           .catch((err) => {
             console.warn("Failed to sync settings to server:", err);
           });
-      }, 200);
+      }, 500);
     }
   };
 

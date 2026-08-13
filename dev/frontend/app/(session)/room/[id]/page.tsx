@@ -292,6 +292,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             error: audio.error,
             downloadProgress: audio.downloadProgress,
             duration: audio.duration,
+            currentTime: audio.currentTime,
             volume: audio.volume,
             getRawAudioData: audio.getRawAudioData,
             eqGains: audio.eqGains,

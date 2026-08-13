@@ -32,7 +32,7 @@ export function JoinRoomModal({ isOpen, onClose }: JoinRoomModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/80 backdrop-blur-2xl backdrop-saturate-150"
+            className="fixed inset-0 bg-black/40 backdrop-blur-xl backdrop-saturate-150"
           />
 
           {/* Fixed Top-Right Close Button */}

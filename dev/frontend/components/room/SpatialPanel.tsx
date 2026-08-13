@@ -776,7 +776,8 @@ export function SpatialPanel({
           <div className="order-first lg:order-last lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-3 lg:gap-4">
             <div className="flex flex-row lg:flex-col justify-between items-center lg:items-start gap-2">
               <h3 className="text-sm font-semibold text-foreground/90">Spatial Controller</h3>
-              <div className="text-[10px] lg:text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-1 lg:py-1.5 rounded-lg border border-blue-500/20">
+              <div className="text-[10px] sm:text-xs font-mono text-cyan-400/90 flex items-center gap-1.5 font-bold tracking-tight">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 {orbitSpeed.toFixed(1)}s / device
               </div>
             </div>
@@ -789,7 +790,10 @@ export function SpatialPanel({
                 step="0.5"
                 value={orbitSpeed}
                 onChange={(e) => onOrbitSpeedChange(parseFloat(e.target.value))}
-                className="w-full accent-white"
+                style={{
+                  background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) 100%)`
+                }}
+                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(6,182,212,0.9)]"
               />
               <div className="flex justify-between text-[10px] text-foreground/50 mt-1">
                 <span>Fast</span>

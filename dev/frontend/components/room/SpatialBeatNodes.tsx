@@ -132,6 +132,10 @@ export function SpatialBeatNodes() {
 
   const isPlaying = isRoomPlaying || (audioContext ? audioContext.isPlaying : false);
 
+  if (settings.ambientEnabled === false) {
+    return null;
+  }
+
   const isBufferingOrDownloading = audioContext
     ? (audioContext.isBuffering || (audioContext.downloadProgress > 0 && audioContext.downloadProgress < 100))
     : false;

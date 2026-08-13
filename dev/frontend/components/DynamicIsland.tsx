@@ -637,7 +637,9 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
         <div className={cn('relative', 'mb-3', 'shrink-0')}>
           <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-3.5', 'h-3.5', 'text-white/40')} />
           <input
-            type="text"
+            name="syncbeats-island-search-input"
+            type="search"
+            inputMode="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => {
@@ -649,6 +651,14 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
               }
             }}
             placeholder="Search name or email..."
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck="false"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+            aria-autocomplete="none"
             className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
           />
         </div>

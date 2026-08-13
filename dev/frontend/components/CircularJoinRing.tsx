@@ -89,6 +89,7 @@ export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRing
                 autoFocus
                 autoComplete="off"
                 autoCorrect="off"
+                autoCapitalize="none"
                 spellCheck="false"
                 data-1p-ignore="true"
                 data-lpignore="true"

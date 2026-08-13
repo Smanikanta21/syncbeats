@@ -8,7 +8,7 @@ import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock, Copy, QrCode
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, LogIn, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -21,6 +21,7 @@ import { MobileRadialNavigator } from "./MobileRadialNavigator";
 import { SettingsPanel } from "../SettingsPanel";
 import { ThemeToggle } from "../ThemeToggle";
 import { JoinRoomModal } from "../JoinRoomModal";
+import { HoverExpandPill } from "../HoverExpandPill";
 import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
@@ -134,7 +135,7 @@ function VisualsModal({
     <AnimatePresence>
       <div
         ref={backdropRef}
-        className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/15 backdrop-blur-[1px] pointer-events-auto"
+        className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'items-center', 'justify-center', 'p-4', 'bg-black/15', 'backdrop-blur-[1px]', 'pointer-events-auto')}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 15 }}
@@ -156,7 +157,7 @@ function VisualsModal({
         </motion.div>
         {/* Click outside to close */}
         <div
-          className="absolute inset-0 z-0 cursor-pointer pointer-events-auto"
+          className={cn('absolute', 'inset-0', 'z-0', 'cursor-pointer', 'pointer-events-auto')}
           onClick={onClose}
         />
       </div>
@@ -176,12 +177,13 @@ export function RoomDashboard({
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("queue");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
   const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
   const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [activityNotification, setActivityNotification] = useState<{ id: number; text: string; type: "join" | "leave" } | null>(null);
 
   // Listen for room join/leave activity to display clean floating activity pill (no toasts, no emojis)
@@ -344,7 +346,7 @@ export function RoomDashboard({
 
   return (
     <div 
-      className="fixed inset-0 flex flex-col overflow-hidden select-none w-full h-full relative z-10" 
+      className={cn('fixed', 'inset-0', 'flex', 'flex-col', 'overflow-hidden', 'select-none', 'w-full', 'h-full', 'relative', 'z-10')} 
       style={{ 
         paddingTop: "max(env(safe-area-inset-top), 4px)", 
         paddingBottom: "max(env(safe-area-inset-bottom), 4px)" 
@@ -352,24 +354,25 @@ export function RoomDashboard({
     >
       <FullscreenPrompt />
       {/* ── Desktop Layout (md+) ───────────────────────────────────────────── */}
-      <div className="hidden md:flex flex-1 min-h-0 p-4 pt-20 gap-3">
+      <div className={cn('hidden', 'md:flex', 'flex-1', 'min-h-0', 'p-4', 'pt-20', 'gap-3')}>
         {/* Left Column: Devices (Full Height) */}
-        <GlassCard className="w-80 shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+        <GlassCard className={cn('w-80', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
           <DevicesPane
             participants={participants}
             mySocketId={mySocketId}
             hostId={hostId}
             myUserId={myUserId}
             isHost={isHost}
+            isPlaying={isPlaying}
             deviceSyncProgress={deviceSyncProgress}
             onVolumeChange={onSetParticipantVolume}
           />
         </GlassCard>
 
         {/* Center Column: Spatial (Top) + EQ/Visualizer (Bottom) */}
-        <div className="flex-1 flex flex-col min-w-0 gap-3 min-h-0">
+        <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'gap-3', 'min-h-0')}>
           {/* Top: Spatial Audio */}
-          <GlassCard className="flex-1 min-h-0 p-4 flex flex-col" isPlaying={isPlaying}>
+          <GlassCard className={cn('flex-1', 'min-h-0', 'p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
             <SpatialPanel
               myDeviceId={mySocketId ?? ""}
               spatialDevices={spatialDevices}
@@ -388,120 +391,156 @@ export function RoomDashboard({
           </GlassCard>
 
           {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
-          <GlassCard className="h-[260px] shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
+          <GlassCard className={cn('h-[260px]', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
                   <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
           </GlassCard>
         </div>
 
       {/* Right Sidebar: Room Details + Queue */}
-      <GlassCard className="w-80 shrink-0 flex flex-col min-h-0 p-3 gap-3" isPlaying={isPlaying}>
+      <GlassCard className={cn('w-80', 'shrink-0', 'flex', 'flex-col', 'min-h-0', 'p-3', 'gap-3')} isPlaying={isPlaying}>
             
-            {/* Room Details */}
-            <div className="shrink-0 flex flex-col gap-2 bg-foreground/[0.02] p-2 rounded-xl border border-foreground/[0.05]">
-              <div className="flex justify-between items-center px-1">
-                <span className="text-[10px] font-bold tracking-widest text-foreground/50 uppercase">Room Info</span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button 
-                    onClick={() => setShowJoinModal(true)}
-                    className="text-[9px] px-2 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 cursor-pointer border border-emerald-500/20 whitespace-nowrap shrink-0"
-                    title="Join another room via Code Ring"
-                  >
-                    <Plus className="w-3 h-3 shrink-0" />
-                    <span className="whitespace-nowrap">Join Room</span>
-                  </button>
-                  {isHost && (
-                    <button 
-                      onClick={handleTogglePrivate}
-                      className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase transition-colors cursor-pointer whitespace-nowrap shrink-0 ${isPrivate ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'}`}
-                      title={isPrivate ? "Click to make room public" : "Click to make room private"}
-                    >
-                      {isPrivate ? 'Private' : 'Public'}
-                    </button>
-                  )}
-                  <button 
-                    onClick={openProfilePage}
-                    className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase transition-colors bg-foreground/10 text-foreground/80 hover:bg-foreground/20 cursor-pointer whitespace-nowrap shrink-0"
-                    title="View Profile"
-                  >
-                    <User className="w-3 h-3 shrink-0" />
-                    <span className="whitespace-nowrap">Profile</span>
-                  </button>
-                  <ThemeToggle size="sm" />
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="flex-1 bg-background/50 rounded-lg border border-foreground/10 px-2 py-1.5 flex justify-between items-center">
-                  <span className="font-mono text-[10px] text-foreground/80 truncate select-text cursor-text">{roomId}</span>
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={async () => {
-                        if (copied) return;
-                        const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                        try {
-                          if (navigator.clipboard && navigator.clipboard.writeText) {
-                            await navigator.clipboard.writeText(link);
-                          } else {
-                            const textArea = document.createElement("textarea");
-                            textArea.value = link;
-                            document.body.appendChild(textArea);
-                            textArea.select();
-                            document.execCommand("copy");
-                            document.body.removeChild(textArea);
-                          }
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2000);
-                        } catch (err) {
-                          console.error("Failed to copy link.", err);
-                        }
-                      }}
-                      className={`transition-colors p-1 rounded hover:bg-foreground/5 cursor-pointer ${copied ? "text-green-500" : "text-foreground/40 hover:text-foreground/80"}`}
-                      title="Copy Invite Link"
-                    >
-                      {copied ? (
-                        <Check className="w-3 h-3" />
-                      ) : (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowQR(true)}
-                      className="p-1 rounded hover:bg-foreground/5 text-foreground/40 hover:text-foreground/80 transition-colors cursor-pointer"
-                      title="Show QR Code"
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {/* Session Duration Pill — High Contrast */}
-              <div className="flex items-center justify-between bg-foreground/[0.08] dark:bg-white/10 backdrop-blur-md rounded-xl border border-foreground/15 dark:border-white/20 px-2.5 py-1.5 mt-1 shadow-sm">
-                <span className="text-[10px] font-extrabold text-foreground/80 dark:text-white/90 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            {/* Room Details Header — Ultra Clean 2-Row Card */}
+            <div className={cn('shrink-0', 'flex', 'flex-col', 'gap-2.5', 'bg-foreground/[0.03]', 'p-2.5', 'rounded-2xl', 'border', 'border-foreground/[0.08]')}>
+              {/* Row 1: Room Code + Copy/QR on left, Privacy Status on right */}
+              <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
+                <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 p-1 rounded-xl">
+                  <span className="font-mono text-xs font-bold text-foreground/90 px-1 select-text cursor-text">
+                    {roomId}
                   </span>
-                  Session Time
-                </span>
-                <div className="flex items-center gap-1.5 font-mono text-[12px] font-extrabold text-foreground dark:text-white bg-foreground/10 dark:bg-white/15 px-2 py-0.5 rounded-lg border border-foreground/10 dark:border-white/15">
-                  <Clock className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                  {/* Copy Code */}
+                  <button 
+                    onClick={async () => {
+                      if (copied) return;
+                      try {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                          await navigator.clipboard.writeText(roomId);
+                        } else {
+                          const textArea = document.createElement("textarea");
+                          textArea.value = roomId;
+                          document.body.appendChild(textArea);
+                          textArea.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(textArea);
+                        }
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      } catch (err) {
+                        console.error("Failed to copy room code.", err);
+                      }
+                    }}
+                    className={`p-1 rounded-lg transition-colors cursor-pointer ${copied ? "text-emerald-400 bg-emerald-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
+                    title="Copy 6-Digit Room Code"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  {/* Copy Link URL */}
+                  <button 
+                    onClick={async () => {
+                      if (copiedLink) return;
+                      const link = typeof window !== 'undefined' ? window.location.href : roomId;
+                      try {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                          await navigator.clipboard.writeText(link);
+                        } else {
+                          const textArea = document.createElement("textarea");
+                          textArea.value = link;
+                          document.body.appendChild(textArea);
+                          textArea.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(textArea);
+                        }
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2000);
+                      } catch (err) {
+                        console.error("Failed to copy link.", err);
+                      }
+                    }}
+                    className={`p-1 rounded-lg transition-colors cursor-pointer ${copiedLink ? "text-blue-400 bg-blue-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
+                    title="Copy Room Link URL"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5 text-blue-400" /> : <Link2 className="w-3.5 h-3.5" />}
+                  </button>
+                  {/* QR Code */}
+                  <button
+                    onClick={() => setShowQR(true)}
+                    className="p-1 rounded-lg text-foreground/50 hover:text-foreground active:bg-foreground/10 transition-colors cursor-pointer"
+                    title="Show QR Code"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Privacy Badge */}
+                {isHost ? (
+                  <button 
+                    onClick={handleTogglePrivate}
+                    className={`text-[9px] font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-80 px-2 py-1 rounded-xl shrink-0 ${isPrivate ? 'text-red-400 bg-red-500/10 border border-red-500/20' : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'}`}
+                    title={isPrivate ? "Click to make room public" : "Click to make room private"}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isPrivate ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
+                    <span>{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
+                  </button>
+                ) : (
+                  <div className={cn('flex', 'items-center', 'gap-1', 'text-[9px]', 'font-mono', 'font-bold', 'text-emerald-400', 'bg-emerald-500/10', 'px-2', 'py-1', 'rounded-xl', 'border', 'border-emerald-500/20')}>
+                    <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400', 'animate-pulse')} />
+                    <span>PUBLIC</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Row 2: Live Session Time on left, Ghost Actions on right */}
+              <div className={cn('flex', 'items-center', 'justify-between', 'gap-2', 'pt-1', 'border-t', 'border-foreground/5')}>
+                <div className={cn('flex', 'items-center', 'gap-1.5', 'text-xs', 'font-mono', 'font-extrabold', 'text-foreground/80')}>
+                  <Clock className={cn('w-3.5', 'h-3.5', 'text-emerald-400', 'shrink-0')} />
                   <span>{formattedSessionTime}</span>
+                </div>
+
+                <div className={cn('flex', 'items-center', 'gap-1', 'shrink-0')}>
+                  {/* <HoverExpandPill
+                    icon={UserPlus}
+                    label="Invite"
+                    onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
+                    active
+                    activeColor="bg-blue-500/10 text-blue-400 border-blue-500/25"
+                    title="Invite Friends"
+                  /> */}
+                  <HoverExpandPill
+                    icon={LogIn}
+                    label="Join Room"
+                    onClick={() => setShowJoinModal(true)}
+                    title="Join Room via Code"
+                  />
+                  <HoverExpandPill
+                    icon={User}
+                    label="Profile"
+                    onClick={openProfilePage}
+                    title="View Profile"
+                  />
+                  <ThemeToggle size="sm" />
                 </div>
               </div>
             </div>
 
             {/* Desktop Right Sidebar Segment Selector */}
-            <div className="flex items-center bg-foreground/5 p-1 rounded-xl border border-foreground/10 shrink-0">
+            <div className={cn('flex', 'items-center', 'bg-foreground/5', 'p-1', 'rounded-xl', 'border', 'border-foreground/10', 'shrink-0', 'relative')}>
               <button
                 onClick={() => setDesktopRightTab("queue")}
                 className={cn(
-                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5",
+                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative z-10 cursor-pointer",
                   desktopRightTab === "queue"
-                    ? "bg-foreground text-background shadow-md"
+                    ? "text-background"
                     : "text-foreground/60 hover:text-foreground"
                 )}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                Queue ({queue.length})
+                {desktopRightTab === "queue" && (
+                  <motion.div
+                    layoutId="desktopRightTabPill"
+                    transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
+                    className={cn('absolute', 'inset-0', 'bg-foreground', 'rounded-lg', 'shadow-md', '-z-10')}
+                  />
+                )}
+                <LayoutGrid className={cn('w-3.5', 'h-3.5', 'relative', 'z-10')} />
+                <span className={cn('relative', 'z-10')}>Queue ({queue.length})</span>
               </button>
               <motion.button
                 onClick={() => {
@@ -514,22 +553,29 @@ export function RoomDashboard({
                   transition: { duration: 0.75, repeat: Infinity, repeatDelay: 2 }
                 } : { rotate: 0, scale: 1 }}
                 className={cn(
-                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 relative overflow-visible",
+                  "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative overflow-visible cursor-pointer z-10",
                   desktopRightTab === "chat"
-                    ? "bg-foreground text-background shadow-md"
+                    ? "text-background"
                     : unreadChatCount > 0
                       ? "text-pink-500 hover:text-pink-400 bg-pink-500/10 border border-pink-500/30"
                       : "text-foreground/60 hover:text-foreground"
                 )}
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Chat</span>
+                {desktopRightTab === "chat" && (
+                  <motion.div
+                    layoutId="desktopRightTabPill"
+                    transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
+                    className={cn('absolute', 'inset-0', 'bg-foreground', 'rounded-lg', 'shadow-md', '-z-10')}
+                  />
+                )}
+                <MessageSquare className={cn('w-3.5', 'h-3.5', 'relative', 'z-10')} />
+                <span className={cn('relative', 'z-10')}>Chat</span>
                 {unreadChatCount > 0 && desktopRightTab !== "chat" && (
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: [1, 1.25, 1] }}
                     transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
-                    className="ml-1 px-1.5 py-0.2 text-[10px] font-black bg-pink-500 text-white rounded-full shadow-sm"
+                    className={cn('ml-1', 'px-1.5', 'py-0.2', 'text-[10px]', 'font-black', 'bg-pink-500', 'text-white', 'rounded-full', 'shadow-sm', 'relative', 'z-10')}
                   >
                     {unreadChatCount}
                   </motion.span>
@@ -537,7 +583,7 @@ export function RoomDashboard({
               </motion.button>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className={cn('flex-1', 'min-h-0', 'flex', 'flex-col')}>
               {desktopRightTab === "queue" ? (
                 <RoomQueue
                   queue={queue}
@@ -559,7 +605,7 @@ export function RoomDashboard({
                   mySocketId={mySocketId}
                   myUserId={myUserId}
                   participants={participants}
-                  className="h-full w-full border-none shadow-none bg-transparent"
+                  className={cn('h-full', 'w-full', 'border-none', 'shadow-none', 'bg-transparent')}
                 />
               )}
             </div>
@@ -567,17 +613,43 @@ export function RoomDashboard({
       </div>
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
-      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-1">
-        {/* Mobile Header — Clean 2-row layout to prevent button collisions */}
-        <div className="flex flex-col gap-1.5 px-3 pb-2 border-b border-foreground/10 mb-2 shrink-0">
-          {/* Row 1: Room Code, Session Time & Main Actions */}
-          <div className="flex items-center justify-between gap-1.5">
-            {/* Room Code & Copy/QR */}
-            <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 px-2 py-1 rounded-xl min-w-0">
-              <span className="font-mono text-xs font-bold text-foreground/80 truncate">{roomId}</span>
+      <div className={cn('flex', 'md:hidden', 'flex-col', 'flex-1', 'min-h-0', 'pt-16', 'pb-2', 'px-1')}>
+        {/* Mobile Header — Single Sleek Unified Bar */}
+        <div className={cn('flex', 'items-center', 'justify-between', 'gap-2', 'px-3', 'pb-2', 'border-b', 'border-foreground/10', 'mb-2', 'shrink-0', 'z-30')}>
+          {/* Left: Room Code & Telemetry Privacy */}
+          <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0')}>
+            <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 px-2 py-1 rounded-xl shrink-0">
+              <span className="font-mono text-xs font-bold text-foreground/80">{roomId}</span>
+              {/* Copy Code */}
               <button 
                 onClick={async () => {
                   if (copied) return;
+                  try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                      await navigator.clipboard.writeText(roomId);
+                    } else {
+                      const textArea = document.createElement("textarea");
+                      textArea.value = roomId;
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      document.execCommand("copy");
+                      document.body.removeChild(textArea);
+                    }
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  } catch (err) {
+                    console.error("Failed to copy code.", err);
+                  }
+                }}
+                className={`transition-colors p-1 rounded-md ${copied ? "text-emerald-400 bg-emerald-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
+                title="Copy 6-Digit Room Code"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </button>
+              {/* Copy Link URL */}
+              <button 
+                onClick={async () => {
+                  if (copiedLink) return;
                   const link = typeof window !== 'undefined' ? window.location.href : roomId;
                   try {
                     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -590,17 +662,18 @@ export function RoomDashboard({
                       document.execCommand("copy");
                       document.body.removeChild(textArea);
                     }
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
                   } catch (err) {
                     console.error("Failed to copy link.", err);
                   }
                 }}
-                className={`transition-colors p-1 rounded-md ${copied ? "text-green-500 bg-green-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                title="Copy Invite Link"
+                className={`transition-colors p-1 rounded-md ${copiedLink ? "text-blue-400 bg-blue-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
+                title="Copy Room Link URL"
               >
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copiedLink ? <Check className="w-3 h-3 text-blue-400" /> : <Link2 className="w-3 h-3" />}
               </button>
+              {/* QR Code */}
               <button
                 onClick={() => setShowQR(true)}
                 className="p-1 rounded-md text-foreground/50 hover:text-foreground active:bg-foreground/10 transition-colors"
@@ -610,57 +683,56 @@ export function RoomDashboard({
               </button>
             </div>
 
-            {/* Live Session Time Badge — High Contrast */}
-            <div className="flex items-center gap-1.5 bg-foreground/10 dark:bg-white/15 border border-foreground/15 dark:border-white/20 px-2.5 py-1 rounded-xl shrink-0 backdrop-blur-md shadow-sm">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-              </span>
-              <Clock className="w-3 h-3 text-emerald-500 dark:text-emerald-400 shrink-0" />
-              <span className="font-mono text-[11px] font-extrabold text-foreground dark:text-white tracking-wide">{formattedSessionTime}</span>
-            </div>
-
-            {/* Quick Actions (Theme & Profile) */}
-            <div className="flex items-center gap-1 shrink-0">
-              <ThemeToggle size="sm" />
-              <button 
-                onClick={openProfilePage}
-                className="p-1.5 rounded-full bg-foreground/10 text-foreground/80 hover:bg-foreground/20 transition-colors"
-                title="Profile"
-              >
-                <User className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Row 2: Room Privacy & Invite Action */}
-          <div className="flex items-center justify-between gap-2 pt-0.5">
-            {isHost ? (
-              <button 
-                onClick={handleTogglePrivate}
-                className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider transition-colors ${isPrivate ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}
-                title={isPrivate ? "Click to make room public" : "Click to make room private"}
-              >
-                {isPrivate ? 'Private' : 'Public'}
-              </button>
-            ) : <div />}
-
             {isHost && (
               <button 
-                onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-                className="text-[9px] px-2.5 py-0.5 flex items-center gap-1 rounded-full font-bold uppercase tracking-wider transition-colors bg-blue-500/20 text-blue-400 border border-blue-500/30 active:scale-95"
+                onClick={handleTogglePrivate}
+                className={`text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer hover:opacity-80 shrink-0 ${isPrivate ? 'text-red-400' : 'text-emerald-400'}`}
+                title={isPrivate ? "Click to make room public" : "Click to make room private"}
               >
-                <UserPlus className="w-3 h-3" />
-                Invite
+                <span className={`w-1.5 h-1.5 rounded-full ${isPrivate ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
+                <span className={cn('hidden', 'xs:inline')}>{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
               </button>
             )}
+          </div>
+
+          {/* Right: Timer & Hover-Expand Ghost Actions (Invite, Join, Theme, Profile) */}
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'shrink-0')}>
+            <div className={cn('flex', 'items-center', 'gap-1', 'font-mono', 'text-[10px]', 'sm:text-xs', 'font-bold', 'text-foreground/70', 'bg-foreground/5', 'px-2', 'py-1', 'rounded-lg', 'border', 'border-foreground/10')}>
+              <Clock className={cn('w-3', 'h-3', 'text-emerald-400', 'shrink-0')} />
+              <span>{formattedSessionTime}</span>
+            </div>
+
+            {/* <HoverExpandPill
+              icon={UserPlus}
+              label="Invite"
+              onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
+              active
+              activeColor="bg-blue-500/10 text-blue-400 border-blue-500/20"
+              title="Invite Friends"
+            /> */}
+
+            <HoverExpandPill
+              icon={LogIn}
+              label="Join"
+              onClick={() => setShowJoinModal(true)}
+              title="Join Room"
+            />
+
+            <ThemeToggle size="sm" />
+            
+            <HoverExpandPill
+              icon={User}
+              label="Profile"
+              onClick={openProfilePage}
+              title="Profile"
+            />
           </div>
         </div>
         <AnimatePresence mode="wait">
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col">
-              <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
+              <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
                 <SpatialPanel
                   myDeviceId={mySocketId ?? ""}
                   spatialDevices={spatialDevices}
@@ -681,24 +753,128 @@ export function RoomDashboard({
           )}
           {mobileTab === "playing" && (
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col items-center justify-center">
-              <div className="w-full max-w-md my-auto flex flex-col min-h-0">
-                <GlassCard className="w-full h-[210px] sm:h-[240px] p-3 sm:p-4 flex flex-col min-h-0 shrink-0" isPlaying={isPlaying}>
-                      <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
-                </GlassCard>
-              </div>
+              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col', 'justify-between', 'py-1', 'gap-2')}>
+              
+              {/* Top Hero Stage: Spinning Vinyl Record Player & Track Info */}
+              <GlassCard className={cn('w-full', 'flex-1', 'min-h-0', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'items-center', 'justify-between', 'relative', 'overflow-hidden', 'group')} isPlaying={isPlaying}>
+                {/* Subtle Ambient Glow Aura */}
+                <div className={cn('absolute', 'inset-0', 'bg-gradient-to-b', 'from-purple-500/10', 'via-transparent', 'to-emerald-500/10', 'pointer-events-none')} />
+
+                {/* Spinning Vinyl Disc */}
+                <div className={cn('relative', 'flex', 'items-center', 'justify-center', 'my-auto')}>
+                  {isPlaying && (
+                    <>
+                      <div className={cn('absolute', 'w-40', 'h-40', 'sm:w-48', 'sm:h-48', 'rounded-full', 'border', 'border-emerald-500/20', 'animate-ping', 'pointer-events-none')} />
+                      <div className={cn('absolute', 'w-48', 'h-48', 'sm:w-56', 'sm:h-56', 'rounded-full', 'border', 'border-purple-500/15', 'animate-[pulse_3s_ease-in-out_infinite]', 'pointer-events-none')} />
+                    </>
+                  )}
+
+                  <div className={cn(
+                    "w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-zinc-950 border-4 border-zinc-800/80 shadow-[0_15px_40px_rgba(0,0,0,0.6)] flex items-center justify-center relative overflow-hidden transition-all duration-700",
+                    isPlaying ? "animate-[spin_20s_linear_infinite]" : "scale-95 opacity-80"
+                  )}>
+                    <div className={cn('absolute', 'inset-2', 'rounded-full', 'border', 'border-zinc-800/60', 'pointer-events-none')} />
+                    <div className={cn('absolute', 'inset-5', 'rounded-full', 'border', 'border-zinc-800/40', 'pointer-events-none')} />
+                    <div className={cn('absolute', 'inset-8', 'rounded-full', 'border', 'border-zinc-800/30', 'pointer-events-none')} />
+
+                    <div className={cn('w-14', 'h-14', 'sm:w-18', 'sm:h-18', 'rounded-full', 'overflow-hidden', 'border-2', 'border-zinc-900', 'shadow-inner', 'relative', 'z-10')}>
+                      {currentThumbnail ? (
+                        <img src={currentThumbnail} alt="Album Art" className={cn('w-full', 'h-full', 'object-cover')} />
+                      ) : (
+                        <div className={cn('w-full', 'h-full', 'bg-gradient-to-tr', 'from-purple-600', 'to-indigo-600', 'flex', 'items-center', 'justify-center')}>
+                          <Disc3 className={cn('w-7', 'h-7', 'text-white', 'animate-spin')} />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className={cn('w-2.5', 'h-2.5', 'rounded-full', 'bg-zinc-900', 'border', 'border-zinc-700', 'absolute', 'z-20', 'pointer-events-none')} />
+                  </div>
+                </div>
+
+                {/* Track Title & Artist */}
+                <div className={cn('w-full', 'text-center', 'space-y-0.5', 'z-10', 'mt-1')}>
+                  <h3 className={cn('text-xs', 'sm:text-sm', 'font-black', 'tracking-tight', 'text-foreground', 'truncate', 'px-2')}>
+                    {currentQueueItem?.title || audioTrackTitle || "SyncBeats Session"}
+                  </h3>
+                  <p className={cn('text-[10px]', 'sm:text-xs', 'font-semibold', 'text-foreground/50', 'truncate')}>
+                    {currentQueueItem?.artist || "Live Stream"}
+                  </p>
+                </div>
+
+                {/* Interactive Seek Bar & Duration */}
+                <div className={cn('w-full', 'space-y-1', 'px-3', 'sm:px-6', 'z-10', 'pt-1')}>
+                  {(() => {
+                    const dur = audio.duration && audio.duration > 0 ? audio.duration : 1;
+                    const cur = audio.currentTime || 0;
+                    const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
+                    return (
+                      <div className={cn('relative', 'flex', 'items-center', 'group/seek', 'cursor-pointer')}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={dur}
+                          step={0.1}
+                          value={cur}
+                          onChange={(e) => onSeek?.(parseFloat(e.target.value))}
+                          style={{
+                            background: `linear-gradient(to right, #34d399 0%, #34d399 ${pct}%, rgba(255, 255, 255, 0.15) ${pct}%, rgba(255, 255, 255, 0.15) 100%)`
+                          }}
+                          className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]')}
+                        />
+                      </div>
+                    );
+                  })()}
+                  <div className={cn('flex', 'items-center', 'justify-between', 'text-[9px]', 'font-mono', 'font-bold', 'text-foreground/60', 'px-0.5')}>
+                    <span>
+                      {(() => {
+                        const cur = audio.currentTime || 0;
+                        const m = Math.floor(cur / 60);
+                        const s = Math.floor(cur % 60);
+                        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                      })()}
+                    </span>
+                    <span>
+                      {(() => {
+                        const dur = audio.duration || 0;
+                        const m = Math.floor(dur / 60);
+                        const s = Math.floor(dur % 60);
+                        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                      })()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Playback Actions */}
+                <div className={cn('w-full', 'flex', 'items-center', 'justify-center', 'gap-5', 'z-10', 'pt-1')}>
+                  <button onClick={onPrev} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'active:scale-95', 'transition-all')}>
+                    <SkipBack className={cn('w-3.5', 'h-3.5')} />
+                  </button>
+                  <button onClick={isPlaying ? onPause : onPlay} className={cn('p-3', 'rounded-full', 'bg-foreground', 'text-background', 'shadow-lg', 'hover:scale-105', 'active:scale-95', 'transition-all')}>
+                    {isPlaying ? <Pause className={cn('w-4', 'h-4', 'fill-background')} /> : <Play className={cn('w-4', 'h-4', 'fill-background', 'ml-0.5')} />}
+                  </button>
+                  <button onClick={onNext} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'active:scale-95', 'transition-all')}>
+                    <SkipForward className={cn('w-3.5', 'h-3.5')} />
+                  </button>
+                </div>
+              </GlassCard>
+
+              {/* Bottom Section: Equalizer & Frequency Visualizer */}
+              <GlassCard className={cn('w-full', 'h-[180px]', 'sm:h-[210px]', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
+                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
+              </GlassCard>
             </motion.div>
           )}
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col">
-              <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
+              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
+              <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
                   mySocketId={mySocketId}
                   hostId={hostId}
                   myUserId={myUserId}
                   isHost={isHost}
+                  isPlaying={isPlaying}
                   deviceSyncProgress={deviceSyncProgress}
                   onVolumeChange={onSetParticipantVolume}
                 />
@@ -707,8 +883,8 @@ export function RoomDashboard({
           )}
           {mobileTab === "queue" && (
             <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col">
-              <GlassCard className="flex-1 min-h-0 p-3 flex flex-col" isPlaying={isPlaying}>
+              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
+              <GlassCard className={cn('flex-1', 'min-h-0', 'p-3', 'flex', 'flex-col')} isPlaying={isPlaying}>
                 <RoomQueue
                   queue={queue}
                   isHost={isHost}
@@ -728,13 +904,13 @@ export function RoomDashboard({
           )}
           {mobileTab === "chat" && (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 px-2 flex flex-col">
+              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
               <RoomChat
                 roomId={roomId}
                 mySocketId={mySocketId}
                 myUserId={myUserId}
                 participants={participants}
-                className="h-full w-full"
+                className={cn('h-full', 'w-full')}
               />
             </motion.div>
           )}
@@ -751,17 +927,17 @@ export function RoomDashboard({
 
       {showQR && (
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm cursor-pointer"
+          className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'items-center', 'justify-center', 'bg-black/50', 'backdrop-blur-sm', 'cursor-pointer')}
           onClick={() => setShowQR(false)}
         >
-          <div className="bg-background border border-foreground/10 p-6 rounded-3xl shadow-2xl text-center" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold uppercase tracking-widest text-foreground/50 mb-4">Room QR Code</h3>
-            <div className="bg-white p-4 rounded-xl mb-4">
+          <div className={cn('bg-background', 'border', 'border-foreground/10', 'p-6', 'rounded-3xl', 'shadow-2xl', 'text-center')} onClick={e => e.stopPropagation()}>
+            <h3 className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mb-4')}>Room QR Code</h3>
+            <div className={cn('bg-white', 'p-4', 'rounded-xl', 'mb-4')}>
               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`} alt="QR Code" width={200} height={200} />
             </div>
-            <p className="text-xs text-foreground/40 font-mono mb-4">{roomId}</p>
+            <p className={cn('text-xs', 'text-foreground/40', 'font-mono', 'mb-4')}>{roomId}</p>
             <button 
-              className="px-6 py-2 bg-foreground/10 hover:bg-foreground/20 rounded-full text-xs font-bold transition-colors"
+              className={cn('px-6', 'py-2', 'bg-foreground/10', 'hover:bg-foreground/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors')}
               onClick={() => setShowQR(false)}
             >
               Close
@@ -787,16 +963,16 @@ export function RoomDashboard({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 350, damping: 25 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+            className={cn('fixed', 'top-20', 'left-1/2', '-translate-x-1/2', 'z-[9999]', 'pointer-events-none')}
           >
-            <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-xl border border-foreground/15 shadow-2xl text-xs font-semibold text-foreground">
+            <div className={cn('flex', 'items-center', 'gap-2.5', 'px-4', 'py-2', 'rounded-full', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-xl', 'border', 'border-foreground/15', 'shadow-2xl', 'text-xs', 'font-semibold', 'text-foreground')}>
               <span
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",
                   activityNotification.type === "join" ? "bg-emerald-500 animate-pulse" : "bg-foreground/40"
                 )}
               />
-              <span className="truncate max-w-xs">{activityNotification.text}</span>
+              <span className={cn('truncate', 'max-w-xs')}>{activityNotification.text}</span>
             </div>
           </motion.div>
         )}

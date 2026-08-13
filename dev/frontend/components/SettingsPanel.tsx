@@ -697,7 +697,10 @@ export function SettingsPanel({
                 max="200"
                 value={settings.ambientBrightness || 100}
                 onChange={(e) => updateSettings({ ambientBrightness: Number(e.target.value) })}
-                className="w-full accent-primary h-1.5 rounded-lg cursor-pointer bg-foreground/10"
+                style={{
+                  background: `linear-gradient(to right, #34d399 0%, #34d399 ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) 100%)`
+                }}
+                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]"
               />
             </div>
 
@@ -714,7 +717,10 @@ export function SettingsPanel({
                 max="200"
                 value={settings.ambientContrast || 100}
                 onChange={(e) => updateSettings({ ambientContrast: Number(e.target.value) })}
-                className="w-full accent-primary h-1.5 rounded-lg cursor-pointer bg-foreground/10"
+                style={{
+                  background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${((settings.ambientContrast || 100) - 50) / 1.5}%, rgba(255, 255, 255, 0.15) ${((settings.ambientContrast || 100) - 50) / 1.5}%, rgba(255, 255, 255, 0.15) 100%)`
+                }}
+                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(168,85,247,0.9)]"
               />
             </div>
           </div>
