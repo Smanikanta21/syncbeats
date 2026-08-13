@@ -64,11 +64,12 @@ export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRing
       <motion.div 
         initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
+        whileHover={{ scale: 1.03 }}
         transition={{ type: "spring", bounce: 0.4 }}
-        className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full glass-panel flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 text-center relative z-20 shadow-[0_25px_90px_rgba(0,0,0,0.3)] overflow-hidden border border-foreground/15"
+        className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full glass-panel flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 text-center relative z-20 shadow-[0_25px_90px_rgba(0,0,0,0.3)] overflow-hidden border border-foreground/15 hover:border-foreground/40 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:shadow-[0_35px_110px_rgba(0,0,0,0.5)] transition-all duration-500 group cursor-pointer"
       >
         {/* Internal Gradient Glow */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none transition-opacity duration-500 group-hover:opacity-60" />
 
         <form onSubmit={handleJoin} className="absolute inset-0 flex flex-col items-center justify-center z-10 w-full px-5 sm:px-8 md:px-14">
           <div className="flex flex-col items-center justify-center w-full -mt-3 sm:-mt-4 md:-mt-8">
