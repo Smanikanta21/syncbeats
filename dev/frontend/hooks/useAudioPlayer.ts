@@ -748,10 +748,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           }
         } else {
           let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
-          if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-            fetchUrl = fetchUrl.replace('http://localhost:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
-            fetchUrl = fetchUrl.replace('http://127.0.0.1:4000', `${window.location.protocol}//${window.location.hostname}:4000`);
-          }
 
           const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
           if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {

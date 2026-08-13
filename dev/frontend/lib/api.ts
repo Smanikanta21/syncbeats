@@ -2,13 +2,13 @@
 import type { RoomSnapshot } from './types';
 
 export function getServerUrl(){
-  if (process.env.NEXT_PUBLIC_SERVER_URL) {
+  if (process.env.NEXT_PUBLIC_SERVER_URL !== undefined) {
     return process.env.NEXT_PUBLIC_SERVER_URL;
   }
   if (typeof window !== 'undefined' && window.location.hostname) {
     return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
-  return 'http://localhost:4000';
+  return '';
 }
 
 const BASE = getServerUrl();

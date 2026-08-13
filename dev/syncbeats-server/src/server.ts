@@ -113,7 +113,7 @@ export class SyncBeatsServer {
       crossOriginResourcePolicy: false, // Allow fetching media across origins (like AudioContext)
     }));
 
-    this.app.use(cors({
+    const corsOptions: cors.CorsOptions = {
       origin: (origin, callback) => {
         if (isAllowedOrigin(origin)) {
           callback(null, true);
@@ -125,7 +125,10 @@ export class SyncBeatsServer {
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
-    }));
+    };
+
+    this.app.use(cors(corsOptions));
+    this.app.options('*', cors(corsOptions));
     this.app.use(express.json());
 
     // Global Request Audit Logging Middleware

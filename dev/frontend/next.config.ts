@@ -29,10 +29,11 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
+    const backendUrl = process.env.INTERNAL_BACKEND_URL || process.env.NEXT_PUBLIC_SERVER_URL || 'https://api.syncbeats.in';
     return [
       {
         source: '/api/:path*',
-        destination: 'http://13.234.159.243:4000/api/:path*',
+        destination: `${backendUrl.replace(/\/$/, '')}/:path*`,
       },
     ];
   },

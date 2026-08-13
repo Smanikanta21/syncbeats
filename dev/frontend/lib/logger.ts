@@ -4,16 +4,16 @@
  * SyncBeats DB Visualizer console.
  */
 
-const DB_VISUALIZER_INGEST_URL = process.env.NEXT_PUBLIC_DB_VISUALIZER_URL 
-  ? `${process.env.NEXT_PUBLIC_DB_VISUALIZER_URL}/api/dashboard/logs/ingest`
-  : "http://localhost:3001/api/dashboard/logs/ingest";
-
 export async function sendLog(
   action: string,
   details: string | object,
   level: "SUCCESS" | "ERROR" | "WARN" | "INFO" | "SECURITY" = "INFO",
   source: "FRONTEND" | "BACKEND" | "DATABASE" = "FRONTEND"
 ) {
+  const dbVisualizerUrl = process.env.NEXT_PUBLIC_DB_VISUALIZER_URL;
+  if (!dbVisualizerUrl) return;
+
+  const DB_VISUALIZER_INGEST_URL = `${dbVisualizerUrl}/api/dashboard/logs/ingest`;
   try {
     const payload = {
       action,
