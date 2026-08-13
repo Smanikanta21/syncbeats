@@ -103,7 +103,7 @@ export default function LandingPage() {
         >
         <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className={cn('flex', 'items-center')}>
           <Link href="/" className={cn('text-lg', 'sm:text-xl', 'md:text-2xl', 'font-black', 'tracking-tighter', 'text-foreground', 'group', 'flex', 'items-center', 'gap-2.5')}>
-            <Image src="/syncbeats-icon.svg" alt="SyncBeats Logo" width={isScrolled ? 26 : 32} height={isScrolled ? 26 : 32} priority className={cn('group-hover:scale-110', 'block', 'transition-all', 'duration-300', 'shrink-0')} />
+            <Image src="/syncbeats-icon.svg" alt="SyncBeats Logo" width={isScrolled ? 26 : 32} height={isScrolled ? 26 : 32} priority className={cn('group-hover:scale-110', 'block', 'transition-all', 'duration-300', 'shrink-0', 'rounded-lg', 'overflow-hidden')} />
             <span>SYNC<span className={cn('text-zinc-500', 'transition-colors', 'group-hover:text-foreground')}>BEATS</span></span>
           </Link>
         </motion.div>
