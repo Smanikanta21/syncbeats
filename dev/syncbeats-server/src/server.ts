@@ -128,7 +128,6 @@ export class SyncBeatsServer {
     };
 
     this.app.use(cors(corsOptions));
-    this.app.options('*', cors(corsOptions));
     this.app.use(express.json());
 
     // Global Request Audit Logging Middleware
