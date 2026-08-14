@@ -53,10 +53,7 @@ export function useWakeLock(active: boolean) {
     if (!videoRef.current) {
       const video = document.createElement("video");
       video.setAttribute("playsinline", "true");
-      // Do NOT use the "muted" attribute — iOS PWA requires an unmuted (but
-      // near-silent) audio element to register an active audio session.
-      // Without an active session, WebAudio silences when the screen locks.
-      video.volume = 0.001; // virtually silent to the user, but NOT muted
+      video.setAttribute("muted", "true");
       video.setAttribute("loop", "true");
       video.setAttribute("src", NO_SLEEP_VIDEO_URI);
       video.style.position = "absolute";

@@ -120,6 +120,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
+  const SILENT_MP3_URI = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD////////////////////////////////////////////////////////////////";
+
+  // Anchor iOS AVAudioSessionCategoryPlayback during WebAudio buffer playback
+  // so iOS Safari/PWA does not suspend AudioContext when screen turns off or app is backgrounded.
+  const ensureBackgroundAudioSession = useCallback(() => {
+    if (streamingAudioElRef.current) {
+      if (!streamingAudioElRef.current.src || streamingAudioElRef.current.src === "") {
+        streamingAudioElRef.current.src = SILENT_MP3_URI;
+        streamingAudioElRef.current.loop = true;
+      }
+      streamingAudioElRef.current.play().catch(() => {});
+    }
+  }, []);
+
   const setStreamingAudioSrc = useCallback((src: string | null) => {
     if (objectUrlRef.current) {
       try { URL.revokeObjectURL(objectUrlRef.current); } catch (e) {}
@@ -229,7 +243,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     if (streamingAudioElRef.current) {
       try {
-        streamingAudioElRef.current.pause();
+        if (streamingAudioElRef.current.src === SILENT_MP3_URI) {
+          streamingAudioElRef.current.pause();
+        } else if (!streamingAudioElRef.current.src.startsWith('data:audio/')) {
+          streamingAudioElRef.current.pause();
+        }
       } catch (e) {}
     }
   }, []);
@@ -298,6 +316,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const unlockAudio = useCallback(() => {
     // setupAudioGraph is a no-op if already set up
     setupAudioGraph();
+    ensureBackgroundAudioSession();
 
     // Always optimistically unlock in the UI so the user isn't stuck forever.
     setAudioUnlocked(true);
@@ -336,19 +355,42 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, [isPlaying]);
 
-  // Re-assert lock screen playback state when the screen is unlocked.
-  // iOS and Android sometimes drop the mediaSession state while the screen is off.
+  // Re-assert lock screen playback state and background audio session when tab visibility changes or page shows
   useEffect(() => {
-    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    if (typeof window === "undefined") return;
+
+    const resumeIfNeeded = () => {
+      if (!isPlayingRef.current) return;
+      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      if (streamingAudioElRef.current && streamingAudioElRef.current.paused) {
+        ensureBackgroundAudioSession();
+      }
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "playing";
+      }
+    };
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        navigator.mediaSession.playbackState = isPlayingRef.current ? "playing" : "paused";
+        resumeIfNeeded();
       }
     };
+
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted || isPlayingRef.current) {
+        resumeIfNeeded();
+      }
+    };
+
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []); // isPlayingRef is always fresh — no dep needed
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [ensureBackgroundAudioSession]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
@@ -1067,7 +1109,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(pauseOffsetRef.current);
-  }, [audioUnlocked, stopCurrentSource]);
+    ensureBackgroundAudioSession();
+  }, [audioUnlocked, stopCurrentSource, ensureBackgroundAudioSession]);
 
   scheduleStartRef.current = scheduleStart;
 
@@ -1101,7 +1144,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     isPlayingRef.current = true;
     setIsPlaying(true);
     setCurrentTime(clampedPosition);
-  }, [audioUnlocked, stopCurrentSource]);
+    ensureBackgroundAudioSession();
+  }, [audioUnlocked, stopCurrentSource, ensureBackgroundAudioSession]);
 
   const pauseAt = useCallback((position: number) => {
     scheduleIdRef.current += 1;
