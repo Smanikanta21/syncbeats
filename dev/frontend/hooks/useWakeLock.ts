@@ -53,7 +53,10 @@ export function useWakeLock(active: boolean) {
     if (!videoRef.current) {
       const video = document.createElement("video");
       video.setAttribute("playsinline", "true");
-      video.setAttribute("muted", "true");
+      // Do NOT use the "muted" attribute — iOS PWA requires an unmuted (but
+      // near-silent) audio element to register an active audio session.
+      // Without an active session, WebAudio silences when the screen locks.
+      video.volume = 0.001; // virtually silent to the user, but NOT muted
       video.setAttribute("loop", "true");
       video.setAttribute("src", NO_SLEEP_VIDEO_URI);
       video.style.position = "absolute";
@@ -79,7 +82,11 @@ export function useWakeLock(active: boolean) {
     if (videoRef.current) {
       try {
         videoRef.current.pause();
+        videoRef.current.src = "";
+        videoRef.current.load();
+        videoRef.current.remove();
       } catch (_) {}
+      videoRef.current = null;
       console.log("[WakeLock] Video fallback stopped.");
     }
   };
@@ -106,16 +113,31 @@ export function useWakeLock(active: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  // Re-acquire locks when tab becomes visible again
+  // Re-acquire locks when tab becomes visible again (including PWA page restore)
   useEffect(() => {
     if (!active) return;
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         acquireNative();
+        // Re-play video if it paused (e.g. due to battery saver interrupting it)
+        if (videoRef.current && videoRef.current.paused) {
+          acquireVideo();
+        }
+      }
+    };
+    // pageshow fires on iOS PWA when the user returns to the app via the app switcher
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        acquireNative();
+        if (videoRef.current && videoRef.current.paused) acquireVideo();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 

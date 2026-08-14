@@ -151,9 +151,9 @@ export function useNetworkStats(enabled: boolean = true, fastPing: boolean = fal
       }, RTT_TIMEOUT_MS);
 
       const onPong = ({ t1, seq: pongSeq }: { t1: number; seq?: number }) => {
-        if (pongSeq !== seq) return;
         clearTimeout(timeout);
         socket.off("sync:pong", onPong);
+        if (pongSeq !== undefined && pongSeq !== seq) return;
 
         const t3 = Date.now();
         const rtt = t3 - t0;

@@ -118,6 +118,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const scheduleIdRef = useRef<number>(0);
   const activeFetchAbortRef = useRef<AbortController | null>(null);
   const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+
+  const setStreamingAudioSrc = useCallback((src: string | null) => {
+    if (objectUrlRef.current) {
+      try { URL.revokeObjectURL(objectUrlRef.current); } catch (e) {}
+      objectUrlRef.current = null;
+    }
+    if (streamingAudioElRef.current) {
+      if (src) {
+        if (src.startsWith('blob:')) {
+          objectUrlRef.current = src;
+        }
+        streamingAudioElRef.current.src = src;
+      } else {
+        streamingAudioElRef.current.removeAttribute('src');
+        streamingAudioElRef.current.load();
+      }
+    }
+  }, []);
 
   // ── Audio Graph Setup ─────────────────────────────────────────────────────
   // setupAudioGraph creates the FULL chain: Gain → EQ[5] → Analyser → Destination.
@@ -184,6 +203,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         setAudioUnlocked(true);
       }
     }
+    return () => {
+      if (objectUrlRef.current) {
+        try { URL.revokeObjectURL(objectUrlRef.current); } catch (e) {}
+        objectUrlRef.current = null;
+      }
+    };
   }, [setupAudioGraph]);
 
   const stopCurrentSource = useCallback(() => {
@@ -310,6 +335,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       navigator.mediaSession.playbackState = "paused";
     }
   }, [isPlaying]);
+
+  // Re-assert lock screen playback state when the screen is unlocked.
+  // iOS and Android sometimes drop the mediaSession state while the screen is off.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        navigator.mediaSession.playbackState = isPlayingRef.current ? "playing" : "paused";
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []); // isPlayingRef is always fresh — no dep needed
 
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
@@ -689,9 +728,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (cachedBlob) {
             console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
             setDownloadProgress(100);
-            if (streamingAudioElRef.current) {
-              streamingAudioElRef.current.src = URL.createObjectURL(cachedBlob);
-            }
+            const blobUrl = URL.createObjectURL(cachedBlob);
+            setStreamingAudioSrc(blobUrl);
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
@@ -699,9 +737,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
             
             // Assign src immediately for Instant Playback!
-            if (streamingAudioElRef.current) {
-              streamingAudioElRef.current.src = fetchUrl;
-            }
+            setStreamingAudioSrc(fetchUrl);
 
             // Concurrently fetch stream bytes in background to stash to IDB
             try {
@@ -1000,6 +1036,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.connect(gainNodeRef.current!);
     
     source.onended = () => {
+      try { source.disconnect(); } catch (e) {}
+      source.onended = null;
       setIsPlaying(false);
       setCurrentTime(0);
       document.dispatchEvent(new CustomEvent('audioEnded'));
@@ -1046,6 +1084,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     source.connect(gainNodeRef.current!);
     
     source.onended = () => {
+      try { source.disconnect(); } catch (e) {}
+      source.onended = null;
       setIsPlaying(false);
       setCurrentTime(0);
       document.dispatchEvent(new CustomEvent('audioEnded'));

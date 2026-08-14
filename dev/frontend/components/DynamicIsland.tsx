@@ -1300,8 +1300,15 @@ export function DynamicIsland() {
         else setIsExpanded(false);
       }
     };
-    const id = requestAnimationFrame(() => document.addEventListener("mousedown", handleClickOutside));
-    return () => { cancelAnimationFrame(id); document.removeEventListener("mousedown", handleClickOutside); };
+    let active = true;
+    const id = requestAnimationFrame(() => {
+      if (active) document.addEventListener("mousedown", handleClickOutside);
+    });
+    return () => {
+      active = false;
+      cancelAnimationFrame(id);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [islandState, isExpanded, isRoom, hasTrack]);
 
   // ── Inactivity timer (mobile)

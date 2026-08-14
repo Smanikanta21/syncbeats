@@ -107,6 +107,12 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const isPrivate = snapshot?.isPrivate ?? false;
   const hostId = snapshot?.hostId ?? null;
 
+  // Keep screen awake and audio session alive while music is playing.
+  // This activates the native Screen Wake Lock + hidden video fallback (iOS workaround).
+  // Previously this hook was imported but never called — that was the root cause of
+  // screen turning off and background audio stopping on iOS/Android PWA.
+  useWakeLock(isPlaying || audio.isPlaying);
+
   const {
     setIsRoomPlaying, setParticipants, setClockOffset, setPendingRequests,
     setHostId, setJoinStatus, setIsPrivate, setDeviceSyncProgress, setIncomingTrack,

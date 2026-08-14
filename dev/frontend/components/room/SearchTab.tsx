@@ -308,13 +308,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       });
     }, 300);
 
+    let t1: any, t2: any;
     try {
-      setTimeout(() => {
+      t1 = setTimeout(() => {
         setImportStage("indexing");
         upload.setActiveImport(curr => curr ? { ...curr, stage: "indexing" } : null);
       }, 1200);
 
-      setTimeout(() => {
+      t2 = setTimeout(() => {
         setImportStage("enriching");
         upload.setActiveImport(curr => curr ? { ...curr, stage: "enriching" } : null);
       }, 2800);
@@ -367,6 +368,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         setSpError(errMsg);
       }
     } finally {
+      clearTimeout(t1);
+      clearTimeout(t2);
       clearInterval(progressTimer);
       setImporting(false);
     }
