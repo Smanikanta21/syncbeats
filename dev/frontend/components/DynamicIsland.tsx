@@ -1200,11 +1200,12 @@ export function DynamicIsland() {
   }, [isRoom, hasTrack, islandState, activeTab]);
 
   // ── Collapse island to pill if current track is cleared (e.g. queue cleared)
+  // Only collapse if the user is not actively viewing an expanded modal tab (like invite or search)
   useEffect(() => {
-    if (isRoom && !hasTrack) {
+    if (isRoom && !hasTrack && islandState !== "expanded") {
       setIslandState("pill");
     }
-  }, [hasTrack, isRoom]);
+  }, [hasTrack, isRoom, islandState]);
 
   // ── Auto-trigger extended for join requests
   useEffect(() => {
@@ -1315,8 +1316,8 @@ export function DynamicIsland() {
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     const expanded = isRoom ? islandState === "expanded" : isExpanded;
-    // Check for height changes
-    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "invite" && activeTab !== "search") {
+    // Do not auto-close expanded interactive tabs (invite, search, deviceInfo, requests, settings)
+    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "invite" && activeTab !== "search" && activeTab !== "requests") {
       inactivityTimerRef.current = setTimeout(() => {
         if (isRoom) setIslandState("pill");
         else setIsExpanded(false);
@@ -1693,12 +1694,13 @@ export function DynamicIsland() {
             if (windowWidth >= 768) {
               isHoveringRef.current = false;
               if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-              shrinkTimerRef.current = setTimeout(() => {
-                if (activeTab === "search") return; // stay open for search
-                if (islandState === "expanded" || islandState === "extended") {
+              // Do NOT auto-shrink when the island is expanded into a modal tab (invite, search, deviceInfo, etc.)
+              // Only auto-shrink hover-preview "extended" pills.
+              if (islandState === "extended") {
+                shrinkTimerRef.current = setTimeout(() => {
                   setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
-                }
-              }, 1200);
+                }, 1200);
+              }
             }
             handlePointerUp_room();
           }}
