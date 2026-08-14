@@ -419,8 +419,8 @@ const PlayerTab = ({
           thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
         }`}>
           {thumbnailUrl
-            ? <img src={thumbnailUrl} className={cn('w-full', 'h-full', 'object-cover')} />
-            : <span className={cn('text-xl', 'font-black', 'text-white/80')}>{trackInitials}</span>}
+            ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+            : <span className={cn('text-xl', 'font-black', 'text-white/80', 'select-none')}>{trackInitials}</span>}
         </div>
 
         <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pt-1')}>
@@ -783,7 +783,7 @@ const RoomPill = ({
       {/* Tiny thumbnail or disc */}
       <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
         {showAlbumArt && thumbUrl
-          ? <img src={thumbUrl} className={cn('w-full', 'h-full', 'object-cover')} />
+          ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
       {/* Dynamic Right Side: Seek | EQ | Pause */}
@@ -951,7 +951,7 @@ const RoomExtendedPill = ({
         {/* Thumbnail */}
         <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
           {thumbUrl
-            ? <img src={thumbUrl} className={cn('w-full', 'h-full', 'object-cover')} />
+            ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
@@ -1679,6 +1679,7 @@ export function DynamicIsland() {
       >
         <motion.div
           ref={islandRef}
+          onContextMenu={e => e.preventDefault()}
           onPointerDown={e => { handlePointerDown_room(); resetInactivityTimer(); }}
           onPointerUp={e => { handlePointerUp_room(); resetInactivityTimer(); }}
           onMouseEnter={() => {
@@ -1757,8 +1758,11 @@ export function DynamicIsland() {
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
             maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
+            WebkitUserSelect: "none",
+            WebkitTouchCallout: "none",
+            userSelect: "none",
           }}
-          className={cn("pointer-events-auto select-none", currentGlowClass)}
+          className={cn("pointer-events-auto select-none no-touch-select", currentGlowClass)}
         >
           {/* Rotating Border Light Beam with Trailing Glow */}
           <AnimatePresence>
