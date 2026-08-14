@@ -299,8 +299,8 @@ function ParticipantRow({
                 </div>
               </div>
 
-              {/* Compare & Calibrate Sync Button for User's Devices */}
-              {(isMe || isMySelf) && (
+              {/* Compare & Calibrate Sync Button (for secondary / other devices) */}
+              {!isMySelf && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
