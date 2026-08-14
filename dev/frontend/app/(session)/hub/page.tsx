@@ -453,6 +453,10 @@ export default function HubPage() {
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:border-foreground/20', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'rounded-2xl', 'pl-5', 'pr-14', 'py-3.5', 'text-foreground', 'font-bold', 'tracking-[0.2em]', 'text-center', 'focus:outline-none', 'transition-all', 'placeholder:text-foreground/40', 'placeholder:tracking-normal', 'placeholder:font-medium', 'text-sm')}
                 placeholder="Enter 6-digit Code"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="characters"
+                spellCheck={false}
               />
               <button
                 type="submit"
