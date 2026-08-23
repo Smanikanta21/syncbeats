@@ -9,9 +9,6 @@ import prisma             from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 import { streamYoutubeAudio } from './SearchRoutes';
 import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
 import { AuditLogger } from '../services/AuditLogger';
@@ -502,7 +499,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const room = roomManager.getOrCreate(roomId);
       room.syncQueue(latestQueue, null);
       io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId).emit('room:stateChanged', room.snapshot());
 
       res.json({ ok: true });
     } catch (err) {
@@ -521,7 +518,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const room = roomManager.getOrCreate(roomId);
       room.resetRoom();
       io.to(roomId).emit('room:queueChanged', { queue: [] });
-      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId).emit('room:stateChanged', room.snapshot());
       io.to(roomId).emit('room:reset', { roomId });
 
       res.json({ ok: true, message: 'Room has been reset successfully.' });
@@ -673,7 +670,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       const latestQueue = await repo.getQueue(roomId as string);
       io.to(roomId as string).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId as string).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId as string).emit('room:stateChanged', room.snapshot());
 
       console.log(`[Rooms] Enqueued YouTube video ${videoId} in room ${roomId}`);
       res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
@@ -710,7 +707,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       const latestQueue = await repo.getQueue(roomId);
       io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId).emit('room:stateChanged', { state: room.snapshot() });
+      io.to(roomId).emit('room:stateChanged', room.snapshot());
 
       res.status(201).json({ item, queued: !activated });
     } catch (err) {

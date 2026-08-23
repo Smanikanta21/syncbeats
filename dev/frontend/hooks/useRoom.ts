@@ -166,7 +166,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         state:        details.live.state as PlaybackState,
         startEpoch:   details.live.startEpoch ?? null,
         pauseOffset:  details.live.pauseOffset ?? 0,
-        isPlaying:    details.live.isPlaying ?? details.live.state === 'PLAYING',
+        isPlaying:    details.live.isPlaying ?? (details.live.startEpoch != null && details.live.state === 'PLAYING'),
         pendingPlay:  details.live.pendingPlay ?? false,
         hostId:       details.live.hostId,
         timestamp:    details.live.timestamp,
@@ -188,10 +188,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         roomId,
         trackUrl:     details.db.track_url,
         position:     details.db.position_ms,
-        state:        details.db.playback_state as PlaybackState,
+        state:        PlaybackState.PAUSED,
         startEpoch:   null,
         pauseOffset:  Math.max(0, details.db.position_ms / 1000),
-        isPlaying:    details.db.playback_state === 'PLAYING',
+        isPlaying:    false,
         pendingPlay:  false,
         hostId:       details.db.host_id,
         timestamp:    Date.now(),
@@ -464,11 +464,22 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
-    const handleSnapshot = (snap: RoomSnapshot) => {
+    const normalizeSnapshot = (raw: any): RoomSnapshot | null => {
+      if (!raw) return null;
+      if (raw.state && typeof raw.state === 'object' && raw.state.roomId) {
+        return raw.state as RoomSnapshot;
+      }
+      if (raw.roomId) return raw as RoomSnapshot;
+      return null;
+    };
+
+    const handleSnapshot = (rawSnap: RoomSnapshot) => {
+      const snap = normalizeSnapshot(rawSnap);
+      if (!snap) return;
       setJoinStatus('joined');
       setIsReconnecting(false); // Reconnect complete — clear the banner
       setSnapshot(snap);
-      setParticipants(snap.participants);
+      setParticipants(snap.participants || []);
 
       // Dispatch welcome beat burst for local user entering room
       if (typeof window !== "undefined") {
@@ -500,9 +511,11 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
     socket.on('room:snapshot', handleSnapshot);
 
-    const handleStateChanged = (snap: RoomSnapshot) => {
+    const handleStateChanged = (rawSnap: RoomSnapshot) => {
+      const snap = normalizeSnapshot(rawSnap);
+      if (!snap) return;
       setSnapshot(snap);
-      setParticipants(snap.participants);
+      setParticipants(snap.participants || []);
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         if (userId && snap.trackUrl) {

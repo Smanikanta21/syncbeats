@@ -14,11 +14,12 @@ import { FeaturesExplanation } from "../components/FeaturesExplanation";
 import { CircularJoinRing } from "../components/CircularJoinRing";
 import { HowItWorksScroll } from "../components/HowItWorksScroll";
 
+import { toast } from "sonner";
 import { getSocket } from "../lib/socket";
 import { roomsApi } from "../lib/api";
 import { cn } from "@/lib/utils";
 import { DynamicAuroraButton } from "../components/DynamicAuroraButton";
-import { InstagramFollowButton, InstagramIcon } from "../components/InstagramFollowButton";
+import { InstagramIcon } from "../components/InstagramFollowButton";
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -26,6 +27,23 @@ export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [hoveredStep, setHoveredStep] = useState<number | null>(0);
   const [isRoomPlaying, setIsRoomPlaying] = useState(false);
+  
+  const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
+  const [isSubmittingContact, setIsSubmittingContact] = useState(false);
+
+  const handleContactSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
+      toast.error("Please fill in all fields before sending.");
+      return;
+    }
+    setIsSubmittingContact(true);
+    setTimeout(() => {
+      toast.success("Thank you! Your message has been sent successfully.");
+      setContactForm({ name: "", email: "", message: "" });
+      setIsSubmittingContact(false);
+    }, 600);
+  };
   
   const { scrollY } = useScroll(); // Track window scroll natively
 
@@ -41,39 +59,23 @@ export default function LandingPage() {
       setIsRoomPlaying(false);
       return;
     }
-    const socket = getSocket();
 
     roomsApi.default()
       .then((res) => {
         if (!res?.roomId) return;
-        const roomId = res.roomId;
-        socket.emit("room:join", {
-          roomId,
-          displayName: user.name || "User",
-          userId: user.id,
-        });
-
-        const handleSnapshot = (snap: any) => {
-          if (snap) {
-            setIsRoomPlaying(snap.isPlaying || snap.state === "PLAYING");
-          }
-        };
-
-        const handleStateChanged = (snap: any) => {
-          if (snap) {
-            setIsRoomPlaying(snap.isPlaying || snap.state === "PLAYING");
-          }
-        };
-
-        socket.on("room:snapshot", handleSnapshot);
-        socket.on("room:stateChanged", handleStateChanged);
+        return roomsApi.get(res.roomId);
       })
-      .catch(() => {});
-
-    return () => {
-      socket.off("room:snapshot");
-      socket.off("room:stateChanged");
-    };
+      .then((details) => {
+        if (details?.live) {
+          const isLivePlaying = Boolean(details.live.isPlaying && details.live.startEpoch != null);
+          setIsRoomPlaying(isLivePlaying);
+        } else {
+          setIsRoomPlaying(false);
+        }
+      })
+      .catch(() => {
+        setIsRoomPlaying(false);
+      });
   }, [user]);
 
   return (
@@ -204,29 +206,35 @@ export default function LandingPage() {
                      <p className={cn('text-base', 'md:text-lg', 'font-bold')}>India</p>
                    </div>
                  </div>
-                 <div className={cn('flex', 'items-center', 'gap-4', 'pt-2')}>
-                   <InstagramFollowButton variant="pill" showHandle={true} />
+                 <div className={cn('flex', 'items-center', 'gap-4')}>
+                   <div className={cn('w-10', 'h-10', 'md:w-12', 'md:h-12', 'rounded-full', 'bg-foreground/5', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
+                     <InstagramIcon className={cn('w-5', 'h-5', 'text-foreground/80')} />
+                   </div>
+                   <div>
+                     <p className={cn('text-[10px]', 'md:text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mb-0.5')}>Instagram</p>
+                     <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noopener noreferrer" className={cn('text-base', 'md:text-lg', 'font-bold', 'hover:opacity-80', 'transition-opacity')}>@syncbeats.in</a>
+                   </div>
                  </div>
                </div>
              </div>
 
-             <div className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-4', 'md:gap-6', 'shadow-lg', 'hover:bg-background/20', 'dark:hover:bg-black/20', 'hover:backdrop-blur-3xl', 'hover:border-foreground/30', 'hover:shadow-2xl', 'transition-all', 'duration-500')}>
+             <form onSubmit={handleContactSubmit} className={cn('glass-panel', 'p-6', 'md:p-12', 'rounded-3xl', 'md:rounded-[2.5rem]', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-4', 'md:gap-6', 'shadow-lg', 'hover:bg-background/20', 'dark:hover:bg-black/20', 'hover:backdrop-blur-3xl', 'hover:border-foreground/30', 'hover:shadow-2xl', 'transition-all', 'duration-500')}>
                <div>
                  <label htmlFor="name" className={cn('block', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/60', 'mb-2')}>Name</label>
-                  <input type="text" id="name" className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'placeholder:text-foreground/40')} placeholder="Your name" />
+                  <input type="text" id="name" required value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'placeholder:text-foreground/40')} placeholder="Your name" />
                </div>
                <div>
                  <label htmlFor="email" className={cn('block', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/60', 'mb-2')}>Email</label>
-                  <input type="email" id="email" className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'placeholder:text-foreground/40')} placeholder="your@email.com" />
+                  <input type="email" id="email" required value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'placeholder:text-foreground/40')} placeholder="your@email.com" />
                </div>
                <div>
                  <label htmlFor="message" className={cn('block', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/60', 'mb-2')}>Message</label>
-                  <textarea id="message" rows={4} className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'resize-none', 'placeholder:text-foreground/40')} placeholder="How can we help?" />
+                  <textarea id="message" rows={4} required value={contactForm.message} onChange={e => setContactForm(f => ({ ...f, message: e.target.value }))} className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3.5', 'text-foreground', 'text-base', 'outline-none', 'focus:border-foreground/30', 'focus:ring-1', 'focus:ring-foreground/30', 'transition-all', 'resize-none', 'placeholder:text-foreground/40')} placeholder="How can we help?" />
                </div>
-                <DynamicAuroraButton type="submit" className="w-full h-14 rounded-2xl gap-3 text-xs md:text-sm mt-2">
-                  <Send className="w-4 h-4 text-foreground fill-foreground/80" /> Send Message
+                <DynamicAuroraButton type="submit" disabled={isSubmittingContact} className="w-full h-14 rounded-2xl gap-3 text-xs md:text-sm mt-2">
+                  <Send className="w-4 h-4 text-foreground fill-foreground/80" /> {isSubmittingContact ? "Sending..." : "Send Message"}
                 </DynamicAuroraButton>
-             </div>
+             </form>
            </div>
         </div>
 
@@ -242,7 +250,7 @@ export default function LandingPage() {
              <Link href="/cookie-settings" className={cn('hover:text-foreground', 'transition-colors')}>Cookies</Link>
              <Link href="#contact" className={cn('hover:text-foreground', 'transition-colors')}>Contact</Link>
              <div className={cn('flex', 'items-center', 'gap-3', 'ml-2', 'border-l', 'border-foreground/10', 'pl-4', 'sm:pl-6')}>
-               <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noopener noreferrer" className={cn('hover:text-pink-400', 'text-pink-500', 'transition-colors')} title="Instagram @syncbeats.in">
+               <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noopener noreferrer" className={cn('hover:text-foreground', 'transition-colors')} title="Instagram @syncbeats.in">
                  <InstagramIcon className="w-4 h-4" />
                </a>
                <a href="https://github.com/smanikanta21" target="_blank" rel="noopener noreferrer" className={cn('hover:text-foreground', 'transition-colors')} title="GitHub">

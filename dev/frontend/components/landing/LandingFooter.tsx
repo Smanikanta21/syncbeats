@@ -42,7 +42,7 @@ export function LandingFooter() {
               href="https://www.instagram.com/syncbeats.in/"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-pink-400 text-pink-500 transition-colors"
+              className="hover:text-white/60 transition-colors"
               aria-label="Instagram"
               title="Instagram @syncbeats.in"
             >

@@ -26,7 +26,7 @@ export function Footer() {
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Social</h4>
-            <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="text-pink-500 dark:text-pink-400 hover:opacity-80 transition-opacity text-sm font-medium flex items-center gap-1.5">
+            <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm flex items-center gap-1.5">
               <InstagramIcon className="w-3.5 h-3.5" />
               Instagram (@syncbeats.in)
             </a>

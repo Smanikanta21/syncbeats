@@ -11,6 +11,7 @@ interface DynamicAuroraButtonProps {
   href?: string;
   onClick?: () => void;
   type?: "button" | "submit" | "reset";
+  disabled?: boolean;
 }
 
 export function DynamicAuroraButton({
@@ -19,6 +20,7 @@ export function DynamicAuroraButton({
   href,
   onClick,
   type = "button",
+  disabled = false,
 }: DynamicAuroraButtonProps) {
   const glassStyle = {
     background: "rgba(255, 255, 255, 0.08)",
@@ -50,15 +52,16 @@ export function DynamicAuroraButton({
   return (
     <motion.button
       type={type}
+      disabled={disabled}
       onClick={onClick}
       style={glassStyle}
-      whileHover={{ 
+      whileHover={disabled ? undefined : { 
         scale: 1.03, 
         boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 0 45px var(--accent-glow, rgba(52, 211, 153, 0.6))",
         backgroundColor: "rgba(255, 255, 255, 0.14)"
       }}
-      whileTap={{ scale: 0.97 }}
-      className={`rounded-full text-foreground font-black tracking-widest uppercase flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${className}`}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      className={`rounded-full text-foreground font-black tracking-widest uppercase flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
     >
       {children}
     </motion.button>

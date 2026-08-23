@@ -112,9 +112,11 @@ export class Room extends EventEmitter {
     this.trackUrl = current?.trackUrl ?? data.trackUrl;
     this.shuffle  = data.shuffle ?? false;
     this.repeatMode = (data.repeatMode as "off" | "track" | "all") ?? "off";
-    this.state    = data.playbackState === 'PLAYING' ? PlaybackState.PLAYING
-                  : data.playbackState === 'PAUSED'  ? PlaybackState.PAUSED
-                  : PlaybackState.IDLE;
+    this.pendingPlay = false;
+    this.timeline.isPlaying = false;
+    this.timeline.startEpoch = null;
+    this.timeline.pauseOffset = Math.max(0, data.positionMs / 1000);
+    this.state    = PlaybackState.PAUSED;
     this.position     = data.positionMs;
     this.snapshotTime = Date.now();
   }
@@ -583,6 +585,11 @@ export class Room extends EventEmitter {
     p.isBlocked = false;
     p.volume = this.clampVolume(p.volume ?? 100);
     this.participants.set(p.socketId, p);
+
+    // If the room is not actively playing, clear pendingPlay so joining devices don't auto-start playback
+    if (!this.timeline.isPlaying) {
+      this.pendingPlay = false;
+    }
 
     // If first participant joined or room was empty:
     if (wasEmpty) {
