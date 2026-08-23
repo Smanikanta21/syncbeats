@@ -15,7 +15,7 @@
 
 SyncBeats lets a group of friends join a shared room, upload audio, and hear it play simultaneously on all their phones and laptops — synchronized to within **< 25ms** using NTP-style clock correction and proportional drift compensation.
 
-> **Live at [syncbeats.in](https://syncbeats.in)**
+> **Live at [syncbeats.in](https://syncbeats.in)** | **Follow us on Instagram [@syncbeats.in](https://www.instagram.com/syncbeats.in/)**
 
 ---
 
@@ -383,5 +383,5 @@ This project is private. All rights reserved.
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/Smanikanta21">Abhinay Siraparapu</a>
+  Built by <a href="https://github.com/Smanikanta21">Abhinay Siraparapu</a> • Follow on <a href="https://www.instagram.com/syncbeats.in/">Instagram @syncbeats.in</a>
 </p>

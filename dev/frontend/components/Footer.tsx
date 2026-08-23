@@ -1,4 +1,5 @@
 import { Heart } from "lucide-react";
+import { InstagramFollowButton, InstagramIcon } from "./InstagramFollowButton";
 
 export function Footer() {
   return (
@@ -9,7 +10,8 @@ export function Footer() {
           <p className="text-foreground/50 text-sm max-w-xs leading-relaxed">
             The collaborative workspace built specifically for music creators. Ship music faster.
           </p>
-          <p className="text-foreground/40 text-sm mt-4">© {new Date().getFullYear()} SyncBeats Inc. All rights reserved.</p>
+          <InstagramFollowButton variant="pill" showHandle={true} className="mt-2" />
+          <p className="text-foreground/40 text-sm mt-2">© {new Date().getFullYear()} SyncBeats Inc. All rights reserved.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-12 md:gap-24">
@@ -24,6 +26,10 @@ export function Footer() {
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Social</h4>
+            <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="text-pink-500 dark:text-pink-400 hover:opacity-80 transition-opacity text-sm font-medium flex items-center gap-1.5">
+              <InstagramIcon className="w-3.5 h-3.5" />
+              Instagram (@syncbeats.in)
+            </a>
             <a href="https://github.com/Smanikanta21" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">GitHub</a>
             <a href="https://linkedin.com/in/abhinay-siraparapu" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">LinkedIn</a>
           </div>

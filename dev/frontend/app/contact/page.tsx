@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowLeft, Mail, MessageSquare } from "lucide-react";
+import { InstagramIcon } from "../../components/InstagramFollowButton";
 import { Footer } from "../../components/Footer";
 import { ThemeToggle } from "../../components/ThemeToggle";
 
@@ -73,6 +74,15 @@ export default function ContactPage() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full"
         >
+          <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-pink-500/30 transition-all duration-500 text-center flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-pink-500/20">
+              <InstagramIcon className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-xl font-bold mb-2">Instagram</h3>
+            <p className="text-foreground/60">Follow our official updates</p>
+            <p className="mt-4 font-mono text-sm text-pink-500 dark:text-pink-400 font-semibold">@syncbeats.in</p>
+          </a>
+
           <a href="mailto:siraparapuabhinay21@gmail.com" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/30 transition-all duration-500 text-center flex flex-col items-center">
             <div className="w-16 h-16 rounded-2xl bg-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
               <Mail className="w-8 h-8 text-foreground" />
@@ -91,7 +101,7 @@ export default function ContactPage() {
             <p className="mt-4 font-mono text-sm">@Smanikanta21/syncbeats</p>
           </a>
 
-          <a href="https://www.linkedin.com/in/siraparapu-shiva-sankar-mani-kanta-622a85323/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/30 transition-all duration-500 text-center flex flex-col items-center md:col-span-2 max-w-xl mx-auto w-full">
+          <a href="https://www.linkedin.com/in/siraparapu-shiva-sankar-mani-kanta-622a85323/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/30 transition-all duration-500 text-center flex flex-col items-center">
             <div className="w-16 h-16 rounded-2xl bg-foreground/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
               <LinkedinIcon className="w-8 h-8 text-foreground" />
             </div>

@@ -64,6 +64,11 @@ export const metadata: Metadata = {
   description:
     "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.",
   keywords: [
+    "syncbeats",
+    "syncbeats.in",
+    "syncbeats instagram",
+    "@syncbeats.in",
+    "syncbeats app",
     "music sync",
     "listen together",
     "spatial audio app",
@@ -125,27 +130,44 @@ export const metadata: Metadata = {
   },
 };
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: "SyncBeats",
-  url: BASE_URL,
-  description:
-    "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together in real time.",
-  applicationCategory: "MusicApplication",
-  operatingSystem: "All",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "SyncBeats",
+    url: BASE_URL,
+    logo: `${BASE_URL}/icon-192.png`,
+    sameAs: [
+      "https://www.instagram.com/syncbeats.in/",
+      "https://github.com/Smanikanta21/syncbeats"
+    ],
   },
-  featureList: [
-    "Real-time music synchronization",
-    "Multi-device support",
-    "Room-based listening parties",
-    "No download required",
-  ],
-};
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "SyncBeats",
+    url: BASE_URL,
+    description:
+      "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together in real time.",
+    applicationCategory: "MusicApplication",
+    operatingSystem: "All",
+    sameAs: [
+      "https://www.instagram.com/syncbeats.in/",
+      "https://github.com/Smanikanta21/syncbeats"
+    ],
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+    },
+    featureList: [
+      "Real-time music synchronization",
+      "Multi-device support",
+      "Room-based listening parties",
+      "No download required",
+    ],
+  }
+];
 
 export default function RootLayout({
   children,
