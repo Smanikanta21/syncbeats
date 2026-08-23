@@ -10,7 +10,7 @@ export function LandingFooter() {
         </div>
 
         {/* Links */}
-        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-5 text-[10px] font-bold uppercase tracking-[0.15em] text-white/25">
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-5 text-[10px] font-bold uppercase tracking-[0.15em] text-white/70">
           <Link
             href="/privacy-policy"
             className="hover:text-white/60 transition-colors"
@@ -29,12 +29,19 @@ export function LandingFooter() {
           >
             Cookies
           </Link>
-          <Link
+          <a
             href="/contact"
-            className="hover:text-white/60 transition-colors"
+            onClick={(e) => {
+              const el = document.getElementById("contact");
+              if (el) {
+                e.preventDefault();
+                el.scrollIntoView({ behavior: "smooth" });
+              }
+            }}
+            className="hover:text-white/60 transition-colors cursor-pointer"
           >
             Contact
-          </Link>
+          </a>
 
           {/* Social */}
           <div className="flex items-center gap-3 border-l border-white/[0.06] pl-4">

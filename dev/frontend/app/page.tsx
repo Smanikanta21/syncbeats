@@ -239,7 +239,7 @@ export default function LandingPage() {
         </div>
 
         {/* Footer */}
-        <footer className={cn('max-w-7xl', 'mx-auto', 'px-4', 'sm:px-6', 'lg:px-8', 'w-full', 'flex', 'flex-col', 'md:flex-row', 'items-center', 'justify-between', 'pt-8', 'mt-6', 'md:mt-12', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/40', 'border-t', 'border-foreground/5')}>
+        <footer className={cn('max-w-7xl', 'mx-auto', 'px-4', 'sm:px-6', 'lg:px-8', 'w-full', 'flex', 'flex-col', 'md:flex-row', 'items-center', 'justify-between', 'pt-8', 'mt-6', 'md:mt-12', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/75', 'border-t', 'border-foreground/5')}>
            <div className={cn('flex', 'items-center', 'gap-3', 'mb-4', 'md:mb-0')}>
              <Image src="/syncbeats-icon.svg" alt="Logo" width={20} height={20} className="opacity-50 grayscale block" />
              SYNCBEATS © {new Date().getFullYear()}
@@ -248,7 +248,21 @@ export default function LandingPage() {
              <Link href="/privacy-policy" className={cn('hover:text-foreground', 'transition-colors')}>Privacy</Link>
              <Link href="/terms-of-service" className={cn('hover:text-foreground', 'transition-colors')}>Terms</Link>
              <Link href="/cookie-settings" className={cn('hover:text-foreground', 'transition-colors')}>Cookies</Link>
-             <Link href="#contact" className={cn('hover:text-foreground', 'transition-colors')}>Contact</Link>
+             <a
+                href="#contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById("contact");
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth" });
+                  } else {
+                    router.push("/contact");
+                  }
+                }}
+                className={cn('hover:text-foreground', 'transition-colors', 'cursor-pointer')}
+              >
+                Contact
+              </a>
              <div className={cn('flex', 'items-center', 'gap-3', 'ml-2', 'border-l', 'border-foreground/10', 'pl-4', 'sm:pl-6')}>
                <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noopener noreferrer" className={cn('hover:text-foreground', 'transition-colors')} title="Instagram @syncbeats.in">
                  <InstagramIcon className="w-4 h-4" />

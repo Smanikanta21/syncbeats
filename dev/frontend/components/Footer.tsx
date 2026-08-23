@@ -17,8 +17,20 @@ export function Footer() {
         <div className="flex flex-col sm:flex-row gap-12 md:gap-24">
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Support</h4>
-            <a href="/contact" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Contact Us</a>
-            <a href="https://github.com/Smanikanta21/syncbeats/issues" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Report an Issue</a>
+            <a
+              href="/contact"
+              onClick={(e) => {
+                const el = document.getElementById("contact");
+                if (el) {
+                  e.preventDefault();
+                  el.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              className="text-foreground/75 hover:text-foreground transition-colors text-sm cursor-pointer"
+            >
+              Contact Us
+            </a>
+            <a href="https://github.com/Smanikanta21/syncbeats/issues" target="_blank" rel="noreferrer" className="text-foreground/75 hover:text-foreground transition-colors text-sm">Report an Issue</a>
             <a href="/sponsor" target="_blank" rel="noreferrer" className="text-pink-400 hover:text-pink-300 transition-colors text-sm font-semibold flex items-center gap-1.5">
               <Heart className="w-3.5 h-3.5 fill-pink-500/30 text-pink-400" />
               Sponsor on GitHub
@@ -26,18 +38,18 @@ export function Footer() {
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Social</h4>
-            <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm flex items-center gap-1.5">
+            <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="text-foreground/75 hover:text-foreground transition-colors text-sm flex items-center gap-1.5">
               <InstagramIcon className="w-3.5 h-3.5" />
               Instagram (@syncbeats.in)
             </a>
-            <a href="https://github.com/Smanikanta21" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">GitHub</a>
-            <a href="https://linkedin.com/in/abhinay-siraparapu" target="_blank" rel="noreferrer" className="text-foreground/50 hover:text-foreground transition-colors text-sm">LinkedIn</a>
+            <a href="https://github.com/Smanikanta21" target="_blank" rel="noreferrer" className="text-foreground/75 hover:text-foreground transition-colors text-sm">GitHub</a>
+            <a href="https://linkedin.com/in/abhinay-siraparapu" target="_blank" rel="noreferrer" className="text-foreground/75 hover:text-foreground transition-colors text-sm">LinkedIn</a>
           </div>
           <div className="flex flex-col gap-4">
             <h4 className="text-foreground font-bold mb-2">Legal</h4>
-            <a href="/privacy-policy" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Privacy Policy</a>
-            <a href="/terms-of-service" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Terms of Service</a>
-            <a href="/cookie-settings" className="text-foreground/50 hover:text-foreground transition-colors text-sm">Cookie Settings</a>
+            <a href="/privacy-policy" className="text-foreground/75 hover:text-foreground transition-colors text-sm">Privacy Policy</a>
+            <a href="/terms-of-service" className="text-foreground/75 hover:text-foreground transition-colors text-sm">Terms of Service</a>
+            <a href="/cookie-settings" className="text-foreground/75 hover:text-foreground transition-colors text-sm">Cookie Settings</a>
           </div>
         </div>
       </div>
