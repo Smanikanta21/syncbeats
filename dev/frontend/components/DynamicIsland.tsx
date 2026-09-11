@@ -1181,6 +1181,7 @@ export function DynamicIsland() {
     if (!isRoom) return;
     const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering));
     if (isSyncing) {
+      if (islandState === "expanded") return; // Allow user to interact with the expanded island during sync
       // Force extended and cancel any pending shrink — stay here until done
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
       shrinkTimerRef.current = null;
@@ -1631,8 +1632,6 @@ export function DynamicIsland() {
     resetInactivityTimer();
     if (windowWidth >= 768) return;
     if (islandState === "expanded") return;
-    // Block long-press-to-expand while syncing
-    if (isSyncingNow) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
       if (!hasTrack) {
@@ -1654,8 +1653,6 @@ export function DynamicIsland() {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
       setIsPressing(false);
-      // Block all expansion while syncing
-      if (isSyncingNow) return;
       const nowTime = Date.now();
       // Restrict double-tap toggle to pill & extended states only (never when expanded)
       if (islandState !== "expanded" && nowTime - lastTapRef.current < 500) {
@@ -1731,7 +1728,6 @@ export function DynamicIsland() {
           }}
           onClick={e => {
             if (windowWidth >= 768) {
-              if (isSyncingNow) return;
               if (islandState === "pill" || islandState === "extended") {
                 if (!hasTrack) {
                   setInitialSearchMode("youtube");

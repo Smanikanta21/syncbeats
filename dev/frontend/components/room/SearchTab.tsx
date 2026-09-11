@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
@@ -138,11 +138,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     onModeChange?.(mode);
   }, [mode, onModeChange]);
 
-  const displayedSpotifyPlaylists = mode === "spotify" && !selectedPlaylistId
-    ? (query.trim() 
-        ? mySpotifyPlaylists.filter(p => p.name?.toLowerCase().includes(query.trim().toLowerCase()) || p.description?.toLowerCase().includes(query.trim().toLowerCase()) || p.tracks?.some((t: any) => t.song?.title?.toLowerCase().includes(query.trim().toLowerCase())))
-        : mySpotifyPlaylists)
-    : [];
+  const displayedSpotifyPlaylists = useMemo(() => {
+    if (mode !== "spotify" || selectedPlaylistId) return [];
+    if (!query.trim()) return mySpotifyPlaylists;
+    const q = query.trim().toLowerCase();
+    return mySpotifyPlaylists.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      p.tracks?.some((t: any) => t.song?.title?.toLowerCase().includes(q))
+    );
+  }, [mode, selectedPlaylistId, query, mySpotifyPlaylists]);
 
   useEffect(() => {
     if (!query.trim()) {
