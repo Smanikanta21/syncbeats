@@ -22,7 +22,7 @@ export interface RoomIntent {
   pendingPlay: boolean;
 }
 
-export type DriftTier = 'micro-rate' | 'soft-seek' | 'crossfade' | 'emergency' | 'synced';
+export type DriftTier = 'micro-rate' | 'macro-rate' | 'crossfade' | 'emergency' | 'synced';
 
 export interface DriftReport {
   driftMs: number;
@@ -67,6 +67,10 @@ interface AudioHandle {
   gainNode?: GainNode | null;
   volume: number;
   trackUrl: string | null;
+  /** Hardware output latency in seconds (audioCtx.outputLatency + baseLatency) */
+  outputLatency: number;
+  /** User-adjustable manual latency offset in seconds */
+  manualLatency: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -76,8 +80,10 @@ const MICRO_RATE_FAST = 1.001;
 const MICRO_RATE_SLOW = 0.999;
 const MICRO_RATE_DEADZONE_MS = 2; // Don't adjust if drift < 2ms — already perfect
 
-// Soft-seek: max single-tick jump (ms). Kept small to be masked by music.
-const SOFT_SEEK_STEP_MS = 2;
+// Macro-rate: proportional correction, scales with drift size.
+// Max 2% (inaudible pitch-wise), closes a 100ms gap in ~5 seconds.
+const MACRO_RATE_MAX_DEVIATION = 0.02; // cap at 2% (1.02 / 0.98)
+const MACRO_RATE_MIN_DEVIATION = 0.002; // floor at 0.2%
 
 // Crossfade durations (ms)
 const CROSSFADE_OUT_MS = 30;
@@ -119,6 +125,9 @@ export class SyncController {
   private _clockOffsetRef: React.MutableRefObject<number> | null = null;
   private _paramsRef: React.MutableRefObject<AdaptiveParams> | null = null;
   private _hasClockSync: React.MutableRefObject<boolean> | null = null;
+
+  // ── Diagnostics ──
+  private _lastLogTime: number = 0;
 
   // ── Performance.now baseline for sub-ms server time ──
   private _perfBaseline: number = performance.now();
@@ -366,7 +375,10 @@ export class SyncController {
     // Don't correct before the scheduled start time
     if (nowServer < this._intent.startEpoch) return;
 
-    const expected = Math.max(0, (nowServer - this._intent.startEpoch) / 1000);
+    // Subtract hardware+manual output latency so expected matches what actually
+    // reached the speaker (scheduleStart already pre-compensates for this).
+    const totalLatencySec = (audio.outputLatency || 0) + (audio.manualLatency || 0);
+    const expected = Math.max(0, (nowServer - this._intent.startEpoch) / 1000 - totalLatencySec);
     const actual = audio.getTruePosition();
 
     // Skip if buffering (getTruePosition returns -1)
@@ -386,6 +398,24 @@ export class SyncController {
     const params = this._paramsRef?.current;
     if (!params) return;
 
+    // ── Sync Diagnostics (rate-limited to every 2s) ──
+    const _now = Date.now();
+    if (!this._lastLogTime || _now - this._lastLogTime >= 2000) {
+      this._lastLogTime = _now;
+      const hwLat = Math.round(((audio.outputLatency || 0) + (audio.manualLatency || 0)) * 1000);
+      const msg = `pos=${(actual * 1000).toFixed(0)}ms | expected=${(expected * 1000).toFixed(0)}ms | drift=${drift > 0 ? '+' : ''}${driftMs.toFixed(1)}ms | hw=${hwLat}ms | epoch=${this._intent.startEpoch} | clockOffset=${Math.round(this._clockOffsetRef?.current ?? 0)}ms | rate=${this._currentRate}`;
+      
+      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
+      fetch(`${serverUrl}/telemetry/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          device: navigator.userAgent.includes('iPhone') ? 'iPhone' : navigator.userAgent.includes('Mac') ? 'Mac' : 'Unknown', 
+          msg 
+        })
+      }).catch(() => {});
+    }
+
     const thresholds = computeTierThresholds(params);
 
     // ── T1: Micro-rate adjustment (imperceptible) ──
@@ -402,18 +432,19 @@ export class SyncController {
       return;
     }
 
-    // ── T2: Soft-seek (silent micro-jumps) ──
+    // ── T2: Macro-rate (smooth medium correction, proportional to drift) ──
     if (driftMs <= thresholds.t2MaxMs) {
-      if (this._currentRate !== 1) {
-        this._currentRate = 1;
-        if (audio.setPlaybackRate) audio.setPlaybackRate(1);
+      // Scale deviation linearly: small drift → small rate tweak, big drift → bigger tweak
+      const t1 = thresholds.t1MaxMs;
+      const t2 = thresholds.t2MaxMs;
+      const ratio = Math.min(1, (driftMs - t1) / Math.max(1, t2 - t1));
+      const deviation = MACRO_RATE_MIN_DEVIATION + ratio * (MACRO_RATE_MAX_DEVIATION - MACRO_RATE_MIN_DEVIATION);
+      const macroRate = drift > 0 ? (1 + deviation) : (1 - deviation);
+      if (macroRate !== this._currentRate) {
+        this._currentRate = macroRate;
+        if (audio.setPlaybackRate) audio.setPlaybackRate(macroRate);
       }
-      const stepSec = SOFT_SEEK_STEP_MS / 1000;
-      const correctedPosition = drift > 0
-        ? actual + stepSec
-        : actual - stepSec;
-      audio.playNow(Math.max(0, correctedPosition));
-      this._lastDriftReport = { driftMs, tier: 'soft-seek', correctionApplied: true, playbackRate: 1 };
+      this._lastDriftReport = { driftMs, tier: 'macro-rate', correctionApplied: true, playbackRate: macroRate };
       return;
     }
 

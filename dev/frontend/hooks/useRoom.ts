@@ -304,9 +304,19 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       const bestOffsets = bestSamples.map(s => s.offset).sort((a, b) => a - b);
       const median = bestOffsets[Math.floor(bestOffsets.length / 2)];
       
-      clockOffsetRef.current = median;
-      setClockOffset(median);
-      hasClockSync.current = true;
+      // EWMA blend to smooth network jitter. If we already have a sync, 
+      // blend the new measurement (20% new, 80% old) unless it's a massive shift (>100ms).
+      if (hasClockSync.current) {
+        const diff = Math.abs(median - clockOffsetRef.current);
+        const alpha = diff > 100 ? 0.8 : 0.2; 
+        const blended = clockOffsetRef.current * (1 - alpha) + median * alpha;
+        clockOffsetRef.current = blended;
+        setClockOffset(blended);
+      } else {
+        clockOffsetRef.current = median;
+        setClockOffset(median);
+        hasClockSync.current = true;
+      }
     }
 
     // Feed raw RTTs into the adaptive engine — updates params and reports stats to server
@@ -828,10 +838,14 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
   const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
   const pause = useCallback(() => {
+    const pos = audioRef.current.getTruePosition();
     socket.emit('playback:pause', {
       roomId,
-      positionMs: Math.round(audioRef.current.getTruePosition() * 1000)
+      positionMs: Math.round(pos * 1000)
     });
+    // Optimistically update local state so the audio stops instantly,
+    // avoiding the "jump back" caused by network round-trip delay.
+    setSnapshot(prev => prev ? { ...prev, isPlaying: false, pauseOffset: pos } : prev);
   }, [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
   const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);

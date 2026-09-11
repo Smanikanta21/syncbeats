@@ -1,7 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../db/prisma';
 
 // ── Simple in-memory rate limiter (per IP, 1 req / 10s) ──────────────────────
 const lastSeen = new Map<string, number>();
@@ -130,6 +128,12 @@ export function createTelemetryRoutes(): Router {
       // Don't expose DB errors to the client — telemetry is best-effort
       res.status(500).json({ error: 'Storage failed' });
     }
+  });
+
+  router.post('/log', (req: Request, res: Response) => {
+    const { device, msg } = req.body;
+    require('fs').appendFileSync('/Users/abhinay/syncbeats/device_logs.txt', `[${device}] ${msg}\n`);
+    res.json({ ok: true });
   });
 
   return router;

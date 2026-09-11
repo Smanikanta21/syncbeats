@@ -130,7 +130,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         streamingAudioElRef.current.src = SILENT_MP3_URI;
         streamingAudioElRef.current.loop = true;
       }
-      streamingAudioElRef.current.play().catch(() => {});
+      if (streamingAudioElRef.current.src === SILENT_MP3_URI || isPlayingRef.current) {
+        streamingAudioElRef.current.play().catch(() => {});
+      }
     }
   }, []);
 
@@ -207,7 +209,27 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     eqNodes[eqNodes.length - 1].connect(analyserNodeRef.current);
     analyserNodeRef.current.connect(audioCtxRef.current.destination);
-  }, []);
+
+    // Apply iOS latency fallback immediately, since enumerateDevices might be blocked on HTTP
+    let outLat = audioCtxRef.current.outputLatency || 0;
+    let baseLat = audioCtxRef.current.baseLatency || 0;
+    let totalLat = outLat + baseLat;
+
+    if (totalLat === 0 && typeof navigator !== 'undefined') {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isMacSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isIOS) totalLat = 0.045; // ~45ms typical iOS speaker latency
+      else if (isMacSafari) totalLat = 0.035;
+    }
+
+    if (totalLat > 0) {
+      setOutputLatency(totalLat);
+      setIsLatencyAutoDetected(outLat > 0 || baseLat > 0);
+    } else {
+      setOutputLatency(0);
+      setIsLatencyAutoDetected(false);
+    }
+  }, [setOutputLatency, setIsLatencyAutoDetected]);
 
   // Initialize AudioContext on mount with the full EQ graph
   useEffect(() => {
@@ -317,6 +339,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     // setupAudioGraph is a no-op if already set up
     setupAudioGraph();
     ensureBackgroundAudioSession();
+    detectOutputDevice();
 
     // Always optimistically unlock in the UI so the user isn't stuck forever.
     setAudioUnlocked(true);
@@ -475,13 +498,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
       
       if (audioCtxRef.current) {
-        const outLat = audioCtxRef.current.outputLatency || 0;
-        const baseLat = audioCtxRef.current.baseLatency || 0;
-        const totalLat = outLat + baseLat;
+        let outLat = audioCtxRef.current.outputLatency || 0;
+        let baseLat = audioCtxRef.current.baseLatency || 0;
+        let totalLat = outLat + baseLat;
+
+        // Fallback for iOS/Safari where latency is 0
+        if (totalLat === 0) {
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          const isMacSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+          if (isIOS) totalLat = 0.045; // ~45ms typical iOS speaker latency
+          else if (isMacSafari) totalLat = 0.035;
+        }
+
         if (totalLat > 0) {
           setOutputLatency(totalLat);
-          setIsLatencyAutoDetected(true);
+          setIsLatencyAutoDetected(outLat > 0 || baseLat > 0);
         } else {
+          setOutputLatency(0);
           setIsLatencyAutoDetected(false);
         }
       }
@@ -1106,7 +1139,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       document.dispatchEvent(new CustomEvent('audioEnded'));
     };
 
-    const hardwareLatency = (audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0);
+    const hardwareLatency = outputLatencyRef.current;
     const totalLatency = hardwareLatency + manualLatencyRef.current;
     
     const idealAudioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000 - totalLatency;
@@ -1176,6 +1209,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsPlaying(false);
     pauseOffsetRef.current = position;
     setCurrentTime(position);
+    if (streamingAudioElRef.current) streamingAudioElRef.current.pause();
   }, [stopCurrentSource]);
 
   const play = useCallback(() => {
@@ -1242,6 +1276,20 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, [currentTime, duration]);
 
   const setPlaybackRate = useCallback((rate: number) => {
+    // 1. Commit elapsed time at the OLD rate so getTruePosition() doesn't retroactively distort past time
+    if (isPlayingRef.current) {
+      if (audioCtxRef.current) {
+        const oldElapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+        pauseOffsetRef.current += oldElapsed;
+        startTimeRef.current = audioCtxRef.current.currentTime;
+      } else {
+        const oldElapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
+        pauseOffsetRef.current += oldElapsed;
+        startTimeRef.current = Date.now();
+      }
+    }
+
+    // 2. Apply new rate
     playbackRateRef.current = rate;
     if (sourceNodeRef.current) {
       sourceNodeRef.current.playbackRate.value = rate;
