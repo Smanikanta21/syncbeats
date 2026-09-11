@@ -287,3 +287,53 @@ model AdminAuditLog {
 }
 
 
+// ── ML Training Telemetry ─────────────────────────────────────────────────────
+// One row per 10-second window per active session.
+// Collects timing-only data (no audio content, no PII) to train a future
+// ML model that replaces the hand-tuned 4-tier drift correction engine.
+model SyncTelemetry {
+  id               String   @id @default(cuid())
+  sessionId        String   @map("session_id")    // socket.id at join — groups a session's batches
+  roomId           String   @map("room_id")
+  userId           String?  @map("user_id")        // nullable — anonymous sessions allowed
+
+  // ── Device context ──
+  deviceType       String?  @map("device_type")
+  os               String?
+  exactModel       String?  @map("exact_model")   // "iPhone 15 Pro", "Pixel 8 Pro", etc.
+  userAgent        String?  @map("user_agent") @db.Text
+
+  // ── Network health ──
+  networkQuality   String   @map("network_quality")
+  rttMedianMs      Float    @map("rtt_median_ms")
+  rttJitterMs      Float    @map("rtt_jitter_ms")
+  rttSamples       Json     @map("rtt_samples")
+
+  // ── Clock sync ──
+  clockOffsetMs    Float    @map("clock_offset_ms")
+
+  // ── Drift time-series ──
+  driftSamples     Json     @map("drift_samples")
+  driftMeanMs      Float    @map("drift_mean_ms")
+  driftMaxMs       Float    @map("drift_max_ms")
+
+  // ── Correction actions ──
+  correctionTier   String   @map("correction_tier")
+  correctionsCount Int      @map("corrections_count")
+  playbackRate     Float    @map("playback_rate")
+
+  // ── Session context ──
+  audioUnlocked    Boolean  @map("audio_unlocked")
+  tabVisible       Boolean  @map("tab_visible")
+  sessionAgeSecs   Int      @map("session_age_secs")
+  participantCount Int      @map("participant_count")
+
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([roomId])
+  @@index([userId])
+  @@index([networkQuality])
+  @@index([createdAt(sort: Desc)])
+  @@map("sync_telemetry")
+}

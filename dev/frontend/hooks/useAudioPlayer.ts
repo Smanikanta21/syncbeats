@@ -342,7 +342,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setTimeout(() => {
       const pending = pendingScheduleRef.current;
       if (pending) {
+        // Check scheduleIdRef to ensure no pauseAt() was called while we waited
+        const idBefore = scheduleIdRef.current;
         pendingScheduleRef.current = null;
+        if (idBefore !== scheduleIdRef.current) return; // pauseAt was called, abort
         const serverNow = Date.now() + pending.clockOffset;
         const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
         
@@ -965,7 +968,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         // Apply pending room schedule now that the buffer is ready
         const pendingSched = pendingScheduleRef.current;
         if (pendingSched) {
+          const idBefore = scheduleIdRef.current;
           pendingScheduleRef.current = null;
+          if (idBefore !== scheduleIdRef.current) return; // pauseAt was called during decode, abort
           const clockOffset = pendingSched.clockOffset;
           const serverNow = Date.now() + clockOffset;
           const elapsed = Math.max(0, (serverNow - pendingSched.payload.startEpoch) / 1000);
@@ -1003,7 +1008,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (!isReady) return;
     const pending = pendingScheduleRef.current;
     if (!pending) return;
+    // Capture schedule ID before consuming — if pauseAt() was called between
+    // the schedule being saved and this effect firing, the ID will differ.
+    const idBefore = scheduleIdRef.current;
     pendingScheduleRef.current = null;
+    if (idBefore !== scheduleIdRef.current) return; // pauseAt was called, abort
     const clockOffset = pending.clockOffset;
     const serverNow = Date.now() + clockOffset;
     const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);

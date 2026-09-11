@@ -9,7 +9,7 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   output: process.env.VERCEL ? undefined : "standalone",
   turbopack: {},
-  allowedDevOrigins: ['172.20.10.3','172.20.10.7'],
+  allowedDevOrigins: ['172.20.10.3','172.20.10.7','10.6.1.21'],
   images: {
     remotePatterns: [
       {

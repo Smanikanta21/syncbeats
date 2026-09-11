@@ -15,6 +15,7 @@ concurrency:
 env:
   PROJECT_ID: sync-beats-472708
   REGION: asia-south1
+  SERVICE_NAME: syncbeats-server
   GAR_REPO: asia-south1-docker.pkg.dev/sync-beats-472708/syncbeats-repo
 
 jobs:

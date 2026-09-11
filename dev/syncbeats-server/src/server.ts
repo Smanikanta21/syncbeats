@@ -22,6 +22,7 @@ import { createMusicBridgeRoutes } from './handlers/MusicBridgeRoutes';
 import playlistRoutes from './handlers/PlaylistRoutes';
 import { createUserRoutes } from './handlers/UserRoutes';
 import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
+import { createTelemetryRoutes } from './handlers/TelemetryRoutes';
 import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
@@ -36,7 +37,20 @@ import { AuditLogger } from './services/AuditLogger';
   (console as any)[method] = (...args: unknown[]) => {
     const istDate = new Date(Date.now() + 5.5 * 3600 * 1000);
     const ts = istDate.toISOString().replace('T', ' ').slice(0, 19);
-    original(`[${ts} IST]`, ...args);
+    
+    // Serialize arguments for logging
+    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    original(`[${ts} IST]`, msg);
+
+    // Pipe directly to DB (skip AuditLogger's own stdout to avoid infinite loop)
+    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]')) {
+      let action = `SERVER_${method.toUpperCase()}`;
+      if (msg.includes('[Server]')) action = 'SERVER_LIFECYCLE';
+      else if (msg.includes('[Cleanup]')) action = 'SERVER_CLEANUP';
+      else if (msg.includes('[Socket]')) action = 'SOCKET_EVENT';
+      
+      AuditLogger.log(action, msg).catch(() => {});
+    }
   };
 });
 
@@ -217,6 +231,7 @@ export class SyncBeatsServer {
     this.app.use('/api/bridge', createMusicBridgeRoutes());
     this.app.use('/api/playlists', playlistRoutes);
     this.app.use('/feedback', createFeedbackRoutes());
+    this.app.use('/telemetry', createTelemetryRoutes());
   }
 
   private setupSocketIO(): void {

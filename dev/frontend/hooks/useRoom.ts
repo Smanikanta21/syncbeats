@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
+import { useSyncController } from './useSyncController';
+import { useSyncTelemetry } from './useSyncTelemetry';
 import { getSocket } from '../lib/socket';
 import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
@@ -63,6 +65,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   const { paramsRef, networkQuality, reportBurst } = useAdaptiveSync(socket);
   const audio  = useAudio();
 
+  // ── SyncController — single authority for playback + drift correction ──
+  const syncRef = useSyncController();
+  const sync = syncRef.current;
+
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
@@ -83,6 +89,27 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   
   useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
   useEffect(() => { clockOffsetRef.current = clockOffset; }, [clockOffset]);
+
+  // Bind SyncController to the audio system + refs (runs once)
+  const lastBurstRttsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    sync.bind(audioRef, clockOffsetRef, paramsRef, hasClockSync);
+    sync.updateRoom({ roomId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- bind once
+  }, []);
+
+  // ── ML telemetry — silent, best-effort, runs on idle callbacks ────────────
+  useSyncTelemetry({
+    syncRef,
+    clockOffsetRef,
+    snapshot,
+    networkQuality,
+    roomId,
+    userId,
+    sessionId: currentSocketId ?? 'unknown',
+    lastBurstRttsRef,
+  });
 
   const seqRef = useRef(0);
   const syncInFlightRef = useRef(false);
@@ -284,6 +311,8 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     // Feed raw RTTs into the adaptive engine — updates params and reports stats to server
     reportBurst(rttSamples, roomId);
+    // Also store them for ML telemetry batching
+    lastBurstRttsRef.current = rttSamples.slice();
 
     syncInFlightRef.current = false;
   }, [pingOnce, reportBurst, roomId]); // paramsRef is a stable ref, not listed
@@ -313,110 +342,30 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     };
   }, [runNtpBurst]); // paramsRef is a stable ref, safe to omit
 
-  // Handle drift correction with performance.now() for sub-ms precision
+  // ── Drift correction — now fully delegated to SyncController ──────────────
+  // The controller's correctDrift() implements 4-tier invisible correction:
+  //   T1: micro-rate (±0.1%, inaudible), T2: soft-seek (masked micro-jumps),
+  //   T3: crossfade (quick fade-seek), T4: emergency snap.
   useEffect(() => {
-    // Capture a baseline to convert between performance.now() and Date.now()
-    const perfBaseline = performance.now();
-    const dateBaseline = Date.now();
-
-    const getServerNow = () => {
-      const perfElapsed = performance.now() - perfBaseline;
-      return dateBaseline + perfElapsed + clockOffsetRef.current;
-    };
-
-    const correctDrift = () => {
-      const snap = snapshotRef.current;
-
-      // PAUSE BUG FIX: If snapshot is paused/stopped, guarantee local audio player is paused!
-      if (!snap || !snap.isPlaying || snap.startEpoch == null) {
-        if (audioRef.current.isPlaying) {
-          audioRef.current.pauseAt(snap?.pauseOffset ?? audioRef.current.getTruePosition());
-        }
-        return;
-      }
-
-      if (!hasClockSync.current || !audioRef.current.audioUnlocked || !audioRef.current.isReady) return;
-
-      const nowServer = getServerNow();
-      
-      // Do not run drift correction before the song is actually scheduled to start
-      if (nowServer < snap.startEpoch!) return;
-
-      const expected = Math.max(0, (nowServer - snap.startEpoch!) / 1000);
-      const actual = audioRef.current.getTruePosition();
-      
-      // Skip correction if YouTube is buffering (getTruePosition returns -1)
-      if (actual < 0) return;
-
-      const drift = expected - actual; // Positive = we are behind server, Negative = we are ahead
-      const driftMs = Math.abs(drift) * 1000;
-
-      const { DRIFT_HARD_SEEK_MS } = paramsRef.current;
-      const hardSeekTolerance = Math.min(DRIFT_HARD_SEEK_MS, 45); // Max 45ms hard seek for tight sync
-
-      if (driftMs > hardSeekTolerance) {
-        // Severe drift (>45ms): Quick crossfade seek to immediately close the gap
-        if (!audioRef.current.audioCtx || !audioRef.current.gainNode) {
-          audioRef.current.playNow(expected);
-          if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
-        } else {
-          const { audioCtx, gainNode } = audioRef.current;
-          const currentVol = audioRef.current.volume / 100;
-          
-          gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-          gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-          gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
-          
-          setTimeout(() => {
-            const newExpected = Math.max(0, (getServerNow() - snap.startEpoch!) / 1000);
-            audioRef.current.playNow(newExpected);
-            if (audioRef.current.setPlaybackRate) audioRef.current.setPlaybackRate(1);
-            
-            const newAudioCtx = audioRef.current.audioCtx!;
-            const newGainNode = audioRef.current.gainNode!;
-            newGainNode.gain.cancelScheduledValues(newAudioCtx.currentTime);
-            newGainNode.gain.setValueAtTime(0.01, newAudioCtx.currentTime);
-            newGainNode.gain.linearRampToValueAtTime(currentVol, newAudioCtx.currentTime + 0.03);
-          }, 30);
-        }
-      } else if (driftMs > 2) {
-        // Micro-rate phase lock (2ms - 45ms gap):
-        // Micro-adjust playback speed by ±0.5% - 2% to continuously pull devices into <1ms phase lock!
-        const nudgeRate = 1.0 + Math.max(-0.02, Math.min(0.02, drift * 0.45));
-        if (audioRef.current.setPlaybackRate) {
-          audioRef.current.setPlaybackRate(nudgeRate);
-        }
-      } else {
-        // Perfect sync phase (< 2ms gap)!
-        if (audioRef.current.setPlaybackRate) {
-          audioRef.current.setPlaybackRate(1);
-        }
-      }
-    };
-
-    // Drift check — 50 ms base tick with an accumulator so the effective
-    // check frequency adapts to paramsRef.DRIFT_CHECK_INTERVAL_MS without
-    // needing to restart the interval.
     const BASE_TICK_MS = 50;
     let accumulated = 0;
     const driftInterval = setInterval(() => {
       accumulated += BASE_TICK_MS;
       if (accumulated >= paramsRef.current.DRIFT_CHECK_INTERVAL_MS) {
         accumulated = 0;
-        correctDrift();
+        sync.correctDrift();
       }
     }, BASE_TICK_MS);
 
     const handleYtBufferEnd = () => {
-      setTimeout(correctDrift, 200);
+      setTimeout(() => sync.correctDrift(), 200);
     };
     document.addEventListener('ytBufferEnd', handleYtBufferEnd);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Re-sync clock immediately on returning from background — device clock may have
-        // drifted during sleep, so we need a fresh offset before running drift correction.
-        runNtpBurst().then(() => correctDrift()).catch(() => correctDrift());
+        sync.resetClockBaseline();
+        runNtpBurst().then(() => sync.correctDrift()).catch(() => sync.correctDrift());
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -426,7 +375,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []); // paramsRef is a stable ref, correctDrift is a closure — intentional empty dep
+  }, []); // sync is a stable ref — intentional empty dep
 
   useEffect(() => {
     let cancelled = false;
@@ -516,7 +465,32 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       if (!snap) return;
       setSnapshot(snap);
       setParticipants(snap.participants || []);
+
+      // ── Update SyncController with every server state change ──
+      sync.updateRoom({
+        roomId: snap.roomId,
+        hostId: snap.hostId,
+        isPrivate: snap.isPrivate ?? false,
+        shuffle: snap.shuffle ?? false,
+        repeatMode: snap.repeatMode ?? 'off',
+        pendingPlay: snap.pendingPlay ?? false,
+      });
+
+      // Enforce playback intent through the controller — single authority.
+      if (snap.isPlaying && snap.startEpoch != null) {
+        // Server says playing — update controller intent (drift correction will handle audio)
+        const intent = sync.getIntent();
+        if (intent.state !== 'playing' || intent.startEpoch !== snap.startEpoch) {
+          sync.schedule(snap.startEpoch, snap.pauseOffset ?? 0, snap.trackUrl ?? null);
+        }
+      } else if (!snap.isPlaying) {
+        // Server says paused — controller immediately stops audio
+        sync.pause(snap.pauseOffset ?? 0);
+      }
+
+      // Track changes
       if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+        sync.setTrack(snap.trackUrl);
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         if (userId && snap.trackUrl) {
           const currentItem = snap.queue?.find(q => q.isCurrent || q.trackUrl === snap.trackUrl);
@@ -533,6 +507,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
           }).catch(() => {});
         }
       } else if (!snap.trackUrl) {
+        sync.idle();
         audioRef.current.clearTrack();
       }
     };
@@ -663,19 +638,25 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
       setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
       if (payload.trackUrl && audioRef.current.trackUrl !== payload.trackUrl) {
+        sync.setTrack(payload.trackUrl);
         loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
       }
-      // Fire a fresh NTP burst concurrently with scheduling — ensures the clock offset
-      // used for fromPosition calculation is < 100ms old, not potentially 4–12s stale.
+      // Update controller intent — it now owns the "should we be playing?" decision
+      sync.schedule(payload.startEpoch, payload.fromPosition, payload.trackUrl ?? null);
+      // Fire a fresh NTP burst, then let the controller apply the schedule
+      const genBefore = sync.getGen();
       runNtpBurst().catch(() => {}).finally(() => {
-        audioRef.current.scheduleStart(payload, clockOffsetRef.current);
+        sync.resetClockBaseline();
+        // Only apply if no pause/seek happened during the burst
+        sync.applyScheduleIfCurrent(genBefore, payload, clockOffsetRef.current);
       });
     };
     socket.on('playback:schedule', handleSchedule);
 
     const handlePause = (payload: PlaybackPausePayload) => {
       setSnapshot(prev => prev ? { ...prev, startEpoch: null, pauseOffset: payload.pauseOffset, isPlaying: false, state: PlaybackState.PAUSED } : prev);
-      audioRef.current.pauseAt(payload.pauseOffset);
+      // Controller immediately stops audio — no race conditions
+      sync.pause(payload.pauseOffset);
     };
     socket.on('playback:pause', handlePause);
 
@@ -716,6 +697,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.on('room:hostChanged', handleHostChanged);
 
     const handleRoomReset = () => {
+      sync.idle();
       audioRef.current.clearTrack();
       setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false, state: PlaybackState.IDLE, startEpoch: null, pauseOffset: 0 } : prev);
       setIncomingTrack(null);

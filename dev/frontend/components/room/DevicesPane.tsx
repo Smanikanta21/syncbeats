@@ -91,9 +91,10 @@ function formatLastSeen(dateStr?: string | null): string {
   return `Last seen ${days}d ago`;
 }
 
-function OfflineDeviceCard({ device }: { device: Device }) {
+function OfflineDeviceCard({ device, customDeviceName }: { device: Device, customDeviceName?: string }) {
   const DevIcon = getDeviceIcon(device.name, device.user_agent ?? undefined);
   const lastSeenStr = formatLastSeen(device.last_seen_at);
+  const displayName = customDeviceName || device.name;
 
   return (
     <motion.div
@@ -111,7 +112,7 @@ function OfflineDeviceCard({ device }: { device: Device }) {
 
         <div className={cn('flex-1', 'min-w-0')}>
           <div className={cn('flex', 'items-center', 'gap-1.5')}>
-            <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{device.name}</span>
+            <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{displayName}</span>
           </div>
           <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>
         </div>
@@ -132,6 +133,7 @@ function ParticipantRow({
   isPlaying,
   syncProgress,
   onVolumeChange,
+  customDeviceName,
 }: {
   p: Participant;
   isMe: boolean;
@@ -140,6 +142,7 @@ function ParticipantRow({
   isPlaying?: boolean;
   syncProgress: number;
   onVolumeChange?: (socketId: string, vol: number) => void;
+  customDeviceName?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -167,7 +170,8 @@ function ParticipantRow({
     }, 500);
   };
 
-  const { deviceName } = parseParticipantNames(p);
+  const { deviceName: parsedDeviceName } = parseParticipantNames(p);
+  const deviceName = customDeviceName || parsedDeviceName;
   const DevIcon = getDeviceIcon(deviceName, p.outputDeviceType ?? undefined);
   const lat = Math.round(p.latency ?? 0);
   const canAdjustVol = isMySelf || isHost;
@@ -413,14 +417,26 @@ export function DevicesPane({
         map.set(targetKey, myGroup);
       }
 
-      const activeDevNames = new Set(
-        myGroup.activeParticipants.map(p => parseParticipantNames(p).deviceName.toLowerCase().trim())
+      const activeDeviceIds = new Set(
+        myGroup.activeParticipants
+          .map(p => p.deviceId)
+          .filter(Boolean)
       );
 
       accountDevices.forEach(d => {
-        const dNameLower = (d.name || "").toLowerCase().trim();
-        const isInRoom = activeDevNames.has(dNameLower) ||
-          myGroup?.activeParticipants.some(p => p.outputDeviceName?.toLowerCase().trim() === dNameLower);
+        // Precise matching by deviceId if available, fallback to name matching for legacy clients
+        let isInRoom = false;
+        
+        if (d.device_key && activeDeviceIds.size > 0) {
+          isInRoom = activeDeviceIds.has(d.device_key);
+        } else {
+          const dNameLower = (d.name || "").toLowerCase().trim();
+          const activeDevNames = new Set(
+            myGroup?.activeParticipants.map(p => parseParticipantNames(p).deviceName.toLowerCase().trim())
+          );
+          isInRoom = activeDevNames.has(dNameLower) ||
+            myGroup?.activeParticipants.some(p => p.outputDeviceName?.toLowerCase().trim() === dNameLower) || false;
+        }
 
         if (!isInRoom) {
           myGroup?.offlineDevices.push(d);
@@ -471,6 +487,37 @@ export function DevicesPane({
             const initials = group.userName.slice(0, 2).toUpperCase();
             const groupTotal = group.activeParticipants.length + group.offlineDevices.length;
 
+            const baseNames = new Map<string, number>();
+            group.activeParticipants.forEach(p => {
+              const name = parseParticipantNames(p).deviceName;
+              baseNames.set(name, (baseNames.get(name) || 0) + 1);
+            });
+            group.offlineDevices.forEach(d => {
+              const name = d.name || "Unknown Device";
+              baseNames.set(name, (baseNames.get(name) || 0) + 1);
+            });
+
+            const activeCounters = new Map<string, number>();
+            const activeCustomNames = group.activeParticipants.map(p => {
+              const name = parseParticipantNames(p).deviceName;
+              if ((baseNames.get(name) || 0) > 1) {
+                const c = (activeCounters.get(name) || 0) + 1;
+                activeCounters.set(name, c);
+                return `${name} ${c}`;
+              }
+              return name;
+            });
+
+            const offlineCustomNames = group.offlineDevices.map(d => {
+              const name = d.name || "Unknown Device";
+              if ((baseNames.get(name) || 0) > 1) {
+                const c = (activeCounters.get(name) || 0) + 1;
+                activeCounters.set(name, c);
+                return `${name} ${c}`;
+              }
+              return name;
+            });
+
             return (
               <div key={group.key} className="space-y-1.5">
                 {/* User Header */}
@@ -501,7 +548,7 @@ export function DevicesPane({
                 {/* Devices belonging to this User */}
                 <div className={cn('space-y-1.5', 'pl-2', 'border-l', 'border-foreground/10')}>
                   {/* Active devices in room */}
-                  {group.activeParticipants.map(p => {
+                  {group.activeParticipants.map((p, idx) => {
                     const isMe = p.socketId === mySocketId;
                     const isThisHost = (p.userId && p.userId === hostId) || p.socketId === hostId;
                     const progress = deviceSyncProgress[p.socketId] ?? 0;
@@ -515,13 +562,14 @@ export function DevicesPane({
                         isPlaying={isPlaying}
                         syncProgress={progress}
                         onVolumeChange={onVolumeChange}
+                        customDeviceName={activeCustomNames[idx]}
                       />
                     );
                   })}
 
                   {/* Offline account devices */}
-                  {group.offlineDevices.map(d => (
-                    <OfflineDeviceCard key={d.id} device={d} />
+                  {group.offlineDevices.map((d, idx) => (
+                    <OfflineDeviceCard key={d.id} device={d} customDeviceName={offlineCustomNames[idx]} />
                   ))}
                 </div>
               </div>

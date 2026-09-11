@@ -24,6 +24,7 @@ export interface Participant {
   volume:      number;
   isBlocked?:  boolean;
   userId?:     string;
+  deviceId?:   string;
   outputDeviceName?: string;
   outputDeviceType?: string;
   /** Median RTT to server in ms — updated after each NTP burst */

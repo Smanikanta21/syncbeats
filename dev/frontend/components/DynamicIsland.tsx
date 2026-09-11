@@ -1279,14 +1279,23 @@ export function DynamicIsland() {
       else setIsExpanded(true);
       if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
+    const handleExpandSync = () => {
+      setSlideDir(0);
+      setActiveTab("network");
+      if (isRoom) setIslandState("expanded");
+      else setIsExpanded(true);
+      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
+    };
 
     document.addEventListener("island:expand-add", handleExpandAdd);
     document.addEventListener("island:expand-spotify", handleExpandSpotify);
     document.addEventListener("island:expand-invite", handleExpandInvite);
+    document.addEventListener("island:expand-sync", handleExpandSync);
     return () => {
       document.removeEventListener("island:expand-add", handleExpandAdd);
       document.removeEventListener("island:expand-spotify", handleExpandSpotify);
       document.removeEventListener("island:expand-invite", handleExpandInvite);
+      document.removeEventListener("island:expand-sync", handleExpandSync);
     };
   }, [isRoom]);
 

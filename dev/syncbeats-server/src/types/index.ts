@@ -10,6 +10,7 @@ export interface Participant {
   volume:      number;
   isBlocked?:  boolean;
   userId?:     string;
+  deviceId?:   string;
   outputDeviceName?: string;
   outputDeviceType?: string;
   latency?:    number;

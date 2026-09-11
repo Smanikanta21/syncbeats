@@ -127,14 +127,15 @@ export class SocketHandler {
         const isHost = snapshot.hostId === socket.data.userId;
         const roomHasActiveHost = snapshot.hostId !== null && room.getParticipantCount() > 0;
 
-        // If joining an existing room, kick any ghost sockets with the same userId and displayName
+        // If joining an existing room, kick any ghost sockets with the same userId AND same deviceId
+        // This ensures if a user joins from two DIFFERENT devices (e.g. iPhone and Mac), they aren't kicked.
         if (room && userId) {
           const existingGhosts = room.snapshot().participants.filter(
-            (p: any) => p.userId === userId && p.displayName === displayName && p.socketId !== socket.id
+            (p: any) => p.userId === userId && p.deviceId === deviceId && p.socketId !== socket.id
           );
           for (const ghost of existingGhosts) {
-            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${userId}`);
-            this.io.to(ghost.socketId).emit('room:kicked', { reason: 'Joined from another device' });
+            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${userId} on device ${deviceId}`);
+            this.io.to(ghost.socketId).emit('room:kicked', { reason: 'Joined from another tab on this device' });
             this.io.sockets.sockets.get(ghost.socketId)?.disconnect();
             room.removeParticipant(ghost.socketId);
           }
@@ -163,7 +164,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, joinedAt: Date.now(), isReady, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, deviceId: socket.data.deviceId, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
@@ -224,7 +225,7 @@ export class SocketHandler {
 
       targetSocket.join(roomId);
       this.roomManager.trackSocket(targetSocketId, roomId);
-      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, joinedAt: Date.now(), isReady: false, volume: 100 });
+      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, deviceId: targetSocket.data.deviceId, joinedAt: Date.now(), isReady: false, volume: 100 });
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
