@@ -46,7 +46,7 @@ const PARAM_TABLE: Record<NetworkQuality, AdaptiveParams> = {
     NTP_PING_GAP_MS:         10,     // Fast burst
     NTP_RESYNC_INTERVAL_MS:  4_000,  // Re-sync every 4 s
     DRIFT_CHECK_INTERVAL_MS: 100,    // Check drift 10×/s
-    DRIFT_HARD_SEEK_MS:      80,     // Seek if >80 ms off
+    DRIFT_HARD_SEEK_MS:      40,     // Crossfade seek if >40 ms off (avoids long echo/phasing)
     DRIFT_SOFT_SEEK_MS:      5,      // Rate-correct if >5 ms off
   },
   good: {
@@ -55,7 +55,7 @@ const PARAM_TABLE: Record<NetworkQuality, AdaptiveParams> = {
     NTP_PING_GAP_MS:         20,
     NTP_RESYNC_INTERVAL_MS:  5_000,
     DRIFT_CHECK_INTERVAL_MS: 200,
-    DRIFT_HARD_SEEK_MS:      150,
+    DRIFT_HARD_SEEK_MS:      60,
     DRIFT_SOFT_SEEK_MS:      10,
   },
   fair: {
@@ -64,8 +64,8 @@ const PARAM_TABLE: Record<NetworkQuality, AdaptiveParams> = {
     NTP_PING_GAP_MS:         40,
     NTP_RESYNC_INTERVAL_MS:  8_000,
     DRIFT_CHECK_INTERVAL_MS: 350,
-    DRIFT_HARD_SEEK_MS:      250,    // Prefer soft correction up to 250 ms
-    DRIFT_SOFT_SEEK_MS:      20,
+    DRIFT_HARD_SEEK_MS:      80,
+    DRIFT_SOFT_SEEK_MS:      15,
   },
   poor: {
     NTP_SAMPLE_COUNT:        6,      // Minimal pings — don't thrash a bad link
@@ -73,8 +73,8 @@ const PARAM_TABLE: Record<NetworkQuality, AdaptiveParams> = {
     NTP_PING_GAP_MS:         80,     // Breathe between pings
     NTP_RESYNC_INTERVAL_MS:  12_000, // Re-sync every 12 s to avoid load
     DRIFT_CHECK_INTERVAL_MS: 500,    // Check 2×/s — good enough
-    DRIFT_HARD_SEEK_MS:      400,    // Soft-correct up to 400 ms — fewer jarring seeks
-    DRIFT_SOFT_SEEK_MS:      40,     // Rate-correct anything >40 ms
+    DRIFT_HARD_SEEK_MS:      120,
+    DRIFT_SOFT_SEEK_MS:      25,
   },
 };
 

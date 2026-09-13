@@ -733,14 +733,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   <h4 className="text-sm font-black text-foreground flex items-center gap-2">
                     <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Spotify Playlist"}"` : "Importing Spotify Playlist"}</span>
                     <span className="text-[9px] px-2 py-0.5 rounded-full bg-foreground/10 text-foreground/80 font-bold border border-foreground/15 uppercase tracking-widest">
-                      {importStage === "done" ? "SUCCESS" : "ACTIVE STAGE"}
+                      {importStage === "done" ? "SUCCESS" : "ACTIVE"}
                     </span>
                   </h4>
                   <p className="text-xs text-foreground/60 mt-0.5">
-                    {importStage === "scraping" && "Stage 1/3: Extracting tracks & metadata..."}
-                    {importStage === "indexing" && "Stage 2/3: Building catalog & checking duplicates..."}
-                    {importStage === "enriching" && "Stage 3/3: Fetching 600x600 artwork & audio streams..."}
-                    {importStage === "done" && `${importStats.total} songs successfully imported into "${importStats.playlistName || "Playlist"}"!`}
+                    {importStage === "scraping" && "Connecting to Spotify..."}
+                    {importStage === "indexing" && "Processing playlist..."}
+                    {importStage === "enriching" && `Importing tracks...`}
+                    {importStage === "done" && `${importStats.total} songs imported into "${importStats.playlistName || "Playlist"}"!`}
                   </p>
                 </div>
               </div>
