@@ -72,3 +72,4 @@ dev/syncbeats-server/*-player-script.js
 yt-dlp-cache/
 docker-compose.build.yml
 scripts/
+device_logs.txt

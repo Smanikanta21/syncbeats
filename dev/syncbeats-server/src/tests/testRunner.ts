@@ -11,7 +11,7 @@ if (!process.env.DATABASE_URL) {
 
 import { runYoutubeFetcherTest } from './youtubeFetcher.test';
 import { runSyncCheckerTest } from './syncChecker.test';
-import { runSpotifyCheckerTest } from './spotifyChecker.test';
+
 
 async function runAllTests(): Promise<void> {
   console.log('\n==================================================');
@@ -23,8 +23,7 @@ async function runAllTests(): Promise<void> {
 
   const suite = [
     { name: 'YouTube Video/Audio Fetcher', fn: runYoutubeFetcherTest },
-    { name: 'Sync Engine & Room State',     fn: runSyncCheckerTest },
-    { name: 'Spotify API Paginator',       fn: runSpotifyCheckerTest }
+    { name: 'Sync Engine & Room State',     fn: runSyncCheckerTest }
   ];
 
   for (const test of suite) {

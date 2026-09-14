@@ -3,7 +3,7 @@ import { requireAuth } from '../auth/authMiddleware';
 import prisma, { sanitizeNullBytes } from '../db/prisma';
 import { RoomRepository } from '../db/RoomRepository';
 import { RoomManager } from '../core/RoomManager';
-
+import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 const repo = new RoomRepository();
 const roomManager = RoomManager.getInstance();
 
@@ -122,33 +122,7 @@ export async function getUserSpotifyToken(userId: string): Promise<string | null
 
 // ── YouTube search match ─────────────────────────────────────────────────────
 
-async function matchToYouTube(title: string, artist: string): Promise<{ youtubeId: string; thumbnail: string } | null> {
-  try {
-    const RAPID_API_KEY = process.env.RAPID_API_KEY;
-    if (!RAPID_API_KEY) return null;
 
-    const q = encodeURIComponent(`${artist} - ${title} official audio`);
-    const res = await fetch(
-      `https://youtube-search-and-download.p.rapidapi.com/search?query=${q}&type=v&sort=r&duration=m`,
-      {
-        headers: {
-          'X-RapidAPI-Key':  RAPID_API_KEY,
-          'X-RapidAPI-Host': 'youtube-search-and-download.p.rapidapi.com',
-        },
-      }
-    );
-    if (!res.ok) return null;
-    const data: any = await res.json();
-    const item = data?.contents?.[0]?.video;
-    if (!item?.videoId) return null;
-    return {
-      youtubeId: item.videoId,
-      thumbnail: item.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -365,7 +339,7 @@ export function createSpotifyRoutes(): Router {
 
       // Fetch all tracks from the Spotify playlist (handle pagination)
       let allTracks: any[] = [];
-      let url: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(name,artists,album(images)))`;
+      let url: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
 
       while (url) {
         let data: any;
@@ -407,7 +381,7 @@ export function createSpotifyRoutes(): Router {
         const artist = track.artists[0]?.name || 'Unknown';
         const thumb  = track.album?.images?.[1]?.url || track.album?.images?.[0]?.url;
 
-        const ytMatch = await matchToYouTube(title, artist);
+        const ytMatch = await matchToYouTubeFallback(title, artist);
 
         matched.push({
           playlistId: playlist.id,
