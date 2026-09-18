@@ -43,7 +43,7 @@ import { AuditLogger } from './services/AuditLogger';
     original(`[${ts} IST]`, msg);
 
     // Pipe directly to DB (skip AuditLogger's own stdout to avoid infinite loop)
-    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]')) {
+    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]') && !msg.includes('prisma:')) {
       let action = `SERVER_${method.toUpperCase()}`;
       if (msg.includes('[Server]')) action = 'SERVER_LIFECYCLE';
       else if (msg.includes('[Cleanup]')) action = 'SERVER_CLEANUP';

@@ -130,10 +130,11 @@ export function useAdaptiveSync(socket: Socket): UseAdaptiveSyncReturn {
 
     // Update reactive quality state only on tier transitions to avoid re-renders
     if (newTier !== qualityRef.current) {
+      const prevTier = qualityRef.current;
       qualityRef.current = newTier;
       setNetworkQuality(newTier);
       console.log(
-        `[AdaptiveSync] Tier: ${qualityRef.current} → ${newTier} ` +
+        `[AdaptiveSync] Tier: ${prevTier} → ${newTier} ` +
         `(RTT: ${medianRtt}ms, Jitter: ${jitter}ms) | ` +
         `hardSeek: ${paramsRef.current.DRIFT_HARD_SEEK_MS}ms, ` +
         `resync: ${paramsRef.current.NTP_RESYNC_INTERVAL_MS}ms`

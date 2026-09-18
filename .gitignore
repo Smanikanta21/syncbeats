@@ -62,7 +62,7 @@ build/
 *.dSYM.zip
 *.dSYM
 Pods/
-docs/MACOS_APP_DESIGN.md
+docs/*
 
 # Cookies & Cache
 cookies.txt
@@ -73,3 +73,4 @@ yt-dlp-cache/
 docker-compose.build.yml
 scripts/
 device_logs.txt
+dev/syncbeats-server/tests/

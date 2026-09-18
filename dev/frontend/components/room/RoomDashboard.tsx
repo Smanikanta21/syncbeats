@@ -15,14 +15,14 @@ import { SpatialPanel } from "./SpatialPanel";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
-import { EmojiReactions } from "./EmojiReactions";
+import { RoomReactions } from "./RoomReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
 import { MobileRadialNavigator } from "./MobileRadialNavigator";
-import { SettingsPanel } from "../SettingsPanel";
+import { SettingsPanel } from "../settings";
 import { ThemeToggle } from "../ThemeToggle";
 import { JoinRoomModal } from "../JoinRoomModal";
 import { HoverExpandPill } from "../HoverExpandPill";
-import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
+import type { RoomSnapshot, Participant, DeviceSpatialState, TrackQueueItem, PlaybackState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 
@@ -611,6 +611,9 @@ export function RoomDashboard({
             </div>
           </GlassCard>
       </div>
+
+      {/* Global Emoji Reactions Layer */}
+      <RoomReactions />
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
       <div className={cn('flex', 'md:hidden', 'flex-col', 'flex-1', 'min-h-0', 'pt-16', 'pb-2', 'px-1')}>

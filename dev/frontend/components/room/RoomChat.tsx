@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import { Send, MessageSquare, X, Smile, Sparkles } from "lucide-react";
 import { getSocket } from "../../lib/socket";
 import { ThemeToggle } from "../ThemeToggle";
@@ -49,6 +50,19 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
     const handleChat = (msg: ChatMessage) => {
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
+        
+        // Replace optimistic message if it's our own
+        const isFromMe = msg.socketId === socket.id || (msg.userId && myUserId && msg.userId === myUserId);
+        if (isFromMe) {
+          const optimisticIndex = prev.findIndex(m => m.id.startsWith('optimistic-') && m.message === msg.message);
+          if (optimisticIndex !== -1) {
+            const next = [...prev];
+            next[optimisticIndex] = msg;
+            roomChatCache[roomId] = next;
+            return next;
+          }
+        }
+        
         const next = [...prev, msg];
         roomChatCache[roomId] = next;
         return next;
@@ -80,10 +94,55 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
     };
   }, [socket, roomId]);
 
+  // Listen for reaction snap animations finishing
+  useEffect(() => {
+    const handleReactionSnap = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const detail = customEvent.detail;
+      if (!detail || !detail.emoji) return;
+
+      const snapMsg: ChatMessage = {
+        id: `reaction-snap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        roomId,
+        socketId: detail.socketId || "",
+        userId: detail.userId,
+        displayName: detail.displayName || "Unknown",
+        message: detail.emoji,
+        timestamp: Date.now()
+      };
+
+      setMessages((prev) => {
+        const next = [...prev, snapMsg];
+        roomChatCache[roomId] = next;
+        return next;
+      });
+    };
+
+    window.addEventListener("syncbeats:reaction_snap", handleReactionSnap);
+    return () => window.removeEventListener("syncbeats:reaction_snap", handleReactionSnap);
+  }, [roomId]);
+
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = input.trim();
     if (!text || !roomId) return;
+
+    const optimisticId = `optimistic-${Date.now()}`;
+    const myMsg: ChatMessage = {
+      id: optimisticId,
+      roomId,
+      socketId: mySocketId || socket.id || "",
+      userId: myUserId || undefined,
+      displayName: "You",
+      message: text,
+      timestamp: Date.now()
+    };
+    
+    setMessages(prev => {
+      const next = [...prev, myMsg];
+      roomChatCache[roomId] = next;
+      return next;
+    });
 
     socket.emit("room:chat", { roomId, message: text });
     setInput("");
@@ -93,12 +152,19 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
     if (!roomId) return;
     socket.emit("room:reaction", { roomId, emoji });
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("syncbeats:reaction", { detail: { emoji } }));
+      window.dispatchEvent(new CustomEvent("syncbeats:reaction", { 
+        detail: { 
+          emoji,
+          socketId: mySocketId,
+          userId: myUserId,
+          displayName: "You"
+        } 
+      }));
     }
   };
 
   return (
-    <div className={cn("flex flex-col h-full w-full bg-background/90 dark:bg-black/90 backdrop-blur-2xl border border-foreground/10 rounded-3xl overflow-hidden shadow-2xl relative select-none", className)}>
+    <div id="room-chat-box" className={cn("flex flex-col h-full w-full bg-background/90 dark:bg-black/90 backdrop-blur-2xl border border-foreground/10 rounded-3xl overflow-hidden shadow-2xl relative select-none", className)}>
       {/* Header Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/10 bg-foreground/5 shrink-0">
         <div className="flex items-center gap-2.5">
@@ -154,6 +220,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
           </div>
         ) : (
           messages.map((msg) => {
+            const isReactionSnap = msg.id.startsWith("reaction-snap-");
             const isMe = Boolean(
               (msg.userId && myUserId && msg.userId === myUserId) ||
               (mySocketId && msg.socketId === mySocketId)
@@ -161,9 +228,29 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
             const initials = (msg.displayName || "User").slice(0, 2).toUpperCase();
             const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+            if (isReactionSnap) {
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ scale: 0, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.8 }}
+                  className={cn("flex flex-col max-w-[85%]", isMe ? "ml-auto items-end" : "mr-auto items-start")}
+                >
+                  <span className="text-[9px] font-bold text-foreground/40 mb-0.5 px-1">
+                    {isMe ? "You" : msg.displayName}
+                  </span>
+                  <div className="text-3xl drop-shadow-sm px-1">{msg.message}</div>
+                </motion.div>
+              );
+            }
+
             return (
-              <div
+              <motion.div
                 key={msg.id}
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 className={cn("flex flex-col max-w-[85%]", isMe ? "ml-auto items-end" : "mr-auto items-start")}
               >
                 <div className="flex items-center gap-1.5 mb-1 px-1">
@@ -185,11 +272,11 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
                 >
                   {msg.message}
                 </div>
-              </div>
+              </motion.div>
             );
           })
         )}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} id="room-chat-messages-end" />
       </div>
 
       {/* Input Form Bar */}

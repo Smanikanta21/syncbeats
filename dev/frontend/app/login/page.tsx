@@ -3,7 +3,6 @@
 import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
-import { FullscreenLoader } from "../../components/FullscreenLoader";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -302,8 +301,6 @@ export default function AuthPage() {
 
   return (
     <div className={cn('min-h-screen', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'px-4', 'sm:px-6', 'lg:px-8', 'overflow-hidden', 'z-0')}>
-      <FullscreenLoader isVisible={loading} message={isLogin ? "Authenticating ..." : "Signing Up..."} />
-
       {/* Background ambient lighting removed (now in layout) */}
 
       {/* Home link */}

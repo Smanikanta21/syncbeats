@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import Magnetic from "../../../components/Magnetic";
 import { useAuth } from "../../../context/AuthContext";
 import { devicesApi, roomsApi, type Device } from "../../../lib/api";
-import { FullscreenLoader } from "../../../components/FullscreenLoader";
 import { JoinRoomModal } from "../../../components/JoinRoomModal";
 import { cn } from "@/lib/utils";
 
@@ -382,7 +381,7 @@ export default function HubPage() {
   };
 
   if (redirecting) {
-    return <FullscreenLoader isVisible={true} message="Connecting to room..." />;
+    return null;
   }
 
   return (

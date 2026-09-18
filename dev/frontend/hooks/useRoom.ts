@@ -60,7 +60,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
   // ── Adaptive network-quality engine ──────────────────────────────────────
   // paramsRef holds all 7 NTP/drift constants and updates after every burst.
   // networkQuality is a reactive string tier for UI display.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is module-singleton
+   
   const socket = getSocket();
   const { paramsRef, networkQuality, reportBurst } = useAdaptiveSync(socket);
   const audio  = useAudio();
@@ -494,8 +494,15 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
           sync.schedule(snap.startEpoch, snap.pauseOffset ?? 0, snap.trackUrl ?? null);
         }
       } else if (!snap.isPlaying) {
-        // Server says paused — controller immediately stops audio
-        sync.pause(snap.pauseOffset ?? 0);
+        // Server says paused — controller immediately stops audio.
+        // Only fire on an actual change: pause() bumps `gen`, and a stray bump
+        // cancels an in-flight schedule. Queue reorders and volume changes also
+        // arrive here with isPlaying=false.
+        const intent = sync.getIntent();
+        const nextOffset = snap.pauseOffset ?? 0;
+        if (intent.state !== 'paused' || intent.pauseOffset !== nextOffset) {
+          sync.pause(nextOffset);
+        }
       }
 
       // Track changes
@@ -843,8 +850,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       roomId,
       positionMs: Math.round(pos * 1000)
     });
-    // Optimistically update local state so the audio stops instantly,
-    // avoiding the "jump back" caused by network round-trip delay.
+    // Optimistically stop audio so it halts on the click, not on the round-trip.
+    // setSnapshot alone only moves React state — sync.pause() is what actually
+    // stops the source node.
+    sync.pause(pos);
     setSnapshot(prev => prev ? { ...prev, isPlaying: false, pauseOffset: pos } : prev);
   }, [socket, roomId]);
   const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);

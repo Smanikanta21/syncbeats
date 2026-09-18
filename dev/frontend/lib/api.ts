@@ -102,9 +102,10 @@ async function request<T>(
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, {
+      cache: 'no-store',
       ...options,
       headers,
-      signal: AbortSignal.timeout(8000), // 8s timeout — prevents requests from hanging indefinitely
+      signal: AbortSignal.timeout(30000), // 30s timeout — prevents requests from hanging indefinitely but allows slow connections/db
     });
   } catch (err: any) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
@@ -403,6 +404,28 @@ export const roomsApi = {
 
   suggestYoutube: (query: string) =>
     request<string[]>(`/rooms/youtube/suggest?q=${encodeURIComponent(query)}`, {}, true),
+};
+
+export const youtubeApi = {
+  getStatus: () => request<{ connected: boolean }>('/youtube/status', {}, true),
+  getConnectUrl: () => `${getServerUrl()}/youtube/auth?token=${getAuthToken()}`,
+  disconnect: () => request<{ ok: boolean }>('/youtube/disconnect', { method: 'DELETE' }, true),
+  getUserYoutubePlaylists: async (): Promise<any[]> => {
+    try {
+      const data = await request<{ playlists: any[] }>('/youtube/library', {}, true);
+      return data.playlists || [];
+    } catch {
+      return [];
+    }
+  },
+  getPlaylistItems: async (playlistId: string): Promise<any[]> => {
+    try {
+      const data = await request<{ tracks: any[] }>(`/youtube/playlistItems?playlistId=${playlistId}`, {}, true);
+      return data.tracks || [];
+    } catch {
+      return [];
+    }
+  },
 };
 
 export const spotifyApi = {

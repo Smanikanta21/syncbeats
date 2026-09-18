@@ -10,7 +10,6 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Toaster } from "sonner";
 import SmoothScrolling from "../components/SmoothScrolling";
-import Preloader from "../components/Preloader";
 import { ToastProvider } from "../components/ToastProvider";
 import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
@@ -258,7 +257,6 @@ export default function RootLayout({
         </div>
         <SmoothScrolling>
           <NavigationProgress />
-          <Preloader />
           <IOSHomeScreenPrompt />
           <ThemeProvider>
             <ConnectionProvider>

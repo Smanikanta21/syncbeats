@@ -531,8 +531,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
       </div>
 
       {/* ── EQ + Visualizer area ──────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 relative rounded-2xl overflow-hidden"
-        style={{ background: "rgba(0,0,0,0.32)", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="flex-1 min-h-0 relative rounded-2xl overflow-hidden bg-foreground/5 dark:bg-black/30 border border-foreground/10 dark:border-white/5">
 
         {/* Canvas: center-aligned frequency bars */}
         <canvas
@@ -565,7 +564,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
 
           {/* Subtle center line */}
           <line x1={PAD_L} y1={zeroY} x2={w - PAD_R} y2={zeroY}
-            stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+            stroke="currentColor" className="text-foreground/10" strokeWidth={1} />
 
           {/* Dashed vertical guide lines at LOW / MID / HIGH */}
           {ANCHOR_IDX.map(i => {
@@ -574,7 +573,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
               <line key={`guide-${i}`}
                 x1={x} y1={PAD_T + 4}
                 x2={x} y2={h - PAD_B}
-                stroke="rgba(255,255,255,0.18)"
+                stroke="currentColor" className="text-foreground/20"
                 strokeWidth={1}
                 strokeDasharray="4 5" />
             );
@@ -624,7 +623,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 <circle
                   cx={x} cy={y} r={R}
                   fill={fill}
-                  stroke={anchor ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.12)"}
+                  stroke="currentColor" className={anchor ? "text-foreground/50" : "text-foreground/15"}
                   strokeWidth={anchor ? 2 : 1}
                   style={{
                     cursor: isDrag ? "grabbing" : anchor ? "grab" : "ns-resize",
@@ -638,7 +637,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 {/* Inner white dot on anchors */}
                 {anchor && (
                   <circle cx={x} cy={y} r={2.5}
-                    fill="rgba(255,255,255,0.95)"
+                    fill="currentColor" className="text-foreground"
                     style={{ pointerEvents: "none" }} />
                 )}
 
@@ -656,15 +655,26 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 {/* LOW / MID / HIGH label */}
                 {band.label && (
                   <text
-                    x={x} y={h - PAD_B + 16}
-                    textAnchor="middle" fontSize="9"
-                    fill={active ? "#f5c842" : "rgba(255,255,255,0.4)"}
-                    fontWeight="700" letterSpacing="1.5"
+                    x={x} y={h - PAD_B + 12}
+                    textAnchor="middle" fontSize="8"
+                    fill={active ? "#f5c842" : "currentColor"}
+                    className={active ? "" : "text-foreground/60"}
+                    fontWeight="800" letterSpacing="1.5"
                     fontFamily="var(--font-sans,sans-serif)"
                     style={{ transition: "fill 0.15s" }}>
                     {band.label}
                   </text>
                 )}
+                {/* Frequency axis label */}
+                <text
+                  x={x} y={h - PAD_B + (band.label ? 22 : 17)}
+                  textAnchor="middle" fontSize="7.5"
+                  fill="currentColor" className={active ? "text-foreground/90" : "text-foreground/50"}
+                  fontWeight="700" letterSpacing="0.5"
+                  fontFamily="var(--font-mono,monospace)"
+                  style={{ transition: "fill 0.15s" }}>
+                  {band.freq >= 1000 ? `${band.freq / 1000}k` : band.freq}
+                </text>
               </g>
             );
           })}

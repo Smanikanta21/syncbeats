@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useCallback, useState, useMemo } from "react";
 import { use } from "react";
-import { FullscreenLoader } from "../../../../components/FullscreenLoader";
 import { useRoom } from "../../../../hooks/useRoom";
 import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
@@ -195,11 +194,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0", "bg-background", "transition-colors", "duration-1000", "ease-in-out")}
     >
 
-      {/* Full-screen loader: only shown on the FIRST join (no snapshot yet), not on reconnects */}
-      <FullscreenLoader
-        isVisible={(authLoading || (!isConnected && !connectionError && !snapshot)) && !isTimedOut}
-        message={joinStatus === "pending" ? "Waiting for host to let you in..." : isConnecting ? "Connecting to room…" : "Loading…"}
-      />
 
       {/* Subtle reconnecting banner — shown when socket drops while already in room */}
       {isReconnecting && !isConnected && (

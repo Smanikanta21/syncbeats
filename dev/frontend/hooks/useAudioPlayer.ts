@@ -211,8 +211,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     analyserNodeRef.current.connect(audioCtxRef.current.destination);
 
     // Apply iOS latency fallback immediately, since enumerateDevices might be blocked on HTTP
-    let outLat = audioCtxRef.current.outputLatency || 0;
-    let baseLat = audioCtxRef.current.baseLatency || 0;
+    const outLat = audioCtxRef.current.outputLatency || 0;
+    const baseLat = audioCtxRef.current.baseLatency || 0;
     let totalLat = outLat + baseLat;
 
     if (totalLat === 0 && typeof navigator !== 'undefined') {
@@ -498,8 +498,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
       
       if (audioCtxRef.current) {
-        let outLat = audioCtxRef.current.outputLatency || 0;
-        let baseLat = audioCtxRef.current.baseLatency || 0;
+        const outLat = audioCtxRef.current.outputLatency || 0;
+        const baseLat = audioCtxRef.current.baseLatency || 0;
         let totalLat = outLat + baseLat;
 
         // Fallback for iOS/Safari where latency is 0
@@ -873,7 +873,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           }
         } else {
-          let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
 
           const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
           if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
@@ -1279,9 +1279,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     // 1. Commit elapsed time at the OLD rate so getTruePosition() doesn't retroactively distort past time
     if (isPlayingRef.current) {
       if (audioCtxRef.current) {
-        const oldElapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
-        pauseOffsetRef.current += oldElapsed;
-        startTimeRef.current = audioCtxRef.current.currentTime;
+        // Only rebase if the source has actually started. scheduleStart() can
+        // queue a source up to ~800ms in the future (startTimeRef is a future
+        // ctx time); rebasing to `now` here would discard that schedule and
+        // make getTruePosition() report a position the audio hasn't reached.
+        if (audioCtxRef.current.currentTime > startTimeRef.current) {
+          const oldElapsed = (audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+          pauseOffsetRef.current += oldElapsed;
+          startTimeRef.current = audioCtxRef.current.currentTime;
+        }
       } else {
         const oldElapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
         pauseOffsetRef.current += oldElapsed;
