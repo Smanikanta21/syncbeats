@@ -12,6 +12,7 @@ import { X, Camera, MessageSquare } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
+import { GlobalLoadingScreen } from "../../components/GlobalLoadingScreen";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, serverError, resendVerification, renameDevice, replaceDevice } = useAuth();
@@ -62,7 +63,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   // Redirect to login if not authenticated and server is reachable
   useEffect(() => {
     if (!loading && !user && !serverError) {
-      const returnTo = encodeURIComponent(pathname || "/hub");
+      const returnTo = encodeURIComponent(pathname || "/room/default");
       router.replace(`/login?returnTo=${returnTo}`);
     }
   }, [user, loading, serverError, router, pathname]);
@@ -149,6 +150,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
+      {loading && <GlobalLoadingScreen />}
       {user && !loading && !isProfile && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className={cn('fixed', 'top-24', 'left-1/2', 'z-60', 'w-[min(92vw,720px)]', '-translate-x-1/2', 'rounded-3xl', 'border', 'border-amber-400/30', 'bg-amber-500/10', 'px-4', 'py-3', 'backdrop-blur-xl')}>

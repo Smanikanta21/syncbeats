@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         googleLogin(idToken)
           .then(() => {
             const params = new URLSearchParams(window.location.search);
-            const returnTo = params.get("returnTo") || "/hub";
+            const returnTo = params.get("returnTo") || "/room/default";
             window.location.href = returnTo;
           })
           .catch((err) => {
@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await googleLogin(e.data.idToken);
           const params = new URLSearchParams(window.location.search);
-          const returnTo = params.get("returnTo") || "/hub";
+          const returnTo = params.get("returnTo") || "/room/default";
           window.location.href = returnTo;
         } catch (err) {
           console.error("[Auth] Google OAuth popup message error:", err);

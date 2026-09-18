@@ -21,9 +21,9 @@ export default function AuthPage() {
       roomsApi.default()
         .then((res) => {
           if (res?.roomId) router.replace(`/room/${res.roomId}`);
-          else router.replace("/hub");
+          else router.replace("/room/default");
         })
-        .catch(() => router.replace("/hub"));
+        .catch(() => router.replace("/room/default"));
     }
   }, [user, authLoading, router]);
   const [googleReady, setGoogleReady] = useState(false);
@@ -118,7 +118,7 @@ export default function AuthPage() {
 
     try {
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') || '/hub';
+      const returnTo = params.get('returnTo') || '/room/default';
       
       if (isLogin) {
         const token = await login(email, password);
@@ -251,7 +251,7 @@ export default function AuthPage() {
       try {
         logger.info("GOOGLE_OAUTH_SUBMIT", "Google OAuth credential submitted");
         const params = new URLSearchParams(window.location.search);
-        const returnTo = params.get('returnTo') || '/hub';
+        const returnTo = params.get('returnTo') || '/room/default';
         const token = await googleLogin(idToken);
         logger.success("GOOGLE_OAUTH_SUCCESS", "Google OAuth authentication succeeded");
         if (returnTo.startsWith('syncbeats://')) {

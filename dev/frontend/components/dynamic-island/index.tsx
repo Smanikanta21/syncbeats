@@ -708,9 +708,9 @@ const RoomPill = ({
             <span className={cn('text-[10px]', 'font-black', 'text-white')}>{seekIndicator.text}</span>
           </>
         ) : isSyncing ? (
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-amber-500/20', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-amber-500/30')}>
-            <Loader2 className={cn('w-3', 'h-3', 'text-amber-400', 'animate-spin', 'shrink-0')} />
-            <span className={cn('text-[9px]', 'font-black', 'text-amber-400', 'uppercase', 'tracking-widest')}>Buffering</span>
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-foreground/10', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-foreground/20')}>
+            <Loader2 className={cn('w-3', 'h-3', 'text-foreground/70', 'animate-spin', 'shrink-0')} />
+            <span className={cn('text-[9px]', 'font-black', 'text-foreground/70', 'uppercase', 'tracking-widest')}>Buffering</span>
           </div>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
@@ -1526,7 +1526,7 @@ export function DynamicIsland() {
         }}
       >
         <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
-          <Link href="/hub" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
+          <Link href="/room/default" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
             <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>
               <Disc className={cn('w-4', 'h-4', 'sm:w-5', 'sm:h-5', 'text-foreground/70', 'animate-[spin_5s_linear_infinite]')} />
             </div>
@@ -1538,7 +1538,7 @@ export function DynamicIsland() {
             <ThemeToggle />
             <div className={cn('w-px', 'h-6', 'bg-foreground/10', 'hidden', 'sm:block')} />
             {isProfile ? (
-              <Link href="/hub" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
+              <Link href="/room/default" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
             ) : (
               <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className={cn('flex', 'items-center', 'gap-3', 'cursor-pointer', 'group', 'outline-none')}>
                 <div className={cn('text-right', 'hidden', 'sm:block')}>

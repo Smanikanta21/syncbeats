@@ -192,7 +192,7 @@ export default function ProfilePage() {
         return;
       }
     } catch {}
-    router.push('/hub');
+    router.push('/room/default');
   }, [router]);
 
   return (

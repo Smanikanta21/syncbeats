@@ -81,8 +81,8 @@ const MICRO_RATE_SLOW = 0.999;
 const MICRO_RATE_DEADZONE_MS = 2; // Don't adjust if drift < 2ms — already perfect
 
 // Macro-rate: proportional correction, scales with drift size.
-// Max 0.6% (~10 cents pitch shift, imperceptible), closes a 100ms gap in ~16 seconds.
-const MACRO_RATE_MAX_DEVIATION = 0.006; // cap at 0.6% (1.006 / 0.994)
+// Max 1.0% (imperceptible), closes a 100ms gap much faster.
+const MACRO_RATE_MAX_DEVIATION = 0.010; // cap at 1.0% (1.010 / 0.990)
 const MACRO_RATE_MIN_DEVIATION = 0.002; // floor at 0.2%
 
 // Crossfade durations (ms)

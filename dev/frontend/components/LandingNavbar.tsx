@@ -50,8 +50,8 @@ export function LandingNavbar() {
       <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'md:gap-4')}>
         {user ? (
           <Magnetic>
-            <DynamicAuroraButton href="/hub" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
-              Launch Hub
+            <DynamicAuroraButton href="/room/default" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
+              Launch App
             </DynamicAuroraButton>
           </Magnetic>
         ) : (

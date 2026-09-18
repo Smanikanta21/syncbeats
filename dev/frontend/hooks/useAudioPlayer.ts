@@ -818,16 +818,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (cachedBlob) {
             console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
             setDownloadProgress(100);
-            const blobUrl = URL.createObjectURL(cachedBlob);
-            setStreamingAudioSrc(blobUrl);
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
             const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
             const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-            
-            // Assign src immediately for Instant Playback!
-            setStreamingAudioSrc(fetchUrl);
 
             // Concurrently fetch stream bytes in background to stash to IDB
             try {
