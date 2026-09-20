@@ -297,7 +297,7 @@ echo ""
 echo "Or add an alias to your shell config:"
 echo "  echo 'alias syncbeats=\"cd $INSTALL_DIR && npm start\"' >> ~/.zshrc"
 echo ""
-\`;
+`;
       res.setHeader('Content-Type', 'text/plain');
       res.send(installScript);
     });
