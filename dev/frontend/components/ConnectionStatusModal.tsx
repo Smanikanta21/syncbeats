@@ -25,8 +25,10 @@ export function ConnectionStatusModal() {
         >
           {/* Animated Background Glow */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div
-              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70vw] h-[70vw] rounded-full blur-[140px] opacity-25 animate-pulse ${
+            <motion.div
+              animate={{ opacity: [0.15, 0.3, 0.15] }}
+              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70vw] h-[70vw] rounded-full blur-[140px] ${
                 isOffline ? "bg-amber-600/30" : "bg-red-600/30"
               }`}
             />
@@ -40,7 +42,9 @@ export function ConnectionStatusModal() {
             className="w-full max-w-md bg-background/95 dark:bg-[#0B0F17]/95 border border-foreground/15 dark:border-white/10 rounded-[2.5rem] p-7 flex flex-col items-center text-center shadow-[0_32px_80px_rgba(0,0,0,0.7)] relative z-10 overflow-hidden"
           >
             {/* Icon Banner */}
-            <div
+            <motion.div
+              animate={{ y: [0, -6, 0] }}
+              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
               className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-5 border shadow-2xl ${
                 isOffline
                   ? "bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-amber-500/20"
@@ -48,11 +52,11 @@ export function ConnectionStatusModal() {
               }`}
             >
               {isOffline ? (
-                <WifiOff className="w-10 h-10 animate-bounce" />
+                <WifiOff className="w-10 h-10" />
               ) : (
-                <ServerOff className="w-10 h-10 animate-pulse" />
+                <ServerOff className="w-10 h-10" />
               )}
-            </div>
+            </motion.div>
 
             {/* Title */}
             <h2 className="text-2xl font-black tracking-tight text-foreground mb-2">
@@ -68,8 +72,10 @@ export function ConnectionStatusModal() {
 
             {/* Status Indicator Pill */}
             <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-xs font-bold text-foreground/70 mb-6">
-              <span
-                className={`w-2 h-2 rounded-full animate-ping ${
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                className={`w-2 h-2 rounded-full ${
                   isOffline ? "bg-amber-500" : "bg-red-500"
                 }`}
               />

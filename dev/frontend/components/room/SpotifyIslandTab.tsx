@@ -110,6 +110,13 @@ export function SpotifyIslandTab({
         playlistId: data.playlistId,
       });
       setPlaylistUrl("");
+
+      // Warn if we were capped at 100 due to no user Spotify auth
+      if (data.capped) {
+        setError(
+          `Only the first 100 tracks were imported. Connect your Spotify account in Profile → Spotify to import the full playlist.`
+        );
+      }
       
       await fetchImported();
     } catch (err: any) {
@@ -311,8 +318,19 @@ export function SpotifyIslandTab({
         )}
 
         {error && (
-          <div className="text-red-400 text-xs text-center p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-            {error}
+          <div className={error.includes("Connect your Spotify account")
+            ? "text-amber-300 text-xs text-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex flex-col items-center gap-2"
+            : "text-red-400 text-xs text-center p-2 rounded-lg bg-red-500/10 border border-red-500/20"
+          }>
+            <span>{error}</span>
+            {error.includes("Connect your Spotify account") && (
+              <a
+                href={`${getServerUrl()}/spotify/auth?token=${token || getAuthToken()}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1DB954] text-black font-semibold text-xs hover:bg-[#1ed760] transition-colors"
+              >
+                Connect Spotify Account
+              </a>
+            )}
           </div>
         )}
 

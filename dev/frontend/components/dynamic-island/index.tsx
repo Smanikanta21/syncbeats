@@ -10,21 +10,21 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useAuth } from "../context/AuthContext";
-import { useAudio } from "../context/AudioContext";
-import { useVisualizer } from "../context/VisualizerContext";
-import { useUpload } from "../context/UploadContext";
-import { JoinRequest } from "../lib/types";
-import { getSocket } from "../lib/socket";
-import { roomsApi, usersApi } from "../lib/api";
-import { formatTime } from "../hooks/useAudioPlayer";
-import { ThemeToggle } from "./ThemeToggle";
-import { useSyncInfo } from "../context/SyncContext";
-import { useNetworkStats, qualityColor } from "../hooks/useNetworkStats";
-import { SpotifyIslandTab } from "./room/SpotifyIslandTab";
-import { SearchTab } from "./room/SearchTab";
-import { useSettings } from "../hooks/useSettings";
-import { cn } from "../lib/utils";
+import { useAuth } from "../../context/AuthContext";
+import { useAudio } from "../../context/AudioContext";
+import { useVisualizer } from "../../context/VisualizerContext";
+import { useUpload } from "../../context/UploadContext";
+import { JoinRequest } from "../../lib/types";
+import { getSocket } from "../../lib/socket";
+import { roomsApi, usersApi } from "../../lib/api";
+import { formatTime } from "../../hooks/useAudioPlayer";
+import { ThemeToggle } from "../ThemeToggle";
+import { useSyncInfo } from "../../context/SyncContext";
+import { useNetworkStats, qualityColor } from "../../hooks/useNetworkStats";
+import { SpotifyIslandTab } from "../room/SpotifyIslandTab";
+import { SearchTab } from "../room/SearchTab";
+import { useSettings } from "../../hooks/useSettings";
+import { cn } from "../../lib/utils";
 
 // ─────────────────────────────────────────────────────────
 // Constants
@@ -113,114 +113,7 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
 // AudioBars
 // ─────────────────────────────────────────────────────────
 
-const AudioBars = ({
-  isPlaying,
-  isSmall,
-  isVisible = true,
-}: {
-  isPlaying: boolean;
-  isSmall?: boolean;
-  isVisible?: boolean;
-}) => {
-  const audio = useAudio();
-  const { dataRef } = useVisualizer();
-  const barsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isPlaying || !isVisible) {
-      if (barsRef.current) {
-        const children = barsRef.current.children;
-        for (let i = 0; i < children.length; i++) {
-          const el = children[i] as HTMLElement;
-          el.style.height = "15%";
-          el.style.opacity = "0.5";
-        }
-      }
-      return;
-    }
-
-    let rafId: number;
-    const displayHeights = [15, 15, 15, 15];
-    const beatHistory: number[] = [];
-    const HISTORY_SIZE = 6;
-
-    const tick = () => {
-      const data = dataRef.current.rawAudioData;
-      let bass = 0, sub = 0, mids = 0, highs = 0;
-
-      if (data && data.length > 40) {
-        let bassSum = 0;
-        for (let i = 1; i <= 5; i++) bassSum += data[i];
-        bass = bassSum / 5;
-        let subSum = 0;
-        for (let i = 0; i <= 2; i++) subSum += data[i];
-        sub = subSum / 3;
-        let midSum = 0;
-        for (let i = 6; i <= 14; i++) midSum += data[i];
-        mids = midSum / 9;
-        let highSum = 0;
-        for (let i = 15; i <= 30; i++) highSum += data[i];
-        highs = highSum / 16;
-      }
-
-      const expScale = (val: number) => Math.pow(val / 255, 2.5) * 100;
-      const innerIntensity = expScale(bass * 0.7 + sub * 0.3);
-      const outerIntensity = expScale(mids * 0.6 + highs * 0.4);
-      const innerTarget = Math.max(15, Math.min(15 + innerIntensity, 100));
-
-      beatHistory.push(innerTarget);
-      if (beatHistory.length > HISTORY_SIZE) beatHistory.shift();
-
-      const outerTarget = Math.max(15, Math.min(15 + outerIntensity, 88));
-      const trailSlice = beatHistory.slice(0, Math.max(1, Math.floor(beatHistory.length * 0.5)));
-      const trailedOuter = trailSlice.reduce((a, b) => a + b, 0) / trailSlice.length * 0.7;
-
-      const targets = [
-        Math.max(outerTarget, trailedOuter * 0.6),
-        innerTarget,
-        innerTarget * 0.92,
-        Math.max(outerTarget * 0.9, trailedOuter * 0.5),
-      ];
-
-      for (let i = 0; i < 4; i++) {
-        const target = targets[i];
-        const current = displayHeights[i];
-        if (target > current) {
-          const attackSpeed = (i === 1 || i === 2) ? 0.55 : 0.40;
-          displayHeights[i] += (target - current) * attackSpeed;
-        } else {
-          const decaySpeed = (i === 1 || i === 2) ? 0.10 : 0.07;
-          displayHeights[i] += (target - current) * decaySpeed;
-        }
-        displayHeights[i] = Math.max(15, Math.min(100, displayHeights[i]));
-        if (barsRef.current) {
-          const el = barsRef.current.children[i] as HTMLElement;
-          if (el) {
-            el.style.height = `${displayHeights[i]}%`;
-            const brightness = 0.5 + (displayHeights[i] - 15) / 170;
-            el.style.opacity = `${Math.min(1, brightness)}`;
-          }
-        }
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, isVisible]);
-
-  const hClass = isSmall ? "h-3.5" : "h-5";
-  const barW = isSmall ? "w-[2.5px]" : "w-[3px]";
-  const gapClass = isSmall ? "gap-[1.5px]" : "gap-[2px]";
-
-  return (
-    <div ref={barsRef} className={`flex items-center ${gapClass} ${hClass}`}>
-      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
-      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
-      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
-      <div className={`${barW} bg-white rounded-full`} style={{ height: "15%", opacity: 0.5, willChange: "height, opacity", transition: "none" }} />
-    </div>
-  );
-};
+import { AudioBars } from "./AudioBars";
 
 // ─────────────────────────────────────────────────────────
 // CompactProgressBar
@@ -296,7 +189,7 @@ const SyncProgressBar = ({
     : 100;
 
   const label = upload.isUploading
-    ? "Downloading Song"
+    ? "Uploading Song..."
     : incomingTrack
     ? (incomingTrack.title ? `Receiving "${incomingTrack.title.substring(0, 18)}..."` : "Receiving Track")
     : isStuck
@@ -476,7 +369,16 @@ const PlayerTab = ({
 
         <div className={cn('flex', 'items-center', 'gap-4', 'shrink-0', 'pr-1', 'pt-1')}>
           {error ? <AlertCircle className={cn('w-5', 'h-5', 'text-[#FF0000]/80')} />
-            : !isReady || !isRoomReady ? <Loader2 className={cn('w-5', 'h-5', 'text-white/50', 'animate-spin')} />
+            : !isReady || !isRoomReady ? (
+                <div className={cn('w-6', 'h-1', 'bg-white/10', 'rounded-full', 'overflow-hidden', 'flex', 'items-center', 'shrink-0')}>
+                  <motion.div
+                    className={cn('h-full', 'bg-white/40', 'rounded-full', 'w-1/3')}
+                    initial={{ x: "-100%" }}
+                    animate={{ x: "300%" }}
+                    transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut", repeatType: "mirror" }}
+                  />
+                </div>
+              )
             : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
@@ -629,14 +531,14 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
   };
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
+    <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
       <div className={cn('flex', 'items-center', 'gap-2', 'mb-3', 'shrink-0')}>
         <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
           <ChevronLeft className={cn('w-4', 'h-4', 'text-white/70')} />
         </button>
         <span className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/60')}>Invite Friends</span>
       </div>
-      <div className={cn('flex-1', 'flex', 'flex-col', 'min-h-0', 'overflow-hidden')}>
+      <div className={cn('flex', 'flex-col')}>
         <div className={cn('relative', 'mb-3', 'shrink-0')}>
           <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-3.5', 'h-3.5', 'text-white/40')} />
           <input
@@ -665,7 +567,7 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
             className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
           />
         </div>
-        <div className={cn('flex-1', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
+        <div className={cn('max-h-[260px]', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
           {loading ? (
             <div className={cn('flex', 'justify-center', 'py-3')}><Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white/40')} /></div>
           ) : results.length > 0 ? (
@@ -719,7 +621,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
   onDeny: (id: string) => void;
   onBack: () => void;
 }) => (
-  <div className={cn('flex', 'flex-col', 'h-full', 'text-white', 'pt-2', 'pb-4')}>
+  <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-2', 'pb-4')}>
     <div className={cn('flex', 'items-center', 'justify-between', 'px-6', 'mb-4')}>
       <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
         <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
@@ -727,7 +629,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
       <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Join Requests ({requests.length})</span>
       <div className="w-9" />
     </div>
-    <div className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'px-6', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')} data-lenis-prevent="true">
+    <div className={cn('max-h-[320px]', 'min-h-0', 'overflow-y-auto', 'px-6', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')} data-lenis-prevent="true">
       {requests.length === 0 ? (
         <div className={cn('text-center', 'text-white/40', 'text-xs', 'mt-10')}>No pending requests</div>
       ) : requests.map(req => (
@@ -806,9 +708,9 @@ const RoomPill = ({
             <span className={cn('text-[10px]', 'font-black', 'text-white')}>{seekIndicator.text}</span>
           </>
         ) : isSyncing ? (
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-amber-500/20', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-amber-500/30')}>
-            <Loader2 className={cn('w-3', 'h-3', 'text-amber-400', 'animate-spin', 'shrink-0')} />
-            <span className={cn('text-[9px]', 'font-black', 'text-amber-400', 'uppercase', 'tracking-widest')}>Buffering</span>
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-foreground/10', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-foreground/20')}>
+            <Loader2 className={cn('w-3', 'h-3', 'text-foreground/70', 'animate-spin', 'shrink-0')} />
+            <span className={cn('text-[9px]', 'font-black', 'text-foreground/70', 'uppercase', 'tracking-widest')}>Buffering</span>
           </div>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
@@ -928,27 +830,6 @@ const RoomExtendedPill = ({
     .map(([, p]) => p);
   const isSyncing = (hasTrack && !isReady) || incomingTrack != null || upload.isUploading || (hasTrack && progresses.length > 0 && progresses.some(p => p < 100));
 
-  if (isSyncing) {
-    // ── Syncing / buffering: full-width progress bar, no track info, no player
-    return (
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-4', 'gap-3')}>
-        {/* Spinner icon */}
-        <Loader2 className={`w-4 h-4 shrink-0 ${isStuck ? "text-amber-400" : "text-white/50 animate-spin"}`} />
-        {/* Full-width progress */}
-        <div className={cn('flex-1', 'min-w-0')}>
-          <SyncProgressBar
-            downloadProgress={downloadProgress}
-            deviceSyncProgress={deviceSyncProgress}
-            participants={participants}
-            incomingTrack={incomingTrack}
-            isReady={isReady}
-            isStuck={isStuck}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-2', 'gap-2')}>
@@ -958,15 +839,30 @@ const RoomExtendedPill = ({
         <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
           {thumbUrl
             ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+            : isSyncing 
+            ? <Loader2 className={`w-4 h-4 text-white/50 animate-spin`} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
         {/* Title + progress line */}
         <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0')}>
           <div className={cn('text-white', 'text-[11px]', 'font-semibold', 'truncate', 'leading-tight')}>
-            {title.split(/\s+/).slice(0, 5).join(" ")}
+            {title ? title.split(/\s+/).slice(0, 5).join(" ") : (isSyncing ? "Syncing..." : "No track")}
           </div>
-          <CompactProgressBar isPlaying={effectivePlaying} isVisible />
+          {isSyncing ? (
+            <div className={cn('mt-0.5', 'w-full')}>
+              <SyncProgressBar
+                downloadProgress={downloadProgress}
+                deviceSyncProgress={deviceSyncProgress}
+                participants={participants}
+                incomingTrack={incomingTrack}
+                isReady={isReady}
+                isStuck={isStuck}
+              />
+            </div>
+          ) : (
+            <CompactProgressBar isPlaying={effectivePlaying} isVisible />
+          )}
         </div>
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
@@ -1086,8 +982,92 @@ export function DynamicIsland() {
   const [isExpanded, setIsExpanded] = useState(false); // non-room
   const islandRef = useRef<HTMLDivElement>(null);
   const [wiggle, setWiggle] = useState(false);
+  const [isSwallowing, setIsSwallowing] = useState(false);
   const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevReqCountRef = useRef(0);
+
+  const uploadRef = useRef(upload);
+  useEffect(() => {
+    uploadRef.current = upload;
+  }, [upload]);
+
+  useEffect(() => {
+    let dragCounter = 0;
+
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter++;
+      
+      const types = e.dataTransfer?.types;
+      let hasFiles = true; // Default to true to be safe
+      if (types) {
+        hasFiles = Array.from(types).some(t => 
+          t.toLowerCase() === "files" || 
+          t.toLowerCase().includes("file")
+        );
+      }
+      if (hasFiles) {
+        setWiggle(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        setWiggle(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter = 0;
+      setWiggle(false);
+
+      const files = Array.from(e.dataTransfer?.files || []);
+      const audioFiles = files.filter(f => f.type.startsWith('audio/') || f.name.toLowerCase().endsWith('.mp3'));
+      
+      if (audioFiles.length > 0) {
+        setIsSwallowing(true);
+        setTimeout(async () => {
+          setIsSwallowing(false);
+          const currentRoomId = window.location.pathname.split("/room/")[1]?.split("/")[0];
+          if (currentRoomId) {
+            setIslandState("pill");
+            setActiveTab("player");
+            for (const file of audioFiles) {
+              try {
+                await uploadRef.current.uploadFile(file, currentRoomId);
+              } catch (err) {
+                console.error("Failed to upload file", err);
+              }
+            }
+          }
+        }, 300);
+      }
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
 
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
   const [inviteQuery, setInviteQuery] = useState("");
@@ -1098,20 +1078,23 @@ export function DynamicIsland() {
   const [slideDir, setSlideDir] = useState(1);
   const [ytResultsCount, setYtResultsCount] = useState(0);
   const [seekIndicator, setSeekIndicator] = useState<{ amount: number; text: string } | null>(null);
-  const seekTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [volIndicator, setVolIndicator] = useState<{ amount: number; text: string } | null>(null);
-  const volTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const volTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [forceShowDetails, setForceShowDetails] = useState(false);
   const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
   const [isImportingPlaylist, setIsImportingPlaylist] = useState(false);
   const [hasSearchContent, setHasSearchContent] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isPressing, setIsPressing] = useState(false);
-  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHoveringRef = useRef(false);
   const [windowWidth, setWindowWidth] = useState(0);
   const [windowHeight, setWindowHeight] = useState(0);
   const localProgressRef = useRef(0);
+  // ── Auto-sizing: measures actual rendered content height ──────────────────
+  const contentMeasureRef = useRef<HTMLDivElement>(null);
+  const [measuredContentHeight, setMeasuredContentHeight] = useState(300);
 
   const [radialSnapInfo, setRadialSnapInfo] = useState<{
     isOpen: boolean;
@@ -1150,6 +1133,24 @@ export function DynamicIsland() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // ── ResizeObserver: auto-size island to content ──────────────────────────
+  useEffect(() => {
+    const el = contentMeasureRef.current;
+    if (!el) return;
+    // Initial measurement
+    setMeasuredContentHeight(el.scrollHeight);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Use borderBoxSize if available for accuracy, fallback to scrollHeight
+        const h = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).scrollHeight;
+        setMeasuredContentHeight(Math.ceil(h));
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [islandState]); // re-attach whenever island opens/closes
+
   const lastTapRef = useRef<number>(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
@@ -1159,7 +1160,7 @@ export function DynamicIsland() {
   const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
   const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
   const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isBufferingStuck, setIsBufferingStuck] = useState(false);
 
@@ -1512,7 +1513,7 @@ export function DynamicIsland() {
   // ── Non-room layout (nav bar)
   if (!isRoom) {
     // Legacy compact/expanded for non-room
-    let currentExpandedHeight: number | "auto" = "auto";
+    const currentExpandedHeight: number | "auto" = "auto";
     const dynamicExpandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
     const dynamicCompactWidth = !hasTrack ? dynamicExpandedWidth
       : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
@@ -1525,7 +1526,7 @@ export function DynamicIsland() {
         }}
       >
         <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
-          <Link href="/hub" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
+          <Link href="/room/default" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
             <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>
               <Disc className={cn('w-4', 'h-4', 'sm:w-5', 'sm:h-5', 'text-foreground/70', 'animate-[spin_5s_linear_infinite]')} />
             </div>
@@ -1537,7 +1538,7 @@ export function DynamicIsland() {
             <ThemeToggle />
             <div className={cn('w-px', 'h-6', 'bg-foreground/10', 'hidden', 'sm:block')} />
             {isProfile ? (
-              <Link href="/hub" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
+              <Link href="/room/default" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
             ) : (
               <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className={cn('flex', 'items-center', 'gap-3', 'cursor-pointer', 'group', 'outline-none')}>
                 <div className={cn('text-right', 'hidden', 'sm:block')}>
@@ -1568,65 +1569,29 @@ export function DynamicIsland() {
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
-  let searchHeight = 100;
-  if (isViewingPlaylist) {
-    searchHeight = 560;
-  } else if (isImportingPlaylist || upload.activeImport?.isImporting) {
-    searchHeight = 300;
-  } else if (searchError) {
-    const isPrivateVideo = searchError.includes("Private playlists cannot be imported");
-    const textLines = Math.ceil(searchError.length / 45);
-    const extraHeight = isPrivateVideo ? 260 : Math.max(0, textLines - 1) * 22;
-    searchHeight = Math.min(540, 150 + extraHeight);
-  } else if (hasSearchContent) {
-    searchHeight = 100;
-  } else if (ytResultsCount > 0) {
-    searchHeight = 480;
-  } else {
-    searchHeight = 100;
-  }
-
-  let inviteHeight = 145;
-  if (inviteResultsCount > 0) {
-    inviteHeight = Math.min(420, 150 + inviteResultsCount * 60);
-  } else if (inviteLoading) {
-    inviteHeight = 180;
-  } else if (inviteQuery.includes("@")) {
-    inviteHeight = 200;
-  } else if (inviteQuery.trim().length > 0) {
-    inviteHeight = 170;
-  } else {
-    inviteHeight = 145;
-  }
-
-  let requestsHeight = 140;
-  if (pendingRequests && pendingRequests.length > 0) {
-    requestsHeight = Math.min(400, 110 + pendingRequests.length * 60);
-  }
-
-  const expandedHeightMap: Record<IslandTab, number> = {
-    player: 300,
-    network: 410,
-    search: searchHeight,
-    requests: requestsHeight,
-    deviceInfo: 420,
-    invite: inviteHeight,
-  };
-  const expandedHeight = expandedHeightMap[activeTab] || 380;
+  // ── Auto-sized height: drive island size from actual rendered content ─────
+  // The ResizeObserver watches the content wrapper and feeds its scrollHeight
+  // back here. We add a small buffer (8px) so the content never clips.
+  const ISLAND_VERT_PAD = 8;
+  const maxIslandHeight = windowHeight > 0 ? windowHeight - 32 : 900;
+  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight + ISLAND_VERT_PAD);
 
   // Current animated dimensions
   // When radial navigator active: expand to 265px
   // When syncing: use a compact width (spinner + progress bar only, no track info)
   const syncingExtendedWidth = Math.min(340, (windowWidth > 0 ? windowWidth : 380) - 32);
-  const currentWidth = radialSnapInfo?.isOpen
+  const dropZoneSize = windowWidth > 0 ? Math.min(240, windowWidth - 64) : 240;
+  const currentWidth = wiggle || isSwallowing
+    ? dropZoneSize
+    : radialSnapInfo?.isOpen
     ? Math.min(265, (windowWidth > 0 ? windowWidth : 320) - 32)
     : isExpanded_room
     ? expandedWidth
     : isExtended_room
-    ? (isSyncingNow ? syncingExtendedWidth : extendedWidth)
+    ? extendedWidth
     : pillWidth;
-  const currentHeight = isExpanded_room ? expandedHeight : pillHeight;
-  const currentRadius = isExpanded_room ? 36 : pillHeight / 2;
+  const currentHeight = wiggle || isSwallowing ? dropZoneSize : (isExpanded_room ? expandedHeight : pillHeight);
+  const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : pillHeight / 2);
 
   const handlePointerDown_room = () => {
     resetInactivityTimer();
@@ -1755,19 +1720,16 @@ export function DynamicIsland() {
             width: SHAPE_SPRING,
             height: SHAPE_SPRING,
             borderRadius: SHAPE_SPRING,
-            scale: { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
+            scale: isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
+            x: wiggle && !isSwallowing ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30 }
           }}
-          animate={
-            wiggle ? {
-              x: [0, -4, 4, -4, 4, 0],
-              transition: { duration: 0.4 }
-            } : {
-              width: currentWidth,
-              height: currentHeight,
-              borderRadius: currentRadius,
-              scale: isPressing && islandState === "pill" ? 0.94 : 1,
-            }
-          }
+          animate={{
+            width: currentWidth,
+            height: currentHeight,
+            borderRadius: currentRadius,
+            scale: isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
+            x: wiggle && !isSwallowing ? [0, -5, 5, -5, 5, -5, 5, 0] : 0
+          }}
           style={{
             backgroundColor: "#000000",
             cursor: isExpanded_room ? "default" : "pointer",
@@ -1838,7 +1800,7 @@ export function DynamicIsland() {
 
           {/* Pill content */}
           <AnimatePresence>
-            {islandState === "pill" && (
+            {islandState === "pill" && !wiggle && (
               <motion.div
                 key="pill-content"
                 initial={{ opacity: 0 }}
@@ -1902,18 +1864,21 @@ export function DynamicIsland() {
 
           {/* Expanded content */}
           <AnimatePresence>
-            {isExpanded_room && (
+            {isExpanded_room && !wiggle && (
               <motion.div
                 key="expanded-tab-container"
                 initial={{ opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ opacity: { duration: 0.2 }, scale: { ...SPRING, stiffness: 200 } }}
-                className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col', 'pointer-events-auto')}
+                className={cn('w-full', 'relative', 'pointer-events-auto')}
               >
+                {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
+                <div ref={contentMeasureRef}>
                 <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
                   {activeTab === "player" && (
-                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+
                       <PlayerTab
                         effectivePlaying={effectivePlaying}
                         trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
@@ -1942,12 +1907,12 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {activeTab === "network" && (
-                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
                       <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                     </motion.div>
                   )}
                   {activeTab === "search" && (
-                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
                       <SearchTab 
                         roomId={roomId!} 
                         initialMode={initialSearchMode}
@@ -1966,7 +1931,7 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {(activeTab === "deviceInfo" || activeTab === "invite") && (
-                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'flex-1', 'min-h-0', 'flex', 'flex-col')}>
+                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
                       <InviteTab 
                         onBack={() => setActiveTab("player")} 
                         roomId={roomId || ''} 
@@ -1995,6 +1960,36 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>{/* /contentMeasureRef */}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Drop Overlay */}
+          <AnimatePresence>
+            {(wiggle || isSwallowing) && (
+              <motion.div
+                key="drop-overlay"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: isSwallowing ? 0.5 : 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className={cn('absolute', 'inset-0', 'z-50', 'flex', 'flex-col', 'items-center', 'justify-center')}
+              >
+                <motion.div 
+                  animate={{ y: isSwallowing ? 20 : 0, scale: isSwallowing ? 0 : 1 }}
+                  transition={{ duration: 0.3, ease: "backIn" }}
+                  className={cn('w-16', 'h-16', 'rounded-full', 'bg-white/20', 'flex', 'items-center', 'justify-center', 'mb-4', 'shadow-2xl')}
+                >
+                  <Upload className={cn('w-8', 'h-8', 'text-white')} />
+                </motion.div>
+                <motion.span 
+                  animate={{ opacity: isSwallowing ? 0 : 1 }}
+                  transition={{ duration: 0.2 }}
+                  className={cn('text-lg', 'font-bold', 'text-white', 'tracking-wide', 'drop-shadow-md')}
+                >
+                  Drop MP3
+                </motion.span>
               </motion.div>
             )}
           </AnimatePresence>

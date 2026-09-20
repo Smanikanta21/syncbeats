@@ -430,7 +430,13 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
 
   // Promise 1: yt-dlp execution
   const ytDlpPromise = new Promise<boolean>((resolve) => {
-    const ytDlpArgs = ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl];
+    const ytDlpArgs = [
+      '-f', 'bestaudio',
+      '--concurrent-fragments', '4',
+      '--http-chunk-size', '10M',
+      '-o', outputFile,
+      watchUrl
+    ];
     const ytDlp = spawn(ytDlpPath, ytDlpArgs);
     ytDlp.on('close', (code: number) => {
       if (code === 0 && fs.existsSync(outputFile)) {

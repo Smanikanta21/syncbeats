@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
-import { roomsApi, historyApi, getServerUrl } from "../../lib/api";
+import { roomsApi, historyApi, getServerUrl, getAuthToken, youtubeApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles, History, Clock } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -38,11 +38,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode);
+  const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode || "youtube");
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    setMode(initialMode);
+    setMode(initialMode || "youtube");
   }, [initialMode]);
 
   // YouTube State
@@ -58,6 +58,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // Spotify State
   const [spResults, setSpResults] = useState<any[]>([]);
   const [mySpotifyPlaylists, setMySpotifyPlaylists] = useState<any[]>([]);
+  const [myYoutubePlaylists, setMyYoutubePlaylists] = useState<any[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [selectedPlaylistData, setSelectedPlaylistData] = useState<any>(null);
@@ -67,15 +68,25 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [importStage, setImportStage] = useState<"scraping" | "indexing" | "enriching" | "done">("scraping");
   const [importProgress, setImportProgress] = useState(0);
   const [importStats, setImportStats] = useState<{ total: number; playlistName?: string; playlistId?: string; coverUrl?: string }>({ total: 0 });
+  const [importAbortController, setImportAbortController] = useState<AbortController | null>(null);
 
   // Single-flight async wrappers — prevents duplicate API calls on rapid clicks
-  const enqueueAsync = useAsync(async (playlistId: string) => {
+  const enqueueAsync = useAsync(async (playlistId: string, source?: string) => {
     if (!token || !roomId) throw new Error('Not authenticated');
     const SERVER = getServerUrl();
+    
+    let body: any = { playlistId };
+    
+    if (source === "youtube") {
+      const tracksData = await youtubeApi.getPlaylistItems(playlistId);
+      if (!tracksData || tracksData.length === 0) throw new Error('Playlist is empty or private.');
+      body.tracks = tracksData;
+    }
+
     const res = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ playlistId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -118,6 +129,31 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   // Upload State
   const [uploadQueue, setUploadQueue] = useState<{ id: string, name: string, status: "pending" | "uploading" | "done" | "error" }[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const handleUploadFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const fileIds = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), name: f.name, status: "pending" as const }));
+    setUploadQueue(prev => [...prev, ...fileIds]);
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fid = fileIds[i].id;
+      setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "uploading" } : item));
+      try {
+        await upload.uploadFile(file, roomId!);
+        setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "done" } : item));
+        onSuccess?.();
+        setTimeout(() => {
+          setUploadQueue(prev => prev.filter(item => item.id !== fid));
+        }, 3000);
+      } catch (err) {
+        console.error(err);
+        setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "error" } : item));
+      }
+    }
+  }, [roomId, upload, onSuccess]);
+
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
@@ -148,6 +184,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       p.tracks?.some((t: any) => t.song?.title?.toLowerCase().includes(q))
     );
   }, [mode, selectedPlaylistId, query, mySpotifyPlaylists]);
+
+  const displayedYoutubePlaylists = useMemo(() => {
+    if (mode !== "youtube" || selectedPlaylistId) return [];
+    if (!query.trim()) return myYoutubePlaylists;
+    const q = query.trim().toLowerCase();
+    return myYoutubePlaylists.filter(p =>
+      p.title?.toLowerCase().includes(q) ||
+      p.name?.toLowerCase().includes(q)
+    );
+  }, [mode, selectedPlaylistId, query, myYoutubePlaylists]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -189,6 +235,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       return;
     }
 
+    // The YouTube playlist fetch has been extracted to its own useEffect below
+
+
     if (!query.trim()) return;
 
     const timer = setTimeout(async () => {
@@ -200,6 +249,25 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }, 300);
     return () => clearTimeout(timer);
   }, [query, mode]);
+
+  const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (mode === "youtube" && user?.id) {
+      youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => setYoutubeConnected(false));
+    }
+  }, [mode, user?.id]);
+
+  useEffect(() => {
+    if (mode === "youtube" && youtubeConnected && !myYoutubePlaylists.length && !loadingPlaylists) {
+      setLoadingPlaylists(true);
+      youtubeApi.getUserYoutubePlaylists().then(data => {
+        setMyYoutubePlaylists(data || []);
+      }).finally(() => {
+        setLoadingPlaylists(false);
+      });
+    }
+  }, [mode, youtubeConnected, myYoutubePlaylists.length, loadingPlaylists]);
 
   const isLoading = (mode !== "spotify" && isSearching) || loadingPlaylists || loadingPlaylist || importing || enqueuing !== null;
 
@@ -226,13 +294,13 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       }
     } else {
       if (!query.trim()) {
-        total = 0;
+        total = displayedYoutubePlaylists.length + uploadQueue.length;
       } else {
         total = (showSuggestions && ytSuggestions.length > 0 ? ytSuggestions.length : ytResults.length) + spResults.length + dbResults.length + uploadQueue.length;
       }
     }
     onResultsCountChange(total);
-  }, [isSearching, loadingPlaylists, loadingPlaylist, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, dbResults.length, uploadQueue.length, mySpotifyPlaylists.length, displayedSpotifyPlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, selectedPlaylistData]);
+  }, [isSearching, loadingPlaylists, loadingPlaylist, showSuggestions, ytSuggestions.length, ytResults.length, spResults.length, dbResults.length, uploadQueue.length, mySpotifyPlaylists.length, displayedSpotifyPlaylists.length, displayedYoutubePlaylists.length, mode, query, onResultsCountChange, selectedPlaylistId, selectedPlaylistData]);
 
   const performSearch = async (q: string) => {
     if (!q.trim()) return;
@@ -250,15 +318,25 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
 
     if (mode === "youtube") {
-      try {
-        const [ytRes, dbRes] = await Promise.all([
-          roomsApi.searchYoutube(roomId, q).catch(() => []),
-          roomsApi.searchLocalSongs(q).catch(() => ({ results: [] }))
-        ]);
-        setYtResults(ytRes);
-        setDbResults(dbRes.results || []);
+      const isUrl = q.trim().startsWith("http") && (q.includes("youtube.com/playlist") || q.includes("youtu.be/") || q.includes("youtube.com/watch"));
+      if (isUrl) {
+        setIsSearching(false);
+        if (!youtubeConnected) {
+          setSpError("Connect your YouTube account to import full playlists seamlessly.");
+          return;
+        }
+        handleYoutubeImport(q);
+      } else {
+        try {
+          const [ytRes, dbRes] = await Promise.all([
+            roomsApi.searchYoutube(roomId, q).catch(() => []),
+            roomsApi.searchLocalSongs(q).catch(() => ({ results: [] }))
+          ]);
+          setYtResults(ytRes);
+          setDbResults(dbRes.results || []);
+        }
+        catch (err) { console.error(err); } finally { setIsSearching(false); }
       }
-      catch (err) { console.error(err); } finally { setIsSearching(false); }
     } else if (mode === "spotify") {
       const isUrl = q.trim().startsWith("http") || q.trim().startsWith("spotify:");
       if (isUrl) {
@@ -287,7 +365,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   const handleSpotifyImport = async (url: string) => {
     if (!token) return;
-    if (!url.includes("spotify.com/playlist/")) {
+    const controller = new AbortController();
+    setImportAbortController(controller);
+    const urlLower = url.toLowerCase();
+    if (!urlLower.includes("spotify.com/playlist/")) {
       setSpError("Please enter a valid Spotify public playlist URL.");
       return;
     }
@@ -308,8 +389,13 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     const progressTimer = setInterval(() => {
       setImportProgress(prev => {
         const next = prev < 40 ? prev + 5 : prev < 80 ? prev + 2 : prev < 95 ? prev + 0.5 : prev;
-        upload.setActiveImport(curr => curr ? { ...curr, progress: Math.min(98, next) } : null);
         return next;
+      });
+      upload.setActiveImport(curr => {
+        if (!curr) return null;
+        const prev = curr.progress;
+        const next = prev < 40 ? prev + 5 : prev < 80 ? prev + 2 : prev < 95 ? prev + 0.5 : prev;
+        return { ...curr, progress: Math.min(98, next) };
       });
     }, 300);
 
@@ -329,6 +415,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ playlistUrl: url }),
+        signal: controller.signal,
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.details || data.error || "Failed to import playlist.");
@@ -343,6 +430,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         coverUrl: data.coverUrl,
       };
       setImportStats(finalStats);
+
+      // Warn the user if we only got 100 tracks due to Spotify's embed cap
+      if (data.capped) {
+        setSpError(
+          `Only the first 100 tracks were imported (Spotify's limit for unauthenticated access). ` +
+          `Connect your Spotify account in Profile → Spotify to import the full playlist.`
+        );
+      }
 
       upload.setActiveImport({
         playlistId: data.playlistId,
@@ -363,15 +458,18 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
       setQuery("");
       onSuccess?.();
+      return data.playlistId;
     } catch (err: any) {
       clearInterval(progressTimer);
       upload.setActiveImport(null);
+      if (err.name === 'AbortError') return;
       const errMsg = err.message || "Something went wrong during import.";
       if (errMsg.toLowerCase().includes("invalid spotify data structure") || errMsg.toLowerCase().includes("could not extract spotify playlist")) {
         setSpError("Private playlists cannot be imported. Make it public first.");
       } else {
         setSpError(errMsg);
       }
+      throw err;
     } finally {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -380,22 +478,192 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-  // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
-  const handleSpotifyEnqueue = useCallback(async (playlistId: string) => {
+  const handleSpotifySearchEnqueue = async (spotifyUrl: string) => {
     setSpError(null);
     try {
-      await enqueueAsync.run(playlistId);
+      const playlistId = await importAsync.run(spotifyUrl);
+      if (playlistId) {
+        await enqueueAsync.run(playlistId);
+        onSuccess?.();
+      }
+    } catch (e: any) {
+      setSpError(e?.message || "Failed to import and add playlist to queue.");
+    }
+  };
+
+  const handleYoutubeImport = async (url: string) => {
+    if (!token) return;
+    const controller = new AbortController();
+    setImportAbortController(controller);
+    const urlLower = url.toLowerCase();
+    if (!urlLower.includes("youtube.com/playlist") && !urlLower.includes("youtu.be/")) {
+      setSpError("Please enter a valid YouTube public playlist URL.");
+      return;
+    }
+    setImporting(true);
+    setSpError(null);
+    setImportStage("scraping");
+    setImportProgress(5);
+    setImportStats({ total: 0 });
+
+    upload.setActiveImport({
+      playlistName: "Importing Playlist...",
+      progress: 5,
+      stage: "scraping",
+      totalTracks: 0,
+      isImporting: true,
+    });
+
+    try {
+      const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+      const response = await fetch(`${SERVER}/api/bridge/import-youtube`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistUrl: url }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.details || errData.error || "Failed to import YouTube playlist.");
+      }
+
+      if (!response.body) throw new Error("No response body for SSE stream.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalTracks = 0;
+      let playlistId = "";
+      let playlistName = "YouTube Playlist";
+      let coverUrl: string | undefined;
+
+      // Bump progress bar to "fetching" stage while we await first event
+      setImportProgress(15);
+      setImportStage("indexing");
+      upload.setActiveImport(curr => curr ? { ...curr, progress: 15, stage: "indexing" } : null);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const lines = part.split("\n");
+          let eventName = "";
+          let dataStr = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+            if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
+          }
+          if (!dataStr) continue;
+          let data: any;
+          try { data = JSON.parse(dataStr); } catch { continue; }
+
+          if (eventName === "start") {
+            totalTracks = data.total || 0;
+            playlistId = data.playlistId || "";
+            playlistName = data.playlistName || "YouTube Playlist";
+            coverUrl = data.coverUrl;
+            setImportStats({ total: totalTracks, playlistName, playlistId, coverUrl });
+            setImportStage("enriching");
+            upload.setActiveImport(curr => curr ? {
+              ...curr,
+              playlistId,
+              playlistName,
+              stage: "enriching",
+              totalTracks,
+              progress: 10,
+            } : null);
+            setImportProgress(10);
+
+          } else if (eventName === "progress") {
+            const imported: number = data.imported || 0;
+            const total: number = data.total || totalTracks || 1;
+            const pct = Math.round((imported / total) * 100);
+            const currentTitle: string = data.currentTitle || "";
+            setImportProgress(pct);
+            setImportStats(prev => ({ ...prev, total: imported, playlistName, playlistId, coverUrl }));
+            upload.setActiveImport(curr => curr ? {
+              ...curr,
+              progress: pct,
+              totalTracks: imported,
+              currentTitle,
+            } : null);
+
+          } else if (eventName === "done") {
+            const finalTotal: number = data.totalTracks || totalTracks;
+            playlistId = data.playlistId || playlistId;
+            playlistName = data.playlistName || playlistName;
+            coverUrl = data.coverUrl || coverUrl;
+            setImportProgress(100);
+            setImportStage("done");
+            const finalStats = { total: finalTotal, playlistName, playlistId, coverUrl };
+            setImportStats(finalStats);
+            upload.setActiveImport({
+              playlistId,
+              playlistName,
+              progress: 100,
+              stage: "done",
+              totalTracks: finalTotal,
+              isImporting: false,
+            });
+
+            try {
+              const plRes = await roomsApi.getUserSpotifyPlaylists();
+              if (plRes && Array.isArray(plRes)) setMySpotifyPlaylists(plRes);
+            } catch {}
+
+            setQuery("");
+            onSuccess?.();
+
+          } else if (eventName === "error") {
+            throw new Error(data.error || "Import failed on server.");
+          }
+        }
+      }
+    } catch (err: any) {
+      upload.setActiveImport(null);
+      if (err.name === 'AbortError') return;
+      setSpError(err.message || "Something went wrong during YouTube import.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+
+  // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
+  const handleSpotifyEnqueue = useCallback(async (playlistId: string, source?: string) => {
+    setSpError(null);
+    try {
+      await enqueueAsync.run(playlistId, source);
       onSuccess?.();
     } catch (e: any) {
       setSpError(e?.message || "Failed to add playlist to queue.");
     }
   }, [enqueueAsync, onSuccess]);
 
-  const handlePlaylistClick = (id: string) => {
+  const handlePlaylistClick = async (id: string) => {
     setSelectedPlaylistId(id);
-    const playlist = mySpotifyPlaylists.find(p => p.id === id);
+    const playlist = mySpotifyPlaylists.find(p => p.id === id) || myYoutubePlaylists.find(p => p.id === id);
     if (playlist) {
-      setSelectedPlaylistData(playlist);
+      if (mode === "youtube" && playlist.source === "YOUTUBE") {
+        setLoadingPlaylist(true);
+        try {
+          const tracksData = await youtubeApi.getPlaylistItems(id);
+          setSelectedPlaylistData({ ...playlist, tracks: tracksData || [] });
+        } catch (err) {
+          setSpError("Failed to fetch YouTube playlist tracks.");
+          setSelectedPlaylistData(playlist); // fallback
+        } finally {
+          setLoadingPlaylist(false);
+        }
+      } else {
+        setSelectedPlaylistData(playlist);
+      }
     }
   };
 
@@ -410,15 +678,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     try {
       await roomsApi.deletePlaylist(playlistToDelete);
       setMySpotifyPlaylists(prev => prev.filter(p => p.id !== playlistToDelete));
+      setMyYoutubePlaylists(prev => prev.filter(p => p.id !== playlistToDelete));
       if (selectedPlaylistId === playlistToDelete) {
         setSelectedPlaylistId(null);
         setSelectedPlaylistData(null);
       }
-    } catch (err) {
-      console.error("Failed to delete playlist", err);
+      setPlaylistToDelete(null);
+    } catch (e: any) {
+      setSpError(e?.message || "Failed to delete playlist.");
     } finally {
       setIsDeletingPlaylist(false);
-      setPlaylistToDelete(null);
     }
   };
 
@@ -434,6 +703,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       const updatedPlaylist = { ...selectedPlaylistData, name: playlist.name, coverUrl: playlist.coverUrl };
       setSelectedPlaylistData(updatedPlaylist);
       setMySpotifyPlaylists(prev => prev.map(p => p.id === selectedPlaylistId ? { ...p, name: playlist.name, coverUrl: playlist.coverUrl } : p));
+      setMyYoutubePlaylists(prev => prev.map(p => p.id === selectedPlaylistId ? { ...p, title: playlist.name, thumbnail: playlist.coverUrl } : p));
       setIsEditingPlaylist(false);
     } catch (err) {
       console.error(err);
@@ -568,17 +838,20 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0 && (mode !== "spotify" || (mySpotifyPlaylists.length === 0 && !selectedPlaylistId));
+  // NOTE: this previously ANDed in `mode === "search"`, but `mode` is only ever
+  // "youtube" | "spotify" | null — so isCentered was permanently false and the
+  // centered empty state never rendered.
+  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0 && recentHistory.searches.length === 0 && recentHistory.listens.length === 0;
   const containerPadding = isSearchOnly ? "p-[2px]" : "px-5 sm:px-8 py-6";
 
   const getPlaceholder = () => {
-    if (mode === "youtube") return "Search YouTube...";
-    if (mode === "spotify") return "Paste Spotify Playlist URL...";
-    return "Search YouTube & Spotify...";
+    if (mode === "spotify") return "Paste a Spotify playlist link...";
+    if (mode === "youtube") return "Search YouTube or paste a video/playlist link...";
+    return "Search or paste a link...";
   };
 
   return (
-    <div className={`relative flex flex-col w-full h-full min-h-0 flex-1 ${containerPadding}`}>
+    <div className={`relative flex flex-col w-full h-auto ${containerPadding}`}>
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
           <button 
@@ -599,7 +872,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             <ChevronLeft className={cn('w-6', 'h-6')} />
           </button>
         )}
-        <div className={cn('flex-1', 'relative', 'h-full')}>
+        <motion.div 
+          className={cn('flex-1', 'relative', 'h-full', isDraggingOver ? 'ring-2 ring-white/50 rounded-full' : '')}
+          animate={isDraggingOver ? { scale: 1.02, y: [0, -3, 0, 3, 0], transition: { repeat: Infinity, duration: 0.4 } } : { scale: 1, y: 0 }}
+        >
           <input
             name="syncbeats-search-input"
             type="search"
@@ -630,55 +906,29 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
                 className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center', 'gap-0.5')}>
 
-                {/* YouTube Toggle */}
-                <button onClick={e => { e.preventDefault(); setMode(mode === "youtube" ? null : "youtube"); }}
-                  className={`w-7 h-7 flex items-center justify-center rounded-full cursor-pointer transition-all ${mode === "youtube" ? "bg-white/20 shadow-sm" : " opacity-80 hover:opacity-100 grayscale hover:grayscale-0"}`} title={mode === "youtube" ? "Disable YouTube Mode" : "Search YouTube"}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#FF0000">
-                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                  </svg>
+                {/* Mode Switchers (Commented out per user request)
+                <button type="button" onClick={() => setMode("youtube")} className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', mode === "youtube" ? 'bg-red-500/20 text-red-500' : 'hover:bg-white/10 text-white/50 hover:text-white', 'transition-colors')} title="YouTube">
+                  <Play className={cn('w-4', 'h-4', 'fill-current')} />
                 </button>
-
-                {/* Spotify Toggle */}
-                <button onClick={e => { e.preventDefault(); setMode(mode === "spotify" ? null : "spotify"); }}
-                  className={`w-7 h-7 flex items-center justify-center rounded-full cursor-pointer transition-all ${mode === "spotify" ? "bg-white/20 shadow-sm" : " opacity-50 hover:opacity-100 grayscale hover:grayscale-0"}`} title={mode === "spotify" ? "Disable Spotify Mode" : "Import from Spotify"}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#1DB954">
-                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" />
-                  </svg>
+                <button type="button" onClick={() => setMode("spotify")} className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', mode === "spotify" ? 'bg-[#1DB954]/20 text-[#1DB954]' : 'hover:bg-white/10 text-white/50 hover:text-white', 'transition-colors')} title="Spotify">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z"/></svg>
                 </button>
+                */}
 
                 {/* Upload Button */}
                 <label className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'cursor-pointer', 'text-white/50', 'hover:text-white', 'transition-colors')} title="Upload Local File">
                   {upload.isUploading ? <Loader2 className={cn('w-3.5', 'h-3.5', 'animate-spin')} /> : <Upload className={cn('w-3.5', 'h-3.5')} />}
                   <input type="file" accept="audio/*" multiple className="hidden"
-                    onChange={async e => {
+                    onChange={e => {
                       const files = Array.from(e.target.files || []);
-                      if (files.length === 0) return;
-                      const fileIds = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), name: f.name, status: "pending" as const }));
-                      setUploadQueue(prev => [...prev, ...fileIds]);
                       e.target.value = '';
-
-                      for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        const fid = fileIds[i].id;
-                        setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "uploading" } : item));
-                        try {
-                          await upload.uploadFile(file, roomId);
-                          setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "done" } : item));
-                          onSuccess?.();
-                          setTimeout(() => {
-                            setUploadQueue(prev => prev.filter(item => item.id !== fid));
-                          }, 3000);
-                        } catch (err) {
-                          console.error(err);
-                          setUploadQueue(prev => prev.map(item => item.id === fid ? { ...item, status: "error" } : item));
-                        }
-                      }
+                      handleUploadFiles(files);
                     }} />
                 </label>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
       </motion.div>
 
       {downloadError && (
@@ -690,20 +940,41 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
       {spError && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-          className={cn('bg-red-500/20', 'border', 'border-red-500/30', 'text-red-200', 'text-xs', 'px-3', 'py-3', 'rounded-xl', 'mb-3', 'shrink-0', 'flex', 'flex-col', 'gap-2')}>
+          className={cn(
+            spError.includes("Connect your Spotify account") || spError.includes("Connect your YouTube account")
+              ? 'bg-amber-500/20 border-amber-500/30 text-amber-200'
+              : 'bg-red-500/20 border-red-500/30 text-red-200',
+            'border text-xs px-3 py-3 rounded-xl mb-3 shrink-0 flex flex-col gap-2'
+          )}>
           <div>{spError}</div>
+          {spError.includes("Connect your Spotify account") && (
+            <a
+              href={`${getServerUrl()}/spotify/auth?token=${token || getAuthToken()}`}
+              className={cn('inline-flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-lg', 'bg-[#1DB954]', 'text-black', 'font-semibold', 'text-xs', 'hover:bg-[#1ed760]', 'transition-colors', 'w-fit')}
+            >
+              Connect Spotify Account for Full Import
+            </a>
+          )}
+          {spError.includes("Connect your YouTube account") && (
+            <a
+              href={youtubeApi.getConnectUrl()}
+              className={cn('inline-flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-lg', 'bg-[#FF0000]', 'text-white', 'font-semibold', 'text-xs', 'hover:bg-[#ff3333]', 'transition-colors', 'w-fit')}
+            >
+              Connect YouTube Account
+            </a>
+          )}
           {spError === "Private playlists cannot be imported. Make it public first." && (
-            <div className="w-full rounded-lg overflow-hidden border border-red-500/30 mt-1 relative bg-black/50 aspect-video flex-shrink-0">
+            <div className={cn('w-full', 'rounded-lg', 'overflow-hidden', 'border', 'border-red-500/30', 'mt-1', 'relative', 'bg-black/50', 'aspect-video', 'flex-shrink-0')}>
               <video 
-                className="w-full h-full object-cover"
+                className={cn('w-full', 'h-full', 'object-cover')}
                 autoPlay 
                 loop 
                 muted 
                 playsInline
                 src="/demo-make-public.mp4"
               />
-              <div className="absolute bottom-2 left-2 pointer-events-none">
-                 <span className="bg-black/60 text-white/80 text-[9px] px-2 py-1 rounded-md uppercase tracking-wider font-bold backdrop-blur-md">How to make public</span>
+              <div className={cn('absolute', 'bottom-2', 'left-2', 'pointer-events-none')}>
+                 <span className={cn('bg-black/60', 'text-white/80', 'text-[9px]', 'px-2', 'py-1', 'rounded-md', 'uppercase', 'tracking-wider', 'font-bold', 'backdrop-blur-md')}>How to make public</span>
               </div>
             </div>
           )}
@@ -717,54 +988,69 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -15, scale: 0.95 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="p-5 rounded-3xl bg-foreground/5 border border-foreground/15 shadow-2xl backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
+            className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/15', 'shadow-2xl', 'backdrop-blur-2xl', 'relative', 'overflow-hidden', 'my-3', 'shrink-0')}
           >
             {/* Ambient Pulsing Background Aura */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl animate-pulse pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-emerald-500/10 blur-3xl animate-pulse pointer-events-none" />
+            <div className={cn('absolute', '-top-12', '-right-12', 'w-40', 'h-40', 'rounded-full', 'bg-violet-500/10', 'blur-3xl', 'pointer-events-none')} />
+            <div className={cn('absolute', '-bottom-12', '-left-12', 'w-40', 'h-40', 'rounded-full', 'bg-emerald-500/10', 'blur-3xl', 'pointer-events-none')} />
 
             {/* Header Info */}
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-foreground/10 border border-foreground/15 flex items-center justify-center text-foreground shrink-0 shadow-md">
-                  {importStage === "done" ? <CheckCircle2 className="w-6 h-6 text-emerald-400" /> : <Loader2 className="w-5 h-5 animate-spin text-foreground/80" />}
+            <div className={cn('flex', 'items-center', 'justify-between', 'mb-3', 'relative', 'z-10')}>
+              <div className={cn('flex', 'items-center', 'gap-3')}>
+                <div className={cn('w-10', 'h-10', 'rounded-2xl', 'bg-foreground/10', 'border', 'border-foreground/15', 'flex', 'items-center', 'justify-center', 'text-foreground', 'shrink-0', 'shadow-md')}>
+                  {importStage === "done" ? <CheckCircle2 className={cn('w-6', 'h-6', 'text-emerald-400')} /> : <Loader2 className={cn('w-5', 'h-5', 'animate-spin', 'text-foreground/80')} />}
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-foreground flex items-center gap-2">
-                    <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Spotify Playlist"}"` : "Importing Spotify Playlist"}</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-foreground/10 text-foreground/80 font-bold border border-foreground/15 uppercase tracking-widest">
+                  <h4 className={cn('text-sm', 'font-black', 'text-foreground', 'flex', 'items-center', 'gap-2')}>
+                    <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Playlist"}"` : "Importing Playlist"}</span>
+                    <span className={cn('text-[9px]', 'px-2', 'py-0.5', 'rounded-full', 'bg-foreground/10', 'text-foreground/80', 'font-bold', 'border', 'border-foreground/15', 'uppercase', 'tracking-widest')}>
                       {importStage === "done" ? "SUCCESS" : "ACTIVE"}
                     </span>
                   </h4>
-                  <p className="text-xs text-foreground/60 mt-0.5">
-                    {importStage === "scraping" && "Connecting to Spotify..."}
-                    {importStage === "indexing" && "Processing playlist..."}
-                    {importStage === "enriching" && `Importing tracks...`}
-                    {importStage === "done" && `${importStats.total} songs imported into "${importStats.playlistName || "Playlist"}"!`}
+                  <p className={cn('text-xs', 'text-foreground/60', 'mt-0.5', 'max-w-[200px]', 'truncate')}>
+                    {importStage === "scraping" && "Fetching playlist from YouTube..."}
+                    {importStage === "indexing" && "Reading playlist..."}
+                    {importStage === "enriching" && (upload.activeImport?.currentTitle || (importStats.total > 0 ? `${importStats.total} / ${upload.activeImport?.totalTracks || '?'} songs` : "Importing songs..."))}
+                    {importStage === "done" && `${importStats.total} songs imported!`}
                   </p>
                 </div>
               </div>
-              <span className="text-xl font-black text-foreground font-mono tracking-wider ml-2">
-                {Math.round(importProgress)}%
-              </span>
+              <div className="flex items-center gap-3">
+                <span className={cn('text-xl', 'font-black', 'text-foreground', 'font-mono', 'tracking-wider', 'ml-2')}>
+                  {Math.round(importProgress)}%
+                </span>
+                {importStage !== "done" && (
+                  <button 
+                    onClick={() => {
+                      if (importAbortController) importAbortController.abort();
+                      setImporting(false);
+                      upload.setActiveImport(null);
+                    }}
+                    className={cn('w-7', 'h-7', 'rounded-full', 'bg-foreground/10', 'hover:bg-red-500/20', 'hover:text-red-400', 'flex', 'items-center', 'justify-center', 'transition-colors', 'ml-2')}
+                    title="Cancel Import"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Animated Progress Bar in Pure White */}
-            <div className="w-full h-3.5 rounded-full bg-white/10 overflow-hidden relative border border-white/15 p-0.5 z-10 shadow-inner">
+            <div className={cn('w-full', 'h-3.5', 'rounded-full', 'bg-white/10', 'overflow-hidden', 'relative', 'border', 'border-white/15', 'p-0.5', 'z-10', 'shadow-inner')}>
               <motion.div
-                className="h-full rounded-full bg-white relative shadow-[0_0_12px_rgba(255,255,255,0.6)]"
+                className={cn('h-full', 'rounded-full', 'bg-white', 'relative', 'shadow-[0_0_12px_rgba(255,255,255,0.6)]')}
                 initial={{ width: "0%" }}
                 animate={{ width: `${importProgress}%` }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
               >
                 {/* Subtle glowing head light */}
-                <div className="absolute top-0 right-0 w-3 h-full bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.9)] opacity-100" />
+                <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-full', 'bg-white', 'rounded-full', 'shadow-[0_0_10px_rgba(255,255,255,0.9)]', 'opacity-100')} />
               </motion.div>
             </div>
 
             {/* Completion Actions or Stage Footer */}
             {importStage === "done" && importStats.playlistId ? (
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-foreground/10 relative z-10">
+              <div className={cn('flex', 'items-center', 'gap-2', 'mt-4', 'pt-3', 'border-t', 'border-foreground/10', 'relative', 'z-10')}>
                 <button
                   onClick={() => {
                     if (importStats.playlistId) {
@@ -772,9 +1058,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       setImporting(false);
                     }
                   }}
-                  className="px-4 py-2 rounded-xl bg-foreground hover:bg-foreground/90 text-background font-extrabold text-xs transition-all active:scale-95 flex items-center gap-1.5 shadow-lg"
+                  className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground', 'hover:bg-foreground/90', 'text-background', 'font-extrabold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5', 'shadow-lg')}
                 >
-                  <Music className="w-4 h-4" /> View Playlist ({importStats.total} Tracks)
+                  <Music className={cn('w-4', 'h-4')} /> View Playlist ({importStats.total} Tracks)
                 </button>
                 <button
                   onClick={() => {
@@ -783,24 +1069,31 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       setImporting(false);
                     }
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 border border-foreground/10"
+                  className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'font-bold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5', 'border', 'border-foreground/10')}
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" /> Play All
+                  <Play className={cn('w-3.5', 'h-3.5', 'fill-current')} /> Play All
                 </button>
                 <button
                   onClick={() => setImporting(false)}
-                  className="ml-auto px-3 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/60 hover:text-foreground text-xs font-bold transition-all"
+                  className={cn('ml-auto', 'px-3', 'py-2', 'rounded-xl', 'bg-foreground/5', 'hover:bg-foreground/10', 'text-foreground/60', 'hover:text-foreground', 'text-xs', 'font-bold', 'transition-all')}
                 >
                   Dismiss
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between mt-3 text-[11px] text-foreground/60 relative z-10">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <Sparkles className="w-3.5 h-3.5 text-foreground/70 animate-spin" />
-                  <span>{importStats.total ? `${importStats.total} Tracks Processed` : "Scanning playlist items..."}</span>
+              <div className={cn('flex', 'flex-col', 'gap-1', 'mt-3', 'relative', 'z-10')}>
+                {upload.activeImport?.currentTitle && (
+                  <p className={cn('text-[11px]', 'text-foreground/50', 'truncate', 'italic')}>
+                    ♪ {upload.activeImport.currentTitle}
+                  </p>
+                )}
+                <div className={cn('flex', 'items-center', 'justify-between', 'text-[11px]', 'text-foreground/60')}>
+                  <div className={cn('flex', 'items-center', 'gap-1.5', 'font-bold')}>
+                    <Sparkles className={cn('w-3.5', 'h-3.5', 'text-foreground/70', 'animate-spin')} />
+                    <span>{importStats.total > 0 ? `${importStats.total} of ${upload.activeImport?.totalTracks || '?'} tracks` : "Scanning playlist..."}</span>
+                  </div>
+                  <span className={cn('text-foreground/40', 'italic')}>~2s per 20 songs</span>
                 </div>
-                <span className="text-foreground/40 italic">Auto-resumes on network dropout</span>
               </div>
             )}
           </motion.div>
@@ -812,8 +1105,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 15 }}
             transition={{ ...SPRING, opacity: { duration: 0.2 } }}
             ref={scrollRef}
-            className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
+            className={cn('max-h-[420px]', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
             data-lenis-prevent="true"
+            onPointerDownCapture={e => e.stopPropagation()}
+            onWheelCapture={e => e.stopPropagation()}
+            onTouchStartCapture={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}>
 
             {spError && (
@@ -834,7 +1130,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   <Search className={cn('w-3.5', 'h-3.5', 'text-white/40')} />{s}
                 </div>
               ))
-            ) : (ytResults.length > 0 || spResults.length > 0 || uploadQueue.length > 0 || (mode === "spotify" && (mySpotifyPlaylists.length > 0 || selectedPlaylistId))) ? (
+            ) : (ytResults.length > 0 || spResults.length > 0 || uploadQueue.length > 0 || (mode === "spotify" && (mySpotifyPlaylists.length > 0 || selectedPlaylistId)) || (mode === "youtube" && (myYoutubePlaylists.length > 0 || selectedPlaylistId))) ? (
               <>
                 {uploadQueue.map(uq => (
                   <div key={uq.id} className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'shrink-0')}>
@@ -864,11 +1160,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
                     </div>
                     <button
-                      onClick={() => handleSpotifyEnqueue(r.id)}
-                      disabled={enqueueAsync.isPending}
+                      onClick={() => handleSpotifySearchEnqueue(`https://open.spotify.com/playlist/${r.id}`)}
+                      disabled={importAsync.isPending || enqueueAsync.isPending}
                       className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait')}
                     >
-                      {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                      {(importAsync.isPending || enqueueAsync.isPending) ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
                     </button>
                   </div>
                 ))}
@@ -894,12 +1190,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       {/* Background Fill Progress Bar */}
                       {isThisPlaylistImporting && (
                         <motion.div
-                          className="absolute inset-y-0 left-0 bg-foreground/10 z-0 pointer-events-none border-r border-foreground/30"
+                          className={cn('absolute', 'inset-y-0', 'left-0', 'bg-foreground/10', 'z-0', 'pointer-events-none', 'border-r', 'border-foreground/30')}
                           initial={{ width: "0%" }}
                           animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         >
-                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.8)] opacity-90" />
+                          <div className={cn('absolute', 'top-0', 'right-0', 'w-2', 'h-full', 'bg-white/80', 'shadow-[0_0_8px_rgba(255,255,255,0.8)]', 'opacity-90')} />
                         </motion.div>
                       )}
 
@@ -917,8 +1213,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         </div>
                         <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
                         {isThisPlaylistImporting && (
-                          <div className="text-cyan-300 text-xs font-extrabold truncate flex items-center gap-1.5 mt-1 bg-cyan-500/20 border border-cyan-500/30 px-2 py-0.5 rounded-md w-fit max-w-full shadow-md">
-                            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-cyan-400" />
+                          <div className={cn('text-cyan-300', 'text-xs', 'font-extrabold', 'truncate', 'flex', 'items-center', 'gap-1.5', 'mt-1', 'bg-cyan-500/20', 'border', 'border-cyan-500/30', 'px-2', 'py-0.5', 'rounded-md', 'w-fit', 'max-w-full', 'shadow-md')}>
+                            <Loader2 className={cn('w-3.5', 'h-3.5', 'shrink-0', 'animate-spin', 'text-cyan-400')} />
                             <span>Importing & Enriching ({Math.round(upload.activeImport?.progress ?? 0)}%)</span>
                           </div>
                         )}
@@ -929,10 +1225,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           if (matchedTracks.length === 0) return null;
                           const firstSong = matchedTracks[0].song;
                           return (
-                            <div className="text-emerald-400 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md w-fit max-w-full">
-                              <Music className="w-3 h-3 shrink-0 text-emerald-400 opacity-90" />
+                            <div className={cn('text-emerald-400', 'text-xs', 'font-semibold', 'truncate', 'flex', 'items-center', 'gap-1.5', 'mt-1', 'bg-emerald-500/10', 'border', 'border-emerald-500/25', 'px-2', 'py-0.5', 'rounded-md', 'w-fit', 'max-w-full')}>
+                              <Music className={cn('w-3', 'h-3', 'shrink-0', 'text-emerald-400', 'opacity-90')} />
                               <span className="truncate">
-                                Contains <span className="text-white font-bold">{firstSong?.title}</span>
+                                Contains <span className={cn('text-white', 'font-bold')}>{firstSong?.title}</span>
                                 {firstSong?.artist ? ` • ${firstSong.artist}` : ""}
                                 {matchedTracks.length > 1 ? ` (+${matchedTracks.length - 1} more)` : ""}
                               </span>
@@ -962,21 +1258,82 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   );
                 })}
 
-                {/* Playlist Info Drill-down View */}
-                {mode === "spotify" && !query.trim() && selectedPlaylistId && (
-                  <div className={cn('flex', 'flex-col', 'gap-2')}>
-                    <button
-                      type="button"
-                      onClick={e => { 
-                        e.preventDefault();
-                        e.stopPropagation(); 
-                        setSelectedPlaylistId(null); 
-                        setSelectedPlaylistData(null); 
-                      }}
-                      className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-2.5', 'px-1', 'text-sm', 'font-semibold', 'sticky', 'top-0', 'bg-black/90', 'backdrop-blur-md', 'z-30', 'cursor-pointer', 'touch-manipulation')}
+                {/* My YouTube Playlists */}
+                {displayedYoutubePlaylists.map((r, idx) => {
+                  const isThisPlaylistImporting = !!(
+                    upload.activeImport?.isImporting && (
+                      upload.activeImport?.playlistId === r.id ||
+                      upload.activeImport?.playlistName?.toLowerCase() === r.title?.toLowerCase()
+                    )
+                  );
+
+                  return (
+                    <div key={r.id}
+                      onClick={() => handlePlaylistClick(r.id)}
+                      className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'relative', 'overflow-hidden',
+                        isThisPlaylistImporting 
+                          ? 'bg-foreground/10 border border-foreground/20 shadow-md' 
+                          : 'bg-white/5 border border-transparent hover:bg-white/10',
+                        'transition-all', 'duration-300', 'group', 'shrink-0', 'cursor-pointer')}
                     >
-                      <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
-                    </button>
+                      {/* Background Fill Progress Bar */}
+                      {isThisPlaylistImporting && (
+                        <motion.div
+                          className={cn('absolute', 'inset-y-0', 'left-0', 'bg-foreground/10', 'z-0', 'pointer-events-none', 'border-r', 'border-foreground/30')}
+                          initial={{ width: "0%" }}
+                          animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
+                          transition={{ duration: 0.4, ease: "easeOut" }}
+                        >
+                          <div className={cn('absolute', 'top-0', 'right-0', 'w-2', 'h-full', 'bg-white/80', 'shadow-[0_0_8px_rgba(255,255,255,0.8)]', 'opacity-90')} />
+                        </motion.div>
+                      )}
+
+                      {r.thumbnail ? (
+                        <img src={r.thumbnail} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0', 'relative', 'z-10')} />
+                      ) : (
+                        <div className={cn('w-14', 'h-14', 'rounded-lg', 'bg-black/50', 'shrink-0', 'flex', 'items-center', 'justify-center', 'relative', 'z-10')}>
+                          <Play className={cn('w-6', 'h-6', 'text-red-500', 'fill-current')} />
+                        </div>
+                      )}
+                      <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'relative', 'z-10')}>
+                        <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                          {r.title || r.name}
+                          <Play className={cn('w-3.5', 'h-3.5', 'text-red-500', 'shrink-0', 'fill-current')} />
+                        </div>
+                        <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.itemCount} Tracks • SyncBeats</div>
+                      </div>
+
+                      <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/5', 'hover:bg-red-500/20', 'text-white/50', 'hover:text-red-400', 'active:scale-90', 'transition-all', 'sm:hidden', 'group-hover:flex', 'relative', 'z-10')}>
+                        <Trash2 className={cn('w-4', 'h-4')} />
+                      </button>
+
+                      <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id, "youtube"); }}
+                        disabled={enqueueAsync.isPending}
+                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-red-500', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
+                        {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Playlist Info Drill-down View */}
+                {(mode === "spotify" || mode === "youtube") && !query.trim() && selectedPlaylistId && (
+                  <div className={cn('flex', 'flex-col', 'gap-2')}>
+                    <div className={cn('sticky', 'top-0', 'z-30', 'bg-black/95', 'backdrop-blur-xl', 'pb-3', 'pt-2', '-mx-2', 'px-2', 'w-[calc(100%+16px)]', 'border-b', 'border-white/5')}>
+                      <button
+                        type="button"
+                        onClick={e => { 
+                          e.preventDefault();
+                          e.stopPropagation(); 
+                          setSelectedPlaylistId(null); 
+                          setSelectedPlaylistData(null); 
+                        }}
+                        className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-1', 'text-sm', 'font-semibold', 'cursor-pointer', 'touch-manipulation')}
+                      >
+                        <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
+                      </button>
+                    </div>
 
                     {selectedPlaylistData && (
                       <>
@@ -988,18 +1345,22 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                               <input type="file" accept="image/*" className="hidden" onChange={handleCoverImageUpload} />
                             </label>
                           ) : (
-                            selectedPlaylistData.coverUrl ? (
-                              <img src={selectedPlaylistData.coverUrl} loading="eager" decoding="sync" className={cn('w-24', 'h-24', 'object-cover', 'rounded-xl', 'shadow-xl', 'shrink-0')} />
+                            (selectedPlaylistData.coverUrl || selectedPlaylistData.thumbnail) ? (
+                              <img src={selectedPlaylistData.coverUrl || selectedPlaylistData.thumbnail} loading="eager" decoding="sync" className={cn('w-24', 'h-24', 'object-cover', 'rounded-xl', 'shadow-xl', 'shrink-0')} />
                             ) : (
                               <div className={cn('w-24', 'h-24', 'rounded-xl', 'shadow-xl', 'shrink-0', 'bg-black/50', 'flex', 'items-center', 'justify-center')}>
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
+                                {mode === "spotify" ? (
+                                  <svg width="40" height="40" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
+                                ) : (
+                                  <svg width="40" height="40" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
+                                )}
                               </div>
                             )
                           )}
                           <div className={cn('flex-1', 'min-w-0', 'pb-1')}>
                             <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'mb-1', 'flex', 'items-center', 'justify-between')}>
-                              <span>Playlist</span>
-                              {!isEditingPlaylist && (
+                              <span>{mode === "youtube" ? "YouTube Playlist" : "Playlist"}</span>
+                              {!isEditingPlaylist && mode === "spotify" && (
                                 <button onClick={() => {
                                   setEditName(selectedPlaylistData.name);
                                   setEditCoverUrl(selectedPlaylistData.coverUrl || "");
@@ -1019,7 +1380,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                 autoFocus
                               />
                             ) : (
-                              <div className={cn('text-white', 'text-xl', 'font-bold', 'truncate', 'mb-2')}>{selectedPlaylistData.name}</div>
+                              <div className={cn('text-white', 'text-xl', 'font-bold', 'truncate', 'mb-2')}>{selectedPlaylistData.name || selectedPlaylistData.title}</div>
                             )}
 
                             <div className={cn('flex', 'items-center', 'gap-2')}>
@@ -1033,12 +1394,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   </button>
                                 </>
                               ) : (
-                                <button onClick={() => handleSpotifyEnqueue(selectedPlaylistData.id)}
-                                  className={cn('h-8', 'px-4', 'bg-[#1DB954]', 'hover:bg-[#1ed760]', 'text-black', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all')}>
+                                <button onClick={() => {
+                                  if (process.env.NODE_ENV === 'development') {
+                                    console.log('Play All clicked:', { id: selectedPlaylistData.id, mode, source: mode === "youtube" ? "youtube" : undefined });
+                                  }
+                                  handleSpotifyEnqueue(selectedPlaylistData.id, mode === "youtube" ? "youtube" : undefined);
+                                }}
+                                  className={cn('h-8', 'px-4', mode === "youtube" ? 'bg-[#FF0000] hover:bg-[#ff3333]' : 'bg-[#1DB954] hover:bg-[#1ed760]', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all')}>
                                   <Play className={cn('w-4', 'h-4', 'fill-current')} /> Play All
                                 </button>
                               )}
-                              {!isEditingPlaylist && (
+                              {!isEditingPlaylist && mode === "spotify" && (
                                 <>
                                   <button onClick={(e) => handleFixPlaylistMetadata(selectedPlaylistData.id, e)}
                                     disabled={isFixingMetadata}
@@ -1058,33 +1424,39 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         </div>
 
                         <div className={cn('flex', 'flex-col', 'gap-1', 'mt-2')}>
-                          {selectedPlaylistData.tracks?.map((track: any, idx: number) => {
+                          {loadingPlaylist ? (
+                            <div className={cn('flex', 'items-center', 'justify-center', 'py-12')}>
+                              <Loader2 className={cn('w-8', 'h-8', 'animate-spin', 'text-white/30')} />
+                            </div>
+                          ) : selectedPlaylistData.tracks?.map((track: any, idx: number) => {
                             const song = track.song || track;
-                            if (!song || (!song.title && !song.youtubeId)) return null;
+                            const yId = song.youtubeId || song.id;
+                            const yThumb = song.youtubeThumbnail || song.thumbnail;
+                            if (!song || (!song.title && !yId)) return null;
 
                             // Map to expected ytResults format for handlePlay
                             const mappedSong = {
-                              url: `https://youtube.com/watch?v=${song.youtubeId}`,
+                              url: `https://youtube.com/watch?v=${yId}`,
                               title: song.title,
-                              thumbnail: song.youtubeThumbnail,
+                              thumbnail: yThumb,
                               uploaderName: song.artist,
-                              duration: song.duration
+                              duration: song.duration || 0
                             };
                             const isAdded = addedSongs.has(mappedSong.url);
                             const isMatch = !!(query.trim() && (song.title?.toLowerCase().includes(query.trim().toLowerCase()) || song.artist?.toLowerCase().includes(query.trim().toLowerCase())));
 
                             return (
-                              <div key={`${track.id}-${idx}`}
+                              <div key={`${track.id || yId}-${idx}`}
                                 className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'transition-all', 'duration-300', 'group', 'shrink-0', 'animate-in', 'fade-in', 'slide-in-from-bottom-2',
                                   isAdded ? 'bg-green-500/20 border border-green-500/30' : (isMatch ? 'bg-emerald-500/15 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)]' : 'bg-white/5 border border-transparent hover:bg-white/10')
                                 )}
                                 style={{ animationFillMode: 'both', animationDelay: `${Math.min(idx * 30, 500)}ms` }}
                               >
-                                <img src={song.youtubeThumbnail} loading="eager" decoding="sync" className={cn('w-12', 'h-10', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
+                                <img src={yThumb} loading="eager" decoding="sync" className={cn('w-12', 'h-10', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
                                 <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
                                   <div className={cn('text-white', 'text-sm', 'font-medium', 'truncate', 'flex', 'items-center', 'gap-2')}>
                                     {song.title}
-                                    {isMatch && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0">Matches search</span>}
+                                    {isMatch && <span className={cn('text-[9px]', 'bg-emerald-500/30', 'text-emerald-300', 'border', 'border-emerald-500/40', 'px-1.5', 'py-0.5', 'rounded', 'font-bold', 'uppercase', 'tracking-wider', 'shrink-0')}>Matches search</span>}
                                   </div>
                                   <div className={cn('text-white/50', 'text-[10px]', 'truncate')}>{song.artist}</div>
                                 </div>
@@ -1107,7 +1479,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* Local DB Songs (from Spotify library) */}
                 {dbResults.length > 0 && (
                   <>
-                    <div className="text-[10px] text-white/40 uppercase tracking-widest font-bold px-2 mb-1.5 mt-2">From Spotify Library (DB)</div>
+                    <div className={cn('text-[10px]', 'text-white/40', 'uppercase', 'tracking-widest', 'font-bold', 'px-2', 'mb-1.5', 'mt-2')}>From Spotify Library (DB)</div>
                     {dbResults.map((r, idx) => {
                       const isAdded = addedSongs.has(r.url);
                       return (
@@ -1115,7 +1487,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
                           <div className="relative">
                             <img src={r.thumbnail || "/placeholder-playlist.png"} loading="eager" decoding="sync" className={cn('w-20', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                            <div className="absolute -bottom-1 -right-1 bg-black/80 p-0.5 rounded-full border border-white/10 shadow-md">
+                            <div className={cn('absolute', '-bottom-1', '-right-1', 'bg-black/80', 'p-0.5', 'rounded-full', 'border', 'border-white/10', 'shadow-md')}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                             </div>
                           </div>
@@ -1131,7 +1503,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         </div>
                       );
                     })}
-                    <div className="border-b border-white/10 my-3" />
+                    <div className={cn('border-b', 'border-white/10', 'my-3')} />
                   </>
                 )}
 
@@ -1160,15 +1532,45 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 })}
               </>
             ) : !query.trim() && mode !== "spotify" ? (
-              <div className="space-y-6 mt-4">
+              <div className={cn('space-y-6', 'mt-4')}>
+                {mode === "youtube" && youtubeConnected === null && (
+                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'py-12')}>
+                    <Loader2 className={cn('w-8', 'h-8', 'animate-spin', 'text-white/30')} />
+                    <p className="mt-4 text-xs text-white/50">Checking connection...</p>
+                  </div>
+                )}
+                
+                {mode === "youtube" && youtubeConnected === false && (
+                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'text-center', 'py-12', 'px-4', 'bg-white/5', 'rounded-2xl', 'border', 'border-white/10')}>
+                    <div className={cn('w-16', 'h-16', 'bg-[#FF0000]/10', 'rounded-full', 'flex', 'items-center', 'justify-center', 'mb-4')}>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
+                    </div>
+                    <h3 className={cn('text-white', 'text-lg', 'font-bold', 'mb-2')}>Connect YouTube</h3>
+                    <p className={cn('text-white/50', 'text-sm', 'mb-6', 'max-w-xs')}>Connect your YouTube account to seamlessly browse and import your saved playlists directly into SyncBeats.</p>
+                    <a href={youtubeApi.getConnectUrl()} className={cn('px-6', 'py-3', 'bg-[#FF0000]', 'hover:bg-[#ff3333]', 'text-white', 'font-bold', 'rounded-full', 'transition-all', 'active:scale-95')}>
+                      Connect Account
+                    </a>
+                  </div>
+                )}
+                
+                {/* Empty State when Connected but no Playlists */}
+                {mode === "youtube" && youtubeConnected === true && myYoutubePlaylists.length === 0 && !loadingPlaylists && (
+                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'py-12', 'text-center')}>
+                    <div className={cn('w-12', 'h-12', 'bg-white/5', 'rounded-full', 'flex', 'items-center', 'justify-center', 'mb-4')}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-white/30"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
+                    </div>
+                    <div className={cn('text-white/50', 'text-sm')}>No playlists found in your YouTube library.</div>
+                  </div>
+                )}
+
                 {/* Recent Searches */}
                 {recentHistory.searches.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50 mb-2 px-1">
-                      <History className="w-3.5 h-3.5 text-cyan-400" />
+                    <div className={cn('flex', 'items-center', 'gap-2', 'text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'text-white/50', 'mb-2', 'px-1')}>
+                      <History className={cn('w-3.5', 'h-3.5', 'text-cyan-400')} />
                       <span>Recent Searches</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className={cn('flex', 'flex-wrap', 'gap-2')}>
                       {recentHistory.searches.slice(0, 8).map((s, idx) => (
                         <button
                           key={`s-${s.id || idx}`}
@@ -1176,9 +1578,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                             setQuery(s.query);
                             performSearch(s.query);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/15 text-white/80 hover:text-white text-xs font-medium border border-white/10 transition-all active:scale-95"
+                          className={cn('flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-full', 'bg-white/5', 'hover:bg-white/15', 'text-white/80', 'hover:text-white', 'text-xs', 'font-medium', 'border', 'border-white/10', 'transition-all', 'active:scale-95')}
                         >
-                          <Search className="w-3 h-3 text-white/40" />
+                          <Search className={cn('w-3', 'h-3', 'text-white/40')} />
                           <span>{s.query}</span>
                         </button>
                       ))}
@@ -1189,8 +1591,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* Recently Listened */}
                 {recentHistory.listens.length > 0 && (
                   <div>
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50 mb-2 px-1">
-                      <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                    <div className={cn('flex', 'items-center', 'gap-2', 'text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'text-white/50', 'mb-2', 'px-1')}>
+                      <Clock className={cn('w-3.5', 'h-3.5', 'text-emerald-400')} />
                       <span>Recently Listened</span>
                     </div>
                     <div className="space-y-1.5">
@@ -1206,17 +1608,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         return (
                           <div
                             key={`l-${item.id || idx}`}
-                            className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent hover:bg-white/10 transition-all duration-200 group shrink-0"
+                            className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'hover:bg-white/10', 'transition-all', 'duration-200', 'group', 'shrink-0')}
                           >
                             <img
                               src={mappedSong.thumbnail}
                               loading="eager"
                               decoding="sync"
-                              className="w-16 h-12 object-cover rounded-lg bg-black/50 shrink-0"
+                              className={cn('w-16', 'h-12', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')}
                             />
-                            <div className="space-y-0.5 min-w-0 flex-1 pl-1">
-                              <div className="text-white text-sm font-bold truncate">{item.title}</div>
-                              <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{item.artist || 'SyncBeats'}</div>
+                            <div className={cn('space-y-0.5', 'min-w-0', 'flex-1', 'pl-1')}>
+                              <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{item.title}</div>
+                              <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{item.artist || 'SyncBeats'}</div>
                             </div>
                             <button
                               onClick={() => !isAdded && handlePlay(mappedSong)}
@@ -1226,11 +1628,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                               }`}
                             >
                               {enqueuing === mappedSong.url ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
                               ) : isAdded ? (
-                                <CheckCircle2 className="w-4 h-4" />
+                                <CheckCircle2 className={cn('w-4', 'h-4')} />
                               ) : (
-                                <Plus className="w-4 h-4" />
+                                <Plus className={cn('w-4', 'h-4')} />
                               )}
                             </button>
                           </div>
@@ -1261,7 +1663,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               className={cn('bg-[#1A1A1A]', 'border', 'border-white/10', 'rounded-2xl', 'p-6', 'max-w-sm', 'w-full', 'shadow-2xl', 'flex', 'flex-col', 'items-center', 'text-center', 'gap-4')}
             >
               <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-red-500/20', 'flex', 'items-center', 'justify-center', 'text-red-400', 'mb-2')}>
-                {isDeletingPlaylist ? <Loader2 className="w-6 h-6 animate-spin text-red-400" /> : <Trash2 className={cn('w-6', 'h-6')} />}
+                {isDeletingPlaylist ? <Loader2 className={cn('w-6', 'h-6', 'animate-spin', 'text-red-400')} /> : <Trash2 className={cn('w-6', 'h-6')} />}
               </div>
               <h3 className={cn('text-white', 'font-bold', 'text-lg')}>
                 {isDeletingPlaylist ? "Deleting Playlist..." : "Delete Playlist?"}
@@ -1285,7 +1687,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 >
                   {isDeletingPlaylist ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white')} />
                       <span>Deleting...</span>
                     </>
                   ) : (

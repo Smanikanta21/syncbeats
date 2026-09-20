@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSettings, GradientNode, DEFAULT_SETTINGS, type AppSettings } from "../hooks/useSettings";
-import { useAuth } from "../context/AuthContext";
-import { cn } from "../lib/utils";
+import { useSettings, GradientNode, DEFAULT_SETTINGS, type AppSettings } from "../../hooks/useSettings";
+import { useAuth } from "../../context/AuthContext";
+import { cn } from "../../lib/utils";
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -673,11 +673,11 @@ export function SettingsPanel({
             <div 
               className="w-full h-14 rounded-2xl border border-foreground/15 shadow-inner transition-all duration-500 relative overflow-hidden"
               style={{
-                background: `linear-gradient(90deg, ${(settings.gradientSettings?.nodes || [
+                background: `linear-gradient(90deg, ${[...(settings.gradientSettings?.nodes || [
                   { id: "1", color: "#8b5cf6", position: 0 },
                   { id: "2", color: "#ec4899", position: 50 },
                   { id: "3", color: "#3b82f6", position: 100 }
-                ]).map(n => `${n.color} ${n.position}%`).join(', ')})`
+                ])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map(n => `${n.color} ${n.position ?? 0}%`).join(', ')})`
               }}
             />
           </div>
@@ -905,7 +905,7 @@ export function SettingsPanel({
 
                 return activePresets.map((preset) => {
                   const isActive = settings.gradientSettings?.presetName === preset.name;
-                  const gradientStr = `linear-gradient(90deg, ${preset.nodes.map(n => `${n.color} ${n.position}%`).join(', ')})`;
+                  const gradientStr = `linear-gradient(90deg, ${[...preset.nodes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map(n => `${n.color} ${n.position ?? 0}%`).join(', ')})`;
 
                   return (
                     <button

@@ -253,8 +253,8 @@ export class SpatialAudioEngine {
       const posA = this.devicePositions.get(a)!;
       const posB = this.devicePositions.get(b)!;
 
-      let angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      let angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      const angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
 
       if (Math.abs(angA - angB) < 0.001) {
         return posA.radius - posB.radius;
@@ -410,7 +410,7 @@ export class SpatialAudioEngine {
       : 1 - Math.pow(-2 * frac + 2, 2) / 2;
 
     // Polar interpolation — audio sweeps along the circle, not through the center
-    let angA = fromPos.angle;
+    const angA = fromPos.angle;
     let angB = toPos.angle;
 
     if (angB < angA && (angA - angB) > 0.1) {

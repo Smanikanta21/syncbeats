@@ -6,15 +6,16 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { SyncProvider } from "../../context/SyncContext";
-const DynamicIsland = dynamic(() => import("../../components/DynamicIsland").then(m => m.DynamicIsland), { ssr: false });
+const DynamicIsland = dynamic(() => import("../../components/dynamic-island").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
 import { X, Camera, MessageSquare } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
+import { GlobalLoadingScreen } from "../../components/GlobalLoadingScreen";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
-  const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
+  const { user, device, needsDeviceRename, emailVerified, loading, serverError, resendVerification, renameDevice, replaceDevice } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const isRoom = pathname?.includes("/room/");
@@ -59,13 +60,27 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     return `${owner}${suffix} ${label}`;
   };
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated and server is reachable
   useEffect(() => {
-    if (!loading && !user) {
-      const returnTo = encodeURIComponent(pathname || "/hub");
+    if (!loading && !user && !serverError) {
+      const returnTo = encodeURIComponent(pathname || "/room/default");
       router.replace(`/login?returnTo=${returnTo}`);
     }
-  }, [user, loading, router, pathname]);
+  }, [user, loading, serverError, router, pathname]);
+
+  if (serverError) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-background text-foreground">
+        <h1 className="text-2xl font-bold mb-4">Cannot connect to server</h1>
+        <p className="text-white/60 mb-8 max-w-md text-center">
+          The SyncBeats server is currently unreachable. Please check your connection or wait a moment for the server to wake up.
+        </p>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-emerald-500 text-black font-semibold rounded-full hover:bg-emerald-400 transition-colors">
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!device) return;
@@ -135,6 +150,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
+      {loading && <GlobalLoadingScreen />}
       {user && !loading && !isProfile && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className={cn('fixed', 'top-24', 'left-1/2', 'z-60', 'w-[min(92vw,720px)]', '-translate-x-1/2', 'rounded-3xl', 'border', 'border-amber-400/30', 'bg-amber-500/10', 'px-4', 'py-3', 'backdrop-blur-xl')}>

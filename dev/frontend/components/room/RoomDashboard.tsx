@@ -3,28 +3,33 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSettings } from "../../hooks/useSettings";
+import { useAuth } from "../../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, LogIn, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause
+  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, LogIn, Hash, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
-import { EmojiReactions } from "./EmojiReactions";
+import { RoomReactions } from "./RoomReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
-import { MobileRadialNavigator } from "./MobileRadialNavigator";
-import { SettingsPanel } from "../SettingsPanel";
+
+import { SettingsPanel } from "../settings";
 import { ThemeToggle } from "../ThemeToggle";
 import { JoinRoomModal } from "../JoinRoomModal";
 import { HoverExpandPill } from "../HoverExpandPill";
-import type { RoomSnapshot, Participant, DeviceSpatialState } from "../../lib/types";
+import Magnetic from "../Magnetic";
+import { FloatingMobileMenu } from "./FloatingMobileMenu";
+import type { RoomSnapshot, Participant, DeviceSpatialState, TrackQueueItem, PlaybackState } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
+import { QRCode } from 'react-qrcode-logo';
+import { QRScannerModal } from './QRScannerModal';
 
 interface RoomDashboardProps {
   roomId: string;
@@ -173,6 +178,7 @@ export function RoomDashboard({
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
   const router = useRouter();
+  const { logout } = useAuth();
   const { settings, updateSettings } = useSettings();
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
@@ -182,6 +188,7 @@ export function RoomDashboard({
   const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activityNotification, setActivityNotification] = useState<{ id: number; text: string; type: "join" | "leave" } | null>(null);
@@ -505,7 +512,7 @@ export function RoomDashboard({
                     title="Invite Friends"
                   /> */}
                   <HoverExpandPill
-                    icon={LogIn}
+                    icon={Hash}
                     label="Join Room"
                     onClick={() => setShowJoinModal(true)}
                     title="Join Room via Code"
@@ -612,6 +619,9 @@ export function RoomDashboard({
           </GlassCard>
       </div>
 
+      {/* Global Emoji Reactions Layer */}
+      <RoomReactions />
+
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
       <div className={cn('flex', 'md:hidden', 'flex-col', 'flex-1', 'min-h-0', 'pt-16', 'pb-2', 'px-1')}>
         {/* Mobile Header — Single Sleek Unified Bar */}
@@ -681,6 +691,24 @@ export function RoomDashboard({
               >
                 <QrCode className="w-3 h-3" />
               </button>
+              {/* Scan QR */}
+              <button
+                onClick={() => setShowScanner(true)}
+                className="p-1 rounded-md text-foreground/50 hover:text-foreground active:bg-foreground/10 transition-colors"
+                title="Scan QR Code"
+              >
+                <ScanLine className="w-3 h-3" />
+              </button>
+              {/* Return to My Room */}
+              {!isHost && (
+                <button
+                  onClick={() => router.push('/room/default')}
+                  className="p-1 rounded-md text-emerald-500 hover:text-emerald-400 active:bg-emerald-500/10 transition-colors"
+                  title="Return to My Room"
+                >
+                  <Home className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
             {isHost && (
@@ -712,10 +740,10 @@ export function RoomDashboard({
             /> */}
 
             <HoverExpandPill
-              icon={LogIn}
-              label="Join"
-              onClick={() => setShowJoinModal(true)}
-              title="Join Room"
+              icon={LogOut}
+              label="Logout"
+              onClick={logout}
+              title="Logout"
             />
 
             <ThemeToggle size="sm" />
@@ -915,27 +943,42 @@ export function RoomDashboard({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Floating Mobile Navigation Menu */}
+        <FloatingMobileMenu 
+          activeTab={mobileTab} 
+          onChangeTab={setMobileTab} 
+        />
       </div>
 
-      {/* ── Magnetic Semi-Circle Mobile Navigator ────────────────────── */}
-      <MobileRadialNavigator
-        activeTab={mobileTab}
-        onSelectTab={setMobileTab}
-        onOpenJoinModal={() => setShowJoinModal(true)}
-        onLeaveRoom={onLeave || (() => { if (typeof window !== "undefined") window.location.href = "/"; })}
-      />
 
       {showQR && (
         <div 
           className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'items-center', 'justify-center', 'bg-black/50', 'backdrop-blur-sm', 'cursor-pointer')}
           onClick={() => setShowQR(false)}
         >
-          <div className={cn('bg-background', 'border', 'border-foreground/10', 'p-6', 'rounded-3xl', 'shadow-2xl', 'text-center')} onClick={e => e.stopPropagation()}>
-            <h3 className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mb-4')}>Room QR Code</h3>
-            <div className={cn('bg-white', 'p-4', 'rounded-xl', 'mb-4')}>
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`} alt="QR Code" width={200} height={200} />
+          <div className={cn('glass-panel', 'border', 'border-foreground/10', 'p-8', 'rounded-[2rem]', 'shadow-[0_0_50px_rgba(0,0,0,0.5)]', 'text-center', 'relative', 'overflow-hidden')} onClick={e => e.stopPropagation()}>
+            <div className="absolute inset-0 bg-gradient-to-br from-foreground/5 to-transparent pointer-events-none" />
+            
+            <h3 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-[0.25em]', 'text-foreground/60', 'mb-6', 'relative', 'z-10')}>Room QR Code</h3>
+            
+            <div className={cn('flex', 'justify-center', 'items-center', 'mb-6', 'relative', 'z-10', 'p-4', 'rounded-2xl', 'bg-foreground/5', 'shadow-inner')}>
+              <QRCode
+                value={typeof window !== 'undefined' ? window.location.href : `https://syncbeats.app/room/${roomId}`}
+                size={220}
+                bgColor="transparent"
+                fgColor="rgb(var(--foreground-rgb))"
+                qrStyle="dots"
+                eyeRadius={12}
+                logoImage="/syncbeats-icon.svg"
+                logoWidth={50}
+                logoHeight={50}
+                logoPadding={5}
+                logoPaddingStyle="circle"
+              />
             </div>
-            <p className={cn('text-xs', 'text-foreground/40', 'font-mono', 'mb-4')}>{roomId}</p>
+            
+            <p className={cn('text-sm', 'font-mono', 'tracking-[0.3em]', 'text-foreground', 'font-bold', 'mb-6', 'relative', 'z-10')}>{roomId}</p>
             <button 
               className={cn('px-6', 'py-2', 'bg-foreground/10', 'hover:bg-foreground/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors')}
               onClick={() => setShowQR(false)}
@@ -944,6 +987,10 @@ export function RoomDashboard({
             </button>
           </div>
         </div>
+      )}
+
+      {showScanner && (
+        <QRScannerModal onClose={() => setShowScanner(false)} />
       )}
 
       {showVisualsPanel && (

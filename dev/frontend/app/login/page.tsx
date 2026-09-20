@@ -3,7 +3,6 @@
 import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
-import { FullscreenLoader } from "../../components/FullscreenLoader";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -22,9 +21,9 @@ export default function AuthPage() {
       roomsApi.default()
         .then((res) => {
           if (res?.roomId) router.replace(`/room/${res.roomId}`);
-          else router.replace("/hub");
+          else router.replace("/room/default");
         })
-        .catch(() => router.replace("/hub"));
+        .catch(() => router.replace("/room/default"));
     }
   }, [user, authLoading, router]);
   const [googleReady, setGoogleReady] = useState(false);
@@ -119,7 +118,7 @@ export default function AuthPage() {
 
     try {
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') || '/hub';
+      const returnTo = params.get('returnTo') || '/room/default';
       
       if (isLogin) {
         const token = await login(email, password);
@@ -252,7 +251,7 @@ export default function AuthPage() {
       try {
         logger.info("GOOGLE_OAUTH_SUBMIT", "Google OAuth credential submitted");
         const params = new URLSearchParams(window.location.search);
-        const returnTo = params.get('returnTo') || '/hub';
+        const returnTo = params.get('returnTo') || '/room/default';
         const token = await googleLogin(idToken);
         logger.success("GOOGLE_OAUTH_SUCCESS", "Google OAuth authentication succeeded");
         if (returnTo.startsWith('syncbeats://')) {
@@ -302,8 +301,6 @@ export default function AuthPage() {
 
   return (
     <div className={cn('min-h-screen', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'px-4', 'sm:px-6', 'lg:px-8', 'overflow-hidden', 'z-0')}>
-      <FullscreenLoader isVisible={loading} message={isLogin ? "Authenticating ..." : "Signing Up..."} />
-
       {/* Background ambient lighting removed (now in layout) */}
 
       {/* Home link */}

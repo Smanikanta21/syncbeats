@@ -545,7 +545,7 @@ export class SocketHandler {
       }
 
       const chatMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
         roomId,
         socketId: socket.id,
         userId: userId || undefined,
@@ -566,8 +566,15 @@ export class SocketHandler {
     });
 
     socket.on('room:reaction', ({ roomId, emoji }: { roomId: string, emoji: string }) => {
-      // Broadcast to everyone else in the room (sender already spawns it locally)
-      socket.to(roomId).emit('room:reaction', { socketId: socket.id, emoji });
+      const room = this.roomManager.get(roomId);
+      const p = room?.snapshot().participants.find(p => p.socketId === socket.id);
+      
+      socket.to(roomId).emit('room:reaction', { 
+        socketId: socket.id,
+        userId: p?.userId,
+        displayName: p?.displayName || 'Guest',
+        emoji 
+      });
     });
 
     // ── NTP sync ─────────────────────────────────────────────────────────

@@ -1,5 +1,1 @@
-import { PageSkeleton } from "@/components/PageSkeleton";
-
-export default function TermsLoading() {
-  return <PageSkeleton />;
-}
+export default function TermsLoading() { return null; }

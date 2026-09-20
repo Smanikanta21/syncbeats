@@ -34,7 +34,7 @@ function VerifyEmailContent() {
         setMessage("Email verified successfully. Redirecting to your hub...");
 
         // Force a navigation that rehydrates auth state from storage immediately.
-        window.location.assign("/hub");
+        window.location.assign("/room/default");
       })
       .catch((err) => {
         if (cancelled) return;

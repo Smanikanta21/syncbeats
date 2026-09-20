@@ -338,7 +338,7 @@ export function SpatialPanel({
           sumY += pos.y;
         });
         const startGlobalCenter = { x: sumX / group.devices.length, y: sumY / group.devices.length };
-        let intendedCenter = { x: startGlobalCenter.x + dx, y: startGlobalCenter.y + dy };
+        const intendedCenter = { x: startGlobalCenter.x + dx, y: startGlobalCenter.y + dy };
         
         const aspect = containerRef.current ? containerRef.current.getBoundingClientRect().width / containerRef.current.getBoundingClientRect().height : 1;
         const MIN_DIST = 0.08; // 8% minimum spatial distance between users

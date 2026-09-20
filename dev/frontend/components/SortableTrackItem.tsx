@@ -2,7 +2,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TrackQueueItem } from "../lib/types";
-import { Play, Disc, Trash2, GripVertical } from "lucide-react";
+import { Play, Disc, Trash2, GripVertical, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const globalSortableYtCache = new Map<string, string>();
@@ -88,6 +88,8 @@ export function TrackItemRow({
   const thumb = ytThumb(item.trackUrl);
 
   const [isMobile, setIsMobile] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  
   React.useEffect(() => {
     setIsMobile(window.innerWidth < 768);
   }, []);
@@ -97,8 +99,13 @@ export function TrackItemRow({
       ref={setNodeRef}
       style={style}
       {...(isMobile && !disableDrag && !isHistory ? dragHandleProps : {})}
-      initial={isNew ? { opacity: 0, y: -16, scale: 1.12 } : { opacity: 1, y: 0, scale: 1 }}
-      animate={{ opacity: isDragging ? 0.3 : 1, y: 0, scale: 1 }}
+      initial={isNew ? { opacity: 0, y: -16, scale: 1.12 } : { opacity: 1, y: 0, scale: 1, x: 0 }}
+      animate={{ 
+        opacity: isDeleting ? 0 : (isDragging ? 0.3 : 1), 
+        x: isDeleting ? -50 : 0,
+        y: 0, 
+        scale: 1 
+      }}
       transition={{ 
         type: "spring", 
         stiffness: 500, 
@@ -201,14 +208,24 @@ export function TrackItemRow({
       </div>
 
       {/* Remove button */}
-      {isHovered && !isDragging && !isHistory && (
+      {isHovered && !isDragging && !isHistory && !isCurrent && (
         <motion.button
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          onClick={e => { e.stopPropagation(); onRemoveTrack?.(item.id); }}
-          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+          disabled={isDeleting}
+          onClick={e => { 
+            e.stopPropagation(); 
+            if (isDeleting) return;
+            setIsDeleting(true);
+            onRemoveTrack?.(item.id); 
+          }}
+          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
         >
-          <Trash2 className="w-3 h-3" />
+          {isDeleting ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Trash2 className="w-3 h-3" />
+          )}
         </motion.button>
       )}
     </motion.div>

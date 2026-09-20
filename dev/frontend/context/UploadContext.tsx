@@ -28,7 +28,9 @@ export interface PlaylistImportState {
   stage: "scraping" | "indexing" | "enriching" | "done";
   totalTracks: number;
   isImporting: boolean;
+  currentTitle?: string;
 }
+
 
 interface UploadCtx {
   isDragging:       boolean;
