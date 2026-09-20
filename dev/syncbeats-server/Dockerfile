@@ -3,6 +3,7 @@ FROM node:20-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+ENV YOUTUBE_DL_SKIP_DOWNLOAD=true
 RUN npm ci
 COPY tsconfig.json ./
 COPY prisma.config.ts ./
@@ -24,6 +25,7 @@ WORKDIR /app
 RUN ln -s /usr/local/bin/yt-dlp /app/yt-dlp
 COPY package*.json ./
 ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+ENV YOUTUBE_DL_SKIP_DOWNLOAD=true
 RUN npm ci --omit=dev
 COPY prisma.config.ts ./
 COPY prisma ./prisma
