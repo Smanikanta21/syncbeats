@@ -43,7 +43,7 @@ import { AuditLogger } from './services/AuditLogger';
     original(`[${ts} IST]`, msg);
 
     // Pipe directly to DB (skip AuditLogger's own stdout to avoid infinite loop)
-    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]')) {
+    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]') && !msg.includes('prisma:')) {
       let action = `SERVER_${method.toUpperCase()}`;
       if (msg.includes('[Server]')) action = 'SERVER_LIFECYCLE';
       else if (msg.includes('[Cleanup]')) action = 'SERVER_CLEANUP';
@@ -232,90 +232,6 @@ export class SyncBeatsServer {
     this.app.use('/api/playlists', playlistRoutes);
     this.app.use('/feedback', createFeedbackRoutes());
     this.app.use('/telemetry', createTelemetryRoutes());
-
-    // ── CLI install route ──────────────────────────────────────────────────
-    this.app.get('/cli', (_req, res) => {
-      const installScript = `#!/bin/bash
-# SyncBeats Terminal Player - Install Script
-# Supported: macOS and Linux only
-
-set -e
-
-echo ""
-echo "SyncBeats Terminal Player Installer"
-echo "======================================="
-echo ""
-
-# Check OS
-OS="$(uname -s)"
-if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
-  echo "Error: SyncBeats Terminal Player only supports macOS and Linux."
-  echo "   Detected OS: $OS"
-  exit 1
-fi
-
-# Check dependencies
-for cmd in node npm git ffplay; do
-  if ! command -v $cmd &> /dev/null; then
-    echo "Missing dependency: $cmd"
-    if [ "$cmd" = "ffplay" ]; then
-      echo "   Install ffmpeg: brew install ffmpeg (macOS) or sudo apt install ffmpeg (Linux)"
-    elif [ "$cmd" = "node" ] || [ "$cmd" = "npm" ]; then
-      echo "   Install Node.js: https://nodejs.org (v18+ required)"
-    fi
-    exit 1
-  fi
-done
-
-echo "All dependencies found."
-echo ""
-
-# Clone and install
-INSTALL_DIR="$HOME/.syncbeats-terminal"
-if [ -d "$INSTALL_DIR" ]; then
-  echo "Updating existing installation..."
-  cd "$INSTALL_DIR"
-  git pull origin main
-else
-  echo "Cloning SyncBeats Terminal Player..."
-  git clone https://github.com/Smanikanta21/CLI-music-player.git "$INSTALL_DIR"
-  cd "$INSTALL_DIR"
-fi
-
-echo "Installing dependencies..."
-npm install
-
-echo "Building..."
-npm run build
-
-echo ""
-echo "Installation complete!"
-echo ""
-echo "To run SyncBeats Terminal:"
-echo "  cd $INSTALL_DIR && npm start"
-echo ""
-echo "Or add an alias to your shell config:"
-echo "  echo 'alias syncbeats=\"cd $INSTALL_DIR && npm start\"' >> ~/.zshrc"
-echo ""
-`;
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(installScript);
-    });
-
-    this.app.get('/cli/info', (_req, res) => {
-      res.json({
-        name: 'SyncBeats Terminal Player',
-        version: '1.0.0',
-        platforms: ['macOS', 'Linux'],
-        repository: 'https://github.com/Smanikanta21/CLI-music-player',
-        requirements: {
-          node: '>=18.0.0',
-          ffplay: 'Required (part of ffmpeg)',
-        },
-        install: 'curl -fsSL https://syncbeats-server-1006171035854.asia-south1.run.app/cli | bash',
-        description: 'A terminal-based music player that syncs playback across devices in real-time using SyncBeats rooms.',
-      });
-    });
   }
 
   private setupSocketIO(): void {
