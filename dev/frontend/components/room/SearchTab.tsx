@@ -71,13 +71,22 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [importAbortController, setImportAbortController] = useState<AbortController | null>(null);
 
   // Single-flight async wrappers — prevents duplicate API calls on rapid clicks
-  const enqueueAsync = useAsync(async (playlistId: string) => {
+  const enqueueAsync = useAsync(async (playlistId: string, source?: string) => {
     if (!token || !roomId) throw new Error('Not authenticated');
     const SERVER = getServerUrl();
+    
+    let body: any = { playlistId };
+    
+    if (source === "youtube") {
+      const tracksData = await youtubeApi.getPlaylistItems(playlistId);
+      if (!tracksData || tracksData.length === 0) throw new Error('Playlist is empty or private.');
+      body.tracks = tracksData;
+    }
+
     const res = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ playlistId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -449,6 +458,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
       setQuery("");
       onSuccess?.();
+      return data.playlistId;
     } catch (err: any) {
       clearInterval(progressTimer);
       upload.setActiveImport(null);
@@ -459,11 +469,25 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       } else {
         setSpError(errMsg);
       }
+      throw err;
     } finally {
       clearTimeout(t1);
       clearTimeout(t2);
       clearInterval(progressTimer);
       setImporting(false);
+    }
+  };
+
+  const handleSpotifySearchEnqueue = async (spotifyUrl: string) => {
+    setSpError(null);
+    try {
+      const playlistId = await importAsync.run(spotifyUrl);
+      if (playlistId) {
+        await enqueueAsync.run(playlistId);
+        onSuccess?.();
+      }
+    } catch (e: any) {
+      setSpError(e?.message || "Failed to import and add playlist to queue.");
     }
   };
 
@@ -612,10 +636,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
 
   // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
-  const handleSpotifyEnqueue = useCallback(async (playlistId: string) => {
+  const handleSpotifyEnqueue = useCallback(async (playlistId: string, source?: string) => {
     setSpError(null);
     try {
-      await enqueueAsync.run(playlistId);
+      await enqueueAsync.run(playlistId, source);
       onSuccess?.();
     } catch (e: any) {
       setSpError(e?.message || "Failed to add playlist to queue.");
@@ -1083,6 +1107,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             ref={scrollRef}
             className={cn('max-h-[420px]', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
             data-lenis-prevent="true"
+            onPointerDownCapture={e => e.stopPropagation()}
+            onWheelCapture={e => e.stopPropagation()}
+            onTouchStartCapture={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}>
 
             {spError && (
@@ -1133,11 +1160,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
                     </div>
                     <button
-                      onClick={() => handleSpotifyEnqueue(r.id)}
-                      disabled={enqueueAsync.isPending}
+                      onClick={() => handleSpotifySearchEnqueue(`https://open.spotify.com/playlist/${r.id}`)}
+                      disabled={importAsync.isPending || enqueueAsync.isPending}
                       className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait')}
                     >
-                      {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                      {(importAsync.isPending || enqueueAsync.isPending) ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
                     </button>
                   </div>
                 ))}
@@ -1281,7 +1308,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         <Trash2 className={cn('w-4', 'h-4')} />
                       </button>
 
-                      <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
+                      <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id, "youtube"); }}
                         disabled={enqueueAsync.isPending}
                         className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-red-500', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
                         {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
@@ -1293,18 +1320,20 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* Playlist Info Drill-down View */}
                 {(mode === "spotify" || mode === "youtube") && !query.trim() && selectedPlaylistId && (
                   <div className={cn('flex', 'flex-col', 'gap-2')}>
-                    <button
-                      type="button"
-                      onClick={e => { 
-                        e.preventDefault();
-                        e.stopPropagation(); 
-                        setSelectedPlaylistId(null); 
-                        setSelectedPlaylistData(null); 
-                      }}
-                      className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-2.5', 'px-1', 'text-sm', 'font-semibold', 'sticky', 'top-0', 'bg-black/90', 'backdrop-blur-md', 'z-30', 'cursor-pointer', 'touch-manipulation')}
-                    >
-                      <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
-                    </button>
+                    <div className={cn('sticky', 'top-0', 'z-30', 'bg-black/95', 'backdrop-blur-xl', 'pb-3', 'pt-2', '-mx-2', 'px-2', 'w-[calc(100%+16px)]', 'border-b', 'border-white/5')}>
+                      <button
+                        type="button"
+                        onClick={e => { 
+                          e.preventDefault();
+                          e.stopPropagation(); 
+                          setSelectedPlaylistId(null); 
+                          setSelectedPlaylistData(null); 
+                        }}
+                        className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-1', 'text-sm', 'font-semibold', 'cursor-pointer', 'touch-manipulation')}
+                      >
+                        <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
+                      </button>
+                    </div>
 
                     {selectedPlaylistData && (
                       <>
@@ -1365,7 +1394,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   </button>
                                 </>
                               ) : (
-                                <button onClick={() => handleSpotifyEnqueue(selectedPlaylistData.id)}
+                                <button onClick={() => {
+                                  if (process.env.NODE_ENV === 'development') {
+                                    console.log('Play All clicked:', { id: selectedPlaylistData.id, mode, source: mode === "youtube" ? "youtube" : undefined });
+                                  }
+                                  handleSpotifyEnqueue(selectedPlaylistData.id, mode === "youtube" ? "youtube" : undefined);
+                                }}
                                   className={cn('h-8', 'px-4', mode === "youtube" ? 'bg-[#FF0000] hover:bg-[#ff3333]' : 'bg-[#1DB954] hover:bg-[#1ed760]', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all')}>
                                   <Play className={cn('w-4', 'h-4', 'fill-current')} /> Play All
                                 </button>

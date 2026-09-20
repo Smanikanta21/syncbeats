@@ -227,13 +227,27 @@ export function createYoutubeRoutes(): Router {
 
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
       
-      const response = await youtube.playlistItems.list({
-        part: ['snippet', 'contentDetails'],
-        playlistId: playlistId,
-        maxResults: 50
-      });
+      let allItems: any[] = [];
+      let nextPageToken: string | null | undefined = undefined;
 
-      const tracks = response.data.items?.map((item: any) => {
+      do {
+        const response: any = await youtube.playlistItems.list({
+          part: ['snippet', 'contentDetails'],
+          playlistId: playlistId,
+          maxResults: 50,
+          pageToken: nextPageToken
+        });
+        
+        if (response.data.items) {
+          allItems = allItems.concat(response.data.items);
+        }
+        nextPageToken = response.data.nextPageToken;
+        
+        // Cap at 300 to prevent API quota exhaustion on massive playlists
+        if (allItems.length >= 300) break;
+      } while (nextPageToken);
+
+      const tracks = allItems.map((item: any) => {
         const snippet = item.snippet;
         const videoId = snippet?.resourceId?.videoId;
         if (!videoId) return null;

@@ -261,29 +261,38 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   router.post('/:roomId/enqueue-playlist', requireAuth, async (req: Request, res: Response): Promise<void> => {
     try {
       const roomId = req.params.roomId as string;
-      const { playlistId } = req.body;
+      const { playlistId, tracks: clientTracks } = req.body;
       const userId = req.user!.sub;
 
-      if (!playlistId) {
-        res.status(400).json({ error: 'Missing playlistId' });
+      if (!playlistId && !clientTracks) {
+        res.status(400).json({ error: 'Missing playlistId or tracks' });
         return;
       }
 
-      // Fetch the playlist and its tracks
-      const playlist = await prisma.playlist.findUnique({
-        where: { id: playlistId },
-        include: { tracks: { orderBy: { position: 'asc' } } }
-      });
+      let tracks: any[] = [];
+      let isYoutube = false;
 
-      if (!playlist || playlist.tracks.length === 0) {
-        res.status(404).json({ error: 'Playlist not found or empty' });
-        return;
+      if (clientTracks && Array.isArray(clientTracks)) {
+        tracks = clientTracks;
+        isYoutube = true;
+      } else {
+        // Fetch the playlist and its tracks
+        const playlist = await prisma.playlist.findUnique({
+          where: { id: playlistId },
+          include: { tracks: { orderBy: { position: 'asc' } } }
+        });
+
+        if (!playlist || playlist.tracks.length === 0) {
+          res.status(404).json({ error: 'Playlist not found or empty' });
+          return;
+        }
+        tracks = playlist.tracks;
       }
 
       // Cap at 500 tracks to prevent server overload
       const MAX_TRACKS = 500;
-      const tracks = playlist.tracks.slice(0, MAX_TRACKS);
-      const wasCapped = playlist.tracks.length > MAX_TRACKS;
+      const wasCapped = tracks.length > MAX_TRACKS;
+      tracks = tracks.slice(0, MAX_TRACKS);
 
       const room = roomManager.getOrCreate(roomId);
 
@@ -308,10 +317,12 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       let firstTrackUrl = '';
       const firstTrack = tracks[0];
       const firstThumb = firstTrack.thumbnail ? `thumb=${encodeURIComponent(firstTrack.thumbnail)}` : '';
-      const firstPidParam = `pid=${playlistId}`;
+      const firstPidParam = playlistId ? `pid=${playlistId}` : '';
       const firstQs = `?${[firstThumb, firstPidParam].filter(Boolean).join('&')}`;
 
-      if (isFirstTrack && !firstTrack.youtubeId) {
+      if (isYoutube) {
+        firstTrackUrl = `youtube:${firstTrack.id || firstTrack.youtubeId}${firstQs}`;
+      } else if (isFirstTrack && !firstTrack.youtubeId) {
         console.log(`[Rooms] Resolving first lazy track synchronously: ${firstTrack.title}`);
         try {
           const ytResult = await matchToYouTubeFallback(firstTrack.title, firstTrack.artist || '');
@@ -344,9 +355,13 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
           trackUrl = firstTrackUrl;
         } else {
           const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
-          const pidParam = `pid=${playlistId}`;
+          const pidParam = playlistId ? `pid=${playlistId}` : '';
           const qs = `?${[thumbParam, pidParam].filter(Boolean).join('&')}`;
-          trackUrl = track.youtubeId ? `youtube:${track.youtubeId}${qs}` : `spotify-lazy:${track.id}${qs}`;
+          if (isYoutube) {
+            trackUrl = `youtube:${track.id || track.youtubeId}${qs}`;
+          } else {
+            trackUrl = track.youtubeId ? `youtube:${track.youtubeId}${qs}` : `spotify-lazy:${track.id}${qs}`;
+          }
         }
 
         allItemData.push({

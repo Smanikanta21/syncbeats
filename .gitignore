@@ -74,3 +74,4 @@ docker-compose.build.yml
 scripts/
 device_logs.txt
 dev/syncbeats-server/tests/
+cli/
