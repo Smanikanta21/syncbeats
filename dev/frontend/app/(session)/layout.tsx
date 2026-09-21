@@ -8,7 +8,7 @@ import { UploadProvider } from "../../context/UploadContext";
 import { SyncProvider } from "../../context/SyncContext";
 const DynamicIsland = dynamic(() => import("../../components/dynamic-island").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
-import { X, Camera, MessageSquare } from "lucide-react";
+import { X, Camera, MessageSquare, LoaderCircle } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const isProfile = pathname?.includes("/profile");
   const isFullscreen = isRoom || isProfile;
   const [deviceName, setDeviceName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showExistingFlow, setShowExistingFlow] = useState(false);
   const [savedDevices, setSavedDevices] = useState<Device[]>([]);
@@ -30,6 +31,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [fetchingDevices, setFetchingDevices] = useState(false);
 
   // Auto-prompt feedback modal once per session after 5 mins in room
   useEffect(() => {
@@ -91,24 +93,43 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     if (!needsDeviceRename) {
       setSavedDevices([]);
       setShowExistingFlow(false);
+      setFetchingDevices(false);
       return;
     }
 
+    setFetchingDevices(true);
     devicesApi.mine()
       .then(({ devices }) => {
         setSavedDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')));
       })
       .catch(() => {
         setSavedDevices([]);
+      })
+      .finally(() => {
+        setFetchingDevices(false);
       });
   }, [needsDeviceRename]);
 
   const replacementCandidates = savedDevices.filter((saved) => saved.id !== device?.id);
 
+  useEffect(() => {
+    if (replacementCandidates.length > 0 && !showExistingFlow) {
+      setShowExistingFlow(true);
+    }
+  }, [replacementCandidates.length]);
+
   const handleRename = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deviceName.trim()) return;
+    const trimmed = deviceName.trim();
+    if (!trimmed) return;
+    
+    // Check if the name already exists
+    if (savedDevices.some(d => d.name.toLowerCase() === trimmed.toLowerCase() && d.id !== device?.id)) {
+      setNameError("This device name is already in use. Please choose another name or select it from existing devices.");
+      return;
+    }
 
+    setNameError(null);
     setSaving(true);
     try {
       await renameDevice(deviceName.trim());
@@ -150,7 +171,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
-      {loading && <GlobalLoadingScreen />}
+      {(loading || fetchingDevices) && <GlobalLoadingScreen />}
       {user && !loading && !isProfile && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className={cn('fixed', 'top-24', 'left-1/2', 'z-60', 'w-[min(92vw,720px)]', '-translate-x-1/2', 'rounded-3xl', 'border', 'border-amber-400/30', 'bg-amber-500/10', 'px-4', 'py-3', 'backdrop-blur-xl')}>
@@ -171,7 +192,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           {verificationError && <p className={cn('mt-2', 'text-xs', 'text-red-300')}>{verificationError}</p>}
         </div>
       )}
-      {user && !loading && needsDeviceRename && (
+      {user && !loading && !fetchingDevices && needsDeviceRename && (
         <div className={cn('fixed', 'inset-0', 'z-60', 'flex', 'items-center', 'justify-center', 'bg-background/70', 'backdrop-blur-xl', 'px-4')}>
           <div className={cn('w-full', 'max-w-md', 'rounded-4xl', 'border', 'border-foreground/10', 'bg-background', 'p-6', 'shadow-[0_30px_120px_rgba(0,0,0,0.7)]')}>
             <div className="mb-4">
@@ -196,10 +217,13 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                 <input
                   autoFocus
                   value={deviceName}
-                  onChange={(e) => setDeviceName(e.target.value)}
-                  className={cn('w-full', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40', 'focus:border-foreground/30')}
+                  onChange={(e) => { setDeviceName(e.target.value); setNameError(null); }}
+                  className={cn('w-full', 'rounded-2xl', 'border', nameError ? 'border-red-500/50 focus:border-red-500' : 'border-foreground/10 focus:border-foreground/30', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40')}
                   placeholder="Abhinay's iPhone"
                 />
+                {nameError && (
+                  <p className="text-red-400 text-xs font-semibold px-1">{nameError}</p>
+                )}
                 <button
                   disabled={saving || !deviceName.trim()}
                   className={cn('h-12', 'w-full', 'rounded-2xl', 'bg-foreground', 'font-bold', 'text-background', 'transition-opacity', 'disabled:cursor-not-allowed', 'disabled:opacity-60')}

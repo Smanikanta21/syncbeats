@@ -7,7 +7,8 @@ import {
   ChevronDown, Headphones, Monitor, Smartphone, Laptop
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
-import { devicesApi, type Device } from "../../lib/api";
+import { devicesApi, type Device, getDeviceId } from "../../lib/api";
+import { getSocket } from "../../lib/socket";
 import { cn } from "../../lib/utils";
 import { HoverExpandPill } from "../HoverExpandPill";
 
@@ -91,10 +92,30 @@ function formatLastSeen(dateStr?: string | null): string {
   return `Last seen ${days}d ago`;
 }
 
-function OfflineDeviceCard({ device, customDeviceName }: { device: Device, customDeviceName?: string }) {
+function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Device, customDeviceName?: string, onRename: (id: string, name: string) => Promise<void> }) {
   const DevIcon = getDeviceIcon(device.name, device.user_agent ?? undefined);
   const lastSeenStr = formatLastSeen(device.last_seen_at);
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(device.name);
+  const [saving, setSaving] = useState(false);
+
   const displayName = customDeviceName || device.name;
+
+  const handleSave = async () => {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === device.name) {
+      setIsEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(device.id, trimmed);
+      setIsEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <motion.div
@@ -111,16 +132,35 @@ function OfflineDeviceCard({ device, customDeviceName }: { device: Device, custo
         </div>
 
         <div className={cn('flex-1', 'min-w-0')}>
-          <div className={cn('flex', 'items-center', 'gap-1.5')}>
-            <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{displayName}</span>
-          </div>
-          <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>
+          {isEditing ? (
+            <div className={cn('flex', 'items-center', 'gap-1.5', 'mr-2')}>
+              <input
+                autoFocus
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+                className={cn('w-full', 'bg-background', 'text-xs', 'font-bold', 'text-foreground', 'rounded-md', 'px-2', 'py-1', 'border', 'border-foreground/20', 'outline-none')}
+                disabled={saving}
+              />
+              <button onClick={handleSave} disabled={saving} className={cn('text-[10px]', 'font-bold', 'bg-emerald-500/20', 'text-emerald-400', 'px-2', 'py-1', 'rounded-md')}>
+                {saving ? '...' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <div className={cn('flex', 'items-center', 'gap-2')}>
+              <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{displayName}</span>
+              <button onClick={() => setIsEditing(true)} className={cn('opacity-0', 'group-hover:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}>Edit</button>
+            </div>
+          )}
+          {!isEditing && <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>}
         </div>
       </div>
 
-      <div className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-0.5', 'rounded-md', 'bg-foreground/5', 'border', 'border-foreground/10', 'shrink-0')}>
-        <span className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-wider', 'text-foreground/40')}>Offline</span>
-      </div>
+      {!isEditing && (
+        <div className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-0.5', 'rounded-md', 'bg-foreground/5', 'border', 'border-foreground/10', 'shrink-0')}>
+          <span className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-wider', 'text-foreground/40')}>Offline</span>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -134,6 +174,8 @@ function ParticipantRow({
   syncProgress,
   onVolumeChange,
   customDeviceName,
+  dbId,
+  onRename,
 }: {
   p: Participant;
   isMe: boolean;
@@ -143,6 +185,8 @@ function ParticipantRow({
   syncProgress: number;
   onVolumeChange?: (socketId: string, vol: number) => void;
   customDeviceName?: string;
+  dbId?: string;
+  onRename?: (id: string, name: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -184,6 +228,33 @@ function ParticipantRow({
     }
     prevLatRef.current = lat;
   }, [lat]);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(deviceName);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === deviceName) {
+      setIsEditing(false);
+      return;
+    }
+    if (!dbId || !onRename) {
+      setIsEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(dbId, trimmed);
+      setIsEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const isBufferingActive = isPlaying && !p.isReady && !p.isBlocked;
   const isSyncingActive = syncProgress > 0 && syncProgress < 100;
@@ -251,9 +322,36 @@ function ParticipantRow({
 
         {/* Info - Device Name ONLY as primary title */}
         <div className={cn('flex-1', 'min-w-0')}>
-          <div className={cn('flex', 'items-center', 'gap-1.5')}>
-            <span className={cn('text-xs', 'font-bold', 'text-foreground/90', 'truncate')}>{deviceName}</span>
-          </div>
+          {isEditing ? (
+            <div className={cn('flex', 'items-center', 'gap-1.5', 'mr-2')} onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSave(e)}
+                className={cn('w-full', 'bg-background', 'text-xs', 'font-bold', 'text-foreground', 'rounded-md', 'px-2', 'py-1', 'border', 'border-foreground/20', 'outline-none')}
+                disabled={saving}
+              />
+              <button onClick={handleSave} disabled={saving} className={cn('text-[10px]', 'font-bold', 'bg-emerald-500/20', 'text-emerald-400', 'px-2', 'py-1', 'rounded-md')}>
+                {saving ? '...' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <div className={cn('flex', 'items-center', 'gap-2')}>
+              <span className={cn('text-xs', 'font-bold', 'text-foreground/90', 'truncate')}>{deviceName}</span>
+              {isMe && dbId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                  className={cn('opacity-0', 'group-hover:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Status */}
@@ -366,6 +464,21 @@ export function DevicesPane({
       })
       .catch(() => {});
   }, []);
+
+  const handleRenameDevice = async (id: string, name: string) => {
+    try {
+      const { device } = await devicesApi.rename(id, name);
+      setAccountDevices(prev => prev.map(d => d.id === device.id ? device : d));
+      // If we are renaming an active device, we need to let the socket room know.
+      // We can do this by checking if the renamed device corresponds to any active participant.
+      // But actually, room:updateDevice uses our socket connection. So we only emit if it's OUR current device.
+      if (device.device_key === getDeviceId()) {
+         getSocket().emit('room:updateDevice', { deviceName: name });
+      }
+    } catch (e) {
+      console.error("Failed to rename device", e);
+    }
+  };
 
   const userGroups = useMemo(() => {
     const map = new Map<string, UserGroup>();
@@ -553,6 +666,7 @@ export function DevicesPane({
                     const isMe = p.socketId === mySocketId;
                     const isThisHost = (p.userId && p.userId === hostId) || p.socketId === hostId;
                     const progress = deviceSyncProgress[p.socketId] ?? 0;
+                    const dbId = accountDevices.find(d => d.device_key === p.deviceId)?.id;
                     return (
                       <ParticipantRow
                         key={p.socketId}
@@ -564,13 +678,15 @@ export function DevicesPane({
                         syncProgress={progress}
                         onVolumeChange={onVolumeChange}
                         customDeviceName={activeCustomNames[idx]}
+                        dbId={dbId}
+                        onRename={handleRenameDevice}
                       />
                     );
                   })}
 
                   {/* Offline account devices */}
                   {group.offlineDevices.map((d, idx) => (
-                    <OfflineDeviceCard key={d.id} device={d} customDeviceName={offlineCustomNames[idx]} />
+                    <OfflineDeviceCard key={d.id} device={d} customDeviceName={offlineCustomNames[idx]} onRename={handleRenameDevice} />
                   ))}
                 </div>
               </div>

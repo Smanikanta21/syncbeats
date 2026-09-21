@@ -58,11 +58,11 @@ export default function AuthPage() {
     
     const cameFromGoogle = document.referrer.includes("accounts.google.");
     const hasGoogleOAuthParams =
-      params.has("code") ||
-      params.has("state") ||
-      params.has("scope") ||
-      params.has("authuser") ||
-      params.has("error");
+      params.has("state") || params.has("code") || params.has("scope") || params.has("authuser") || params.has("prompt");
+    
+    if (params.get('kicked') === 'true') {
+      setError("You were logged out because this device was replaced in another session.");
+    }
 
     if (!cameFromGoogle && !hasGoogleOAuthParams) return;
 

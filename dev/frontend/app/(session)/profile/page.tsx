@@ -11,6 +11,7 @@ import { devicesApi, roomsApi, spotifyApi, youtubeApi, type Device } from "../..
 import { SettingsPanel } from "../../../components/settings";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
+import { GlobalLoadingScreen } from "../../../components/GlobalLoadingScreen";
 import { cn } from "../../../lib/utils";
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
@@ -37,6 +38,7 @@ export default function ProfilePage() {
   
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
+  const [isFetchingStats, setIsFetchingStats] = useState(true);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -76,10 +78,17 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user?.id) {
-      devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {});
-      roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0));
-      spotifyApi.getStatus().then(res => setSpotifyConnected(res.connected)).catch(() => {});
-      youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {});
+      setIsFetchingStats(true);
+      Promise.all([
+        devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {}),
+        roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0)),
+        spotifyApi.getStatus().then(res => setSpotifyConnected(res.connected)).catch(() => {}),
+        youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {})
+      ]).finally(() => {
+        setIsFetchingStats(false);
+      });
+    } else {
+      setIsFetchingStats(false);
     }
   }, [user?.id]);
 
@@ -194,6 +203,10 @@ export default function ProfilePage() {
     } catch {}
     router.push('/room/default');
   }, [router]);
+
+  if (!user || isFetchingStats) {
+    return <GlobalLoadingScreen />;
+  }
 
   return (
     <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>

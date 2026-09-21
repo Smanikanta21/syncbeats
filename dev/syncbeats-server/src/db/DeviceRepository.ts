@@ -81,54 +81,6 @@ export class DeviceRepository {
             if (found) return { device: this.mapDevice(found), created: false };
           }
         }
-      } else if (normalizedUserAgent) {
-        // Smart Auto-Replace: If user updated their browser, the exact userAgent string will differ.
-        // We use UAParser to check if the OS and Browser match an existing device exactly.
-        const parser = new UAParser(normalizedUserAgent);
-        const newOs = parser.getOS().name;
-        const newBrowser = parser.getBrowser().name;
-        
-        if (newOs && newBrowser) {
-          // Find the most recently used device for this user
-          const recentDevices = await prisma.device.findMany({
-            where: { userId },
-            orderBy: { lastSeenAt: 'desc' }
-          });
-          
-          for (const d of recentDevices) {
-            if (d.userAgent) {
-              const oldParser = new UAParser(d.userAgent);
-              if (oldParser.getOS().name === newOs && oldParser.getBrowser().name === newBrowser) {
-                let newName = d.name;
-                const isGeneric = /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(d.name);
-                
-                if (isGeneric && normalizedUserAgent) {
-                  const smartName = this.buildDefaultDeviceName(ownerName, normalizedUserAgent);
-                  if (smartName && smartName !== d.name) {
-                    newName = smartName;
-                  }
-                }
-
-                try {
-                  const reused = await prisma.device.update({
-                    where: { id: d.id },
-                    data: {
-                      name: newName,
-                      deviceKey,
-                      lastSeenAt: new Date(),
-                      userAgent: normalizedUserAgent,
-                      ...(ip ? { ip } : {}),
-                    },
-                  });
-                  return { device: this.mapDevice(reused), created: false };
-                } catch (e) {
-                  // Ignore and fall through to create
-                }
-                break;
-              }
-            }
-          }
-        }
       }
     }
 
@@ -203,13 +155,15 @@ export class DeviceRepository {
     currentDeviceKey: string,
     targetDeviceId: string,
     userAgent: string | null
-  ): Promise<PublicDevice | null> {
+  ): Promise<{ device: PublicDevice, oldDeviceKey: string } | null> {
     const target = await prisma.device.findUnique({ where: { id: targetDeviceId } });
     if (!target || target.userId !== userId) return null;
 
     const current = await prisma.device.findUnique({
       where: { userId_deviceKey: { userId, deviceKey: currentDeviceKey } }
     });
+
+    const oldDeviceKey = target.deviceKey;
 
     if (current && current.id === target.id) {
       const same = await prisma.device.update({
@@ -219,7 +173,7 @@ export class DeviceRepository {
           lastSeenAt: new Date(),
         }
       });
-      return this.mapDevice(same);
+      return { device: this.mapDevice(same), oldDeviceKey };
     }
 
     const updatedTarget = await prisma.$transaction(async (tx) => {
@@ -237,7 +191,7 @@ export class DeviceRepository {
       });
     });
 
-    return this.mapDevice(updatedTarget);
+    return { device: this.mapDevice(updatedTarget), oldDeviceKey };
   }
 
   async remove(userId: string, deviceId: string): Promise<boolean> {
@@ -279,8 +233,11 @@ export class DeviceRepository {
     // Prioritize exact device model if available (e.g. Android models)
     if (device.model) {
       platformLabel = device.model;
+      if (platformLabel.toLowerCase() === "macintosh" || platformLabel.toLowerCase() === "macbook") {
+        platformLabel = "Mac";
+      }
     } else if (os.name) {
-      if (os.name.includes("Mac OS")) platformLabel = "MacBook";
+      if (os.name.includes("Mac OS")) platformLabel = "Mac";
       else if (os.name.includes("iOS")) platformLabel = "iPhone";
       else if (os.name.includes("Windows")) platformLabel = "Windows PC";
       else if (os.name.includes("Android")) platformLabel = "Android Phone";

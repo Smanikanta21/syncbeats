@@ -115,16 +115,24 @@ export function createDeviceRoutes(): Router {
     }
 
     try {
-      const device = await repo.replaceCurrentWithExisting(
+      const result = await repo.replaceCurrentWithExisting(
         req.user!.sub,
         deviceKey,
         targetDeviceId,
         userAgent,
       );
 
-      if (!device) {
+      if (!result) {
         res.status(404).json({ error: 'Target device not found' });
         return;
+      }
+
+      const { device, oldDeviceKey } = result;
+
+      // Emit logout event to old browser session
+      const io = req.app.get('io');
+      if (io && oldDeviceKey) {
+        io.to(oldDeviceKey).emit('device:logout', { reason: 'replaced' });
       }
 
       res.json({ device });
