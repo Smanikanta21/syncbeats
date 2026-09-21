@@ -150,25 +150,24 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const allow8DSolo = false; // Temporarily removed 8D audio solo
 
   // Spatial audio
-  const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
+  const { layout, updatePosition, setMotion, motion } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
-    gainNode: audio.gainNode,
+    eqOutputNode: audio.eqOutputNode,
+    analyserNode: audio.analyserNode,
     myDeviceId: currentSocketId ?? "",
+    myUserId: user?.id ?? "",
     roomId: roomId,
     enabled: isConnected,
     initialDevices: snapshot?.spatial ?? [],
     participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
-    is8DSoloMode: spatialMode === '8d-solo' && allow8DSolo,
+    clockOffset: clockOffset,
+    mode: spatialMode === '8d-solo' && allow8DSolo ? 'solo' : 'room',
   });
 
-  // Build device sequence from all participants
-  useEffect(() => {
-    if (participants && participants.length > 0) {
-      setDeviceSequence(participants.map(p => p.socketId));
-    }
-  }, [participants, setDeviceSequence]);
+  // Flatten layout.devices into the DeviceSpatialState shape expected by RoomDashboard/SpatialPanel
+  const spatialDevices = layout.devices.map(d => ({ deviceId: d.deviceId, position: d.position }))
 
   // Playback actions (wired to socket via useRoom)
   const handlePlay = useCallback(() => play(), [play]);
@@ -280,7 +279,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           allow8DSolo={allow8DSolo}
           spatialDevices={spatialDevices}
           onUpdateSpatialPosition={updatePosition}
-          syncUIState={syncUIState}
           spatialMode={spatialMode}
           onSpatialModeChange={setSpatialMode}
           audio={{
@@ -302,8 +300,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             toggleMute: audio.toggleMute,
             unlockAudio: audio.unlockAudio,
           }}
-          orbitSpeed={orbitSpeed}
-          onOrbitSpeedChange={setOrbitSpeed}
           onPlay={handlePlay}
           onPause={handlePause}
           onNext={handleNext}

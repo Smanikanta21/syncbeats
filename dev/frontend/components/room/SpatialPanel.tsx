@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import type { DeviceSpatialState, Participant } from "../../lib/types";
 import { SpatialAudioEngine, type SpatialPosition } from "../../audio/SpatialAudioEngine";
 import { cn } from "@/lib/utils";
+import { SpatialScene3D } from "./spatial/SpatialScene3D";
 
 interface UserGroup {
   userId: string;
@@ -39,23 +40,7 @@ interface SpatialPanelProps {
 }
 
 // ── Coordinate Conversion ─────────────────────────────────────────────────
-
-const polarToGlobal = (pos: { angle: number; radius: number }) => {
-  const scale = 0.15;
-  return {
-    x: pos.radius * Math.sin(pos.angle) * scale,
-    y: -pos.radius * Math.cos(pos.angle) * scale,
-  };
-};
-
-const globalToPolar = (x: number, y: number) => {
-  const scale = 0.15;
-  const dx = x / scale;
-  const dy = y / scale;
-  const angle = Math.atan2(dx, -dy);
-  const radius = Math.min(3, Math.sqrt(dx * dx + dy * dy));
-  return { angle, radius, elevation: 0 };
-};
+// (2D helpers removed — positions are now handled by SpatialScene3D / Three.js)
 
 // ── Ego-Centric Room View ─────────────────────────────────────────────────
 
@@ -181,254 +166,6 @@ export function SpatialPanel({
     }
   }, [deviceOffsets, roomId, resolvedMyUserId]);
 
-  // ── Position Helpers ─────────────────────────────────────────────────────
-
-  const getDeviceGlobal = useCallback((deviceId: string) => {
-    const dev = spatialDevices.find(d => d.deviceId === deviceId);
-    if (!dev) return { x: 0, y: 0 };
-    return polarToGlobal(dev.position);
-  }, [spatialDevices]);
-
-  const getMyGlobal = useCallback(() => {
-    const myGroup = userGroups.find(g => g.isMe);
-    if (!myGroup || myGroup.devices.length === 0) return { x: 0, y: 0 };
-
-    let sumX = 0, sumY = 0;
-    myGroup.devices.forEach(d => {
-      const devGlobal = getDeviceGlobal(d.deviceId);
-      sumX += devGlobal.x;
-      sumY += devGlobal.y;
-    });
-    return {
-      x: sumX / myGroup.devices.length,
-      y: sumY / myGroup.devices.length
-    };
-  }, [userGroups, getDeviceGlobal]);
-
-  const getDeviceScreenPos = useCallback((deviceId: string) => {
-    const myGlobal = getMyGlobal();
-    const devGlobal = getDeviceGlobal(deviceId);
-    let fanX = 0, fanY = 0;
-    
-    const customOffset = deviceOffsets[deviceId];
-    if (customOffset) {
-      fanX = customOffset.fanX;
-      fanY = customOffset.fanY;
-    } else {
-      const group = userGroups.find(g => g.devices.some(d => d.deviceId === deviceId));
-      if (group) {
-        if (group.devices.length === 1) {
-          fanX = 0;
-          fanY = -0.12;
-        } else {
-          const idx = group.devices.findIndex(d => d.deviceId === deviceId);
-          const angle = (idx / group.devices.length) * Math.PI * 2 - Math.PI / 2;
-          fanX = 0.08 * Math.cos(angle);
-          fanY = 0.12 * Math.sin(angle);
-        }
-      }
-    }
-    return { x: 0.5 + (devGlobal.x - myGlobal.x) + fanX, y: 0.5 + (devGlobal.y - myGlobal.y) + fanY };
-  }, [getDeviceGlobal, getMyGlobal, userGroups, deviceOffsets]);
-
-  const getUserScreenPos = useCallback((userId: string) => {
-    const group = userGroups.find(g => g.userId === userId);
-    if (!group || group.devices.length === 0) return { x: 0.5, y: 0.5 };
-    if (group.isMe) return { x: 0.5, y: 0.5 }; // I am always center!
-
-    const myGlobal = getMyGlobal();
-
-    let sumX = 0, sumY = 0;
-    group.devices.forEach(d => {
-      const devGlobal = getDeviceGlobal(d.deviceId);
-      sumX += devGlobal.x;
-      sumY += devGlobal.y;
-    });
-    
-    const avgGlobalX = sumX / group.devices.length;
-    const avgGlobalY = sumY / group.devices.length;
-
-    return {
-      x: 0.5 + (avgGlobalX - myGlobal.x),
-      y: 0.5 + (avgGlobalY - myGlobal.y),
-    };
-  }, [userGroups, getDeviceGlobal, getMyGlobal]);
-
-  // ── Sync UI offsets to Audio Engine ──────────────────────────────────────
-
-  useEffect(() => {
-    if (!syncUIState) return;
-
-    const myGlobal = getMyGlobal();
-    const myPolar = globalToPolar(myGlobal.x, myGlobal.y);
-    const sr = myPolar.radius * 15;
-    const myListenerCart = {
-      x: sr * Math.sin(myPolar.angle),
-      y: 0,
-      z: -sr * Math.cos(myPolar.angle)
-    };
-
-    const offsets = new Map<string, { fanX: number, fanY: number }>();
-    userGroups.forEach(group => {
-      group.devices.forEach((d, idx) => {
-        const customOffset = deviceOffsets[d.deviceId];
-        if (customOffset) {
-          offsets.set(d.deviceId, customOffset);
-        } else {
-          if (group.devices.length === 1) offsets.set(d.deviceId, { fanX: 0, fanY: -0.07 });
-          else {
-            const angle = (idx / group.devices.length) * Math.PI * 2 - Math.PI / 2;
-            offsets.set(d.deviceId, { fanX: 0.04 * Math.cos(angle), fanY: 0.04 * Math.sin(angle) - 0.04 });
-          }
-        }
-      });
-    });
-
-    syncUIState(myListenerCart, offsets, myPolar);
-  }, [userGroups, getMyGlobal, syncUIState, deviceOffsets]);
-
-
-  // ── Drag handlers ──────────────────────────────────────────────────────
-
-  const handleMouseDown = useCallback(
-    (id: string, isUser: boolean, e: React.MouseEvent | React.TouchEvent) => {
-      e.stopPropagation();
-      draggingRef.current = { id, isUser };
-
-      let screenX = 0.5, screenY = 0.5;
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-        
-        screenX = (clientX - rect.left) / rect.width;
-        screenY = (clientY - rect.top) / rect.height;
-      }
-
-      const globalPos = new Map<string, {x: number, y: number}>();
-      spatialDevices.forEach(d => {
-        globalPos.set(d.deviceId, polarToGlobal(d.position));
-      });
-      dragStartRef.current = { screenX, screenY, globalPos };
-    },
-    [spatialDevices]
-  );
-
-  const handleMove = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!draggingRef.current || !containerRef.current || !dragStartRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      
-      const currentScreenX = (clientX - rect.left) / rect.width;
-      const currentScreenY = (clientY - rect.top) / rect.height;
-
-      const dx = currentScreenX - dragStartRef.current.screenX;
-      const dy = currentScreenY - dragStartRef.current.screenY;
-
-      const { id, isUser } = draggingRef.current;
-      const startGlobal = dragStartRef.current.globalPos;
-
-      if (isUser) {
-        const group = userGroups.find(g => g.userId === id);
-        if (!group) return;
-        
-        let sumX = 0, sumY = 0;
-        group.devices.forEach(d => {
-          const pos = startGlobal.get(d.deviceId) ?? getDeviceGlobal(d.deviceId);
-          sumX += pos.x;
-          sumY += pos.y;
-        });
-        const startGlobalCenter = { x: sumX / group.devices.length, y: sumY / group.devices.length };
-        const intendedCenter = { x: startGlobalCenter.x + dx, y: startGlobalCenter.y + dy };
-        
-        const aspect = containerRef.current ? containerRef.current.getBoundingClientRect().width / containerRef.current.getBoundingClientRect().height : 1;
-        const MIN_DIST = 0.08; // 8% minimum spatial distance between users
-        
-        userGroups.filter(g => g.userId !== id && g.devices.length > 0).forEach(other => {
-          let ox = 0, oy = 0;
-          other.devices.forEach(d => {
-            const pos = getDeviceGlobal(d.deviceId);
-            ox += pos.x;
-            oy += pos.y;
-          });
-          const otherCenter = { x: ox / other.devices.length, y: oy / other.devices.length };
-          
-          const cx = intendedCenter.x - otherCenter.x;
-          const cy = (intendedCenter.y - otherCenter.y) / aspect;
-          const dist = Math.sqrt(cx*cx + cy*cy);
-          
-          if (dist < MIN_DIST) {
-            // Apply a soft push force if they get too close
-            const push = dist === 0 ? MIN_DIST : (MIN_DIST - dist) / dist;
-            const pushX = dist === 0 ? MIN_DIST : cx * push;
-            const pushY = dist === 0 ? 0 : cy * push;
-            intendedCenter.x += pushX;
-            intendedCenter.y += pushY * aspect;
-          }
-        });
-        
-        const finalDx = intendedCenter.x - startGlobalCenter.x;
-        const finalDy = intendedCenter.y - startGlobalCenter.y;
-
-        group.devices.forEach(d => {
-          const devStart = startGlobal.get(d.deviceId) ?? getDeviceGlobal(d.deviceId);
-          onUpdatePosition(d.deviceId, globalToPolar(devStart.x + finalDx, devStart.y + finalDy));
-        });
-      } else {
-        const deviceGroup = userGroups.find(g => g.devices.some(d => d.deviceId === id));
-        if (deviceGroup) {
-          const ownerPosScreen = deviceGroup.isMe ? {x: 0.5, y: 0.5} : getUserScreenPos(deviceGroup.userId);
-          const sdx = currentScreenX - ownerPosScreen.x;
-          const sdy = currentScreenY - ownerPosScreen.y;
-          
-          let fanX = sdx;
-          let fanY = sdy;
-          
-          const aspect = rect.width / rect.height;
-          // Normalize to width-space for distance calculation so the constraint is a perfect circle
-          const sdyNorm = sdy / aspect;
-          const dist = Math.sqrt(sdx*sdx + sdyNorm*sdyNorm);
-          
-          const MAX_DIST = 0.15; // 15% of width
-          if (dist > MAX_DIST) {
-            fanX = (sdx / dist) * MAX_DIST;
-            fanY = ((sdyNorm / dist) * MAX_DIST) * aspect;
-          }
-
-          setDeviceOffsets(prev => ({ ...prev, [id]: { fanX, fanY } }));
-        }
-      }
-    },
-    [userGroups, getUserScreenPos, getDeviceGlobal, onUpdatePosition]
-  );
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => handleMove(e.clientX, e.clientY),
-    [handleMove]
-  );
-
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => handleMove(e.touches[0].clientX, e.touches[0].clientY),
-    [handleMove]
-  );
-
-  useEffect(() => {
-    const handleMouseUp = () => {
-      draggingRef.current = null;
-      dragStartRef.current = null;
-    };
-    window.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("touchend", handleMouseUp);
-    return () => {
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("touchend", handleMouseUp);
-    };
-  }, []);
-
-  const myGlobal = getMyGlobal();
-  const bgOffsetX = myGlobal.x * 100 * (1 / 0.15);
-  const bgOffsetY = myGlobal.y * 100 * (1 / 0.15);
-
   // Compute live stereo pan value from current orbit position (-1 left .. +1 right)
   const panValue = useMemo(() => {
     if (!orbitData) return 0;
@@ -478,239 +215,37 @@ export function SpatialPanel({
       </div>
 
       <div className={cn('flex-1', 'w-full', 'flex', 'flex-col-reverse', 'lg:flex-row', 'gap-4', 'min-h-0')}>
-          {/* Map Content abstracted for reuse */}
+          {/* ── 3D Spatial Scene ─────────────────────────────────────────── */}
           {(() => {
-            const content = (
-              <>
-                <div
-            className={cn('absolute', 'inset-0', 'opacity-[0.15]', 'transition-transform', 'duration-1000')} 
-            style={{ 
-              transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center",
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)",
-              backgroundSize: "10% 10%",
-              backgroundPosition: `${50 - bgOffsetX}% ${50 - bgOffsetY}%`,
-            }}
-          />
-
-          <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'transition-transform', 'duration-1000')} style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }} xmlns="http://www.w3.org/2000/svg">
-            <defs><pattern id="room-grid-ego" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" className="text-foreground/4" strokeWidth="1"/></pattern></defs>
-            <rect width="100%" height="100%" fill="url(#room-grid-ego)" />
-            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="currentColor" className="text-foreground/6" strokeWidth="1"/>
-            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" className="text-foreground/6" strokeWidth="1"/>
-          </svg>
-
-          {/* Axis Labels */}
-          <div className={cn('absolute', 'top-6', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none')}>
-            Front
-          </div>
-          <div className={cn('absolute', 'bottom-6', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none')}>
-            Back
-          </div>
-          <div className={cn('absolute', 'left-6', 'top-1/2', '-translate-y-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none', '-rotate-90')}>
-            Left
-          </div>
-          <div className={cn('absolute', 'right-6', 'top-1/2', '-translate-y-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none', 'rotate-90')}>
-            Right
-          </div>
-
-          <div className={cn('absolute', 'inset-4', 'border', 'border-foreground/10', 'rounded-xl', 'pointer-events-none')} />
-
-          {/* Virtual Orb for 8D Solo Mode */}
-          {spatialMode === '8d-solo' && allow8DSolo && (() => {
-            // Visual orbit radius as a fraction of the container (35% of half-width)
-            const VIS_RADIUS = 35; // in percentage units from center
-            const angle = orbitData?.fromId === '8D_MODE' ? orbitData.frac : 0;
-            const orbX = 50 + VIS_RADIUS * Math.sin(angle);
-            const orbY = 50 - VIS_RADIUS * Math.cos(angle);
-
-            // Trail: 8 ghost dots fading behind the orb
-            const TRAIL_COUNT = 8;
-            const TRAIL_STEP = (Math.PI * 2) / 24;
-
-            return (
-              <>
-                {/* Orbit ring */}
-                <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'z-10')}>
-                  <ellipse
-                    cx="50%"
-                    cy="50%"
-                    rx={`${VIS_RADIUS}%`}
-                    ry={`${VIS_RADIUS}%`}
-                    fill="none"
-                    stroke="rgba(139,92,246,0.2)"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 4"
-                  />
-                </svg>
-
-                {/* Glowing trail */}
-                {Array.from({ length: TRAIL_COUNT }).map((_, i) => {
-                  const trailAngle = angle - TRAIL_STEP * (i + 1);
-                  const tx = 50 + VIS_RADIUS * Math.sin(trailAngle);
-                  const ty = 50 - VIS_RADIUS * Math.cos(trailAngle);
-                  const size = 12 - i * 1.2;
-                  const opacity = (1 - i / TRAIL_COUNT) * 0.5;
-                  return (
-                    <div
-                      key={`trail-${i}`}
-                      className={cn('absolute', 'rounded-full', 'bg-violet-400', 'pointer-events-none', 'z-10')}
-                      style={{
-                        width: `${size}px`,
-                        height: `${size}px`,
-                        left: `${tx}%`,
-                        top: `${ty}%`,
-                        transform: 'translate(-50%, -50%)',
-                        opacity,
-                        filter: `blur(${i * 0.5}px)`,
-                      }}
-                    />
-                  );
-                })}
-
-                {/* Outer pulse ring */}
-                <div
-                  className={cn('absolute', 'rounded-full', 'border', 'border-violet-400/40', 'pointer-events-none', 'z-10', 'animate-ping')}
-                  style={{
-                    width: '56px',
-                    height: '56px',
-                    left: `${orbX}%`,
-                    top: `${orbY}%`,
-                    transform: 'translate(-50%, -50%)',
-                    animationDuration: '1.5s',
-                  }}
-                />
-
-                {/* Main orb */}
-                <div
-                  className={cn('absolute', 'rounded-full', 'font-bold', 'text-[10px]', 'text-white', 'flex', 'items-center', 'justify-center', 'pointer-events-none', 'z-20')}
-                  style={{
-                    width: '44px',
-                    height: '44px',
-                    left: `${orbX}%`,
-                    top: `${orbY}%`,
-                    transform: 'translate(-50%, -50%)',
-                    background: 'radial-gradient(circle at 35% 35%, #a78bfa, #7c3aed)',
-                    boxShadow: '0 0 20px 6px rgba(139,92,246,0.5), 0 0 40px 10px rgba(139,92,246,0.25)',
-                    border: '2px solid rgba(255,255,255,0.25)',
-                  }}
-                >
-                  8D
-                </div>
-              </>
-            );
-          })()}
-
-          <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'z-10')}>
-            {userGroups.map(user => {
-              if (expandedUserId !== user.userId) return null;
-              const userPos = getUserScreenPos(user.userId);
-              return user.devices.map(dev => {
-                const devPos = getDeviceScreenPos(dev.deviceId);
-                return (
-                  <line
-                    key={`line-${dev.deviceId}`}
-                    x1={`${userPos.x * 100}%`}
-                    y1={`${userPos.y * 100}%`}
-                    x2={`${devPos.x * 100}%`}
-                    y2={`${devPos.y * 100}%`}
-                    stroke="rgba(59, 130, 246, 0.4)"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 4"
-                    className="animate-[dash_1s_linear_infinite]"
-                  />
-                );
-              });
-            })}
-          </svg>
-
-          <div className={cn('absolute', 'inset-0')}>
-            <AnimatePresence>
-              {userGroups.map((user) => {
-                const userPos = getUserScreenPos(user.userId);
-                return (
-                  <div key={user.userId}>
-                    <motion.div
-                      layoutId={`user-${user.userId}`}
-                      className={cn('absolute', 'w-12', 'h-12', '-ml-6', '-mt-6', 'cursor-grab', 'active:cursor-grabbing', 'z-30', 'select-none', 'touch-none')}
-                      initial={{ opacity: 0, scale: 0.5 }}
-                      animate={{
-                        opacity: 1,
-                        scale: 1,
-                        left: `${userPos.x * 100}%`,
-                        top: `${userPos.y * 100}%`,
-                      }}
-                      onMouseDown={(e) => handleMouseDown(user.userId, true, e)}
-                      onTouchStart={(e) => handleMouseDown(user.userId, true, e)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedUserId((prev) => (prev === user.userId ? null : user.userId));
-                      }}
-                    >
-                      <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-linear-to-br', 'from-blue-500', 'to-indigo-600', 'shadow-lg', 'shadow-blue-500/20', 'flex', 'items-center', 'justify-center', 'border-2', 'border-white/10')}>
-                        <span className={cn('text-sm', 'font-bold', 'text-white')}>{user.initials}</span>
-                      </div>
-                    </motion.div>
-                    {/* Devices for this user */}
-                    <AnimatePresence>
-                      {expandedUserId === user.userId && user.devices.map((device) => {
-                        const devPos = getDeviceScreenPos(device.deviceId);
-                        const Icon = getDeviceIcon(device.deviceName, device.deviceType);
-                        return (
-                          <motion.div
-                            key={device.deviceId}
-                            initial={{ opacity: 0, scale: 0 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0 }}
-                            className={cn('absolute', 'w-8', 'h-8', '-ml-4', '-mt-4', 'cursor-grab', 'active:cursor-grabbing', 'z-40', 'flex', 'flex-col', 'items-center', 'justify-center', 'bg-background/80', 'border', 'border-foreground/15', 'rounded-lg', 'backdrop-blur-sm', 'group', 'select-none', 'touch-none', 'transition-all', 'duration-300')}
-                            style={{
-
-                              left: `${devPos.x * 100}%`,
-                              top: `${devPos.y * 100}%`,
-                            
-                              transform: `scale(${1 + (((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) / 45) * 0.3})`,
-                              boxShadow: `0 ${(((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) + 45) / 4}px ${(((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0) + 45) / 2}px rgba(0,0,0,0.3)`,
-                              zIndex: 40 + Math.floor((spatialDevices.find(sd => sd.deviceId === device.deviceId)?.position.elevation) || 0),
-                            }}
-                            onMouseDown={(e) => handleMouseDown(device.deviceId, false, e)}
-                            onTouchStart={(e) => handleMouseDown(device.deviceId, false, e)}
-                          >
-                            <Icon className={cn('w-4', 'h-4', 'text-foreground/70')} />
-                            <div className={cn('absolute', '-bottom-5', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'text-foreground/60', 'font-bold', 'whitespace-nowrap', 'bg-background/80', 'border', 'border-foreground/10', 'px-1.5', 'py-0.5', 'rounded', 'backdrop-blur-sm', 'pointer-events-none')}>
-                              {device.deviceName.length > 15 ? device.deviceName.slice(0,15) + '...' : device.deviceName}
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-
-
-              </>
+            // ── 3D Canvas (shared between inline + modal) ─────────────────
+            const scene3D = (
+              <SpatialScene3D
+                spatialDevices={spatialDevices}
+                participants={participants}
+                myDeviceId={myDeviceId}
+                myUserId={myUserId}
+                isPlaying={isPlaying}
+                onUpdatePosition={onUpdatePosition}
+                className="absolute inset-0 w-full h-full"
+              />
             );
 
             return (
               <>
-                {/* INLINE VIEW (Blurred on mobile if not expanded) */}
+                {/* INLINE VIEW — blurred/overlay on mobile until tapped */}
                 <div
-                  className={`flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#0A0F1C] touch-none rounded-3xl border border-foreground/5 ${!isMobileModalOpen ? "cursor-pointer lg:cursor-auto" : "hidden lg:block"}`}
-                  ref={!isMobileModalOpen ? containerRef : undefined}
-                  onMouseMove={!isMobileModalOpen ? handleMouseMove : undefined}
-                  onTouchMove={!isMobileModalOpen ? handleTouchMove : undefined}
+                  className={`flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#07090F] touch-none rounded-3xl border border-foreground/5 ${!isMobileModalOpen ? "cursor-pointer lg:cursor-auto" : "hidden lg:block"}`}
                   onClick={() => {
                     if (window.innerWidth < 1024 && !isMobileModalOpen) {
                       setIsMobileModalOpen(true);
                     }
                   }}
                 >
-                  <div className={!isMobileModalOpen ? "absolute inset-0 lg:opacity-100 opacity-60 lg:blur-none blur-[3px] pointer-events-none lg:pointer-events-auto transition-all w-full h-full" : "absolute inset-0 w-full h-full"}>
-                    {content}
+                  <div className={!isMobileModalOpen ? "absolute inset-0 lg:opacity-100 opacity-70 lg:blur-none blur-sm pointer-events-none lg:pointer-events-auto transition-all w-full h-full" : "absolute inset-0 w-full h-full"}>
+                    {scene3D}
                   </div>
-                  
+
+                  {/* "TAP TO EXPAND" pill — mobile only, shown when not yet opened */}
                   {!isMobileModalOpen && (
                     <div className={cn('absolute', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'lg:hidden', 'pointer-events-none', 'bg-background/10')}>
                       <div className={cn('bg-foreground', 'text-background', 'px-5', 'py-2.5', 'rounded-full', 'font-black', 'text-xs', 'shadow-2xl', 'flex', 'items-center', 'gap-2', 'tracking-wide')}>
@@ -719,11 +254,16 @@ export function SpatialPanel({
                       </div>
                     </div>
                   )}
+
+                  {/* Hint overlay on desktop */}
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-widest text-foreground/20 uppercase pointer-events-none select-none hidden lg:block">
+                    Drag to rotate · Scroll to zoom
+                  </div>
                 </div>
 
-                {/* MODAL VIEW (Mobile only) */}
+                {/* MODAL VIEW — mobile only, full-screen */}
                 {mounted && isMobileModalOpen && createPortal(
-                  <div className={cn('fixed', 'inset-0', 'z-100', 'flex', 'flex-col', 'p-4', 'bg-background/90', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
+                  <div className={cn('fixed', 'inset-0', 'z-[100]', 'flex', 'flex-col', 'p-4', 'bg-background/92', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
                     <div className={cn('flex', 'items-center', 'justify-between', 'mb-4', 'pt-12')}>
                       <div className={cn('flex', 'items-center', 'gap-4')}>
                         <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
@@ -731,13 +271,13 @@ export function SpatialPanel({
                         </h2>
                         {allow8DSolo && (
                           <div className={cn('flex', 'bg-foreground/5', 'p-1', 'rounded-full', 'border', 'border-foreground/10')}>
-                            <button 
+                            <button
                               onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('multiplayer'); }}
                               className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
                             >
                               Multiplayer
                             </button>
-                            <button 
+                            <button
                               onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('8d-solo'); }}
                               className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === '8d-solo' ? 'bg-violet-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
                             >
@@ -746,32 +286,22 @@ export function SpatialPanel({
                           </div>
                         )}
                       </div>
-                      <button 
+                      <button
                         className={cn('w-10', 'h-10', 'rounded-full', 'bg-foreground/10', 'flex', 'items-center', 'justify-center', 'text-foreground', 'hover:bg-foreground/20')}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsMobileModalOpen(false);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setIsMobileModalOpen(false); }}
                       >
                         <X className={cn('w-5', 'h-5')} />
                       </button>
                     </div>
-                    <div 
-                      className={cn('flex-1', 'w-full', 'relative', 'overflow-hidden', 'bg-black/10', 'dark:bg-[#0A0F1C]/50', 'touch-none', 'rounded-3xl', 'border', 'border-foreground/10', 'shadow-2xl')}
-                      ref={containerRef}
-                      onMouseMove={handleMouseMove}
-                      onTouchMove={handleTouchMove}
-                    >
-                      {content}
+                    <div className={cn('flex-1', 'w-full', 'relative', 'overflow-hidden', 'bg-black/10', 'dark:bg-[#07090F]', 'touch-none', 'rounded-3xl', 'border', 'border-foreground/10', 'shadow-2xl')}>
+                      {scene3D}
                     </div>
                   </div>,
-                  document.body
+                  document.body,
                 )}
               </>
             );
           })()}
-
-
         {/* Right side orbit controls (Responsive) */}
         {onOrbitSpeedChange && (
           <div className={cn('order-first', 'lg:order-last', 'lg:w-48', 'shrink-0', 'bg-foreground/5', 'rounded-2xl', 'p-3', 'lg:p-4', 'flex', 'flex-col', 'gap-3', 'lg:gap-4')}>

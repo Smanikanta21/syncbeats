@@ -1,86 +1,84 @@
 /**
  * SpatialAudioEngine.ts
  *
- * Owns the entire Web Audio graph for SyncBeats spatial audio.
- * One singleton instance per client, created on first user gesture.
+ * Turns every device in the room into a real speaker.
  *
- * Design:
- *   - Listener is ALWAYS at (0, 0, 0).
- *   - A single PannerNode (HRTF) orbits through device positions for 3D feel.
- *   - A StereoPannerNode runs in parallel for crisp, reliably audible L/R pan.
- *   - The devices define the orbit — each device's angle/radius drives the pan.
+ * A virtual sound source moves around a listening point. Each client computes
+ * *its own* gain from how close that source is to *its own* physical position,
+ * using constant-power amplitude panning — so with a Mac on your left and a
+ * phone on your right, the sound audibly travels between them. Motion is a pure
+ * function of the synced server clock, so every device agrees on where the
+ * sound is without a single extra socket message.
  *
- * Graph topology:
+ * Graph — spliced **in series** into the existing player chain:
  *
- *   inputNode
- *        │
- *   masterGain
- *        │
- *   pannerNode  (HRTF — 3D positioning)
- *        │
- *   stereoPanner  (simple L/R stereo pan — always audible)
- *        │
- *   analyser → AudioDestinationNode
+ *   … → EQ[last] → spatialGain → airFilter → panner(HRTF) → stereoPanner → analyser → destination
+ *                                              └→ reverbDelay → reverbGain ┘
+ *
+ * The previous version hung this chain off `gainNode` in *parallel* with the dry
+ * EQ path, so a full-volume unpanned copy was always mixed on top and the
+ * spatial effect was inaudible. Splicing in series is the fix.
  */
 
-export interface SpatialPosition {
-  /** Angle in radians. 0 = front, π/2 = right, π = behind, -π/2 = left */
-  angle: number;
-  /** Normalised radius. 1.0 = standard orbit distance */
-  radius: number;
-  /** Elevation in degrees. 0 = ear level, +45 = above, -45 = below */
-  elevation: number;
-}
+import {
+  GAIN_FLOOR,
+  ORIGIN_POSITION,
+  addVec,
+  clamp,
+  computeSpeakerGains,
+  normalizeAngle,
+  polarToCartesian,
+  relativePolar,
+  subVec,
+  vecLength,
+  type Speaker,
+  type SpatialPosition,
+  type Vec3,
+} from '../lib/spatial/geometry';
+import {
+  DEFAULT_MOTION,
+  beatSeed,
+  pickBeatTarget,
+  sourceAt,
+  type BeatState,
+  type MotionConfig,
+} from '../lib/spatial/motion';
+
+export type { SpatialPosition, Speaker } from '../lib/spatial/geometry';
+export type { MotionConfig, MotionMode } from '../lib/spatial/motion';
 
 export interface DeviceSpatialState {
   deviceId: string;
   position: SpatialPosition;
 }
 
+export interface SpatialSample {
+  /** Where the sound is, relative to the listening origin */
+  source: SpatialPosition;
+  /** Where the sound is in absolute room coordinates */
+  sourceWorld: Vec3;
+  /** Per-device output level, 0..1 — drives both audio and the glowing pucks */
+  gains: Map<string, number>;
+  /** This device's own level */
+  myGain: number;
+  /** This device's stereo pan, -1..+1 */
+  pan: number;
+}
+
+/** Fixed HRTF radius. Direction comes from the panner, level from the VBAP gain. */
+const PANNER_DISTANCE = 1.5;
+/** Exponential smoothing constant for AudioParam writes — kills zipper noise. */
+const SMOOTHING = 0.04;
+/** AudioParams are rewritten at most this often; the visuals still run at 60fps. */
+const AUDIO_WRITE_INTERVAL_MS = 33;
+/** Ignore beats closer together than this, so jumps stay legible. */
+const MIN_BEAT_GAP_MS = 160;
+const BEAT_GLIDE_MS = 140;
+/** How much of the HRTF output also gets hard stereo-panned (phone speakers). */
+const STEREO_STRENGTH = 0.7;
+
 export class SpatialAudioEngine {
   private static instance: SpatialAudioEngine | null = null;
-
-  private ctx: AudioContext | null = null;
-  private source: AudioNode | null = null;
-
-  /** HRTF panner for full 3-D positioning */
-  private panner: PannerNode | null = null;
-
-  /** Simple stereo panner — always audible, crisp L/R */
-  private stereoPanner: StereoPannerNode | null = null;
-
-  /** Master gain */
-  private masterGain: GainNode | null = null;
-  
-  /** Acoustics Simulation */
-  private distanceFilter: BiquadFilterNode | null = null;
-  private reverbDelay: DelayNode | null = null;
-  private reverbGain: GainNode | null = null;
-
-  private analyser: AnalyserNode | null = null;
-  private dataArray: Uint8Array | null = null;
-  private lastPollTime: number = 0;
-  private lastVolume: number = 0;
-
-  /** Current stereo pan value -1..+1 (for UI meter) */
-  private currentPan: number = 0;
-
-  private myDeviceId: string | null = null;
-  private isInitialised = false;
-
-  private devicePositions = new Map<string, SpatialPosition>();
-  private uiOffsets = new Map<string, { fanX: number; fanY: number }>();
-  private uiListenerCart: { x: number; y: number; z: number } | null = null;
-
-  private deviceSequence: string[] = [];
-  private secondsPerDevice: number = 3;
-
-  private orbitEnabled: boolean = false;
-  private animationFrameId: number | null = null;
-  private onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
-  private is8DSoloMode: boolean = false;
-
-  // --- Singleton ---
 
   static getInstance(): SpatialAudioEngine {
     if (!SpatialAudioEngine.instance) {
@@ -91,508 +89,402 @@ export class SpatialAudioEngine {
 
   private constructor() {}
 
-  // --- Initialisation ---
+  // ── Audio graph ──────────────────────────────────────────────────────────
 
-  init(ctx: AudioContext, inputNode: AudioNode, myDeviceId: string): void {
+  private ctx: AudioContext | null = null;
+  private spliceIn: AudioNode | null = null;
+  private spliceOut: AudioNode | null = null;
+
+  private spatialGain: GainNode | null = null;
+  private airFilter: BiquadFilterNode | null = null;
+  private panner: PannerNode | null = null;
+  private stereoPanner: StereoPannerNode | null = null;
+  private reverbDelay: DelayNode | null = null;
+  private reverbGain: GainNode | null = null;
+
+  private isInitialised = false;
+
+  // ── State ────────────────────────────────────────────────────────────────
+
+  private myDeviceId = '';
+  private clockOffset = 0;
+  private enabled = true;
+  private running = false;
+
+  /** Speakers in absolute room coordinates */
+  private speakers: Speaker[] = [];
+  /** Same speakers re-expressed around `origin` — cached, rebuilt on change */
+  private speakersRelative: Speaker[] = [];
+  private ringAngles: number[] = [];
+  private originVec: Vec3 = { x: 0, y: 0, z: 0 };
+  private origin: SpatialPosition = ORIGIN_POSITION;
+
+  private motion: MotionConfig = { ...DEFAULT_MOTION };
+  private beat: BeatState | null = null;
+  private lastBeatAt = 0;
+
+  private rafId: number | null = null;
+  private lastAudioWrite = 0;
+
+  /** One-frame memo so audio and renderer sampling the same instant agree exactly. */
+  private cachedAt = -1;
+  private cached: SpatialSample | null = null;
+
+  /** Optional UI callback fired on every audio write with the current orbit position. */
+  private orbitUpdateCallback: ((fromId: string, toId: string, frac: number) => void) | null = null;
+
+  // ── Initialisation ───────────────────────────────────────────────────────
+
+  /**
+   * @param spliceIn  Node currently feeding `spliceOut` (the last EQ band)
+   * @param spliceOut Node to hand the spatialised signal back to (the analyser)
+   */
+  init(ctx: AudioContext, spliceIn: AudioNode, spliceOut: AudioNode, myDeviceId: string): void {
     if (this.isInitialised) return;
 
-    this.myDeviceId = myDeviceId;
     this.ctx = ctx;
+    this.spliceIn = spliceIn;
+    this.spliceOut = spliceOut;
+    this.myDeviceId = myDeviceId || this.myDeviceId;
 
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 1;
+    this.spatialGain = ctx.createGain();
+    this.spatialGain.gain.value = 1;
 
-    this.panner = this.createPanner();
-    this.stereoPanner = this.ctx.createStereoPanner();
+    this.airFilter = ctx.createBiquadFilter();
+    this.airFilter.type = 'lowpass';
+    this.airFilter.frequency.value = 20000;
+    this.airFilter.Q.value = 0.7;
+
+    this.panner = ctx.createPanner();
+    this.panner.panningModel = 'HRTF';
+    // Direction only — level is handled explicitly, so keep distance rolloff mild.
+    this.panner.distanceModel = 'inverse';
+    this.panner.refDistance = PANNER_DISTANCE;
+    this.panner.maxDistance = 20;
+    this.panner.rolloffFactor = 0.2;
+    this.panner.coneInnerAngle = 360;
+    this.panner.coneOuterAngle = 360;
+    this.panner.coneOuterGain = 0;
+    this.panner.positionX.value = 0;
+    this.panner.positionY.value = 0;
+    this.panner.positionZ.value = -PANNER_DISTANCE;
+
+    this.stereoPanner = ctx.createStereoPanner();
     this.stereoPanner.pan.value = 0;
 
-    this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 512;
-    this.analyser.smoothingTimeConstant = 0.4;
-    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+    this.reverbDelay = ctx.createDelay(1.0);
+    this.reverbDelay.delayTime.value = 0.045;
+    this.reverbGain = ctx.createGain();
+    this.reverbGain.gain.value = 0;
 
-    this.source = inputNode;
-
-    // Disconnect source from raw destination so we don't hear unpanned audio
+    // Break the existing direct EQ → analyser link, then rebuild it through us.
     try {
-      this.source.disconnect(this.ctx.destination);
-    } catch (e) {}
+      spliceIn.disconnect(spliceOut);
+    } catch {
+      /* not connected yet — the chain below still wires up correctly */
+    }
 
-    // Acoustics nodes
-    this.distanceFilter = this.ctx.createBiquadFilter();
-    this.distanceFilter.type = 'lowpass';
-    this.distanceFilter.frequency.value = 22050; // default fully open
-
-    this.reverbDelay = this.ctx.createDelay(1.0);
-    this.reverbDelay.delayTime.value = 0.05; // 50ms early reflection
-    
-    this.reverbGain = this.ctx.createGain();
-    this.reverbGain.gain.value = 0; // default no reverb
-
-    // Chain: source → masterGain → distanceFilter → panner → stereoPanner → analyser → destination
-    this.source.connect(this.masterGain);
-    this.masterGain.connect(this.distanceFilter);
-    this.distanceFilter.connect(this.panner);
+    spliceIn.connect(this.spatialGain);
+    this.spatialGain.connect(this.airFilter);
+    this.airFilter.connect(this.panner);
     this.panner.connect(this.stereoPanner);
-    
-    // Reverb loop
     this.panner.connect(this.reverbDelay);
     this.reverbDelay.connect(this.reverbGain);
-    this.reverbGain.connect(this.stereoPanner); // mix back in
-    
-    this.stereoPanner.connect(this.analyser);
-    this.analyser.connect(this.ctx.destination);
+    this.reverbGain.connect(this.stereoPanner);
+    this.stereoPanner.connect(spliceOut);
 
-    this.resetListenerToOrigin();
-
+    this.resetListener();
     this.isInitialised = true;
   }
 
-  // --- AudioContext lifecycle ---
-
-  getVolume(): number {
-    if (!this.analyser || !this.dataArray) return 0;
-
-    const now = performance.now();
-    if (now - this.lastPollTime > 10) {
-      this.analyser.getByteFrequencyData(this.dataArray as any);
-      this.lastPollTime = now;
-
-      let sum = 0;
-      const bins = Math.min(10, this.dataArray.length);
-      for (let i = 0; i < bins; i++) {
-        sum += this.dataArray[i];
-      }
-      this.lastVolume = sum / bins / 255;
+  /** Restore the plain EQ → analyser path. */
+  dispose(): void {
+    if (!this.isInitialised || !this.spliceIn || !this.spliceOut) return;
+    this.stop();
+    try {
+      this.spliceIn.disconnect(this.spatialGain!);
+      this.stereoPanner!.disconnect(this.spliceOut);
+      this.spliceIn.connect(this.spliceOut);
+    } catch {
+      /* graph already torn down */
     }
-
-    return this.lastVolume;
+    this.isInitialised = false;
   }
 
-  getFrequencyData(): Uint8Array | null {
-    if (!this.analyser || !this.dataArray) return null;
+  /** The listener is fixed at the origin facing front; the source is what moves. */
+  private resetListener(): void {
+    if (!this.ctx) return;
+    const l = this.ctx.listener;
+    const t = this.ctx.currentTime;
+    const set = (p: AudioParam | undefined, v: number) => p?.setValueAtTime(v, t);
 
-    const now = performance.now();
-    if (now - this.lastPollTime > 10) {
-      this.analyser.getByteFrequencyData(this.dataArray as any);
-      this.lastPollTime = now;
-    }
-
-    return this.dataArray;
+    set(l.positionX, 0); set(l.positionY, 0); set(l.positionZ, 0);
+    set(l.forwardX, 0); set(l.forwardY, 0); set(l.forwardZ, -1);
+    set(l.upX, 0); set(l.upY, 1); set(l.upZ, 0);
   }
 
-  /** Returns current stereo pan value -1 (full left) to +1 (full right) */
-  getPanValue(): number {
-    return this.currentPan;
-  }
-
-  async resume(): Promise<void> {
-    if (this.ctx?.state === 'suspended') {
-      await this.ctx.resume();
-    }
-  }
-
-  async suspend(): Promise<void> {
-    if (this.ctx?.state === 'running') {
-      await this.ctx.suspend();
-    }
-  }
-
-  // --- Device management ---
+  // ── Configuration ────────────────────────────────────────────────────────
 
   setMyDeviceId(deviceId: string): void {
     this.myDeviceId = deviceId;
   }
 
-  addDevice(deviceId: string, initialPosition?: SpatialPosition): void {
-    if (initialPosition) {
-      this.devicePositions.set(deviceId, initialPosition);
-    } else if (!this.devicePositions.has(deviceId)) {
-      this.devicePositions.set(deviceId, { angle: 0, radius: 1, elevation: 0 });
-    }
-    this.rebuildSequence();
-  }
-
-  removeDevice(deviceId: string): void {
-    this.devicePositions.delete(deviceId);
-    this.deviceSequence = this.deviceSequence.filter(id => id !== deviceId);
-  }
-
-  // --- Spatial position ---
-
-  updatePosition(deviceId: string, pos: SpatialPosition): void {
-    this.devicePositions.set(deviceId, pos);
-    this.rebuildSequence();
-  }
-
-  applySnapshot(devices: DeviceSpatialState[]): void {
-    devices.forEach(({ deviceId, position }) => {
-      this.devicePositions.set(deviceId, position);
-    });
-    this.rebuildSequence();
-  }
-
-  // --- UI Sync ---
-
-  setUIState(listenerCart: { x: number; y: number; z: number }, offsets: Map<string, { fanX: number; fanY: number }>): void {
-    this.uiListenerCart = listenerCart;
-    this.uiOffsets = offsets;
-  }
-
-  // --- Device Sequence Orbit ---
-
-  setDeviceSequence(_deviceIds: string[]): void {
-    this.rebuildSequence();
-  }
-
-  /** Rebuild sequence strictly by clockwise angular position */
-  private rebuildSequence(): void {
-    const ids = Array.from(this.devicePositions.keys());
-
-    ids.sort((a, b) => {
-      const posA = this.devicePositions.get(a)!;
-      const posB = this.devicePositions.get(b)!;
-
-      const angA = (posA.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      const angB = (posB.angle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-
-      if (Math.abs(angA - angB) < 0.001) {
-        return posA.radius - posB.radius;
-      }
-      return angA - angB;
-    });
-
-    this.deviceSequence = ids;
-  }
-
-  setOrbitSpeed(secondsPerDevice: number): void {
-    this.secondsPerDevice = Math.max(0.5, Math.min(10, secondsPerDevice));
-  }
-
-  getOrbitSpeed(): number {
-    return this.secondsPerDevice;
-  }
-
-  setOrbitUpdateCallback(cb: (fromId: string, toId: string, frac: number) => void): void {
-    this.onOrbitUpdate = cb;
-  }
-
-  setAutoRotate(enabled: boolean): void {
-    if (this.orbitEnabled === enabled) return;
-    this.orbitEnabled = enabled;
-
-    if (enabled) {
-      this.startOrbit();
-    } else {
-      this.stopOrbit();
-    }
-  }
-
-  set8DSoloMode(enabled: boolean): void {
-    if (this.is8DSoloMode === enabled) return;
-    this.is8DSoloMode = enabled;
-    // Restart orbit if already running so the right physics path kicks in immediately
-    if (this.orbitEnabled) {
-      this.stopOrbit();
-      this.startOrbit();
-    }
-  }
-
-  private startOrbit(): void {
-    let lastTime = performance.now();
-    let accumulatedTime = 0;
-
-    const animate = (time: number) => {
-      const dt = (time - lastTime) / 1000;
-      lastTime = time;
-      accumulatedTime += dt;
-
-      this.updateOrbitPosition(accumulatedTime);
-
-      this.animationFrameId = requestAnimationFrame(animate);
-    };
-    this.animationFrameId = requestAnimationFrame(animate);
-  }
-
-  private stopOrbit(): void {
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-  }
-
-  private updateOrbitPosition(time: number): void {
-    if (!this.ctx || !this.panner) return;
-
-    if (this.is8DSoloMode) {
-      // 8D Audio: Continuous circular orbit around the LISTENER
-      const totalTime = this.secondsPerDevice * 4; // Full circle = 4× device speed
-      const progress = (time % totalTime) / totalTime;
-      const angle = progress * Math.PI * 2;
-      const radius = 1.5;
-
-      const cart = this.orbitToCartesian({ angle, radius, elevation: 0 });
-
-      // Subtract the listener's own position so audio orbits around THEM, not the origin
-      if (this.uiListenerCart) {
-        cart.x -= this.uiListenerCart.x;
-        cart.y -= this.uiListenerCart.y;
-        cart.z -= this.uiListenerCart.z;
-      } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
-        const myPos = this.devicePositions.get(this.myDeviceId)!;
-        const myCart = this.orbitToCartesian(myPos);
-        cart.x -= myCart.x;
-        cart.y -= myCart.y;
-        cart.z -= myCart.z;
-      }
-
-      this.setPannerPosition(cart.x, cart.y, cart.z);
-
-      if (this.onOrbitUpdate) {
-        this.onOrbitUpdate("8D_MODE", "8D_MODE", angle);
-      }
-      return;
-    }
-
-    const seq = this.deviceSequence.filter(id => this.devicePositions.has(id));
-    if (seq.length === 0) return;
-
-    if (seq.length === 1) {
-      const pos = this.devicePositions.get(seq[0])!;
-      const cart = this.orbitToCartesian(pos);
-
-      const offset = this.uiOffsets.get(seq[0]);
-      if (offset) {
-        cart.x += offset.fanX * 100;
-        cart.z -= offset.fanY * 100;
-      }
-
-      if (this.uiListenerCart) {
-        cart.x -= this.uiListenerCart.x;
-        cart.y -= this.uiListenerCart.y;
-        cart.z -= this.uiListenerCart.z;
-      } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
-        const myPos = this.devicePositions.get(this.myDeviceId)!;
-        const myCart = this.orbitToCartesian(myPos);
-        cart.x -= myCart.x;
-        cart.y -= myCart.y;
-        cart.z -= myCart.z;
-      }
-
-      this.setPannerPosition(cart.x, cart.y, cart.z);
-      return;
-    }
-
-    const cycleTime = seq.length * this.secondsPerDevice;
-    const t = (time % cycleTime) / this.secondsPerDevice;
-
-    const idx = Math.floor(t);
-    const frac = t - idx;
-
-    const fromId = seq[idx % seq.length];
-    const toId = seq[(idx + 1) % seq.length];
-
-    const fromPos = this.devicePositions.get(fromId);
-    const toPos = this.devicePositions.get(toId);
-
-    if (!fromPos || !toPos) {
-      this.setPannerPosition(0, 0, 0);
-      return;
-    }
-
-    if (this.onOrbitUpdate) {
-      this.onOrbitUpdate(fromId, toId, frac);
-    }
-
-    // Ease in-out
-    const easedFrac = frac < 0.5
-      ? 2 * frac * frac
-      : 1 - Math.pow(-2 * frac + 2, 2) / 2;
-
-    // Polar interpolation — audio sweeps along the circle, not through the center
-    const angA = fromPos.angle;
-    let angB = toPos.angle;
-
-    if (angB < angA && (angA - angB) > 0.1) {
-      angB += Math.PI * 2;
-    }
-
-    const curAngle = angA + (angB - angA) * easedFrac;
-    const curRadius = fromPos.radius + (toPos.radius - fromPos.radius) * easedFrac;
-    const curElevation = fromPos.elevation + (toPos.elevation - fromPos.elevation) * easedFrac;
-
-    const curPos = { angle: curAngle, radius: curRadius, elevation: curElevation };
-    const cart = this.orbitToCartesian(curPos);
-
-    // Interpolate visual offsets
-    const fromOffset = this.uiOffsets.get(fromId) ?? { fanX: 0, fanY: 0 };
-    const toOffset = this.uiOffsets.get(toId) ?? { fanX: 0, fanY: 0 };
-
-    const curFanX = fromOffset.fanX + (toOffset.fanX - fromOffset.fanX) * easedFrac;
-    const curFanY = fromOffset.fanY + (toOffset.fanY - fromOffset.fanY) * easedFrac;
-
-    cart.x += curFanX * 100;
-    cart.z -= curFanY * 100;
-
-    // Subtract listener position
-    if (this.uiListenerCart) {
-      cart.x -= this.uiListenerCart.x;
-      cart.y -= this.uiListenerCart.y;
-      cart.z -= this.uiListenerCart.z;
-    } else if (this.myDeviceId && this.devicePositions.has(this.myDeviceId)) {
-      const myPos = this.devicePositions.get(this.myDeviceId)!;
-      const myCart = this.orbitToCartesian(myPos);
-      cart.x -= myCart.x;
-      cart.y -= myCart.y;
-      cart.z -= myCart.z;
-    }
-
-    this.setPannerPosition(cart.x, cart.y, cart.z);
-  }
-
-  private setPannerPosition(x: number, y: number, z: number): void {
-    if (!this.panner || !this.ctx || !this.stereoPanner) return;
-    const t = this.ctx.currentTime + 0.05;
-
-    this.panner.positionX.linearRampToValueAtTime(x, t);
-    this.panner.positionY.linearRampToValueAtTime(y, t);
-    this.panner.positionZ.linearRampToValueAtTime(z, t);
-
-    // Realistic Spatial Acoustics simulation
-    const distance = Math.sqrt(x*x + y*y + z*z);
-    
-    // Air Absorption (Low-pass filter): 
-    // Closer than 10 units = fully open (22050Hz). Distant drops down to muffle sound.
-    if (this.distanceFilter) {
-      const freq = Math.max(400, 22050 - (distance * 400));
-      this.distanceFilter.frequency.linearRampToValueAtTime(freq, t);
-    }
-
-    // Distance Reverb (Early reflections):
-    // Near = dry, Far = wet (max 50% mix)
-    if (this.reverbGain) {
-      const reverbAmount = Math.min(0.5, Math.max(0, (distance - 15) / 100));
-      this.reverbGain.gain.linearRampToValueAtTime(reverbAmount, t);
-    }
-
-    // Map X position to stereo pan [-1, +1]
-    // SPATIAL_MULTIPLIER = 40, max useful range is ±40
-    const STEREO_RANGE = 40;
-    const panValue = Math.max(-1, Math.min(1, x / STEREO_RANGE));
-    this.currentPan = panValue;
-    this.stereoPanner.pan.linearRampToValueAtTime(panValue, t);
-  }
-
-  // --- Volume ---
-
-  setDeviceGain(_deviceId: string, _value: number): void {}
-
-  setMasterGain(value: number): void {
-    if (!this.masterGain || !this.ctx) return;
-    const t = this.ctx.currentTime;
-    this.masterGain.gain.linearRampToValueAtTime(
-      Math.max(0, Math.min(1, value)),
-      t + 0.02
-    );
-  }
-
-  // --- Listener ---
-
-  private resetListenerToOrigin(): void {
-    if (!this.ctx) return;
-    const listener = this.ctx.listener;
-    const t = this.ctx.currentTime + 0.05;
-
-    listener.positionX.linearRampToValueAtTime(0, t);
-    listener.positionY.linearRampToValueAtTime(0, t);
-    listener.positionZ.linearRampToValueAtTime(0, t);
-
-    listener.forwardX.linearRampToValueAtTime(0, t);
-    listener.forwardY.linearRampToValueAtTime(0, t);
-    listener.forwardZ.linearRampToValueAtTime(-1, t);
-
-    listener.upX.linearRampToValueAtTime(0, t);
-    listener.upY.linearRampToValueAtTime(1, t);
-    listener.upZ.linearRampToValueAtTime(0, t);
+  setClockOffset(offsetMs: number): void {
+    this.clockOffset = offsetMs;
   }
 
   /**
-   * Orient the listener to face toward the room center so audio feels face-to-face.
-   * If user A is at my Front, from A's POV I'm also at their Front.
+   * Replace the speaker set and the listening point.
+   *
+   * `origin` is your seat in My Space and the room centre in Room mode; speaker
+   * positions arrive as absolute room coordinates and are re-expressed around it.
    */
-  orientListenerTowardCenter(myPos: SpatialPosition): void {
-    if (!this.ctx) return;
-    const listener = this.ctx.listener;
-    const t = this.ctx.currentTime + 0.05;
-
-    const cart = this.orbitToCartesian(myPos);
-    const len = Math.sqrt(cart.x * cart.x + cart.z * cart.z);
-
-    if (len < 0.001) {
-      listener.forwardX.linearRampToValueAtTime(0, t);
-      listener.forwardY.linearRampToValueAtTime(0, t);
-      listener.forwardZ.linearRampToValueAtTime(-1, t);
-    } else {
-      listener.forwardX.linearRampToValueAtTime(-cart.x / len, t);
-      listener.forwardY.linearRampToValueAtTime(0, t);
-      listener.forwardZ.linearRampToValueAtTime(-cart.z / len, t);
-    }
-
-    listener.upX.linearRampToValueAtTime(0, t);
-    listener.upY.linearRampToValueAtTime(1, t);
-    listener.upZ.linearRampToValueAtTime(0, t);
+  setField(speakers: Speaker[], origin: SpatialPosition = ORIGIN_POSITION): void {
+    this.speakers = speakers;
+    this.origin = origin;
+    this.originVec = polarToCartesian(origin);
+    this.speakersRelative = speakers.map(s => ({
+      id: s.id,
+      position: relativePolar(s.position, origin),
+    }));
+    this.ringAngles = this.speakersRelative
+      .map(s => normalizeAngle(s.position.angle))
+      .sort((a, b) => a - b);
+    this.invalidate();
   }
 
-  /** @deprecated */
-  setListenerOrientation(_yawDeg: number): void {}
+  setMotion(patch: Partial<MotionConfig>): void {
+    this.motion = { ...this.motion, ...patch };
+    this.invalidate();
+  }
 
-  // --- State ---
+  getMotion(): MotionConfig {
+    return this.motion;
+  }
+
+  /** Bypass the whole effect — gain to unity, pan centred, filter wide open. */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    this.invalidate();
+    if (!enabled) this.applyBypass();
+  }
+
+  /**
+   * Register a callback that is fired on every audio-loop tick with the orbit
+   * position expressed as two adjacent speaker IDs and an interpolation fraction
+   * (0 = fully at `fromId`, 1 = fully at `toId`). Pass `undefined` to unsubscribe.
+   *
+   * When there are no speakers the engine reports `fromId = '8D_MODE'` and
+   * `frac` = the current source angle in radians, matching the SpatialPanel
+   * 8D-mode branch.
+   */
+  setOrbitUpdateCallback(
+    cb: ((fromId: string, toId: string, frac: number) => void) | null | undefined,
+  ): void {
+    this.orbitUpdateCallback = cb ?? null;
+  }
+
+  /** Drive the orbit only while something is actually playing. */
+  setRunning(running: boolean): void {
+    if (this.running === running) return;
+    this.running = running;
+    if (running) this.start();
+    else this.stop();
+  }
+
+  /** Called on each detected bass beat; only meaningful in 'beat' mode. */
+  onBeat(): void {
+    if (this.motion.mode !== 'beat' || this.ringAngles.length === 0) return;
+
+    const now = this.serverNow();
+    if (now - this.lastBeatAt < MIN_BEAT_GAP_MS) return;
+    this.lastBeatAt = now;
+
+    const seed = beatSeed(now);
+    const target = this.ringAngles[pickBeatTarget(seed, this.ringAngles.length)];
+    const current = this.sample(now).source.angle;
+
+    this.beat = { fromAngle: current, toAngle: target, startedAt: now, glideMs: BEAT_GLIDE_MS };
+    this.invalidate();
+  }
+
+  // ── Sampling ─────────────────────────────────────────────────────────────
+
+  serverNow(): number {
+    return Date.now() + this.clockOffset;
+  }
+
+  private invalidate(): void {
+    this.cachedAt = -1;
+    this.cached = null;
+  }
+
+  /**
+   * Everything about this instant: where the sound is and how loud each device
+   * should be. Pure with respect to engine state, memoised per millisecond so
+   * the audio loop and the 3D renderer never disagree.
+   */
+  sample(serverNowMs: number = this.serverNow()): SpatialSample {
+    const key = Math.round(serverNowMs);
+    if (this.cached && this.cachedAt === key) return this.cached;
+
+    const source = sourceAt(serverNowMs, this.motion, this.ringAngles, this.beat);
+    const gains = this.enabled
+      ? computeSpeakerGains(source.angle, this.speakersRelative, GAIN_FLOOR)
+      : new Map(this.speakers.map(s => [s.id, 1]));
+
+    const sourceWorld = addVec(this.originVec, polarToCartesian(source));
+
+    const me = this.speakers.find(s => s.id === this.myDeviceId);
+    const myVec = me ? polarToCartesian(me.position) : this.originVec;
+    const toSource = subVec(sourceWorld, myVec);
+    const distance = vecLength(toSource);
+    const pan = distance < 1e-4 ? 0 : clamp(toSource.x / Math.max(distance, 0.5), -1, 1);
+
+    const result: SpatialSample = {
+      source,
+      sourceWorld,
+      gains,
+      myGain: gains.get(this.myDeviceId) ?? 1,
+      pan,
+    };
+
+    this.cached = result;
+    this.cachedAt = key;
+    return result;
+  }
+
+  getGain(deviceId: string): number {
+    return this.sample().gains.get(deviceId) ?? 1;
+  }
+
+  getSourcePosition(): SpatialPosition {
+    return this.sample().source;
+  }
+
+  getPanValue(): number {
+    return this.sample().pan;
+  }
 
   getContextState(): AudioContextState | 'uninitialised' {
     return this.ctx?.state ?? 'uninitialised';
   }
 
-  getActiveDeviceCount(): number {
-    return this.devicePositions.size;
+  async resume(): Promise<void> {
+    if (this.ctx?.state === 'suspended') await this.ctx.resume();
   }
 
-  // --- Private helpers ---
+  // ── Audio loop ───────────────────────────────────────────────────────────
 
-  private createPanner(): PannerNode {
-    const panner = this.ctx!.createPanner();
-
-    panner.panningModel = 'HRTF';
-    panner.distanceModel = 'inverse';
-    // Smaller refDistance + higher rolloff = stronger distance effect
-    panner.refDistance = 1;
-    panner.maxDistance = 200;
-    panner.rolloffFactor = 1.5;
-
-    panner.coneInnerAngle = 360;
-    panner.coneOuterAngle = 360;
-    panner.coneOuterGain = 0;
-
-    panner.positionX.value = 0;
-    panner.positionY.value = 0;
-    panner.positionZ.value = -1;
-
-    return panner;
-  }
-
-  private orbitToCartesian(pos: SpatialPosition): { x: number; y: number; z: number } {
-    const { angle, radius, elevation } = pos;
-    const elevRad = (elevation * Math.PI) / 180;
-
-    // Boosted multiplier: 40 instead of 15 — gives much clearer spatial separation
-    const SPATIAL_MULTIPLIER = 40;
-    const scaledRadius = radius * SPATIAL_MULTIPLIER;
-
-    const horizRadius = scaledRadius * Math.cos(elevRad);
-
-    return {
-      x: horizRadius * Math.sin(angle),
-      y: scaledRadius * Math.sin(elevRad),
-      z: -horizRadius * Math.cos(angle),
+  private start(): void {
+    if (this.rafId !== null) return;
+    const tick = () => {
+      const now = performance.now();
+      if (now - this.lastAudioWrite >= AUDIO_WRITE_INTERVAL_MS) {
+        this.lastAudioWrite = now;
+        this.applyAudio();
+      }
+      this.rafId = requestAnimationFrame(tick);
     };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  private stop(): void {
+    if (this.rafId === null) return;
+    cancelAnimationFrame(this.rafId);
+    this.rafId = null;
+    this.applyBypass();
+  }
+
+  private applyAudio(): void {
+    if (!this.ctx || !this.isInitialised || !this.enabled) return;
+
+    const sample = this.sample();
+    const { sourceWorld, myGain, pan } = sample;
+
+    const me = this.speakers.find(s => s.id === this.myDeviceId);
+    const myVec = me ? polarToCartesian(me.position) : this.originVec;
+    const rel = subVec(sourceWorld, myVec);
+    const distance = vecLength(rel);
+
+    // Unit direction × a fixed radius: the panner supplies direction, the VBAP
+    // gain supplies level. Letting the panner also do distance would fight it.
+    const len = Math.max(distance, 1e-4);
+    const dir = { x: rel.x / len, y: rel.y / len, z: rel.z / len };
+
+    const t = this.ctx.currentTime;
+
+    this.panner!.positionX.setTargetAtTime(dir.x * PANNER_DISTANCE, t, SMOOTHING);
+    this.panner!.positionY.setTargetAtTime(dir.y * PANNER_DISTANCE, t, SMOOTHING);
+    this.panner!.positionZ.setTargetAtTime(dir.z * PANNER_DISTANCE, t, SMOOTHING);
+
+    this.spatialGain!.gain.setTargetAtTime(clamp(myGain, 0, 1), t, SMOOTHING);
+    this.stereoPanner!.pan.setTargetAtTime(pan * STEREO_STRENGTH, t, SMOOTHING);
+
+    // Air absorption: distant sound loses its top end.
+    const cutoff = clamp(20000 * Math.pow(0.8, distance), 1500, 20000);
+    this.airFilter!.frequency.setTargetAtTime(cutoff, t, 0.08);
+
+    // Early reflections grow with distance — dry up close, wet across the room.
+    const wet = clamp((distance - 1.5) / 12, 0, 0.35);
+    this.reverbGain!.gain.setTargetAtTime(wet, t, 0.12);
+
+    // Notify the UI of the current orbit position.
+    this.fireOrbitCallback(sample.source.angle);
+  }
+
+  /**
+   * Derive fromId/toId/frac from the current source angle and speaker ring, then
+   * fire `orbitUpdateCallback` if one is registered.
+   *
+   * When no speakers are present we fall back to 8D_MODE so the SpatialPanel
+   * visualiser still gets a meaningful pan value.
+   */
+  private fireOrbitCallback(sourceAngle: number): void {
+    if (!this.orbitUpdateCallback) return;
+
+    if (this.speakersRelative.length === 0) {
+      // No speakers: report raw angle so the panel's 8D_MODE branch works.
+      this.orbitUpdateCallback('8D_MODE', '8D_MODE', sourceAngle);
+      return;
+    }
+
+    // Find the two adjacent speakers that bracket the current source angle.
+    const angle = normalizeAngle(sourceAngle);
+    const sorted = this.speakersRelative
+      .map(s => ({ id: s.id, angle: normalizeAngle(s.position.angle) }))
+      .sort((a, b) => a.angle - b.angle);
+
+    let fromIdx = sorted.length - 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].angle > angle) {
+        fromIdx = (i - 1 + sorted.length) % sorted.length;
+        break;
+      }
+    }
+    const toIdx = (fromIdx + 1) % sorted.length;
+    const from = sorted[fromIdx];
+    const to = sorted[toIdx];
+
+    let span = to.angle - from.angle;
+    if (span <= 0) span += 2 * Math.PI;
+    let diff = angle - from.angle;
+    if (diff < 0) diff += 2 * Math.PI;
+    const frac = span > 0 ? clamp(diff / span, 0, 1) : 0;
+
+    this.orbitUpdateCallback(from.id, to.id, frac);
+  }
+
+  /** Settle every parameter back to neutral so bypass is inaudible. */
+  private applyBypass(): void {
+    if (!this.ctx || !this.isInitialised) return;
+    const t = this.ctx.currentTime;
+    this.spatialGain!.gain.setTargetAtTime(1, t, SMOOTHING);
+    this.stereoPanner!.pan.setTargetAtTime(0, t, SMOOTHING);
+    this.airFilter!.frequency.setTargetAtTime(20000, t, 0.08);
+    this.reverbGain!.gain.setTargetAtTime(0, t, 0.12);
+    this.panner!.positionX.setTargetAtTime(0, t, SMOOTHING);
+    this.panner!.positionY.setTargetAtTime(0, t, SMOOTHING);
+    this.panner!.positionZ.setTargetAtTime(-PANNER_DISTANCE, t, SMOOTHING);
   }
 }

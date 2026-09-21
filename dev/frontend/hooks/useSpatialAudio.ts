@@ -1,346 +1,326 @@
 /**
  * useSpatialAudio.ts
  *
- * React hook that:
- *  1. Initialises SpatialAudioEngine on first user gesture
- *  2. Listens to Socket.IO spatial events and forwards them to the engine
- *  3. Exposes helpers the UI calls when a user moves a device on the orbit
+ * Bridges the room's socket state to {@link SpatialAudioEngine}:
+ *
+ *  1. Splices the engine into the player's audio graph once the context unlocks
+ *  2. Keeps the speaker field (devices, seats, listening origin) up to date
+ *  3. Feeds it the synced server clock so every device orbits in lockstep
+ *  4. Exposes throttled position updates for dragging
+ *
+ * Deliberately owns no per-frame state: the 3D stage reads positions and gains
+ * straight off the engine inside its own render loop, so dragging and orbiting
+ * never trigger a React re-render.
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
+import { SpatialAudioEngine } from '../audio/SpatialAudioEngine';
+import type { SpatialPosition, Speaker } from '../lib/spatial/geometry';
+import { clamp, MAX_ELEVATION, MAX_RADIUS, MIN_ELEVATION, MIN_RADIUS } from '../lib/spatial/geometry';
+import { DEFAULT_MOTION, type MotionConfig } from '../lib/spatial/motion';
 import {
-  SpatialAudioEngine,
-  type SpatialPosition,
-  type DeviceSpatialState,
-} from '../audio/SpatialAudioEngine';
+  buildSpatialLayout,
+  seatKey,
+  type SpatialLayout,
+} from '../lib/spatial/layout';
+import type { Participant } from '../lib/types';
+import { useBeatEngine } from '../context/BeatContext';
 
-// ── Socket event shape contracts ──────────────────────────────────────────────
-
-interface SpatialUpdatePayload {
+export interface DeviceSpatialState {
   deviceId: string;
   position: SpatialPosition;
 }
 
-interface SpatialSnapshotPayload {
-  devices: DeviceSpatialState[];
-}
+export type SpatialMode = 'solo' | 'room';
 
-interface DeviceJoinPayload {
-  deviceId: string;
-  position: SpatialPosition;
-}
-
-// ── Hook ──────────────────────────────────────────────────────────────────────
+/** Position updates are emitted at most this often while dragging. */
+const EMIT_INTERVAL_MS = 50;
 
 interface UseSpatialAudioOptions {
   socket: Socket | null;
   audioCtx: AudioContext | null | undefined;
-  gainNode: AudioNode | null | undefined;
+  /** Last EQ band — the engine splices itself in after this */
+  eqOutputNode: AudioNode | null | undefined;
+  /** Analyser feeding the destination — the far side of the splice */
+  analyserNode: AudioNode | null | undefined;
   myDeviceId: string;
+  myUserId: string;
   roomId: string;
-  enabled?: boolean;
+  participants: Participant[];
+  /** Server positions from `room:snapshot` */
   initialDevices?: DeviceSpatialState[];
-  participants?: any[];
   isPlaying?: boolean;
-  is8DSoloMode?: boolean;
-  onOrbitUpdate?: (fromId: string, toId: string, frac: number) => void;
+  /** Milliseconds to add to `Date.now()` to get server time */
+  clockOffset?: number;
+  mode?: SpatialMode;
+  enabled?: boolean;
 }
 
 interface UseSpatialAudioReturn {
-  updatePosition: (deviceId: string, position: SpatialPosition) => void;
-  syncUIState: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => void;
-  setDeviceGain: (deviceId: string, gain: number) => void;
-  setMasterGain: (gain: number) => void;
-  setDeviceSequence: (deviceIds: string[]) => void;
-  setOrbitSpeed: (secondsPerDevice: number) => void;
-  orbitSpeed: number;
+  layout: SpatialLayout;
+  /** Absolute positions keyed by socket id / `seat:<userId>` */
+  positions: Record<string, SpatialPosition>;
+  updatePosition: (key: string, position: SpatialPosition) => void;
+  /** Push the latest position immediately — call on pointer-up */
+  flushPosition: (key: string) => void;
+  resetLayout: () => void;
+  motion: MotionConfig;
+  setMotion: (patch: Partial<MotionConfig>) => void;
+  engine: SpatialAudioEngine;
   engineState: AudioContextState | 'uninitialised';
   resumeAudio: () => Promise<void>;
-  /** Current list of device spatial states for rendering the UI */
-  spatialDevices: DeviceSpatialState[];
 }
+
+const sanitise = (p: SpatialPosition): SpatialPosition => ({
+  angle: Number.isFinite(p.angle) ? p.angle : 0,
+  radius: clamp(Number.isFinite(p.radius) ? p.radius : 1, MIN_RADIUS, MAX_RADIUS),
+  elevation: clamp(Number.isFinite(p.elevation) ? p.elevation : 0, MIN_ELEVATION, MAX_ELEVATION),
+});
 
 export function useSpatialAudio({
   socket,
   audioCtx,
-  gainNode,
+  eqOutputNode,
+  analyserNode,
   myDeviceId,
+  myUserId,
   roomId,
-  enabled = true,
-  initialDevices = [],
-  participants = [],
+  participants,
+  initialDevices,
   isPlaying = false,
-  is8DSoloMode = false,
-  onOrbitUpdate,
+  clockOffset = 0,
+  mode = 'solo',
+  enabled = true,
 }: UseSpatialAudioOptions): UseSpatialAudioReturn {
   const engine = SpatialAudioEngine.getInstance();
-  const initialisedRef = useRef(false);
+  const { subscribeToBeat } = useBeatEngine();
 
-  // Sync auto-rotate state — set mode FIRST, then start/stop orbit
-  useEffect(() => {
-    engine.set8DSoloMode(is8DSoloMode);
-    engine.setAutoRotate(isPlaying);
-  }, [isPlaying, is8DSoloMode, engine]);
-
-  useEffect(() => {
-    if (onOrbitUpdate) {
-      engine.setOrbitUpdateCallback(onOrbitUpdate);
-    }
-  }, [onOrbitUpdate, engine]);
-
+  const [positions, setPositions] = useState<Record<string, SpatialPosition>>({});
+  const [motion, setMotionState] = useState<MotionConfig>({ ...DEFAULT_MOTION });
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
-  const [spatialDevices, setSpatialDevices] = useState<DeviceSpatialState[]>(initialDevices);
-  const [orbitSpeed, setOrbitSpeedState] = useState(3);
 
-  // Track which snapshot we last applied to avoid re-running on unrelated re-renders
-  const lastSnapshotRef = useRef<string>("");
+  const initialisedRef = useRef(false);
+  const lastSnapshotRef = useRef('');
+  const pendingEmitRef = useRef<Map<string, SpatialPosition>>(new Map());
+  const lastEmitAtRef = useRef(0);
+  const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Apply snapshot positions whenever the server gives us a fresh set.
-  // We merge: snapshot entries overwrite known positions, but locally-tracked
-  // devices not in the snapshot are preserved.
+  // ── Layout ─────────────────────────────────────────────────────────────────
+
+  const layout = useMemo(
+    () => buildSpatialLayout(participants, positions, myUserId, myDeviceId, mode),
+    [participants, positions, myUserId, myDeviceId, mode],
+  );
+
+  // ── Engine wiring ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    engine.setMyDeviceId(myDeviceId);
+  }, [engine, myDeviceId]);
+
+  useEffect(() => {
+    engine.setClockOffset(clockOffset);
+  }, [engine, clockOffset]);
+
+  useEffect(() => {
+    engine.setEnabled(enabled);
+  }, [engine, enabled]);
+
+  useEffect(() => {
+    engine.setMotion(motion);
+  }, [engine, motion]);
+
+  // Only your own devices form the surround field in My Space; the whole room
+  // does in Room mode. Either way positions go over as absolute coordinates and
+  // the engine re-centres them on the origin.
+  useEffect(() => {
+    const source = mode === 'solo' ? (layout.me?.devices ?? []) : layout.devices;
+    const speakers: Speaker[] = source.map(d => ({ id: d.deviceId, position: d.position }));
+    engine.setField(speakers, layout.origin);
+  }, [engine, layout, mode]);
+
+  useEffect(() => {
+    engine.setRunning(isPlaying && enabled);
+  }, [engine, isPlaying, enabled]);
+
+  // Beat-driven jumps. The engine ignores these outside 'beat' mode, and
+  // resolves the target from the synced clock so all devices land together.
+  useEffect(() => {
+    if (motion.mode !== 'beat') return;
+    return subscribeToBeat('bass', () => engine.onBeat());
+  }, [engine, motion.mode, subscribeToBeat]);
+
+  // ── Audio graph splice, once the context is unlocked ────────────────────────
+
+  useEffect(() => {
+    if (initialisedRef.current || !enabled) return;
+    if (!audioCtx || !eqOutputNode || !analyserNode) return;
+
+    try {
+      engine.init(audioCtx, eqOutputNode, analyserNode, myDeviceId);
+      initialisedRef.current = true;
+      engine.resume().then(() => setEngineState(engine.getContextState()));
+    } catch (err) {
+      console.warn('[SpatialAudio] engine init failed:', err);
+    }
+  }, [engine, enabled, audioCtx, eqOutputNode, analyserNode, myDeviceId]);
+
+  // ── Server positions ───────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!initialDevices || initialDevices.length === 0) return;
 
-    // Stringify to detect actual changes (avoids infinite loops from new array refs)
     const key = JSON.stringify(initialDevices);
     if (key === lastSnapshotRef.current) return;
     lastSnapshotRef.current = key;
 
-    setSpatialDevices(prev => {
-      const merged = [...prev];
-      initialDevices.forEach(incoming => {
-        const idx = merged.findIndex(d => d.deviceId === incoming.deviceId);
-        if (idx >= 0) {
-          merged[idx] = incoming; // overwrite with server position
-        } else {
-          merged.push(incoming); // add new device
-        }
+    setPositions(prev => {
+      const next = { ...prev };
+      initialDevices.forEach(({ deviceId, position }) => {
+        if (deviceId && position) next[deviceId] = sanitise(position);
       });
-      return merged;
+      return next;
     });
-    engine.applySnapshot(initialDevices);
-  }, [initialDevices, engine]);
-
-  // Keep spatialDevices in sync with participants joining/leaving
-  useEffect(() => {
-    if (!participants || participants.length === 0) return;
-    
-    setSpatialDevices(prev => {
-      let changed = false;
-      const newDevices = [...prev];
-      
-      // Add missing participants
-      const ORBIT_RINGS = [1, 2, 3] as const;
-      participants.forEach(p => {
-        if (!newDevices.some(d => d.deviceId === p.socketId)) {
-          const userId = p.userId ?? p.socketId;
-          const existingDeviceForUser = newDevices.find(d => {
-            const existingP = participants.find(ep => ep.socketId === d.deviceId);
-            const existingUserId = existingP ? (existingP.userId ?? existingP.socketId) : d.deviceId;
-            return existingUserId === userId;
-          });
-
-          let defaultPos;
-          if (existingDeviceForUser) {
-            defaultPos = { ...existingDeviceForUser.position };
-          } else {
-            const checkCollision = (r: number, a: number) => {
-              return newDevices.some(d => d.position.radius === r && d.position.angle === a);
-            };
-
-            let ring = 1;
-            let posOnRing = 0;
-            while (true) {
-              const angle = posOnRing * (Math.PI / 2);
-              if (!checkCollision(ring, angle)) {
-                defaultPos = { angle, radius: ring, elevation: 0 };
-                break;
-              }
-              posOnRing++;
-              if (posOnRing >= 4) {
-                posOnRing = 0;
-                ring++;
-              }
-            }
-          }
-          
-          newDevices.push({ deviceId: p.socketId, position: defaultPos });
-          engine.addDevice(p.socketId, defaultPos);
-          changed = true;
-        }
-      });
-      
-      // Remove stale participants
-      const activeSocketIds = new Set(participants.map(p => p.socketId));
-      for (let i = newDevices.length - 1; i >= 0; i--) {
-        if (!activeSocketIds.has(newDevices[i].deviceId)) {
-          engine.removeDevice(newDevices[i].deviceId);
-          newDevices.splice(i, 1);
-          changed = true;
-        }
-      }
-      
-      return changed ? newDevices : prev;
-    });
-  }, [participants, myDeviceId, engine]);
-
-  // Keep engine's myDeviceId in sync and apply snapshot safely
-  useEffect(() => {
-    if (myDeviceId) {
-      engine.setMyDeviceId(myDeviceId);
-    }
-    // Only apply snapshot if the engine is running AND we know who we are
-    if (engineState === 'running' && myDeviceId) {
-      engine.applySnapshot(spatialDevices);
-    }
-  }, [myDeviceId, spatialDevices, engineState, engine]);
-
-  // ── One-time init on first user gesture ───────────────────────────────────
-
-  useEffect(() => {
-    if (initialisedRef.current || !enabled) return;
-
-    const initEngine = () => {
-      if (!audioCtx || !gainNode) return;
-
-      try {
-        engine.init(audioCtx, gainNode, myDeviceId);
-        engine.resume().then(() => {
-          setEngineState(engine.getContextState());
-        });
-        initialisedRef.current = true;
-      } catch (err) {
-        console.warn('[SpatialAudio] init failed (likely already initialised):', err);
-      }
-    };
-
-    // If already running (from useAudioPlayer unlocking), just init immediately
-    if (audioCtx && audioCtx.state === 'running' && gainNode) {
-      initEngine();
-      return;
-    }
-
-    const handleFirstGesture = () => {
-      initEngine();
-      window.removeEventListener('click', handleFirstGesture, { capture: true });
-      window.removeEventListener('touchstart', handleFirstGesture, { capture: true });
-    };
-
-    window.addEventListener('click', handleFirstGesture, { once: true, capture: true });
-    window.addEventListener('touchstart', handleFirstGesture, { once: true, capture: true });
-
-    return () => {
-      window.removeEventListener('click', handleFirstGesture, { capture: true });
-      window.removeEventListener('touchstart', handleFirstGesture, { capture: true });
-    };
-  }, [enabled, myDeviceId, audioCtx, gainNode, engine]);
-
-  // ── Socket.IO event listeners ──────────────────────────────────────────────
+  }, [initialDevices]);
 
   useEffect(() => {
     if (!socket || !enabled) return;
 
-    const onSnapshot = ({ devices }: SpatialSnapshotPayload) => {
-      engine.applySnapshot(devices);
-      setSpatialDevices(devices);
-      setEngineState(engine.getContextState());
+    const onUpdate = ({ deviceId, position }: { deviceId: string; position: SpatialPosition }) => {
+      if (!deviceId || !position) return;
+      setPositions(prev => ({ ...prev, [deviceId]: sanitise(position) }));
     };
 
-    const onUpdate = ({ deviceId, position }: SpatialUpdatePayload) => {
-      engine.updatePosition(deviceId, position);
-      setSpatialDevices(prev =>
-        prev.map(d => (d.deviceId === deviceId ? { ...d, position } : d))
-      );
-    };
-
-    const onDeviceJoined = ({ deviceId, position }: DeviceJoinPayload) => {
-      if (deviceId === myDeviceId) return;
-      engine.addDevice(deviceId, position);
-      setSpatialDevices(prev => {
-        if (prev.some(d => d.deviceId === deviceId)) return prev;
-        return [...prev, { deviceId, position }];
+    const onSnapshot = ({ devices }: { devices: DeviceSpatialState[] }) => {
+      if (!Array.isArray(devices)) return;
+      setPositions(prev => {
+        const next = { ...prev };
+        devices.forEach(({ deviceId, position }) => {
+          if (deviceId && position) next[deviceId] = sanitise(position);
+        });
+        return next;
       });
     };
 
     const onDeviceLeft = ({ deviceId }: { deviceId: string }) => {
-      engine.removeDevice(deviceId);
-      setSpatialDevices(prev => prev.filter(d => d.deviceId !== deviceId));
+      setPositions(prev => {
+        if (!(deviceId in prev)) return prev;
+        const next = { ...prev };
+        delete next[deviceId];
+        return next;
+      });
     };
 
-    socket.on('spatial:snapshot', onSnapshot);
     socket.on('spatial:update', onUpdate);
-    socket.on('spatial:device:joined', onDeviceJoined);
+    socket.on('spatial:snapshot', onSnapshot);
     socket.on('spatial:device:left', onDeviceLeft);
 
     return () => {
-      socket.off('spatial:snapshot', onSnapshot);
       socket.off('spatial:update', onUpdate);
-      socket.off('spatial:device:joined', onDeviceJoined);
+      socket.off('spatial:snapshot', onSnapshot);
       socket.off('spatial:device:left', onDeviceLeft);
     };
-  }, [socket, enabled, myDeviceId, engine]);
+  }, [socket, enabled]);
 
-  // ── Exposed callbacks ──────────────────────────────────────────────────────
+  // ── Emitting ───────────────────────────────────────────────────────────────
 
+  const flushPending = useCallback(() => {
+    if (emitTimerRef.current) {
+      clearTimeout(emitTimerRef.current);
+      emitTimerRef.current = null;
+    }
+    if (!socket?.connected || pendingEmitRef.current.size === 0) return;
+
+    pendingEmitRef.current.forEach((position, deviceId) => {
+      socket.emit('spatial:update', { roomId, deviceId, position });
+    });
+    pendingEmitRef.current.clear();
+    lastEmitAtRef.current = Date.now();
+  }, [socket, roomId]);
+
+  /**
+   * Apply locally straight away, then emit at a capped rate. Dragging a puck
+   * used to fire a socket message per pointer-move per device.
+   */
   const updatePosition = useCallback(
-    (deviceId: string, position: SpatialPosition) => {
-      if (!socket) return;
-      // Update locally immediately
-      if (deviceId !== myDeviceId) {
-         engine.updatePosition(deviceId, position);
+    (key: string, position: SpatialPosition) => {
+      const clean = sanitise(position);
+      setPositions(prev => ({ ...prev, [key]: clean }));
+
+      pendingEmitRef.current.set(key, clean);
+
+      const since = Date.now() - lastEmitAtRef.current;
+      if (since >= EMIT_INTERVAL_MS) {
+        flushPending();
+      } else if (!emitTimerRef.current) {
+        emitTimerRef.current = setTimeout(flushPending, EMIT_INTERVAL_MS - since);
       }
-      setSpatialDevices(prev =>
-        prev.map(d => (d.deviceId === deviceId ? { ...d, position } : d))
-      );
-      socket.emit('spatial:update', {
-        roomId,
-        deviceId,
-        position,
+    },
+    [flushPending],
+  );
+
+  const flushPosition = useCallback(() => flushPending(), [flushPending]);
+
+  useEffect(() => () => {
+    if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
+  }, []);
+
+  // Publish placements we own but the server has never seen, so everyone else
+  // sees the same arrangement. Each client only ever claims its own devices.
+  useEffect(() => {
+    if (!socket?.connected || !layout.me) return;
+
+    const mine: Array<[string, SpatialPosition]> = [];
+    if (layout.me.seatIsDefault) mine.push([seatKey(layout.me.userId), layout.me.seat]);
+    layout.me.devices.forEach(d => {
+      if (d.isDefault) mine.push([d.deviceId, d.position]);
+    });
+    if (mine.length === 0) return;
+
+    const timer = setTimeout(() => {
+      mine.forEach(([deviceId, position]) => {
+        socket.emit('spatial:update', { roomId, deviceId, position });
       });
-    },
-    [socket, roomId, myDeviceId, engine]
-  );
+      setPositions(prev => {
+        const next = { ...prev };
+        mine.forEach(([k, v]) => { next[k] = v; });
+        return next;
+      });
+    }, 400);
 
-  const setDeviceGain = useCallback(
-    (deviceId: string, gain: number) => {
-      engine.setDeviceGain(deviceId, gain);
-    },
-    [engine]
-  );
+    return () => clearTimeout(timer);
+  }, [socket, roomId, layout]);
 
-  const setMasterGain = useCallback(
-    (gain: number) => {
-      engine.setMasterGain(gain);
-    },
-    [engine]
-  );
+  const resetLayout = useCallback(() => {
+    if (!layout.me) return;
+    setPositions(prev => {
+      const next = { ...prev };
+      delete next[seatKey(layout.me!.userId)];
+      layout.me!.devices.forEach(d => delete next[d.deviceId]);
+      return next;
+    });
+  }, [layout]);
+
+  const setMotion = useCallback((patch: Partial<MotionConfig>) => {
+    setMotionState(prev => ({ ...prev, ...patch }));
+  }, []);
 
   const resumeAudio = useCallback(async () => {
     await engine.resume();
     setEngineState(engine.getContextState());
   }, [engine]);
 
-  const setDeviceSequence = useCallback(
-    (deviceIds: string[]) => {
-      engine.setDeviceSequence(deviceIds);
-    },
-    [engine]
-  );
-
-  const setOrbitSpeed = useCallback(
-    (secondsPerDevice: number) => {
-      engine.setOrbitSpeed(secondsPerDevice);
-      setOrbitSpeedState(secondsPerDevice);
-    },
-    [engine]
-  );
-  const syncUIState = useCallback((listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => {
-    engine.setUIState(listenerCart, offsets);
-    if (myPos) {
-      engine.orientListenerTowardCenter(myPos);
-    }
-  }, [engine]);
-
-  return { updatePosition, syncUIState, setDeviceGain, setMasterGain, setDeviceSequence, setOrbitSpeed, orbitSpeed, engineState, resumeAudio, spatialDevices };
+  return {
+    layout,
+    positions,
+    updatePosition,
+    flushPosition,
+    resetLayout,
+    motion,
+    setMotion,
+    engine,
+    engineState,
+    resumeAudio,
+  };
 }

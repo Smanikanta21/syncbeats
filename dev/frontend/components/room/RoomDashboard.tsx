@@ -452,7 +452,7 @@ export function RoomDashboard({
 
           {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
           <GlassCard className={cn('h-65', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
+            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} />
           </GlassCard>
         </div>
 
@@ -942,7 +942,7 @@ export function RoomDashboard({
 
               {/* Bottom Section: Equalizer & Frequency Visualizer */}
               <GlassCard className={cn('w-full', 'h-45', 'sm:h-52.5', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
-                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
+                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} />
               </GlassCard>
             </motion.div>
           )}

@@ -48,6 +48,14 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   audioEl:     HTMLAudioElement | null;
   audioCtx?:   AudioContext | null;
   gainNode?:   GainNode | null;
+  /**
+   * Last node of the EQ chain. Spatial audio splices itself in *between* this
+   * and `analyserNode` so the signal is panned in series rather than duplicated
+   * alongside the dry path.
+   */
+  eqOutputNode?: AudioNode | null;
+  /** Analyser feeding the destination — the far side of the spatial splice. */
+  analyserNode?: AnalyserNode | null;
   getAudioData: () => number;
   getRawAudioData: () => Uint8Array | null;
   eqGains: number[];
@@ -1428,6 +1436,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioEl: null,
     audioCtx: audioCtxRef.current,
     gainNode: gainNodeRef.current,
+    eqOutputNode: eqNodesRef.current.length > 0 ? eqNodesRef.current[eqNodesRef.current.length - 1] : null,
+    analyserNode: analyserNodeRef.current,
     getAudioData,
     getRawAudioData,
     setEqBand,
