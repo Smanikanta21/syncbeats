@@ -122,7 +122,7 @@ export default function AuthPage() {
       
       if (isLogin) {
         const token = await login(email, password);
-        if (returnTo.startsWith('syncbeats://')) {
+        if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
           router.push(returnTo);
@@ -254,7 +254,7 @@ export default function AuthPage() {
         const returnTo = params.get('returnTo') || '/room/default';
         const token = await googleLogin(idToken);
         logger.success("GOOGLE_OAUTH_SUCCESS", "Google OAuth authentication succeeded");
-        if (returnTo.startsWith('syncbeats://')) {
+        if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
           router.push(returnTo);
