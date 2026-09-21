@@ -282,7 +282,7 @@ done
 INSTALL_DIR="$HOME/.syncbeats-terminal"
 if [ -d "$INSTALL_DIR" ]; then
   echo "Updating existing installation..."
-  cd "$INSTALL_DIR" && git pull origin main
+  cd "$INSTALL_DIR" && git reset --hard HEAD && git pull origin main
 else
   echo "Cloning SyncBeats Terminal Player..."
   git clone https://github.com/Smanikanta21/CLI-music-player.git "$INSTALL_DIR"
