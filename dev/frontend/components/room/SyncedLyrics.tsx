@@ -255,13 +255,13 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
   /* ── Lyrics view ─────────────────────────────────────────────────────── */
   return (
     <div className="relative h-full overflow-hidden">
-      {/* Top / bottom gradient fade */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-8 z-10 bg-linear-to-b from-background/60 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 z-10 bg-linear-to-t from-background/60 to-transparent" />
-
       <div
         className="h-full overflow-y-auto scrollbar-hide px-6 py-12 space-y-6"
-        style={{ scrollbarWidth: "none" }}
+        style={{ 
+          scrollbarWidth: "none",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)"
+        }}
       >
         {lines.map((line, i) => {
           const isActive = i === activeIdx;
@@ -283,13 +283,13 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
                 style={{ transformOrigin: "left center" }}
                 transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
                 className={cn(
-                  "text-xl md:text-2xl font-black leading-snug text-left transition-none cursor-default select-none tracking-tight",
+                  "text-foreground text-xl md:text-2xl font-black leading-snug text-left transition-none cursor-default select-none tracking-tight",
                 )}
               >
                 {isActive ? (
                   <ActiveLine line={line} timeRef={timeRef} dataRef={dataRef} />
                 ) : (
-                  <span style={{ color: "rgb(150,150,150)" }}>{line.text}</span>
+                  <span className="text-foreground/40">{line.text}</span>
                 )}
               </motion.div>
             </div>
@@ -395,15 +395,15 @@ function ActiveLine({
              // Calculate percentage 0 to 100
              const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
              
-             el.style.backgroundImage = `linear-gradient(90deg, #ffffff ${pct}%, rgba(255, 255, 255, 0.3) ${pct}%)`;
+             el.style.backgroundImage = `linear-gradient(90deg, var(--foreground) ${pct}%, color-mix(in srgb, var(--foreground) 30%, transparent) ${pct}%)`;
              el.style.backgroundClip = "text";
              el.style.webkitBackgroundClip = "text";
              el.style.color = "transparent";
              el.style.transform = "scale(1.05)";
-             el.style.textShadow = "0 0 16px rgba(255,255,255,0.2)";
+             el.style.textShadow = "0 0 16px color-mix(in srgb, var(--foreground) 20%, transparent)";
           } else {
              // Past word
-             el.style.backgroundImage = `linear-gradient(90deg, #ffffff 100%, rgba(255, 255, 255, 0.3) 100%)`;
+             el.style.backgroundImage = `linear-gradient(90deg, var(--foreground) 100%, color-mix(in srgb, var(--foreground) 30%, transparent) 100%)`;
              el.style.backgroundClip = "text";
              el.style.webkitBackgroundClip = "text";
              el.style.color = "transparent";
@@ -412,7 +412,7 @@ function ActiveLine({
           }
         } else {
           // Future word
-          el.style.backgroundImage = `linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.3) 0%)`;
+          el.style.backgroundImage = `linear-gradient(90deg, var(--foreground) 0%, color-mix(in srgb, var(--foreground) 30%, transparent) 0%)`;
           el.style.backgroundClip = "text";
           el.style.webkitBackgroundClip = "text";
           el.style.color = "transparent";

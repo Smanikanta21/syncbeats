@@ -110,6 +110,8 @@ export class SpatialAudioEngine {
   private clockOffset = 0;
   private enabled = true;
   private running = false;
+  private pausedAtMs: number | null = Date.now();
+  private virtualTimeOffset: number = 0;
 
   /** Speakers in absolute room coordinates */
   private speakers: Speaker[] = [];
@@ -287,9 +289,19 @@ export class SpatialAudioEngine {
   /** Drive the orbit only while something is actually playing. */
   setRunning(running: boolean): void {
     if (this.running === running) return;
+    const now = this.serverNow();
+    
+    if (running) {
+      if (this.pausedAtMs !== null) {
+        this.virtualTimeOffset += (now - this.pausedAtMs);
+      }
+      this.pausedAtMs = null;
+      this.start();
+    } else {
+      this.pausedAtMs = now;
+      this.stop();
+    }
     this.running = running;
-    if (running) this.start();
-    else this.stop();
   }
 
   /** Called on each detected bass beat; only meaningful in 'beat' mode. */
@@ -328,7 +340,12 @@ export class SpatialAudioEngine {
     const key = Math.round(serverNowMs);
     if (this.cached && this.cachedAt === key) return this.cached;
 
-    const source = sourceAt(serverNowMs, this.motion, this.ringAngles, this.beat);
+    let timeToUse = serverNowMs - this.virtualTimeOffset;
+    if (!this.running && this.pausedAtMs !== null) {
+      timeToUse = this.pausedAtMs - this.virtualTimeOffset;
+    }
+
+    const source = sourceAt(timeToUse, this.motion, this.ringAngles, this.beat);
     const gains = this.enabled
       ? computeSpeakerGains(source.angle, this.speakersRelative, GAIN_FLOOR)
       : new Map(this.speakers.map(s => [s.id, 1]));

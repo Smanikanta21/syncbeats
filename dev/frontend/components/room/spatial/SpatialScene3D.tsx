@@ -18,7 +18,8 @@
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
+import { OrbitControls, Grid, Html } from "@react-three/drei";
+import { User } from "lucide-react";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 
@@ -26,7 +27,7 @@ import type { DeviceSpatialState } from "../../../lib/types";
 import type { Participant } from "../../../lib/types";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
 
-import { DeviceOrb } from "./DeviceOrb";
+import { DeviceOrbV2 } from "./DeviceOrb";
 import { OrbitTrail } from "./OrbitTrail";
 
 // ── Scene content (inside Canvas) ────────────────────────────────────────────
@@ -69,22 +70,28 @@ function Scene({ deviceRows, isPlaying, onUpdatePosition }: SceneProps) {
         infiniteGrid
       />
 
-      {/* Listener marker — small ring at origin representing "the room centre" */}
-      <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.09, 0.13, 48]} />
-        <meshBasicMaterial color="#60a5fa" transparent opacity={0.55} depthWrite={false} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.22, 0.26, 48]} />
-        <meshBasicMaterial color="#60a5fa" transparent opacity={0.2} depthWrite={false} side={THREE.DoubleSide} />
-      </mesh>
+      {/* Listener marker — human avatar at origin representing "the room centre" */}
+      <group position={[0, 0, 0]}>
+        {/* Subtle floor ring */}
+        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.15, 0.2, 48]} />
+          <meshBasicMaterial color="#60a5fa" transparent opacity={0.25} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        
+        {/* Floating human icon billboard */}
+        <Html position={[0, 0.15, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
+          <div className="w-10 h-10 rounded-full bg-blue-100/80 border border-blue-300 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)] dark:bg-blue-500/20 dark:border-blue-400/50 dark:text-blue-300 dark:shadow-[0_0_15px_rgba(96,165,250,0.3)] flex items-center justify-center backdrop-blur-sm">
+            <User className="w-5 h-5" />
+          </div>
+        </Html>
+      </group>
 
       {/* Orbit arc + virtual source */}
       <OrbitTrail isPlaying={isPlaying} />
 
       {/* Device orbs */}
       {deviceRows.map((d) => (
-        <DeviceOrb
+        <DeviceOrbV2
           key={d.deviceId}
           deviceId={d.deviceId}
           userId={d.userId}

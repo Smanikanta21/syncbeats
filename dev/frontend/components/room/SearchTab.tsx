@@ -638,11 +638,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
   const handleSpotifyEnqueue = useCallback(async (playlistId: string, source?: string) => {
     setSpError(null);
+    setEnqueuing(playlistId);
     try {
       await enqueueAsync.run(playlistId, source);
       onSuccess?.();
     } catch (e: any) {
       setSpError(e?.message || "Failed to add playlist to queue.");
+    } finally {
+      setEnqueuing(null);
     }
   }, [enqueueAsync, onSuccess]);
 
@@ -766,6 +769,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         videoId = result.url.split(":")[1];
       } else {
         videoId = result.url.split("v=")[1]?.split("&")[0] || result.url.split("youtu.be/")[1]?.split("?")[0];
+      }
+
+      // Instantly stop the current playing song so the user doesn't hear it while waiting
+      if (shouldPlayNow && isPlaying) {
+        getSocket().emit("playback:pause", { roomId });
       }
 
       // Fast enqueue via YouTube API (~50ms)
@@ -1161,10 +1169,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     </div>
                     <button
                       onClick={() => handleSpotifySearchEnqueue(`https://open.spotify.com/playlist/${r.id}`)}
-                      disabled={importAsync.isPending || enqueueAsync.isPending}
+                      disabled={importAsync.isPending || enqueuing === r.id}
                       className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait')}
                     >
-                      {(importAsync.isPending || enqueueAsync.isPending) ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                      {(importAsync.isPending || enqueuing === r.id) ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
                     </button>
                   </div>
                 ))}
@@ -1250,9 +1258,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
-                        disabled={enqueueAsync.isPending}
+                        disabled={enqueuing === r.id}
                         className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
-                        {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
+                        {enqueuing === r.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
                       </button>
                     </div>
                   );
@@ -1309,9 +1317,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id, "youtube"); }}
-                        disabled={enqueueAsync.isPending}
+                        disabled={enqueuing === r.id}
                         className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-red-500', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
-                        {enqueueAsync.isPending ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
+                        {enqueuing === r.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
                       </button>
                     </div>
                   );
@@ -1400,8 +1408,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   }
                                   handleSpotifyEnqueue(selectedPlaylistData.id, mode === "youtube" ? "youtube" : undefined);
                                 }}
-                                  className={cn('h-8', 'px-4', mode === "youtube" ? 'bg-[#FF0000] hover:bg-[#ff3333]' : 'bg-[#1DB954] hover:bg-[#1ed760]', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all')}>
-                                  <Play className={cn('w-4', 'h-4', 'fill-current')} /> Play All
+                                  disabled={enqueuing === selectedPlaylistData.id}
+                                  className={cn('h-8', 'px-4', mode === "youtube" ? 'bg-[#FF0000] hover:bg-[#ff3333]' : 'bg-[#1DB954] hover:bg-[#1ed760]', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all', 'disabled:opacity-50')}>
+                                  {enqueuing === selectedPlaylistData.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-4', 'h-4', 'fill-current')} />} Play All
                                 </button>
                               )}
                               {!isEditingPlaylist && mode === "spotify" && (
