@@ -322,7 +322,7 @@ export default function AuthPage() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`relative w-full max-w-5xl ${isLogin ? 'min-h-[650px]' : 'min-h-[850px]'} sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500`}
+        className={`relative w-full max-w-5xl ${isLogin ? 'min-h-162.5' : 'min-h-212.5'} sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500`}
       >
 
 

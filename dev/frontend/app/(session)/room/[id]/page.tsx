@@ -197,7 +197,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Subtle reconnecting banner — shown when socket drops while already in room */}
       {isReconnecting && !isConnected && (
-        <div className="fixed top-safe-top left-0 right-0 z-[9999] flex justify-center pt-16 pointer-events-none">
+        <div className="fixed top-safe-top left-0 right-0 z-9999 flex justify-center pt-16 pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/80 backdrop-blur-xl border border-foreground/10 shadow-lg text-sm font-medium text-foreground/70">
             <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>

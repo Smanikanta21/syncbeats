@@ -140,7 +140,7 @@ function VisualsModal({
     <AnimatePresence>
       <div
         ref={backdropRef}
-        className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'items-center', 'justify-center', 'p-0', 'sm:p-4', 'bg-black/60', 'pointer-events-auto')}
+        className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'items-center', 'justify-center', 'p-0', 'sm:p-4', 'bg-black/60', 'pointer-events-auto')}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.92, y: 15 }}
@@ -148,10 +148,10 @@ function VisualsModal({
           exit={{ opacity: 0, scale: 0.92, y: 15 }}
           transition={{ type: "spring", damping: 24, stiffness: 220 }}
           className={cn(
-            "w-full max-w-2xl md:max-w-3xl h-[100dvh] sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-[780px] p-4 sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-[32px] relative z-10 pointer-events-auto overflow-hidden transition-all duration-300 border-0 sm:border",
+            "w-full max-w-2xl md:max-w-3xl h-dvh sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-195 p-4 sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-4xl relative z-10 pointer-events-auto overflow-hidden transition-all duration-300 border-0 sm:border",
             isVisualsInteracting
               ? "bg-background/5 dark:bg-black/10 backdrop-blur-[2px] border-foreground/5 dark:border-white/5 opacity-25 scale-95"
-              : "bg-background dark:bg-black border-foreground/[0.08] dark:border-white/10"
+              : "bg-background dark:bg-black border-foreground/8 dark:border-white/10"
           )}
         >
           <SettingsPanel
@@ -451,7 +451,7 @@ export function RoomDashboard({
           </GlassCard>
 
           {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
-          <GlassCard className={cn('h-[260px]', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
+          <GlassCard className={cn('h-65', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
             <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
           </GlassCard>
         </div>
@@ -460,7 +460,7 @@ export function RoomDashboard({
         <GlassCard className={cn('w-80', 'shrink-0', 'flex', 'flex-col', 'min-h-0', 'p-3', 'gap-3')} isPlaying={isPlaying}>
 
           {/* Room Details Header — Ultra Clean 2-Row Card */}
-          <div className={cn('shrink-0', 'flex', 'flex-col', 'gap-2.5', 'bg-foreground/[0.03]', 'p-2.5', 'rounded-2xl', 'border', 'border-foreground/[0.08]')}>
+          <div className={cn('shrink-0', 'flex', 'flex-col', 'gap-2.5', 'bg-foreground/3', 'p-2.5', 'rounded-2xl', 'border', 'border-foreground/8')}>
             {/* Row 1: Room Code + Copy/QR on left, Privacy Status on right */}
             <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
               <div className={cn('flex', 'items-center', 'gap-1', 'bg-foreground/5', 'border', 'border-foreground/10', 'p-1', 'rounded-xl')}>
@@ -840,7 +840,7 @@ export function RoomDashboard({
               {/* Top Hero Stage: Spinning Vinyl Record Player & Track Info */}
               <GlassCard className={cn('w-full', 'flex-1', 'min-h-0', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'items-center', 'justify-between', 'relative', 'overflow-hidden', 'group')} isPlaying={isPlaying}>
                 {/* Subtle Ambient Glow Aura */}
-                <div className={cn('absolute', 'inset-0', 'bg-gradient-to-b', 'from-purple-500/10', 'via-transparent', 'to-emerald-500/10', 'pointer-events-none')} />
+                <div className={cn('absolute', 'inset-0', 'bg-linear-to-b', 'from-purple-500/10', 'via-transparent', 'to-emerald-500/10', 'pointer-events-none')} />
 
                 {/* Spinning Vinyl Disc */}
                 <div className={cn('relative', 'flex', 'items-center', 'justify-center', 'my-auto')}>
@@ -863,7 +863,7 @@ export function RoomDashboard({
                       {currentThumbnail ? (
                         <img src={currentThumbnail} alt="Album Art" className={cn('w-full', 'h-full', 'object-cover')} />
                       ) : (
-                        <div className={cn('w-full', 'h-full', 'bg-gradient-to-tr', 'from-purple-600', 'to-indigo-600', 'flex', 'items-center', 'justify-center')}>
+                        <div className={cn('w-full', 'h-full', 'bg-linear-to-tr', 'from-purple-600', 'to-indigo-600', 'flex', 'items-center', 'justify-center')}>
                           <Disc3 className={cn('w-7', 'h-7', 'text-white', 'animate-spin')} />
                         </div>
                       )}
@@ -941,7 +941,7 @@ export function RoomDashboard({
               </GlassCard>
 
               {/* Bottom Section: Equalizer & Frequency Visualizer */}
-              <GlassCard className={cn('w-full', 'h-[180px]', 'sm:h-[210px]', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
+              <GlassCard className={cn('w-full', 'h-45', 'sm:h-52.5', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
                 <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} />
               </GlassCard>
             </motion.div>
@@ -1008,11 +1008,11 @@ export function RoomDashboard({
 
       {showQR && (
         <div
-          className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'items-center', 'justify-center', 'bg-black/50', 'backdrop-blur-sm', 'cursor-pointer')}
+          className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'items-center', 'justify-center', 'bg-black/50', 'backdrop-blur-sm', 'cursor-pointer')}
           onClick={() => setShowQR(false)}
         >
-          <div className={cn('glass-panel', 'border', 'border-foreground/10', 'p-8', 'rounded-[2rem]', 'shadow-[0_0_50px_rgba(0,0,0,0.5)]', 'text-center', 'relative', 'overflow-hidden')} onClick={e => e.stopPropagation()}>
-            <div className={cn('absolute', 'inset-0', 'bg-gradient-to-br', 'from-foreground/5', 'to-transparent', 'pointer-events-none')} />
+          <div className={cn('glass-panel', 'border', 'border-foreground/10', 'p-8', 'rounded-4xl', 'shadow-[0_0_50px_rgba(0,0,0,0.5)]', 'text-center', 'relative', 'overflow-hidden')} onClick={e => e.stopPropagation()}>
+            <div className={cn('absolute', 'inset-0', 'bg-linear-to-br', 'from-foreground/5', 'to-transparent', 'pointer-events-none')} />
 
             <h3 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-[0.25em]', 'text-foreground/60', 'mb-6', 'relative', 'z-10')}>Room QR Code</h3>
 
@@ -1020,8 +1020,8 @@ export function RoomDashboard({
               <QRCode
                 value={typeof window !== 'undefined' ? window.location.href : `https://syncbeats.app/room/${roomId}`}
                 size={220}
-                bgColor="transparent"
-                fgColor="rgb(var(--foreground-rgb))"
+                bgColor="#ffffff"
+                fgColor="#000000"
                 qrStyle="dots"
                 eyeRadius={12}
                 logoImage="/syncbeats-icon.svg"
@@ -1064,7 +1064,7 @@ export function RoomDashboard({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 350, damping: 25 }}
-            className={cn('fixed', 'top-20', 'left-1/2', '-translate-x-1/2', 'z-[9999]', 'pointer-events-none')}
+            className={cn('fixed', 'top-20', 'left-1/2', '-translate-x-1/2', 'z-9999', 'pointer-events-none')}
           >
             <div className={cn('flex', 'items-center', 'gap-2.5', 'px-4', 'py-2', 'rounded-full', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-xl', 'border', 'border-foreground/15', 'shadow-2xl', 'text-xs', 'font-semibold', 'text-foreground')}>
               <span

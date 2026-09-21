@@ -100,7 +100,7 @@ export function InstagramFollowButton({
       whileTap={{ scale: 0.98 }}
       className={cn(
         "group relative w-full h-14 rounded-2xl",
-        "bg-foreground/[0.04] dark:bg-white/[0.05]",
+        "bg-foreground/4 dark:bg-white/[0.05]",
         "backdrop-blur-2xl border border-foreground/15 dark:border-white/10",
         "flex items-center justify-center gap-3 px-6",
         "text-foreground font-black text-xs md:text-sm tracking-widest uppercase",
@@ -112,7 +112,7 @@ export function InstagramFollowButton({
       <span className="absolute inset-0 bg-gradient-to-r from-[#833ab4]/15 via-[#fd1d1d]/15 to-[#fcb045]/15 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
       {/* Vibrant Instagram Icon Badge */}
-      <div className="relative z-10 w-7 h-7 rounded-lg bg-gradient-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center shrink-0 shadow-md shadow-pink-500/20 group-hover:scale-110 transition-transform duration-300">
+      <div className="relative z-10 w-7 h-7 rounded-lg bg-linear-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center shrink-0 shadow-md shadow-pink-500/20 group-hover:scale-110 transition-transform duration-300">
         <InstagramIcon className="w-4 h-4 text-white shrink-0" />
       </div>
 

@@ -494,10 +494,10 @@ export function SpatialPanel({
           />
 
           <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'transition-transform', 'duration-1000')} style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }} xmlns="http://www.w3.org/2000/svg">
-            <defs><pattern id="room-grid-ego" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" className="text-foreground/[0.04]" strokeWidth="1"/></pattern></defs>
+            <defs><pattern id="room-grid-ego" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" className="text-foreground/4" strokeWidth="1"/></pattern></defs>
             <rect width="100%" height="100%" fill="url(#room-grid-ego)" />
-            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="currentColor" className="text-foreground/[0.06]" strokeWidth="1"/>
-            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" className="text-foreground/[0.06]" strokeWidth="1"/>
+            <line x1="50%" y1="0" x2="50%" y2="100%" stroke="currentColor" className="text-foreground/6" strokeWidth="1"/>
+            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" className="text-foreground/6" strokeWidth="1"/>
           </svg>
 
           {/* Axis Labels */}
@@ -647,7 +647,7 @@ export function SpatialPanel({
                         setExpandedUserId((prev) => (prev === user.userId ? null : user.userId));
                       }}
                     >
-                      <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-gradient-to-br', 'from-blue-500', 'to-indigo-600', 'shadow-lg', 'shadow-blue-500/20', 'flex', 'items-center', 'justify-center', 'border-2', 'border-white/10')}>
+                      <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-linear-to-br', 'from-blue-500', 'to-indigo-600', 'shadow-lg', 'shadow-blue-500/20', 'flex', 'items-center', 'justify-center', 'border-2', 'border-white/10')}>
                         <span className={cn('text-sm', 'font-bold', 'text-white')}>{user.initials}</span>
                       </div>
                     </motion.div>
@@ -723,7 +723,7 @@ export function SpatialPanel({
 
                 {/* MODAL VIEW (Mobile only) */}
                 {mounted && isMobileModalOpen && createPortal(
-                  <div className={cn('fixed', 'inset-0', 'z-[100]', 'flex', 'flex-col', 'p-4', 'bg-background/90', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
+                  <div className={cn('fixed', 'inset-0', 'z-100', 'flex', 'flex-col', 'p-4', 'bg-background/90', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
                     <div className={cn('flex', 'items-center', 'justify-between', 'mb-4', 'pt-12')}>
                       <div className={cn('flex', 'items-center', 'gap-4')}>
                         <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>

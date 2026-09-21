@@ -77,7 +77,7 @@ export default function ContactPage() {
           className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full"
         >
           <a href="https://www.instagram.com/syncbeats.in/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl transition-all duration-500 text-center flex flex-col items-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-pink-500/20">
+            <div className="w-16 h-16 rounded-2xl bg-linear-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-pink-500/20">
               <InstagramIcon className="w-8 h-8 text-white" />
             </div>
             <h3 className="text-xl font-bold mb-2">Instagram</h3>

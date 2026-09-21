@@ -102,7 +102,7 @@ function OfflineDeviceCard({ device, customDeviceName }: { device: Device, custo
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 0.65, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className={cn('rounded-xl', 'border', 'border-foreground/[0.05]', 'bg-foreground/[0.02]', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
+      className={cn('rounded-xl', 'border', 'border-foreground/5', 'bg-foreground/2', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
     >
       <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
         <div className={cn('relative', 'w-8', 'h-8', 'rounded-lg', 'flex', 'items-center', 'justify-center', 'shrink-0', 'bg-foreground/5', 'text-foreground/40')}>
@@ -210,12 +210,12 @@ function ParticipantRow({
       className={cn(
         "rounded-xl border transition-all duration-300 overflow-hidden",
         isBufferingActive
-          ? "border-red-500/40 bg-red-500/[0.10] animate-[pulse_2s_infinite] shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+          ? "border-red-500/40 bg-red-500/10 animate-[pulse_2s_infinite] shadow-[0_0_15px_rgba(239,68,68,0.2)]"
           : isSyncingActive
             ? "border-amber-500/30 bg-amber-500/[0.07] shadow-[0_0_15px_rgba(245,158,11,0.15)]"
             : isMe
               ? "border-emerald-500/30 bg-emerald-500/[0.07] shadow-[0_0_15px_rgba(16,185,129,0.12)]"
-              : "border-foreground/[0.07] bg-foreground/[0.03] hover:bg-foreground/[0.05]"
+              : "border-foreground/[0.07] bg-foreground/3 hover:bg-foreground/5"
       )}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -307,15 +307,15 @@ function ParticipantRow({
 
               {/* Stats grid */}
               <div className={cn('grid', 'grid-cols-2', 'gap-1.5')}>
-                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5')}>
+                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5')}>
                   <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Latency</div>
                   <div className={cn('text-xs', 'font-black')} style={{ color: latencyColor(lat) }}>{lat}ms</div>
                 </div>
-                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5')}>
+                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5')}>
                   <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Jitter</div>
                   <div className={cn('text-xs', 'font-black', 'text-foreground/70')}>{Math.round(p.jitter ?? 0)}ms</div>
                 </div>
-                <div className={cn('rounded-xl', 'bg-foreground/[0.04]', 'px-2.5', 'py-1.5', 'col-span-2')}>
+                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5', 'col-span-2')}>
                   <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Status</div>
                   <div className={cn('text-[11px]', 'font-semibold', 'text-foreground/70')}>
                     {statusText}

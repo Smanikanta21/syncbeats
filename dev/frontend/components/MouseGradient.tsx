@@ -219,7 +219,7 @@ export function MouseGradient() {
                 rotate: driftTransition,
                 borderRadius: { duration: 11, repeat: Infinity, ease: "easeInOut" },
               }}
-              className="w-[55vw] h-[55vw] max-w-[650px] max-h-[650px] blur-[50px] md:blur-[80px] will-change-transform gpu-accelerated"
+              className="w-[55vw] h-[55vw] max-w-[650px] max-h-162.5 blur-[50px] md:blur-[80px] will-change-transform gpu-accelerated"
             />
           </div>
 

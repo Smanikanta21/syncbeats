@@ -200,7 +200,7 @@ export default function ProfilePage() {
       
       {/* ── Top Header Navigation Bar (Fixed Capsule) ───────────────── */}
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
-        <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
+        <header className="w-full max-w-350 flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
           <button
             onClick={handleBackToSession}
             className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group cursor-pointer"
@@ -232,7 +232,7 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Main Production Command Center Grid (Dual Pane) ───────────────── */}
-      <main className={cn('w-full', 'max-w-[1400px]', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
+      <main className={cn('w-full', 'max-w-350', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
         
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
         <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative')}>
@@ -241,7 +241,7 @@ export default function ProfilePage() {
           {/* Avatar & Status Ring */}
           <div className={cn('relative', 'mb-4', 'mt-2')}>
             <div className={cn('absolute', 'inset-0', 'bg-amber-500/20', 'blur-2xl', 'rounded-full', 'scale-125', 'animate-pulse')} />
-            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-gradient-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
+            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-linear-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
               <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-[#0B0F17]', 'flex', 'items-center', 'justify-center', 'relative', 'overflow-hidden')}>
                 <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-widest')}>{initials}</span>
               </div>
@@ -363,7 +363,7 @@ export default function ProfilePage() {
         </aside>
 
         {/* ── Right Pane: Active Production Section (8 Cols) ─────────────── */}
-        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-[650px]', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
+        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-162.5', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
           <AnimatePresence mode="wait">
             
             {/* 1. App Settings & Audio Tab */}
@@ -373,7 +373,7 @@ export default function ProfilePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className={cn('w-full', 'flex', 'flex-col', 'min-h-[600px]')}
+                className={cn('w-full', 'flex', 'flex-col', 'min-h-150')}
               >
                 <SettingsPanel
                   isEmbedded={true}

@@ -473,7 +473,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.95 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute left-0 top-full mt-1.5 w-40 bg-zinc-900/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl p-1 z-[100] max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
+                  className="absolute left-0 top-full mt-1.5 w-40 bg-zinc-900/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl p-1 z-100 max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
                 >
                   {Object.keys(PRESETS).map(p => {
                     const isSelected = currentPreset === p;

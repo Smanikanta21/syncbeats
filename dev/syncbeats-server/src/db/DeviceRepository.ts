@@ -1,6 +1,7 @@
 // db/DeviceRepository.ts — Prisma-based implementation
 
 import prisma from './prisma';
+import { UAParser } from 'ua-parser-js';
 
 export interface PublicDevice {
   id:           string;
@@ -26,9 +27,27 @@ export class DeviceRepository {
     });
 
     if (existing) {
+      let newName = existing.name;
+      
+      // Auto-upgrade legacy or generic numbered names (e.g., 'Mac 1', 'iPhone 2', or just 'Mac')
+      // to the new smart naming convention when the user logs in or loads the app.
+      const isGeneric = /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(existing.name);
+      
+      if (isGeneric && userAgent) {
+        const smartName = this.buildDefaultDeviceName(ownerName, userAgent);
+        if (smartName && smartName !== existing.name) {
+          newName = smartName;
+        }
+      }
+
       const updated = await prisma.device.update({
         where: { id: existing.id },
-        data: { lastSeenAt: new Date(), userAgent, ...(ip ? { ip } : {}) }
+        data: { 
+          name: newName,
+          lastSeenAt: new Date(), 
+          userAgent, 
+          ...(ip ? { ip } : {}) 
+        }
       });
       return { device: this.mapDevice(updated), created: false };
     }
@@ -60,6 +79,54 @@ export class DeviceRepository {
               where: { userId_deviceKey: { userId, deviceKey } }
             });
             if (found) return { device: this.mapDevice(found), created: false };
+          }
+        }
+      } else if (normalizedUserAgent) {
+        // Smart Auto-Replace: If user updated their browser, the exact userAgent string will differ.
+        // We use UAParser to check if the OS and Browser match an existing device exactly.
+        const parser = new UAParser(normalizedUserAgent);
+        const newOs = parser.getOS().name;
+        const newBrowser = parser.getBrowser().name;
+        
+        if (newOs && newBrowser) {
+          // Find the most recently used device for this user
+          const recentDevices = await prisma.device.findMany({
+            where: { userId },
+            orderBy: { lastSeenAt: 'desc' }
+          });
+          
+          for (const d of recentDevices) {
+            if (d.userAgent) {
+              const oldParser = new UAParser(d.userAgent);
+              if (oldParser.getOS().name === newOs && oldParser.getBrowser().name === newBrowser) {
+                let newName = d.name;
+                const isGeneric = /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(d.name);
+                
+                if (isGeneric && normalizedUserAgent) {
+                  const smartName = this.buildDefaultDeviceName(ownerName, normalizedUserAgent);
+                  if (smartName && smartName !== d.name) {
+                    newName = smartName;
+                  }
+                }
+
+                try {
+                  const reused = await prisma.device.update({
+                    where: { id: d.id },
+                    data: {
+                      name: newName,
+                      deviceKey,
+                      lastSeenAt: new Date(),
+                      userAgent: normalizedUserAgent,
+                      ...(ip ? { ip } : {}),
+                    },
+                  });
+                  return { device: this.mapDevice(reused), created: false };
+                } catch (e) {
+                  // Ignore and fall through to create
+                }
+                break;
+              }
+            }
           }
         }
       }
@@ -197,20 +264,34 @@ export class DeviceRepository {
   private buildDefaultDeviceName(ownerName: string, userAgent: string | null): string {
     const owner = ownerName?.trim() || 'My';
     const suffix = owner === 'My' ? '' : `'s`;
-    const platform = this.detectPlatformLabel(userAgent);
-    return `${owner}${suffix} ${platform}`.trim();
-  }
+    
+    if (!userAgent) {
+      return `${owner}${suffix} Device`.trim();
+    }
+    
+    const parser = new UAParser(userAgent);
+    const os = parser.getOS();
+    const browser = parser.getBrowser();
+    const device = parser.getDevice();
+    
+    let platformLabel = "Device";
+    
+    // Prioritize exact device model if available (e.g. Android models)
+    if (device.model) {
+      platformLabel = device.model;
+    } else if (os.name) {
+      if (os.name.includes("Mac OS")) platformLabel = "MacBook";
+      else if (os.name.includes("iOS")) platformLabel = "iPhone";
+      else if (os.name.includes("Windows")) platformLabel = "Windows PC";
+      else if (os.name.includes("Android")) platformLabel = "Android Phone";
+      else platformLabel = os.name;
+    }
 
-  private detectPlatformLabel(userAgent: string | null): string {
-    const ua = (userAgent ?? '').toLowerCase();
+    // Append browser name if desktop
+    if (browser.name && !device.type && !["iPhone", "Android Phone"].includes(platformLabel)) {
+      return `${owner}${suffix} ${platformLabel} (${browser.name})`.trim();
+    }
 
-    if (ua.includes('iphone')) return 'iPhone';
-    if (ua.includes('ipad')) return 'iPad';
-    if (ua.includes('android')) return 'Android';
-    if (ua.includes('mac')) return 'Mac';
-    if (ua.includes('windows')) return 'Windows';
-    if (ua.includes('linux')) return 'Linux';
-
-    return 'Device';
+    return `${owner}${suffix} ${platformLabel}`.trim();
   }
 }

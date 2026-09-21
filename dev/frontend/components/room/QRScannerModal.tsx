@@ -199,7 +199,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   };
 
   return (
-    <div className={cn('fixed', 'inset-0', 'z-[9999]', 'flex', 'flex-col', 'items-center', 'p-4', 'sm:p-8', 'bg-black/90', 'backdrop-blur-md', 'overflow-y-auto')}>
+    <div className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'flex-col', 'items-center', 'p-4', 'sm:p-8', 'bg-black/90', 'backdrop-blur-md', 'overflow-y-auto')}>
       <canvas ref={canvasRef} className="hidden" />
       
       {/* Header & Close button */}
@@ -216,13 +216,13 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
       <div className="w-full max-w-sm flex flex-col gap-6 pb-20">
         {/* Scanner */}
         {hasCameraError ? (
-          <div className="text-center text-white/80 flex flex-col items-center px-6 py-10 bg-white/5 rounded-[2rem] border border-white/10">
+          <div className="text-center text-white/80 flex flex-col items-center px-6 py-10 bg-white/5 rounded-4xl border border-white/10">
             <CameraOff className="w-12 h-12 mb-4 text-red-400" />
             <h2 className="text-xl font-bold mb-2">Camera Unavailable</h2>
             <p className="max-w-xs text-sm opacity-70">{cameraErrorText}</p>
           </div>
         ) : (
-          <div className="relative w-full aspect-[3/4] rounded-[2rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 shrink-0">
+          <div className="relative w-full aspect-3/4 rounded-4xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] border border-white/10 shrink-0">
             <video 
               ref={videoRef}
               autoPlay
@@ -264,7 +264,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="absolute bottom-[-60px] left-1/2 -translate-x-1/2 whitespace-nowrap bg-red-500/90 text-white px-4 py-2 rounded-full font-bold text-sm shadow-xl flex items-center gap-2"
+                      className="absolute -bottom-15 left-1/2 -translate-x-1/2 whitespace-nowrap bg-red-500/90 text-white px-4 py-2 rounded-full font-bold text-sm shadow-xl flex items-center gap-2"
                     >
                       <AlertCircle className="w-4 h-4" />
                       {errorMessage}

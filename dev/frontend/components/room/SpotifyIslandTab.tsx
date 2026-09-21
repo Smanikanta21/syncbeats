@@ -308,7 +308,7 @@ export function SpotifyIslandTab({
                 <div className="flex flex-col gap-1.5 items-start w-full">
                   <div className="text-[10px] bg-foreground/10 text-foreground/80 px-2 py-0.5 rounded-full font-semibold">Instructions</div>
                   <p className="text-xs text-foreground/80 text-left pl-1">Tap the three dots on your playlist and tap "Make Public".</p>
-                  <div className="w-full aspect-[9/16] max-h-[280px] bg-foreground/[0.03] rounded-lg border border-foreground/10 flex items-center justify-center overflow-hidden p-2 mx-auto">
+                  <div className="w-full aspect-[9/16] max-h-[280px] bg-foreground/3 rounded-lg border border-foreground/10 flex items-center justify-center overflow-hidden p-2 mx-auto">
                     <video src="/make-public.mov" className="object-contain w-full h-full rounded-md" autoPlay loop muted playsInline />
                   </div>
                 </div>
@@ -354,7 +354,7 @@ export function SpotifyIslandTab({
             <h3 className="text-xs font-bold text-foreground/50 uppercase tracking-widest pl-1 mt-4 mb-2">Imported</h3>
             <div className="grid grid-cols-1 gap-2">
               {imported.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/[0.03] border border-foreground/[0.05] hover:bg-foreground/[0.06] transition-colors group">
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/3 border border-foreground/5 hover:bg-foreground/[0.06] transition-colors group">
                   <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => !playAsync.isPending && handlePlayPlaylist(p.id)}>
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt={p.name} loading="eager" decoding="sync" className="w-12 h-12 rounded-lg object-cover" />
