@@ -251,16 +251,30 @@ if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
   exit 1
 fi
 
-# 2. Check dependencies
+# 2. Check and auto-install dependencies
 for cmd in node npm git ffplay; do
   if ! command -v $cmd &> /dev/null; then
-    echo "Missing dependency: $cmd"
     if [ "$cmd" = "ffplay" ]; then
-      echo "  Install ffmpeg: brew install ffmpeg (macOS) or sudo apt install ffmpeg (Linux)"
-    elif [ "$cmd" = "node" ] || [ "$cmd" = "npm" ]; then
-      echo "  Install Node.js: https://nodejs.org (v18+ required)"
+      echo "Missing dependency: ffplay (ffmpeg). Attempting to auto-install..."
+      if [ "$OS" = "Darwin" ] && command -v brew &> /dev/null; then
+        echo "Running: brew install ffmpeg"
+        brew install ffmpeg
+      elif [ "$OS" = "Linux" ] && command -v apt-get &> /dev/null; then
+        echo "Running: sudo apt-get update && sudo apt-get install -y ffmpeg"
+        sudo apt-get update && sudo apt-get install -y ffmpeg
+      else
+        echo "Could not auto-install ffmpeg. Please install manually:"
+        echo "  macOS: brew install ffmpeg"
+        echo "  Linux: sudo apt install ffmpeg"
+        exit 1
+      fi
+    else
+      echo "Missing dependency: $cmd"
+      if [ "$cmd" = "node" ] || [ "$cmd" = "npm" ]; then
+        echo "  Install Node.js: https://nodejs.org (v18+ required)"
+      fi
+      exit 1
     fi
-    exit 1
   fi
 done
 
