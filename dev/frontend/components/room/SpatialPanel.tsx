@@ -2,25 +2,13 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Headphones, User, Smartphone, Monitor, ChevronRight, Laptop, Maximize2, X } from "lucide-react";
+import { Maximize2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { DeviceSpatialState, Participant } from "../../lib/types";
 import { SpatialAudioEngine, type SpatialPosition } from "../../audio/SpatialAudioEngine";
 import { cn } from "@/lib/utils";
 import { SpatialScene3D } from "./spatial/SpatialScene3D";
 
-interface UserGroup {
-  userId: string;
-  displayName: string;
-  initials: string;
-  isMe: boolean;
-  devices: {
-    deviceId: string;
-    deviceName: string;
-    isMe: boolean;
-    deviceType?: string;
-  }[];
-}
 
 interface SpatialPanelProps {
   myDeviceId: string;
@@ -29,7 +17,6 @@ interface SpatialPanelProps {
   participants: Participant[];
   isPlaying: boolean;
   onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
-  syncUIState?: (listenerCart: {x: number, y: number, z: number}, offsets: Map<string, {fanX: number, fanY: number}>, myPos?: {angle: number, radius: number, elevation: number}) => void;
   orbitSpeed?: number;
   orbitData?: { fromId: string; toId: string; frac: number } | null;
   onOrbitSpeedChange?: (speed: number) => void;
@@ -51,7 +38,6 @@ export function SpatialPanel({
   participants,
   isPlaying,
   onUpdatePosition,
-  syncUIState,
   orbitSpeed = 3,
   onOrbitSpeedChange,
   roomId,
@@ -75,96 +61,15 @@ export function SpatialPanel({
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const draggingRef = useRef<{ id: string; isUser: boolean } | null>(null);
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const dragStartRef = useRef<{ screenX: number; screenY: number; globalPos: Map<string, {x: number, y: number}> } | null>(null);
 
   // Determine current user
   const myParticipant = participants.find((p) => p.socketId === myDeviceId);
   const resolvedMyUserId = myUserId ?? myParticipant?.userId ?? myParticipant?.socketId ?? myDeviceId;
 
-  // ── Build user groups ──────────────────────────────────────────────────
 
-  const userGroups: UserGroup[] = useMemo(() => {
-    const map = new Map<string, UserGroup>();
 
-    participants.forEach((p) => {
-      const nameParts = (p.displayName || "Unknown User").split("::");
-      const actualDisplayName = nameParts[0] || "Unknown User";
-      const fallbackName = nameParts.length > 1 ? nameParts[1] : undefined;
-      const friendlyDevName = getFriendlyDeviceName(p.outputDeviceName || "", p.outputDeviceType, fallbackName);
-      
-      const userId = p.userId ?? p.socketId;
-      const isMe = userId === resolvedMyUserId;
 
-      if (!map.has(userId)) {
-        map.set(userId, {
-          userId,
-          displayName: actualDisplayName,
-          initials: actualDisplayName.substring(0, 2).toUpperCase(),
-          isMe,
-          devices: [],
-        });
-      }
-      map.get(userId)!.devices.push({
-        deviceId: p.socketId,
-        deviceName: friendlyDevName,
-        isMe: p.socketId === myDeviceId,
-        deviceType: p.outputDeviceType,
-      });
-    });
-
-    return Array.from(map.values());
-  }, [participants, myDeviceId, resolvedMyUserId]);
-
-  function getFriendlyDeviceName(name: string, type?: string, fallback?: string) {
-    const n = (name || "").toLowerCase();
-    const f = (fallback || "").toLowerCase();
-    
-    if (n.includes("iphone") || f.includes("iphone")) return "iPhone";
-    if (n.includes("ipad") || f.includes("ipad")) return "iPad";
-    if (n.includes("mac") || f.includes("mac") || f.includes("macos")) return "Mac";
-    if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows";
-    if (n.includes("android") || f.includes("android")) return "Android";
-    if (n.includes("linux") || f.includes("linux")) return "Linux";
-    
-    if (type === "mobile") return "Mobile";
-    if (type === "speakers") return "Desktop";
-    return "Device";
-  }
-
-  function getDeviceIcon(name: string, type?: string) {
-    const n = (name || "").toLowerCase();
-    
-    // Explicit OS match
-    if (n.includes("iphone") || n.includes("android") || n.includes("ipad")) return Smartphone;
-    if (n.includes("mac") || n.includes("windows") || n.includes("linux")) return Laptop;
-    
-    // Type fallback
-    switch (type) {
-      case "mobile":     return Smartphone;
-      case "speakers":   return Monitor;
-      case "headphones": return Headphones;
-      default:           return Headphones;
-    }
-  }
-
-  // Local visual offsets for devices (stored in localStorage)
-  const [deviceOffsets, setDeviceOffsets] = useState<Record<string, { fanX: number; fanY: number }>>(() => {
-    try {
-      const stored = localStorage.getItem(`syncbeats_device_offsets_${roomId}_${resolvedMyUserId}`);
-      if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    return {};
-  });
-
-  useEffect(() => {
-    if (roomId && resolvedMyUserId) {
-      localStorage.setItem(`syncbeats_device_offsets_${roomId}_${resolvedMyUserId}`, JSON.stringify(deviceOffsets));
-    }
-  }, [deviceOffsets, roomId, resolvedMyUserId]);
 
   // Compute live stereo pan value from current orbit position (-1 left .. +1 right)
   const panValue = useMemo(() => {

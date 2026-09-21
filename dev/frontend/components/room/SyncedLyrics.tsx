@@ -126,42 +126,28 @@ function cleanForSearch(rawTitle: string, providedArtist?: string | null): { tit
 async function fetchLyrics(rawTitle: string, rawArtist?: string | null): Promise<LyricLine[] | null> {
   const { title, artist } = cleanForSearch(rawTitle, rawArtist);
   
-  // Build query prioritizing track_name and artist_name if we successfully split them, 
-  // otherwise fallback to a generic 'q=' search.
-  let url = `https://lrclib.net/api/search?`;
-  if (artist) {
-    url += `track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
-  } else {
-    url += `track_name=${encodeURIComponent(title)}`;
+  // Build a generic query for the 'q=' endpoint which searches all fields (artist, track, album)
+  // This is much more robust for messy YouTube titles.
+  const query = artist ? `${artist} ${title}` : title;
+  const url = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { "Lrclib-Client": "SyncBeats/1.0" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !Array.isArray(data) || !data.length) return null;
+
+    // The 'q=' endpoint sorts by relevance. We just find the first result with synced lyrics.
+    const best = data.find((d: any) => d.syncedLyrics);
+    if (!best?.syncedLyrics) return null;
+    
+    return parseLrc(best.syncedLyrics);
+  } catch (error) {
+    console.error("fetchLyrics error:", error);
+    return null;
   }
-
-  const res = await fetch(url, {
-    headers: { "Lrclib-Client": "SyncBeats/1.0" },
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!data || !Array.isArray(data) || !data.length) return null;
-
-  // 1. Try to find an exact title match with synced lyrics
-  const cleanSearchTitle = title.toLowerCase();
-  let best = data.find((d: any) => 
-    d.syncedLyrics && d.trackName && d.trackName.toLowerCase() === cleanSearchTitle
-  );
-
-  // 2. Fallback to fuzzy match (track name contains our search title)
-  if (!best) {
-    best = data.find((d: any) => 
-      d.syncedLyrics && d.trackName && d.trackName.toLowerCase().includes(cleanSearchTitle)
-    );
-  }
-
-  // 3. Last resort: just grab the first one with synced lyrics
-  if (!best) {
-    best = data.find((d: any) => d.syncedLyrics) ?? data[0];
-  }
-
-  if (!best?.syncedLyrics) return null;
-  return parseLrc(best.syncedLyrics);
 }
 
 /* ─── SyncedLyrics Component ─────────────────────────────────────────────── */

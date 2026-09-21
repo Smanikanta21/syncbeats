@@ -18,25 +18,16 @@
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Grid, Stars, Environment } from "@react-three/drei";
+import { OrbitControls, Grid } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 
 import type { DeviceSpatialState } from "../../../lib/types";
 import type { Participant } from "../../../lib/types";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
-import { userHue, polarToWorld, WORLD_SCALE } from "./DeviceOrb";
+
 import { DeviceOrb } from "./DeviceOrb";
 import { OrbitTrail } from "./OrbitTrail";
-
-// ── Helper: deterministic initials from display name ──────────────────────────
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 // ── Scene content (inside Canvas) ────────────────────────────────────────────
 

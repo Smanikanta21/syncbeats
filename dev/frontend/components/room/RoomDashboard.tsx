@@ -47,7 +47,6 @@ interface RoomDashboardProps {
   // Spatial
   spatialDevices: DeviceSpatialState[];
   onUpdateSpatialPosition: (deviceId: string, pos: { angle: number; radius: number; elevation: number }) => void;
-  syncUIState?: (listenerCart: { x: number, y: number, z: number }, offsets: Map<string, { fanX: number, fanY: number }>) => void;
 
   // Playback
   audio: {
@@ -173,7 +172,7 @@ function VisualsModal({
 export function RoomDashboard({
   roomId, snapshot, participants, spatialParticipants, spatialMode, onSpatialModeChange, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate, allow8DSolo, spatialDevices,
-  onUpdateSpatialPosition, syncUIState, audio, orbitSpeed, onOrbitSpeedChange,
+  onUpdateSpatialPosition, audio, orbitSpeed, onOrbitSpeedChange,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -387,7 +386,6 @@ export function RoomDashboard({
               myUserId={myUserId ?? mySocketId ?? ""}
               isPlaying={isPlaying}
               onUpdatePosition={onUpdateSpatialPosition}
-              syncUIState={syncUIState}
               roomId={roomId}
               orbitSpeed={orbitSpeed}
               onOrbitSpeedChange={onOrbitSpeedChange}
@@ -822,7 +820,6 @@ export function RoomDashboard({
                   myUserId={myUserId ?? mySocketId ?? ""}
                   isPlaying={isPlaying}
                   onUpdatePosition={onUpdateSpatialPosition}
-                  syncUIState={syncUIState}
                   roomId={roomId}
                   orbitSpeed={orbitSpeed}
                   onOrbitSpeedChange={onOrbitSpeedChange}
