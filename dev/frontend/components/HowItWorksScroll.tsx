@@ -6,7 +6,7 @@ import { Play, Users, Zap, QrCode, Smartphone, Laptop, Speaker, CheckCircle2, Mu
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 
-const JoinRoomModal = dynamic(() => import("./JoinRoomModal").then(mod => mod.JoinRoomModal), { ssr: false });
+const QRScannerModal = dynamic(() => import("./room/QRScannerModal").then(mod => mod.QRScannerModal), { ssr: false });
 
 export function HowItWorksScroll() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -193,7 +193,9 @@ export function HowItWorksScroll() {
     <div ref={containerRef} className="relative w-full h-[280vh] select-none z-10">
       
       {/* Join Room Modal Triggered directly on mobile phone interaction */}
-      <JoinRoomModal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
+      {isJoinModalOpen && (
+        <QRScannerModal onClose={() => setIsJoinModalOpen(false)} />
+      )}
 
       {/* Sticky Fullscreen Viewport for both Mobile and Desktop */}
       <div className="sticky top-0 h-screen w-full flex flex-col items-center justify-between py-6 md:py-10 px-4 sm:px-8 lg:px-16 overflow-hidden">
@@ -460,7 +462,7 @@ export function HowItWorksScroll() {
             </AnimatePresence>
           </div>
 
-          {/* Portrait Mobile-Shaped Smartphone Mockup Card Showcase (Clickable to open JoinRoomModal) */}
+          {/* Portrait Mobile-Shaped Smartphone Mockup Card Showcase (Clickable to open QRScannerModal) */}
           <div 
             onClick={() => setIsJoinModalOpen(true)}
             className="w-[300px] xs:w-[330px] sm:w-[360px] h-[370px] xs:h-[410px] sm:h-[440px] rounded-[42px] glass-panel border-2 border-foreground/20 shadow-2xl relative overflow-hidden flex items-center justify-center p-5 my-auto cursor-pointer group active:scale-98 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/40 transition-all duration-500"

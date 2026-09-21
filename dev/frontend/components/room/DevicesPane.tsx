@@ -299,7 +299,7 @@ function ParticipantRow({
                     style={{
                       background: `linear-gradient(to right, #34d399 0%, #34d399 ${localVol}%, rgba(255,255,255,0.15) ${localVol}%, rgba(255,255,255,0.15) 100%)`,
                     }}
-                    className="flex-1 h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(52,211,153,0.9)]"
+                    className={cn('flex-1', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3', '[&::-webkit-slider-thumb]:h-3', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(52,211,153,0.9)]')}
                   />
                   <span className={cn('text-[10px]', 'font-black', 'text-foreground/40', 'w-7', 'text-right')}>{localVol}%</span>
                 </div>
@@ -330,9 +330,9 @@ function ParticipantRow({
                     e.stopPropagation();
                     document.dispatchEvent(new CustomEvent("island:expand-sync"));
                   }}
-                  className="w-full mt-2 py-1.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs"
+                  className={cn('w-full', 'mt-2', 'py-1.5', 'px-3', 'rounded-xl', 'bg-emerald-500/10', 'hover:bg-emerald-500/20', 'text-emerald-400', 'border', 'border-emerald-500/25', 'text-[11px]', 'font-bold', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-1.5', 'cursor-pointer', 'active:scale-98', 'shadow-xs')}
                 >
-                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  <Activity className={cn('w-3.5', 'h-3.5', 'text-emerald-400')} />
                   <span>Compare & Calibrate Sync</span>
                 </button>
               )}
@@ -454,14 +454,14 @@ export function DevicesPane({
   return (
     <div className={cn('h-full', 'flex', 'flex-col', 'min-h-0')}>
       {/* Header */}
-      <div className={cn('flex', 'items-center', 'justify-between', 'px-1', 'pb-3', 'shrink-0')}>
-        <div className={cn('flex', 'items-center', 'gap-2')}>
-          <Activity className={cn('w-4', 'h-4', 'text-foreground/60')} />
-          <span className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
-            Account Devices
-          </span>
-        </div>
-        <div className={cn('flex', 'items-center', 'gap-2')}>
+      <div className={cn('flex', 'flex-col', 'gap-2', 'px-1', 'pb-3', 'shrink-0')}>
+        <div className={cn('flex', 'items-center', 'justify-between')}>
+          <div className={cn('flex', 'items-center', 'gap-2')}>
+            <Activity className={cn('w-4', 'h-4', 'text-foreground/60')} />
+            <span className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
+              Account Devices
+            </span>
+          </div>
           <HoverExpandPill
             icon={UserPlus}
             label="Invite"
@@ -470,10 +470,11 @@ export function DevicesPane({
             activeColor="bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-xs"
             title="Invite Friends"
           />
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'text-[10px]', 'font-mono', 'font-bold', 'text-emerald-400')}>
-            <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400', 'animate-pulse')} />
-            <span>{participants.length} online</span>
-          </div>
+        </div>
+        
+        <div className={cn('flex', 'items-center', 'gap-1.5', 'text-[10px]', 'font-mono', 'font-bold', 'animate-pulse', 'text-emerald-400')}>
+          {/* <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400')} /> */}
+          <span>{participants.length} online</span>
         </div>
       </div>
 

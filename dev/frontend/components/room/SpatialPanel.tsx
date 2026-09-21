@@ -6,6 +6,7 @@ import { Headphones, User, Smartphone, Monitor, ChevronRight, Laptop, Maximize2,
 import { createPortal } from "react-dom";
 import type { DeviceSpatialState, Participant } from "../../lib/types";
 import { SpatialAudioEngine, type SpatialPosition } from "../../audio/SpatialAudioEngine";
+import { cn } from "@/lib/utils";
 
 interface UserGroup {
   userId: string;
@@ -449,17 +450,17 @@ export function SpatialPanel({
   }, [orbitData, spatialDevices]);
 
   return (
-    <div className="flex-1 w-full flex flex-col min-h-0 min-w-0">
-      <div className="flex items-center justify-between mb-2 lg:mb-4 shrink-0">
+    <div className={cn('flex-1', 'w-full', 'flex', 'flex-col', 'min-h-0', 'min-w-0')}>
+      <div className={cn('flex', 'items-center', 'justify-between', 'mb-2', 'lg:mb-4', 'shrink-0')}>
         <div>
-          <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+          <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
             Spatial Room
           </h2>
-          <p className="text-[10px] lg:text-xs text-foreground/40 mt-0.5">Drag users or devices to position them</p>
+          <p className={cn('text-[10px]', 'lg:text-xs', 'text-foreground/40', 'mt-0.5')}>Drag users or devices to position them</p>
         </div>
 
         {allow8DSolo && (
-          <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
+          <div className={cn('flex', 'bg-foreground/5', 'p-1', 'rounded-full', 'border', 'border-foreground/10')}>
             <button 
               onClick={() => onSpatialModeChange?.('multiplayer')}
               className={`px-3 py-1 lg:px-4 lg:py-1.5 text-[10px] lg:text-xs rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
@@ -476,13 +477,13 @@ export function SpatialPanel({
         )}
       </div>
 
-      <div className="flex-1 w-full flex flex-col-reverse lg:flex-row gap-4 min-h-0">
+      <div className={cn('flex-1', 'w-full', 'flex', 'flex-col-reverse', 'lg:flex-row', 'gap-4', 'min-h-0')}>
           {/* Map Content abstracted for reuse */}
           {(() => {
             const content = (
               <>
                 <div
-            className="absolute inset-0 opacity-[0.15] transition-transform duration-1000" 
+            className={cn('absolute', 'inset-0', 'opacity-[0.15]', 'transition-transform', 'duration-1000')} 
             style={{ 
               transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center",
               backgroundImage:
@@ -492,7 +493,7 @@ export function SpatialPanel({
             }}
           />
 
-          <svg className="absolute inset-0 w-full h-full pointer-events-none transition-transform duration-1000" style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }} xmlns="http://www.w3.org/2000/svg">
+          <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'transition-transform', 'duration-1000')} style={{ transform: "perspective(800px) rotateX(20deg) scale(0.95)", transformOrigin: "center center" }} xmlns="http://www.w3.org/2000/svg">
             <defs><pattern id="room-grid-ego" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" className="text-foreground/[0.04]" strokeWidth="1"/></pattern></defs>
             <rect width="100%" height="100%" fill="url(#room-grid-ego)" />
             <line x1="50%" y1="0" x2="50%" y2="100%" stroke="currentColor" className="text-foreground/[0.06]" strokeWidth="1"/>
@@ -500,20 +501,20 @@ export function SpatialPanel({
           </svg>
 
           {/* Axis Labels */}
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 text-[9px] font-black tracking-[0.2em] text-foreground/20 uppercase pointer-events-none select-none">
+          <div className={cn('absolute', 'top-6', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none')}>
             Front
           </div>
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black tracking-[0.2em] text-foreground/20 uppercase pointer-events-none select-none">
+          <div className={cn('absolute', 'bottom-6', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none')}>
             Back
           </div>
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 text-[9px] font-black tracking-[0.2em] text-foreground/20 uppercase pointer-events-none select-none -rotate-90">
+          <div className={cn('absolute', 'left-6', 'top-1/2', '-translate-y-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none', '-rotate-90')}>
             Left
           </div>
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 text-[9px] font-black tracking-[0.2em] text-foreground/20 uppercase pointer-events-none select-none rotate-90">
+          <div className={cn('absolute', 'right-6', 'top-1/2', '-translate-y-1/2', 'text-[9px]', 'font-black', 'tracking-[0.2em]', 'text-foreground/20', 'uppercase', 'pointer-events-none', 'select-none', 'rotate-90')}>
             Right
           </div>
 
-          <div className="absolute inset-4 border border-foreground/10 rounded-xl pointer-events-none" />
+          <div className={cn('absolute', 'inset-4', 'border', 'border-foreground/10', 'rounded-xl', 'pointer-events-none')} />
 
           {/* Virtual Orb for 8D Solo Mode */}
           {spatialMode === '8d-solo' && allow8DSolo && (() => {
@@ -530,7 +531,7 @@ export function SpatialPanel({
             return (
               <>
                 {/* Orbit ring */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'z-10')}>
                   <ellipse
                     cx="50%"
                     cy="50%"
@@ -553,7 +554,7 @@ export function SpatialPanel({
                   return (
                     <div
                       key={`trail-${i}`}
-                      className="absolute rounded-full bg-violet-400 pointer-events-none z-10"
+                      className={cn('absolute', 'rounded-full', 'bg-violet-400', 'pointer-events-none', 'z-10')}
                       style={{
                         width: `${size}px`,
                         height: `${size}px`,
@@ -569,7 +570,7 @@ export function SpatialPanel({
 
                 {/* Outer pulse ring */}
                 <div
-                  className="absolute rounded-full border border-violet-400/40 pointer-events-none z-10 animate-ping"
+                  className={cn('absolute', 'rounded-full', 'border', 'border-violet-400/40', 'pointer-events-none', 'z-10', 'animate-ping')}
                   style={{
                     width: '56px',
                     height: '56px',
@@ -582,7 +583,7 @@ export function SpatialPanel({
 
                 {/* Main orb */}
                 <div
-                  className="absolute rounded-full font-bold text-[10px] text-white flex items-center justify-center pointer-events-none z-20"
+                  className={cn('absolute', 'rounded-full', 'font-bold', 'text-[10px]', 'text-white', 'flex', 'items-center', 'justify-center', 'pointer-events-none', 'z-20')}
                   style={{
                     width: '44px',
                     height: '44px',
@@ -600,7 +601,7 @@ export function SpatialPanel({
             );
           })()}
 
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+          <svg className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none', 'z-10')}>
             {userGroups.map(user => {
               if (expandedUserId !== user.userId) return null;
               const userPos = getUserScreenPos(user.userId);
@@ -623,7 +624,7 @@ export function SpatialPanel({
             })}
           </svg>
 
-          <div className="absolute inset-0">
+          <div className={cn('absolute', 'inset-0')}>
             <AnimatePresence>
               {userGroups.map((user) => {
                 const userPos = getUserScreenPos(user.userId);
@@ -631,7 +632,7 @@ export function SpatialPanel({
                   <div key={user.userId}>
                     <motion.div
                       layoutId={`user-${user.userId}`}
-                      className="absolute w-12 h-12 -ml-6 -mt-6 cursor-grab active:cursor-grabbing z-30 select-none touch-none"
+                      className={cn('absolute', 'w-12', 'h-12', '-ml-6', '-mt-6', 'cursor-grab', 'active:cursor-grabbing', 'z-30', 'select-none', 'touch-none')}
                       initial={{ opacity: 0, scale: 0.5 }}
                       animate={{
                         opacity: 1,
@@ -646,8 +647,8 @@ export function SpatialPanel({
                         setExpandedUserId((prev) => (prev === user.userId ? null : user.userId));
                       }}
                     >
-                      <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20 flex items-center justify-center border-2 border-white/10">
-                        <span className="text-sm font-bold text-white">{user.initials}</span>
+                      <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-gradient-to-br', 'from-blue-500', 'to-indigo-600', 'shadow-lg', 'shadow-blue-500/20', 'flex', 'items-center', 'justify-center', 'border-2', 'border-white/10')}>
+                        <span className={cn('text-sm', 'font-bold', 'text-white')}>{user.initials}</span>
                       </div>
                     </motion.div>
                     {/* Devices for this user */}
@@ -661,7 +662,7 @@ export function SpatialPanel({
                             initial={{ opacity: 0, scale: 0 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0 }}
-                            className="absolute w-8 h-8 -ml-4 -mt-4 cursor-grab active:cursor-grabbing z-40 flex flex-col items-center justify-center bg-background/80 border border-foreground/15 rounded-lg backdrop-blur-sm group select-none touch-none transition-all duration-300"
+                            className={cn('absolute', 'w-8', 'h-8', '-ml-4', '-mt-4', 'cursor-grab', 'active:cursor-grabbing', 'z-40', 'flex', 'flex-col', 'items-center', 'justify-center', 'bg-background/80', 'border', 'border-foreground/15', 'rounded-lg', 'backdrop-blur-sm', 'group', 'select-none', 'touch-none', 'transition-all', 'duration-300')}
                             style={{
 
                               left: `${devPos.x * 100}%`,
@@ -674,8 +675,8 @@ export function SpatialPanel({
                             onMouseDown={(e) => handleMouseDown(device.deviceId, false, e)}
                             onTouchStart={(e) => handleMouseDown(device.deviceId, false, e)}
                           >
-                            <Icon className="w-4 h-4 text-foreground/70" />
-                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] text-foreground/60 font-bold whitespace-nowrap bg-background/80 border border-foreground/10 px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none">
+                            <Icon className={cn('w-4', 'h-4', 'text-foreground/70')} />
+                            <div className={cn('absolute', '-bottom-5', 'left-1/2', '-translate-x-1/2', 'text-[9px]', 'text-foreground/60', 'font-bold', 'whitespace-nowrap', 'bg-background/80', 'border', 'border-foreground/10', 'px-1.5', 'py-0.5', 'rounded', 'backdrop-blur-sm', 'pointer-events-none')}>
                               {device.deviceName.length > 15 ? device.deviceName.slice(0,15) + '...' : device.deviceName}
                             </div>
                           </motion.div>
@@ -711,9 +712,9 @@ export function SpatialPanel({
                   </div>
                   
                   {!isMobileModalOpen && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center lg:hidden pointer-events-none bg-background/10">
-                      <div className="bg-foreground text-background px-5 py-2.5 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 tracking-wide">
-                        <Maximize2 className="w-4 h-4" />
+                    <div className={cn('absolute', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'lg:hidden', 'pointer-events-none', 'bg-background/10')}>
+                      <div className={cn('bg-foreground', 'text-background', 'px-5', 'py-2.5', 'rounded-full', 'font-black', 'text-xs', 'shadow-2xl', 'flex', 'items-center', 'gap-2', 'tracking-wide')}>
+                        <Maximize2 className={cn('w-4', 'h-4')} />
                         <span>TAP TO EXPAND</span>
                       </div>
                     </div>
@@ -722,14 +723,14 @@ export function SpatialPanel({
 
                 {/* MODAL VIEW (Mobile only) */}
                 {mounted && isMobileModalOpen && createPortal(
-                  <div className="fixed inset-0 z-[100] flex flex-col p-4 bg-background/90 backdrop-blur-3xl animate-in fade-in duration-200 lg:hidden">
-                    <div className="flex items-center justify-between mb-4 pt-12">
-                      <div className="flex items-center gap-4">
-                        <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+                  <div className={cn('fixed', 'inset-0', 'z-[100]', 'flex', 'flex-col', 'p-4', 'bg-background/90', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
+                    <div className={cn('flex', 'items-center', 'justify-between', 'mb-4', 'pt-12')}>
+                      <div className={cn('flex', 'items-center', 'gap-4')}>
+                        <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
                           Spatial Room
                         </h2>
                         {allow8DSolo && (
-                          <div className="flex bg-foreground/5 p-1 rounded-full border border-foreground/10">
+                          <div className={cn('flex', 'bg-foreground/5', 'p-1', 'rounded-full', 'border', 'border-foreground/10')}>
                             <button 
                               onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('multiplayer'); }}
                               className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
@@ -746,17 +747,17 @@ export function SpatialPanel({
                         )}
                       </div>
                       <button 
-                        className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center text-foreground hover:bg-foreground/20"
+                        className={cn('w-10', 'h-10', 'rounded-full', 'bg-foreground/10', 'flex', 'items-center', 'justify-center', 'text-foreground', 'hover:bg-foreground/20')}
                         onClick={(e) => {
                           e.stopPropagation();
                           setIsMobileModalOpen(false);
                         }}
                       >
-                        <X className="w-5 h-5" />
+                        <X className={cn('w-5', 'h-5')} />
                       </button>
                     </div>
                     <div 
-                      className="flex-1 w-full relative overflow-hidden bg-black/10 dark:bg-[#0A0F1C]/50 touch-none rounded-3xl border border-foreground/10 shadow-2xl"
+                      className={cn('flex-1', 'w-full', 'relative', 'overflow-hidden', 'bg-black/10', 'dark:bg-[#0A0F1C]/50', 'touch-none', 'rounded-3xl', 'border', 'border-foreground/10', 'shadow-2xl')}
                       ref={containerRef}
                       onMouseMove={handleMouseMove}
                       onTouchMove={handleTouchMove}
@@ -773,16 +774,15 @@ export function SpatialPanel({
 
         {/* Right side orbit controls (Responsive) */}
         {onOrbitSpeedChange && (
-          <div className="order-first lg:order-last lg:w-48 shrink-0 bg-foreground/5 rounded-2xl p-3 lg:p-4 flex flex-col gap-3 lg:gap-4">
-            <div className="flex flex-row lg:flex-col justify-between items-center lg:items-start gap-2">
-              <h3 className="text-sm font-semibold text-foreground/90">Spatial Controller</h3>
-              <div className="text-[10px] sm:text-xs font-mono text-cyan-400/90 flex items-center gap-1.5 font-bold tracking-tight">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <div className={cn('order-first', 'lg:order-last', 'lg:w-48', 'shrink-0', 'bg-foreground/5', 'rounded-2xl', 'p-3', 'lg:p-4', 'flex', 'flex-col', 'gap-3', 'lg:gap-4')}>
+            <div className={cn('flex', 'flex-row', 'lg:flex-col', 'justify-between', 'items-center', 'lg:items-start', 'gap-2')}>
+              <h3 className={cn('text-sm', 'font-semibold', 'text-foreground/90')}>Spatial Controller</h3>
+              <div className={cn('text-[10px]', 'sm:text-xs', 'font-mono', 'text-cyan-400/90', 'flex', 'items-center', 'gap-1.5', 'font-bold', 'tracking-tight')}>
                 {orbitSpeed.toFixed(1)}s / device
               </div>
             </div>
-            <div className="flex-1 flex flex-col justify-center">
-              <div className="text-[10px] text-foreground/50 font-bold mb-1">ORBIT SPEED</div>
+            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center')}>
+              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>ORBIT SPEED</div>
               <input
                 type="range"
                 min="0.5"
@@ -793,9 +793,9 @@ export function SpatialPanel({
                 style={{
                   background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) 100%)`
                 }}
-                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(6,182,212,0.9)]"
+                className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-cyan-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(6,182,212,0.9)]')}
               />
-              <div className="flex justify-between text-[10px] text-foreground/50 mt-1">
+              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1')}>
                 <span>Fast</span>
                 <span>Slow</span>
               </div>
@@ -803,8 +803,8 @@ export function SpatialPanel({
 
             
             {/* My Elevation Slider */}
-            <div className="flex-1 flex flex-col justify-center border-t border-foreground/10 pt-3 lg:pt-4">
-              <div className="text-[10px] text-foreground/50 font-bold mb-1">MY ELEVATION</div>
+            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center', 'border-t', 'border-foreground/10', 'pt-3', 'lg:pt-4')}>
+              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>MY ELEVATION</div>
               <input
                 type="range"
                 min="-45"
@@ -817,9 +817,9 @@ export function SpatialPanel({
                     onUpdatePosition(myDeviceId, { ...myDev.position, elevation: parseFloat(e.target.value) });
                   }
                 }}
-                className="w-full accent-white"
+                className={cn('w-full', 'accent-white')}
               />
-              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 font-bold">
+              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1', 'font-bold')}>
                 <span>Floor</span>
                 <span>Ear</span>
                 <span>Ceil</span>
@@ -827,8 +827,8 @@ export function SpatialPanel({
             </div>
 
             {/* Live Pan Meter */}
-            <div className="flex-1 flex flex-col justify-center border-t border-foreground/10 pt-3 lg:pt-4">
-              <div className="text-[10px] text-foreground/50 font-bold mb-1">LIVE PAN</div>
+            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center', 'border-t', 'border-foreground/10', 'pt-3', 'lg:pt-4')}>
+              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>LIVE PAN</div>
               <input
                 type="range"
                 min="-1"
@@ -836,9 +836,9 @@ export function SpatialPanel({
                 step="0.01"
                 value={panValue}
                 readOnly
-                className="w-full accent-white pointer-events-none"
+                className={cn('w-full', 'accent-white', 'pointer-events-none')}
               />
-              <div className="flex justify-between text-[10px] text-foreground/50 mt-1 font-bold">
+              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1', 'font-bold')}>
                 <span>L</span>
                 <span>R</span>
               </div>

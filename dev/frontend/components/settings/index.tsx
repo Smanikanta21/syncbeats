@@ -562,7 +562,7 @@ export function SettingsPanel({
       <div className={cn('sticky', 'top-0', 'z-40', 'w-full', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'py-3', 'px-4', 'mb-3', 'rounded-3xl', 'border', 'border-foreground/15', 'shadow-2xl', 'flex', 'items-center', 'justify-between', 'transition-all')}>
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
-          <h2 className={cn('text-xl', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+          <h2 className={cn('text-lg', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
         </div>
 
         <div className="flex items-center gap-2">
@@ -636,8 +636,8 @@ export function SettingsPanel({
         <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
           <div className={cn('flex', 'items-center', 'justify-between', 'mb-2')}>
             <div className={cn('flex', 'items-center', 'gap-2')}>
-              <Palette className={cn('w-5', 'h-5', 'text-foreground/70')} />
-              <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
+              <Palette className={cn('w-4', 'sm:w-5', 'h-4', 'sm:h-5', 'text-foreground/70')} />
+              <h3 className={cn('text-base', 'sm:text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
               {settings.gradientSettings?.presetName || "Custom Theme"}

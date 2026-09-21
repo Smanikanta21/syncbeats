@@ -175,7 +175,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
             <h3 className="text-sm font-black text-foreground tracking-tight flex items-center gap-2">
               Room Chat
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 {participants.length} online
               </span>
             </h3>
