@@ -117,19 +117,31 @@ export function useNetworkStats(enabled: boolean = true, fastPing: boolean = fal
       ts: Date.now(), rtt, latency, jitter, offset,
     };
 
-    historyRef.current = [...historyRef.current.slice(-(MAX_HISTORY - 1)), sample];
+    // Mutate in-place — avoid creating a brand-new array on every 1s ping
+    const hist = historyRef.current;
+    if (hist.length >= MAX_HISTORY) hist.shift();
+    hist.push(sample);
 
-    // Compute rolling averages
-    const recent = historyRef.current.slice(-20);
-    const avgRtt = recent.reduce((s, x) => s + x.rtt, 0) / recent.length;
-    const avgLatency = recent.reduce((s, x) => s + x.latency, 0) / recent.length;
-    const avgJitter = recent.reduce((s, x) => s + x.jitter, 0) / recent.length;
+    // Compute rolling averages over last 20 samples (no allocation needed)
+    const recentStart = Math.max(0, hist.length - 20);
+    let sumRtt = 0, sumLat = 0, sumJit = 0;
+    const recentCount = hist.length - recentStart;
+    for (let i = recentStart; i < hist.length; i++) {
+      sumRtt += hist[i].rtt;
+      sumLat += hist[i].latency;
+      sumJit += hist[i].jitter;
+    }
+    const avgRtt = sumRtt / recentCount;
+    const avgLatency = sumLat / recentCount;
+    const avgJitter = sumJit / recentCount;
     const quality = rateQuality(avgLatency, avgJitter);
 
+    // Shallow-copy history ONLY here (once per ping, not twice)
+    // so React can diff and downstream sparklines get fresh data.
     setStats({
       rtt, latency, jitter, clockOffset: offset,
       avgRtt, avgLatency, avgJitter,
-      quality, history: [...historyRef.current], hasData: true,
+      quality, history: hist.slice(), hasData: true,
     });
 
     if (roomId && socket.connected) {

@@ -4,11 +4,15 @@ import { useEffect, useRef } from "react";
 import { useBeatEngine } from "../context/BeatContext";
 import { useOptionalAudio } from "../context/AudioContext";
 import { useSyncInfo } from "../context/SyncContext";
+import { useVisualizer } from "../context/VisualizerContext";
 
 export function useRealtimeBeatDetector(enabled: boolean = true) {
   const { emitBeat } = useBeatEngine();
   const audioContext = useOptionalAudio();
   const { isRoomPlaying } = useSyncInfo();
+  // Read from the shared VisualizerContext RAF loop instead of running a
+  // separate getRawAudioData() call — eliminates a duplicate 60fps FFT read.
+  const { dataRef } = useVisualizer();
 
   const rafRef = useRef<number>(0);
   const stateRef = useRef({
@@ -50,10 +54,11 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
       const deltaMs = Math.min(100, timestamp - s.prevTimestamp);
       s.prevTimestamp = timestamp;
 
-      const isPlaying = isRoomPlaying && (audioContext ? audioContext.isPlaying : true);
+      const isPlaying = isRoomPlaying && dataRef.current.isPlaying;
       if (!isPlaying) return;
 
-      const data = audioContext.getRawAudioData ? audioContext.getRawAudioData() : null;
+      // Read from the shared VisualizerContext data — no duplicate FFT allocation
+      const data = dataRef.current.rawAudioData;
       let isDataActive = false;
 
       if (data && data.length >= 60) {
@@ -189,5 +194,5 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [enabled, audioContext, emitBeat]);
+  }, [enabled, dataRef, isRoomPlaying, emitBeat]);
 }
