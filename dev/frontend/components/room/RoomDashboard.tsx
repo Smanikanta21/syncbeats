@@ -180,6 +180,7 @@ export function RoomDashboard({
   isPlaying, deviceSyncProgress, isPrivate,
   spatialLayout, spatialMode, onSpatialModeChange, spatialMotion, onSpatialMotionChange,
   onUpdateSpatialPosition, onPreviewSpatialPosition, onCommitSpatialPosition, onResetSpatialLayout,
+  spatialEnabled, onSpatialEnabledChange,
   audio,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
