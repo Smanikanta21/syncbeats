@@ -7,9 +7,9 @@ import { useAuth } from "../../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
-import { extractTwoColorsFromImage, colorsToAmbientHues, getTrackThumbnailUrl } from "../../lib/colorExtractor";
+import { getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Music2, Radio, Users, ChevronUp, ChevronDown, Activity, Check, UserPlus, LogIn, Hash, Settings, Lightbulb, User, MessageSquare, X, Plus, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home
+  LayoutGrid, Radio, Activity, Check, UserPlus, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -25,7 +25,11 @@ import { ThemeToggle } from "../ThemeToggle";
 import { HoverExpandPill } from "../HoverExpandPill";
 import Magnetic from "../Magnetic";
 import { FloatingMobileMenu } from "./FloatingMobileMenu";
-import type { RoomSnapshot, Participant, DeviceSpatialState, TrackQueueItem, PlaybackState } from "../../lib/types";
+import type { RoomSnapshot, Participant, TrackQueueItem, PlaybackState } from "../../lib/types";
+import type { SpatialPosition } from "../../lib/spatial/geometry";
+import type { SpatialLayout } from "../../lib/spatial/layout";
+import type { MotionConfig } from "../../lib/spatial/motion";
+import type { SpatialMode } from "../../hooks/useSpatialAudio";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { QRCode } from 'react-qrcode-logo';
@@ -42,11 +46,18 @@ interface RoomDashboardProps {
   isPlaying: boolean;
   deviceSyncProgress: Record<string, number>;
   isPrivate: boolean;
-  allow8DSolo: boolean;
 
-  // Spatial
-  spatialDevices: DeviceSpatialState[];
-  onUpdateSpatialPosition: (deviceId: string, pos: { angle: number; radius: number; elevation: number }) => void;
+  // Spatial — the resolved layout plus the motion config; positions handed in
+  // and out are origin-relative (see lib/spatial/layout.ts).
+  spatialLayout: SpatialLayout;
+  spatialMode: SpatialMode;
+  onSpatialModeChange: (mode: SpatialMode) => void;
+  spatialMotion: MotionConfig;
+  onSpatialMotionChange: (patch: Partial<MotionConfig>) => void;
+  onUpdateSpatialPosition: (key: string, pos: SpatialPosition) => void;
+  onPreviewSpatialPosition: (key: string, pos: SpatialPosition) => void;
+  onCommitSpatialPosition: (key: string, pos: SpatialPosition) => void;
+  onResetSpatialLayout: () => void;
 
   // Playback
   audio: {
@@ -67,10 +78,6 @@ interface RoomDashboardProps {
     [key: string]: any;
   };
 
-  // Orbit speed
-  orbitSpeed?: number;
-  onOrbitSpeedChange?: (speed: number) => void;
-
   // Actions
   onPlay: () => void;
   onPause: () => void;
@@ -81,9 +88,6 @@ interface RoomDashboardProps {
   onLeave?: () => void;
   onSetParticipantVolume?: (socketId: string, vol: number) => void;
   onAddSong?: () => void;
-  spatialParticipants?: any[];
-  spatialMode?: 'multiplayer' | '8d-solo';
-  onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
 }
 
 type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
@@ -170,9 +174,11 @@ function VisualsModal({
 }
 
 export function RoomDashboard({
-  roomId, snapshot, participants, spatialParticipants, spatialMode, onSpatialModeChange, mySocketId, isHost, hostId, myUserId,
-  isPlaying, deviceSyncProgress, isPrivate, allow8DSolo, spatialDevices,
-  onUpdateSpatialPosition, audio, orbitSpeed, onOrbitSpeedChange,
+  roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
+  isPlaying, deviceSyncProgress, isPrivate,
+  spatialLayout, spatialMode, onSpatialModeChange, spatialMotion, onSpatialMotionChange,
+  onUpdateSpatialPosition, onPreviewSpatialPosition, onCommitSpatialPosition, onResetSpatialLayout,
+  audio,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
@@ -189,6 +195,21 @@ export function RoomDashboard({
   const [showQR, setShowQR] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [seekValue, setSeekValue] = useState<number | null>(null);
+
+  const handleSeekChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSeekValue(parseFloat(e.target.value));
+  }, []);
+
+  const handleSeekCommit = useCallback((e: React.SyntheticEvent<HTMLInputElement>) => {
+    const val = parseFloat((e.target as HTMLInputElement).value);
+    onSeek?.(val);
+    // Give the server time to sync back the new time before releasing the local thumb
+    setTimeout(() => setSeekValue(null), 800);
+  }, [onSeek]);
+
+  // Effect to close sub-menus when clicking outside
   const [copiedLink, setCopiedLink] = useState(false);
   const [activityNotification, setActivityNotification] = useState<{ id: number; text: string; type: "join" | "leave" } | null>(null);
 
@@ -380,18 +401,16 @@ export function RoomDashboard({
           {/* Top: Spatial Audio */}
           <GlassCard className={cn('flex-1', 'min-h-0', 'p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
             <SpatialPanel
-              myDeviceId={mySocketId ?? ""}
-              spatialDevices={spatialDevices}
-              participants={spatialParticipants ?? participants}
-              myUserId={myUserId ?? mySocketId ?? ""}
-              isPlaying={isPlaying}
+              layout={spatialLayout}
+              mode={spatialMode}
+              onModeChange={onSpatialModeChange}
+              motion={spatialMotion}
+              onMotionChange={onSpatialMotionChange}
+              onPreviewPosition={onPreviewSpatialPosition}
+              onCommitPosition={onCommitSpatialPosition}
               onUpdatePosition={onUpdateSpatialPosition}
-              roomId={roomId}
-              orbitSpeed={orbitSpeed}
-              onOrbitSpeedChange={onOrbitSpeedChange}
-              spatialMode={spatialMode}
-              onSpatialModeChange={onSpatialModeChange}
-              allow8DSolo={allow8DSolo}
+              onReset={onResetSpatialLayout}
+              isPlaying={isPlaying}
             />
           </GlassCard>
 
@@ -412,7 +431,7 @@ export function RoomDashboard({
             <div className={cn('flex-1', 'flex', 'items-center', 'gap-4')}>
               <span className={cn('text-xs', 'font-mono', 'text-foreground/60', 'w-10', 'text-right')}>
                 {(() => {
-                  const cur = audio.currentTime || 0;
+                  const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
                   const m = Math.floor(cur / 60);
                   const s = Math.floor(cur % 60);
                   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
@@ -424,10 +443,12 @@ export function RoomDashboard({
                   min={0}
                   max={audio.duration || 1}
                   step={0.1}
-                  value={audio.currentTime || 0}
-                  onChange={(e) => onSeek?.(parseFloat(e.target.value))}
+                  value={seekValue !== null ? seekValue : (audio.currentTime || 0)}
+                  onChange={handleSeekChange}
+                  onMouseUp={handleSeekCommit}
+                  onTouchEnd={handleSeekCommit}
                   style={{
-                    background: `linear-gradient(to right, #34d399 0%, #34d399 ${((audio.currentTime || 0) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) ${((audio.currentTime || 0) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) 100%)`
+                    background: `linear-gradient(to right, #34d399 0%, #34d399 ${((seekValue !== null ? seekValue : (audio.currentTime || 0)) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) ${((seekValue !== null ? seekValue : (audio.currentTime || 0)) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) 100%)`
                   }}
                   className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]')}
                 />
@@ -814,18 +835,16 @@ export function RoomDashboard({
               className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
               <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
                 <SpatialPanel
-                  myDeviceId={mySocketId ?? ""}
-                  spatialDevices={spatialDevices}
-                  participants={participants}
-                  myUserId={myUserId ?? mySocketId ?? ""}
-                  isPlaying={isPlaying}
+                  layout={spatialLayout}
+                  mode={spatialMode}
+                  onModeChange={onSpatialModeChange}
+                  motion={spatialMotion}
+                  onMotionChange={onSpatialMotionChange}
+                  onPreviewPosition={onPreviewSpatialPosition}
+                  onCommitPosition={onCommitSpatialPosition}
                   onUpdatePosition={onUpdateSpatialPosition}
-                  roomId={roomId}
-                  orbitSpeed={orbitSpeed}
-                  onOrbitSpeedChange={onOrbitSpeedChange}
-                  spatialMode={spatialMode}
-                  onSpatialModeChange={onSpatialModeChange}
-                  allow8DSolo={allow8DSolo}
+                  onReset={onResetSpatialLayout}
+                  isPlaying={isPlaying}
                 />
               </GlassCard>
             </motion.div>
@@ -884,7 +903,7 @@ export function RoomDashboard({
                 <div className={cn('w-full', 'space-y-1', 'px-3', 'sm:px-6', 'z-10', 'pt-1')}>
                   {(() => {
                     const dur = audio.duration && audio.duration > 0 ? audio.duration : 1;
-                    const cur = audio.currentTime || 0;
+                    const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
                     const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
                     return (
                       <div className={cn('relative', 'flex', 'items-center', 'group/seek', 'cursor-pointer')}>
@@ -894,7 +913,9 @@ export function RoomDashboard({
                           max={dur}
                           step={0.1}
                           value={cur}
-                          onChange={(e) => onSeek?.(parseFloat(e.target.value))}
+                          onChange={handleSeekChange}
+                          onMouseUp={handleSeekCommit}
+                          onTouchEnd={handleSeekCommit}
                           style={{
                             background: `linear-gradient(to right, #34d399 0%, #34d399 ${pct}%, rgba(255, 255, 255, 0.15) ${pct}%, rgba(255, 255, 255, 0.15) 100%)`
                           }}
@@ -906,7 +927,7 @@ export function RoomDashboard({
                   <div className={cn('flex', 'items-center', 'justify-between', 'text-[9px]', 'font-mono', 'font-bold', 'text-foreground/60', 'px-0.5')}>
                     <span>
                       {(() => {
-                        const cur = audio.currentTime || 0;
+                        const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
                         const m = Math.floor(cur / 60);
                         const s = Math.floor(cur % 60);
                         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;

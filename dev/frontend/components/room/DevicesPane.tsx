@@ -3,13 +3,13 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus, UserPlus,
-  ChevronDown, Headphones, Monitor, Smartphone, Laptop
+  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus, UserPlus, ChevronDown
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
 import { devicesApi, type Device, getDeviceId } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { cn } from "../../lib/utils";
+import { getDeviceIcon, getFriendlyDeviceName, parseParticipantNames } from "../../lib/deviceNaming";
 import { HoverExpandPill } from "../HoverExpandPill";
 
 interface DevicesPaneProps {
@@ -27,55 +27,6 @@ function latencyColor(ms: number): string {
   if (ms < 50) return "#22c55e";
   if (ms < 120) return "#eab308";
   return "#ef4444";
-}
-
-function getDeviceIcon(name: string, type?: string) {
-  const n = (name || "").toLowerCase();
-  
-  if (n.includes("iphone") || n.includes("android") || n.includes("ipad") || n.includes("phone")) return Smartphone;
-  if (n.includes("mac") || n.includes("windows") || n.includes("linux") || n.includes("laptop")) return Laptop;
-  
-  switch (type) {
-    case "mobile":     return Smartphone;
-    case "speakers":   return Monitor;
-    case "headphones": return Headphones;
-    default:           return Laptop;
-  }
-}
-
-function getFriendlyDeviceName(name: string, type?: string, fallback?: string) {
-  const n = (name || "").toLowerCase();
-  const f = (fallback || "").toLowerCase();
-  
-  if (n.includes("iphone") || f.includes("iphone")) return "iPhone";
-  if (n.includes("ipad") || f.includes("ipad")) return "iPad";
-  if (n.includes("mac") || f.includes("mac") || f.includes("macos")) return "Mac";
-  if (n.includes("windows") || f.includes("windows") || f.includes("win")) return "Windows PC";
-  if (n.includes("android") || f.includes("android")) return "Android";
-  if (n.includes("linux") || f.includes("linux")) return "Linux";
-  
-  if (type === "mobile") return "Mobile Device";
-  if (type === "speakers") return "Desktop";
-  return "Connected Device";
-}
-
-function parseParticipantNames(p: Participant) {
-  const nameParts = (p.displayName || "").split("::");
-  const userName = nameParts[0]?.trim() || p.displayName || "Guest";
-  const rawDeviceFromDisplayName = nameParts.length > 1 ? nameParts[1]?.trim() : undefined;
-
-  let deviceName = p.outputDeviceName?.trim();
-  if (!deviceName && rawDeviceFromDisplayName) {
-    deviceName = rawDeviceFromDisplayName;
-  }
-  if (!deviceName) {
-    deviceName = getFriendlyDeviceName("", p.outputDeviceType, rawDeviceFromDisplayName);
-  }
-
-  return {
-    userName,
-    deviceName,
-  };
 }
 
 function formatLastSeen(dateStr?: string | null): string {

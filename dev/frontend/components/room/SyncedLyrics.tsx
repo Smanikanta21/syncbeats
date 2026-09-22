@@ -22,6 +22,12 @@ interface LyricLine {
 /* ─── LRC Parser ─────────────────────────────────────────────────────────── */
 function parseLrc(lrc: string): LyricLine[] {
   const lines: LyricLine[] = [];
+  
+  // 1. Parse global offset (in milliseconds, can be positive or negative)
+  const offsetMatch = lrc.match(/\[offset:([+-]?\d+)\]/i);
+  const globalOffset = offsetMatch ? parseInt(offsetMatch[1]) / 1000 : 0;
+
+  // 2. Parse timestamps and text
   const re = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(lrc)) !== null) {
@@ -30,16 +36,47 @@ function parseLrc(lrc: string): LyricLine[] {
     const ms = parseInt(match[3].padEnd(3, "0"));
     const text = match[4].trim();
     if (text) {
-      lines.push({ time: m * 60 + s + ms / 1000, text, endTime: 0, words: [] });
+      let time = (m * 60 + s + ms / 1000) - globalOffset;
+      if (time < 0) time = 0;
+      lines.push({ time, text, endTime: 0, words: [] });
     }
   }
   
   lines.sort((a, b) => a.time - b.time);
 
-  // Second pass: calculate word timings (Enhanced LRC or heuristic)
+  // 3. Insert synthetic instrumental gaps ("...")
+  const finalLines: LyricLine[] = [];
+  const GAP_THRESHOLD = 2.5; // seconds
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    line.endTime = i < lines.length - 1 ? lines[i + 1].time : line.time + 5;
+    finalLines.push(line);
+
+    if (i < lines.length - 1) {
+      const nextLine = lines[i + 1];
+      // Estimate active singing duration based on text length (~10 chars per second), cap at gap size
+      const textLen = line.text.replace(/\s/g, "").length;
+      const estimatedVocalTime = Math.max(1.0, textLen * 0.12);
+      const activeDuration = Math.min(nextLine.time - line.time, estimatedVocalTime);
+      const endOfVocal = line.time + activeDuration;
+      const gapLength = nextLine.time - endOfVocal;
+
+      // If the silence before the next lyric is long enough, insert '...'
+      if (gapLength > GAP_THRESHOLD) {
+        finalLines.push({
+          time: endOfVocal + 0.5,
+          endTime: 0,
+          text: "...",
+          words: [{ text: "...", start: endOfVocal + 0.5, end: nextLine.time - 0.5 }]
+        });
+      }
+    }
+  }
+
+  // 4. Second pass: calculate word timings for all lines (including gaps)
+  for (let i = 0; i < finalLines.length; i++) {
+    const line = finalLines[i];
+    line.endTime = i < finalLines.length - 1 ? finalLines[i + 1].time : line.time + 5;
     
     // Check for Enhanced LRC tags e.g. <00:12.34> word
     const wordMatches = Array.from(line.text.matchAll(/<(\d{2}):(\d{2})\.(\d{2,3})>([^<]+)/g));
@@ -49,7 +86,8 @@ function parseLrc(lrc: string): LyricLine[] {
         const wm_m = parseInt(wm[1]);
         const wm_s = parseInt(wm[2]);
         const wm_ms = parseInt(wm[3].padEnd(3, "0"));
-        const start = wm_m * 60 + wm_s + wm_ms / 1000;
+        let start = (wm_m * 60 + wm_s + wm_ms / 1000) - globalOffset;
+        if (start < 0) start = 0;
         const text = wm[4].trim();
         return { text, start, end: 0 };
       });
@@ -57,13 +95,14 @@ function parseLrc(lrc: string): LyricLine[] {
         line.words[j].end = j < line.words.length - 1 ? line.words[j + 1].start : line.endTime;
       }
       line.text = line.text.replace(/<\d{2}:\d{2}\.\d{2,3}>/g, "").trim();
-    } else {
-      // Heuristic line-to-word distribution
+    } else if (line.words.length === 0) {
+      // Heuristic line-to-word distribution (only if not already set, e.g. synthetic gap)
       const rawWords = line.text.split(" ");
       const totalChars = line.text.replace(/\s/g, "").length;
       let currentTimeAcc = line.time;
       const duration = line.endTime - line.time;
-      const activeDuration = Math.min(duration, 5); 
+      const estimatedVocalTime = Math.max(1.0, totalChars * 0.12);
+      const activeDuration = Math.min(duration, estimatedVocalTime); 
       
       line.words = rawWords.map((word) => {
         const wordChars = word.length;
@@ -76,7 +115,7 @@ function parseLrc(lrc: string): LyricLine[] {
     }
   }
 
-  return lines;
+  return finalLines;
 }
 
 /* ─── Track Title Cleaner ────────────────────────────────────────────────── */

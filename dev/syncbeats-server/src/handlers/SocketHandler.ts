@@ -4,8 +4,41 @@ import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import { UserRepository } from '../auth/UserRepository';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem, ChatMessage
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem, ChatMessage, SpatialPosition
 } from '../types';
+
+/**
+ * Bounds mirror `lib/spatial/geometry.ts` on the client. Enforced here as well
+ * because this position is re-broadcast to every other device and fed straight
+ * into their Web Audio AudioParams — a NaN from one client would otherwise
+ * throw inside everyone else's audio graph.
+ */
+const MIN_RADIUS = 0.4;
+const MAX_RADIUS = 4;
+const MAX_ELEVATION = 45;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+function sanitiseSpatialPosition(raw: unknown): SpatialPosition | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { angle, radius, elevation } = raw as Record<string, unknown>;
+  if (typeof angle !== 'number' || !Number.isFinite(angle)) return null;
+  if (typeof radius !== 'number' || !Number.isFinite(radius)) return null;
+  if (elevation !== undefined && (typeof elevation !== 'number' || !Number.isFinite(elevation))) return null;
+
+  // Normalise the angle into (-π, π] so a client sending accumulated radians
+  // can't grow without bound.
+  const TWO_PI = Math.PI * 2;
+  let a = angle % TWO_PI;
+  if (a > Math.PI) a -= TWO_PI;
+  if (a <= -Math.PI) a += TWO_PI;
+
+  return {
+    angle: a,
+    radius: clamp(radius, MIN_RADIUS, MAX_RADIUS),
+    elevation: clamp(elevation ?? 0, -MAX_ELEVATION, MAX_ELEVATION),
+  };
+}
 
 export class SocketHandler {
   private nextDebounce = new Map<string, number>();
@@ -594,11 +627,23 @@ export class SocketHandler {
 
     // ── Spatial Audio Sync ───────────────────────────────────────────────
 
-    socket.on('spatial:update', ({ roomId, deviceId, position }: { roomId: string; deviceId: string; position: any }) => {
+    socket.on('spatial:update', (payload: { roomId?: unknown; deviceId?: unknown; position?: unknown }) => {
+      const roomId = typeof payload?.roomId === 'string' ? payload.roomId : null;
+      if (!roomId) return;
       const room = this.roomManager.get(roomId);
       if (!room) return;
+
+      // Keys are either a socket id or the synthetic `seat:<userId>`. Bound the
+      // length — this map is keyed by client-supplied strings and lives for the
+      // life of the room.
+      const deviceId = typeof payload?.deviceId === 'string' ? payload.deviceId.trim() : '';
+      if (!deviceId || deviceId.length > 128) return;
+
+      const position = sanitiseSpatialPosition(payload?.position);
+      if (!position) return;
+
       room.setSpatialPosition(deviceId, position);
-      
+
       // Broadcast to everyone else in the room (excludes the sender)
       socket.to(roomId).emit('spatial:update', { deviceId, position });
     });

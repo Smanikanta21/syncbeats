@@ -3,59 +3,85 @@
 /**
  * SpatialScene3D.tsx
  *
- * The Three.js canvas that replaces the 2D CSS/SVG SpatialPanel map.
+ * The three.js stage.
  *
- * Architecture:
- *  - <Canvas> from @react-three/fiber owns the WebGL renderer
- *  - OrbitControls (drei) lets users rotate/zoom the view
- *  - DeviceOrb per device — live gain-reactive glow, drag-to-reposition
- *  - OrbitTrail — animated virtual sound-source + particle trail
- *  - Bloom post-processing from @react-three/postprocessing
+ * Takes the already-resolved {@link SpatialLayout} rather than raw participants:
+ * labels, ownership and origin-relative coordinates are all computed once in
+ * `lib/spatial/layout.ts`, so the renderer never re-derives them (and can't
+ * disagree with the audio engine about them).
  *
- * Everything that reads the audio engine does so inside useFrame (no React
- * state), so dragging and music playback never cause a React re-render.
+ * Everything that reads the audio engine does so inside `useFrame` and mutates
+ * object3D directly, so playback and dragging never cause a React re-render.
  */
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, Html } from "@react-three/drei";
-import { User } from "lucide-react";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 
-import type { DeviceSpatialState } from "../../../lib/types";
-import type { Participant } from "../../../lib/types";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
+import type { SpatialLayout } from "../../../lib/spatial/layout";
+import { seatKey } from "../../../lib/spatial/layout";
+import type { MotionMode } from "../../../lib/spatial/motion";
+import { useDevicePerf } from "../../../hooks/useDevicePerf";
 
-import { DeviceOrbV2 } from "./DeviceOrb";
+import { DeviceOrb } from "./DeviceOrb";
+import { SeatMarker } from "./SeatMarker";
 import { OrbitTrail } from "./OrbitTrail";
+import { WORLD_SCALE } from "./world";
 
-// ── Scene content (inside Canvas) ────────────────────────────────────────────
+/** Compass labels — the difference between "somewhere" and "on my left". */
+const BEARINGS: Array<{ label: string; x: number; z: number }> = [
+  { label: "FRONT", x: 0, z: -3.1 * WORLD_SCALE },
+  { label: "BACK", x: 0, z: 3.1 * WORLD_SCALE },
+  { label: "LEFT", x: -3.1 * WORLD_SCALE, z: 0 },
+  { label: "RIGHT", x: 3.1 * WORLD_SCALE, z: 0 },
+];
 
-interface SceneProps {
-  deviceRows: DeviceRow[];
+export interface SpatialScene3DProps {
+  layout: SpatialLayout;
+  mode: "solo" | "room";
+  motionMode: MotionMode;
   isPlaying: boolean;
-  onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
+  onPreviewPosition: (key: string, pos: SpatialPosition) => void;
+  onCommitPosition: (key: string, pos: SpatialPosition) => void;
+  /** Latest bass intensity, written outside the Canvas (React context does not
+   *  cross the R3F reconciler, but refs and props do). */
+  beatRef?: React.RefObject<number>;
+  className?: string;
 }
 
-/** Enriched device entry computed outside the canvas (memo-friendly). */
-interface DeviceRow {
-  deviceId: string;
-  userId: string;
-  label: string;
-  position: SpatialPosition;
-  isMe: boolean;
-  isOwnedByMe: boolean;
+interface SceneProps extends Omit<SpatialScene3DProps, "className"> {
+  highQuality: boolean;
 }
 
-function Scene({ deviceRows, isPlaying, onUpdatePosition }: SceneProps) {
+function Scene({
+  layout,
+  mode,
+  motionMode,
+  isPlaying,
+  onPreviewPosition,
+  onCommitPosition,
+  beatRef,
+  highQuality,
+}: SceneProps) {
+  // My Space shows only your own gear; Room shows the whole crowd.
+  const devices = useMemo(
+    () => (mode === "solo" ? (layout.me?.devices ?? []) : layout.devices),
+    [mode, layout],
+  );
+  const seats = useMemo(
+    () => (mode === "solo" ? (layout.me ? [layout.me] : []) : layout.users),
+    [mode, layout],
+  );
+  const speakerAngles = useMemo(() => devices.map(d => d.local.angle), [devices]);
+
   return (
     <>
-      {/* Ambient + directional fill lights */}
-      <ambientLight intensity={0.3} />
-      <directionalLight position={[0, 6, 4]} intensity={0.6} color="#ffffff" />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[0, 6, 4]} intensity={0.6} />
+      {highQuality && <pointLight position={[0, 2.5, 0]} intensity={0.35} color="#a78bfa" />}
 
-      {/* Floor grid */}
       <Grid
         position={[0, -0.01, 0]}
         args={[16, 16]}
@@ -70,115 +96,96 @@ function Scene({ deviceRows, isPlaying, onUpdatePosition }: SceneProps) {
         infiniteGrid
       />
 
-      {/* Listener marker — human avatar at origin representing "the room centre" */}
-      <group position={[0, 0, 0]}>
-        {/* Subtle floor ring */}
-        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.15, 0.2, 48]} />
-          <meshBasicMaterial color="#60a5fa" transparent opacity={0.25} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-        
-        {/* Floating human icon billboard */}
-        <Html position={[0, 0.15, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
-          <div className="w-10 h-10 rounded-full bg-blue-100/80 border border-blue-300 text-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)] dark:bg-blue-500/20 dark:border-blue-400/50 dark:text-blue-300 dark:shadow-[0_0_15px_rgba(96,165,250,0.3)] flex items-center justify-center backdrop-blur-sm">
-            <User className="w-5 h-5" />
-          </div>
+      {/* Listening origin — you, in My Space; the room centre otherwise */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        <ringGeometry args={[0.04, 0.06, 24]} />
+        <meshBasicMaterial color="#60a5fa" transparent opacity={0.5} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+
+      {BEARINGS.map(b => (
+        <Html key={b.label} position={[b.x, 0, b.z]} center style={{ pointerEvents: "none", userSelect: "none" }}>
+          <span
+            style={{
+              fontSize: "8px",
+              fontWeight: 900,
+              letterSpacing: "0.22em",
+              color: "rgba(255,255,255,0.22)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {b.label}
+          </span>
         </Html>
-      </group>
+      ))}
 
-      {/* Orbit arc + virtual source */}
-      <OrbitTrail isPlaying={isPlaying} />
+      <OrbitTrail
+        isPlaying={isPlaying}
+        mode={motionMode}
+        speakerAngles={speakerAngles}
+        beatRef={beatRef}
+      />
 
-      {/* Device orbs */}
-      {deviceRows.map((d) => (
-        <DeviceOrbV2
+      {seats.map(u => (
+        <SeatMarker
+          key={u.userId}
+          userId={u.userId}
+          displayName={u.displayName}
+          initials={u.initials}
+          position={u.seatLocal}
+          isMe={u.isMe}
+          // In My Space you *are* the origin, so there is nothing to drag.
+          draggable={mode === "room" && u.isMe}
+          seatKey={seatKey(u.userId)}
+          onPreview={onPreviewPosition}
+          onCommit={onCommitPosition}
+        />
+      ))}
+
+      {devices.map(d => (
+        <DeviceOrb
           key={d.deviceId}
           deviceId={d.deviceId}
           userId={d.userId}
           label={d.label}
-          position={d.position}
+          position={d.local}
           isMe={d.isMe}
           isOwnedByMe={d.isOwnedByMe}
           isPlaying={isPlaying}
-          onUpdatePosition={onUpdatePosition}
+          onPreview={onPreviewPosition}
+          onCommit={onCommitPosition}
         />
       ))}
 
-      {/* Camera controller */}
       <OrbitControls
         enablePan={false}
-        enableZoom={true}
+        enableZoom
+        enableDamping
+        dampingFactor={0.08}
         minDistance={2.5}
         maxDistance={9}
-        minPolarAngle={Math.PI / 8}  // don't go fully overhead
-        maxPolarAngle={Math.PI / 2.1} // don't go below floor
+        minPolarAngle={Math.PI / 8}
+        maxPolarAngle={Math.PI / 2.1}
         target={[0, 0, 0]}
         makeDefault
       />
-
-      {/* Post-processing: Bloom for the glowing orbs */}
-      <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.35}
-          luminanceSmoothing={0.7}
-          intensity={1.4}
-          radius={0.7}
-        />
-      </EffectComposer>
     </>
   );
 }
 
-// ── Public interface ──────────────────────────────────────────────────────────
-
-export interface SpatialScene3DProps {
-  spatialDevices: DeviceSpatialState[];
-  participants: Participant[];
-  myDeviceId: string;
-  myUserId?: string;
-  isPlaying: boolean;
-  onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
-  className?: string;
-}
-
-export function SpatialScene3D({
-  spatialDevices,
-  participants,
-  myDeviceId,
-  myUserId,
-  isPlaying,
-  onUpdatePosition,
-  className,
-}: SpatialScene3DProps) {
-  // Build enriched device rows from spatialDevices + participants (stable memo)
-  const deviceRows: DeviceRow[] = useMemo(() => {
-    return spatialDevices.map((sd) => {
-      const p = participants.find((pp) => pp.socketId === sd.deviceId);
-      const displayName = (p?.displayName ?? "").split("::")[0].trim() || "Device";
-      const userId = p?.userId ?? sd.deviceId;
-      const isMe = sd.deviceId === myDeviceId;
-      const isOwnedByMe = p?.userId ? p.userId === myUserId : isMe;
-      // Friendly short label (device name part after "::", or fallback)
-      const devicePart = (p?.displayName ?? "").split("::")[1]?.trim();
-      const label = devicePart && devicePart.length > 0 ? devicePart : displayName;
-      return { deviceId: sd.deviceId, userId, label, position: sd.position, isMe, isOwnedByMe };
-    });
-  }, [spatialDevices, participants, myDeviceId, myUserId]);
+export function SpatialScene3D({ className, ...scene }: SpatialScene3DProps) {
+  const { tier } = useDevicePerf();
+  const highQuality = tier === "high";
 
   return (
     <Canvas
       className={className}
       camera={{ position: [0, 4.5, 5.5], fov: 45, near: 0.1, far: 60 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      dpr={[1, 1.5]}
+      gl={{ antialias: highQuality, alpha: true, powerPreference: "high-performance" }}
+      dpr={[1, highQuality ? 2 : 1.5]}
       style={{ background: "transparent" }}
     >
       <Suspense fallback={null}>
-        <Scene
-          deviceRows={deviceRows}
-          isPlaying={isPlaying}
-          onUpdatePosition={onUpdatePosition}
-        />
+        <Scene {...scene} highQuality={highQuality} />
       </Suspense>
     </Canvas>
   );

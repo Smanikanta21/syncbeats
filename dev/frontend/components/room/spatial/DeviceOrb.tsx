@@ -1,47 +1,46 @@
 "use client";
 
+/**
+ * DeviceOrb.tsx
+ *
+ * One physical device, drawn as a speaker you can pick up and move.
+ *
+ * Two things matter here:
+ *  - The puck sits at **its own** position. An earlier version overrode every
+ *    device's radius with the sound source's orbit radius, which pinned them all
+ *    to one ring and — because pointer-up wrote that back — permanently erased
+ *    whatever distance you had chosen.
+ *  - Everything per-frame mutates the object3D directly. Dragging talks to the
+ *    audio engine and the socket via `onPreview`, never React, so moving a puck
+ *    cannot re-render the room.
+ */
+
 import { useRef, useMemo, useCallback } from "react";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Html, Sphere } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SpatialAudioEngine } from "../../../audio/SpatialAudioEngine";
-import { polarToCartesian, cartesianToPolar } from "../../../lib/spatial/geometry";
+import { cartesianToPolar, GAIN_FLOOR } from "../../../lib/spatial/geometry";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
-
-// World-space scale: 1 polar radius unit = SCALE three.js units
-export const WORLD_SCALE = 1.4;
-
-/** Stable, deterministic HSL hue derived from a user ID string. */
-export function userHue(userId: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < userId.length; i++) {
-    h ^= userId.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 360);
-}
-
-/** Convert polar position → Three.js world coords on the floor plane (y = 0). */
-export function polarToWorld(pos: SpatialPosition): THREE.Vector3 {
-  const c = polarToCartesian(pos, WORLD_SCALE);
-  return new THREE.Vector3(c.x, 0, c.z);
-}
+import { FLOOR_PLANE, polarToWorld, userHue, WORLD_SCALE } from "./world";
 
 export interface DeviceOrbProps {
   deviceId: string;
   userId: string;
   label: string;
+  /** Origin-relative position — the scene treats the listener as the centre */
   position: SpatialPosition;
   isMe: boolean;
   isOwnedByMe: boolean;
   isPlaying: boolean;
-  onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
+  /** Mid-drag, at pointer rate. Audio + socket only, no React state. */
+  onPreview: (deviceId: string, pos: SpatialPosition) => void;
+  /** Pointer-up. Commits to React state. */
+  onCommit: (deviceId: string, pos: SpatialPosition) => void;
 }
 
-/** Invisible horizontal plane used as the drag surface. */
-const DRAG_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-export function DeviceOrbV2({
+export function DeviceOrb({
   deviceId,
   userId,
   label,
@@ -49,148 +48,226 @@ export function DeviceOrbV2({
   isMe,
   isOwnedByMe,
   isPlaying,
-  onUpdatePosition,
+  onPreview,
+  onCommit,
 }: DeviceOrbProps) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const matRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const groupRef = useRef<THREE.Group>(null);
+  const matRef = useRef<THREE.MeshStandardMaterial>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+  const riserRef = useRef<THREE.Mesh>(null);
+
   const isDragging = useRef(false);
   const { camera, raycaster, gl, get } = useThree();
-  const _hmrDummy = useMemo(() => null, []); // HMR dummy hook to match previous state
+
   const hue = useMemo(() => userHue(userId), [userId]);
   const color = useMemo(() => new THREE.Color(`hsl(${hue}, 70%, 62%)`), [hue]);
-  const emissiveColor = useMemo(() => new THREE.Color(`hsl(${hue}, 90%, 45%)`), [hue]);
+  const emissiveColor = useMemo(() => new THREE.Color(`hsl(${hue}, 90%, 55%)`), [hue]);
 
-  const worldPos = useMemo(() => polarToWorld(position), [position]);
+  const homePos = useMemo(() => polarToWorld(position), [position]);
 
-  // Animate emissive intensity from live VBAP gain every frame
+  // Scratch objects reused every frame — no per-frame allocation.
+  const target = useRef(new THREE.Vector3());
+  const dragPoint = useRef(new THREE.Vector3());
+  const ndc = useRef(new THREE.Vector2());
+  const placed = useRef(false);
+  /** Elevation currently being rendered, so drags keep the height you set. */
+  const liveElevation = useRef(position.elevation);
+
   useFrame(() => {
-    if (!matRef.current || !meshRef.current) return;
+    const group = groupRef.current;
+    if (!group) return;
 
-    const gain = SpatialAudioEngine.getInstance().getGain(deviceId);
-    // Map gain floor…1.0 → gentle pulse range
-    const targetIntensity = isPlaying ? 0.2 + (gain - 0.15) / 0.85 * 2.4 : 0.12;
-    matRef.current.emissiveIntensity = THREE.MathUtils.lerp(
-      matRef.current.emissiveIntensity,
-      targetIntensity,
-      0.1,
-    );
+    const engine = SpatialAudioEngine.getInstance();
 
-    // Smoothly track target position while not dragging
-    if (!isDragging.current) {
-      meshRef.current.position.lerp(worldPos, 0.08);
+    // Glow tracks this device's live share of the mix — the payoff visual:
+    // you watch the sound light up your Mac, then your phone.
+    const gain = engine.getGain(deviceId);
+    const normalised = (gain - GAIN_FLOOR) / (1 - GAIN_FLOOR);
+    const targetIntensity = isPlaying ? 0.25 + Math.max(0, normalised) * 2.4 : 0.15;
+
+    if (matRef.current) {
+      matRef.current.emissiveIntensity = THREE.MathUtils.lerp(
+        matRef.current.emissiveIntensity,
+        targetIntensity,
+        0.12,
+      );
+    }
+    if (ringRef.current) {
+      const mat = ringRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = THREE.MathUtils.lerp(mat.opacity, isPlaying ? 0.2 + Math.max(0, normalised) * 0.6 : 0.15, 0.12);
+      const s = 1 + Math.max(0, normalised) * 0.35;
+      ringRef.current.scale.setScalar(THREE.MathUtils.lerp(ringRef.current.scale.x, s, 0.12));
+    }
+
+    // Ease toward the authoritative position, but never fight an active drag.
+    // The position is *not* a JSX prop: a re-render would otherwise snap the
+    // puck mid-ease, which is exactly the jitter this rewrite removes.
+    if (!placed.current) {
+      group.position.copy(homePos);
+      placed.current = true;
+    } else if (!isDragging.current) {
+      group.position.lerp(homePos, 0.12);
+    }
+
+    // Riser line: from the floor up to wherever the puck currently is.
+    if (riserRef.current) {
+      const h = Math.max(0.001, group.position.y);
+      riserRef.current.scale.y = h;
+      riserRef.current.position.y = -h / 2;
     }
   });
 
-  // ── Drag ─────────────────────────────────────────────────────────────────
-  const dragPoint = useRef(new THREE.Vector3());
+  // ── Drag ───────────────────────────────────────────────────────────────────
+
+  const setControlsEnabled = useCallback(
+    (on: boolean) => {
+      const controls = get().controls as { enabled?: boolean } | null;
+      if (controls) controls.enabled = on;
+    },
+    [get],
+  );
 
   const onPointerDown = useCallback(
-    (e: any) => {
+    (e: ThreeEvent<PointerEvent>) => {
       if (!isOwnedByMe) return;
       e.stopPropagation();
       isDragging.current = true;
-      const controls = get().controls as any;
-      if (controls) controls.enabled = false;
-      e.target.setPointerCapture(e.pointerId);
+      liveElevation.current = position.elevation;
+      setControlsEnabled(false);
+      (e.target as Element)?.setPointerCapture?.(e.pointerId);
       gl.domElement.style.cursor = "grabbing";
     },
-    [isOwnedByMe, gl, get],
+    [isOwnedByMe, position.elevation, setControlsEnabled, gl],
   );
 
   const onPointerMove = useCallback(
-    (e: any) => {
-      if (!isDragging.current || !meshRef.current) return;
+    (e: ThreeEvent<PointerEvent>) => {
+      const group = groupRef.current;
+      if (!isDragging.current || !group) return;
       e.stopPropagation();
+
       const rect = gl.domElement.getBoundingClientRect();
-      const ndcCoords = new THREE.Vector2(
+      ndc.current.set(
         ((e.nativeEvent.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.nativeEvent.clientY - rect.top) / rect.height) * 2 + 1,
       );
-      raycaster.setFromCamera(ndcCoords, camera);
-      if (raycaster.ray.intersectPlane(DRAG_PLANE, dragPoint.current)) {
-        // Constrain to the exact orbit ring (radius of the virtual audio source)
-        const orbitRadiusWorld = SpatialAudioEngine.getInstance().getSourcePosition().radius * WORLD_SCALE;
-        const currentRadius = Math.sqrt(dragPoint.current.x ** 2 + dragPoint.current.z ** 2);
-        
-        if (currentRadius > 0.0001) {
-          dragPoint.current.x = (dragPoint.current.x / currentRadius) * orbitRadiusWorld;
-          dragPoint.current.z = (dragPoint.current.z / currentRadius) * orbitRadiusWorld;
-        }
+      raycaster.setFromCamera(ndc.current, camera);
+      if (!raycaster.ray.intersectPlane(FLOOR_PLANE, dragPoint.current)) return;
 
-        meshRef.current.position.set(dragPoint.current.x, 0, dragPoint.current.z);
-      }
+      // Free placement on the floor; radius is clamped inside cartesianToPolar.
+      const next = cartesianToPolar(
+        dragPoint.current.x / WORLD_SCALE,
+        dragPoint.current.z / WORLD_SCALE,
+        liveElevation.current,
+      );
+
+      polarToWorld(next, target.current);
+      group.position.copy(target.current);
+
+      onPreview(deviceId, next);
     },
-    [camera, raycaster, gl],
+    [camera, raycaster, gl, deviceId, onPreview],
   );
 
-  const onPointerUp = useCallback((e: any) => {
-    const controls = get().controls as any;
-    if (controls) controls.enabled = true;
-    if (!isDragging.current || !meshRef.current) return;
-    isDragging.current = false;
-    if (e.pointerId) e.target.releasePointerCapture(e.pointerId);
-    gl.domElement.style.cursor = isOwnedByMe ? "grab" : "default";
-    const { x, z } = meshRef.current.position;
-    const newPos = cartesianToPolar(x / WORLD_SCALE, z / WORLD_SCALE, position.elevation);
-    
-    // Explicitly clamp radius in final state just to be safe
-    newPos.radius = SpatialAudioEngine.getInstance().getSourcePosition().radius;
-    
-    onUpdatePosition(deviceId, newPos);
-  }, [deviceId, position.elevation, onUpdatePosition, gl, isOwnedByMe, get]);
+  const endDrag = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      setControlsEnabled(true);
+      const group = groupRef.current;
+      if (!isDragging.current || !group) return;
+      isDragging.current = false;
 
-  const orbRadius = isMe ? 0.21 : 0.155;
+      if (e.pointerId !== undefined) {
+        (e.target as Element)?.releasePointerCapture?.(e.pointerId);
+      }
+      gl.domElement.style.cursor = isOwnedByMe ? "grab" : "default";
+
+      onCommit(
+        deviceId,
+        cartesianToPolar(
+          group.position.x / WORLD_SCALE,
+          group.position.z / WORLD_SCALE,
+          liveElevation.current,
+        ),
+      );
+    },
+    [deviceId, onCommit, gl, isOwnedByMe, setControlsEnabled],
+  );
+
+  const radius = isMe ? 0.2 : 0.15;
 
   return (
-    <group>
-      {/* Main orb */}
-      <Sphere
-        ref={meshRef}
-        position={worldPos}
-        args={[orbRadius, 28, 28]}
+    <group ref={groupRef}>
+      {/* Riser down to the floor — reads as height */}
+      <mesh ref={riserRef} position={[0, 0, 0]}>
+        <cylinderGeometry args={[0.006, 0.006, 1, 6]} />
+        <meshBasicMaterial color={color} transparent opacity={0.3} depthWrite={false} />
+      </mesh>
+
+      {/* Gain ring — brightness and size follow this device's live level */}
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 1.5, radius * 1.85, 40]} />
+        <meshBasicMaterial
+          color={emissiveColor}
+          transparent
+          opacity={0.2}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      <mesh
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerOver={() => {
+          if (isOwnedByMe && !isDragging.current) gl.domElement.style.cursor = "grab";
+        }}
+        onPointerOut={() => {
+          if (!isDragging.current) gl.domElement.style.cursor = "default";
+        }}
       >
+        <sphereGeometry args={[radius, 28, 28]} />
         <meshStandardMaterial
           ref={matRef}
           color={color}
           emissive={emissiveColor}
-          emissiveIntensity={0.2}
+          emissiveIntensity={0.25}
           metalness={0.15}
           roughness={0.28}
         />
+      </mesh>
 
-        {/* HTML billboard label */}
-        <Html
-          position={[0, 0, 0]}
-          center
-          style={{ pointerEvents: "none", userSelect: "none", zIndex: 10 }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
-            {isMe && (
-              <span style={{
-                fontSize: "8px", fontWeight: 900, letterSpacing: "0.14em",
+      <Html position={[0, radius + 0.13, 0]} center style={{ pointerEvents: "none", userSelect: "none" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+          {isMe && (
+            <span
+              style={{
+                fontSize: "8px",
+                fontWeight: 900,
+                letterSpacing: "0.14em",
                 color: `hsl(${hue}, 85%, 72%)`,
                 textTransform: "uppercase",
                 textShadow: "0 0 6px rgba(0,0,0,0.9)",
                 whiteSpace: "nowrap",
-              }}>
-                YOU
-              </span>
-            )}
-            <span style={{
-              fontSize: "10px", fontWeight: 700,
-              color: "white", textShadow: "0 0 8px rgba(0,0,0,1)",
-              whiteSpace: "nowrap",
-            }}>
-              {label.length > 15 ? label.slice(0, 15) + "..." : label}
+              }}
+            >
+              This device
             </span>
-          </div>
-        </Html>
-      </Sphere>
+          )}
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "white",
+              textShadow: "0 0 8px rgba(0,0,0,1)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {label.length > 15 ? `${label.slice(0, 15)}…` : label}
+          </span>
+        </div>
+      </Html>
     </group>
   );
 }

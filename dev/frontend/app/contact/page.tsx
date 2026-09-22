@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowLeft, Mail, MessageSquare } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
 import { InstagramIcon } from "../../components/InstagramFollowButton";
 import { Footer } from "../../components/Footer";
 import { ThemeToggle } from "../../components/ThemeToggle";

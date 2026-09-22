@@ -3,16 +3,16 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
-  Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
-  Loader2, CheckCircle2, AlertCircle, AlertTriangle, RotateCcw, Play as Youtube, Activity,
-  ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
-  Wifi, Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
+  Disc, Pause, Play, SkipForward, SkipBack, Upload,
+  Loader2, AlertCircle, Activity,
+  ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAudio } from "../../context/AudioContext";
-import { useVisualizer } from "../../context/VisualizerContext";
+
 import { useUpload } from "../../context/UploadContext";
 import { JoinRequest } from "../../lib/types";
 import { getSocket } from "../../lib/socket";

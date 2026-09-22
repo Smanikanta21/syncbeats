@@ -110,8 +110,8 @@ export class SpatialAudioEngine {
   private clockOffset = 0;
   private enabled = true;
   private running = false;
+  /** Server time the source was frozen at, or null while running. */
   private pausedAtMs: number | null = Date.now();
-  private virtualTimeOffset: number = 0;
 
   /** Speakers in absolute room coordinates */
   private speakers: Speaker[] = [];
@@ -131,9 +131,6 @@ export class SpatialAudioEngine {
   /** One-frame memo so audio and renderer sampling the same instant agree exactly. */
   private cachedAt = -1;
   private cached: SpatialSample | null = null;
-
-  /** Optional UI callback fired on every audio write with the current orbit position. */
-  private orbitUpdateCallback: ((fromId: string, toId: string, frac: number) => void) | null = null;
 
   // ── Initialisation ───────────────────────────────────────────────────────
 
@@ -272,36 +269,27 @@ export class SpatialAudioEngine {
   }
 
   /**
-   * Register a callback that is fired on every audio-loop tick with the orbit
-   * position expressed as two adjacent speaker IDs and an interpolation fraction
-   * (0 = fully at `fromId`, 1 = fully at `toId`). Pass `undefined` to unsubscribe.
+   * Drive the orbit only while something is actually playing.
    *
-   * When there are no speakers the engine reports `fromId = '8D_MODE'` and
-   * `frac` = the current source angle in radians, matching the SpatialPanel
-   * 8D-mode branch.
+   * Pausing freezes the source at the server time of the pause purely so the
+   * visual stops. It deliberately does *not* accumulate paused time: motion has
+   * to stay a pure function of the shared clock, and a per-device accumulator
+   * would leave two devices at different orbit phases. Resuming therefore snaps
+   * back to the shared phase, which is the behaviour that keeps the room in
+   * agreement.
    */
-  setOrbitUpdateCallback(
-    cb: ((fromId: string, toId: string, frac: number) => void) | null | undefined,
-  ): void {
-    this.orbitUpdateCallback = cb ?? null;
-  }
-
-  /** Drive the orbit only while something is actually playing. */
   setRunning(running: boolean): void {
     if (this.running === running) return;
-    const now = this.serverNow();
-    
+    this.running = running;
+
     if (running) {
-      if (this.pausedAtMs !== null) {
-        this.virtualTimeOffset += (now - this.pausedAtMs);
-      }
       this.pausedAtMs = null;
       this.start();
     } else {
-      this.pausedAtMs = now;
+      this.pausedAtMs = this.serverNow();
       this.stop();
     }
-    this.running = running;
+    this.invalidate();
   }
 
   /** Called on each detected bass beat; only meaningful in 'beat' mode. */
@@ -340,14 +328,13 @@ export class SpatialAudioEngine {
     const key = Math.round(serverNowMs);
     if (this.cached && this.cachedAt === key) return this.cached;
 
-    let timeToUse = serverNowMs - this.virtualTimeOffset;
-    if (!this.running && this.pausedAtMs !== null) {
-      timeToUse = this.pausedAtMs - this.virtualTimeOffset;
-    }
+    // Frozen at the pause instant when stopped, live on the shared clock when
+    // running — see the note on setRunning().
+    const timeToUse = !this.running && this.pausedAtMs !== null ? this.pausedAtMs : serverNowMs;
 
     const source = sourceAt(timeToUse, this.motion, this.ringAngles, this.beat);
     const gains = this.enabled
-      ? computeSpeakerGains(source.angle, this.speakersRelative, GAIN_FLOOR)
+      ? computeSpeakerGains(source.angle, this.speakersRelative, this.motion.spread)
       : new Map(this.speakers.map(s => [s.id, 1]));
 
     const sourceWorld = addVec(this.originVec, polarToCartesian(source));
@@ -445,51 +432,6 @@ export class SpatialAudioEngine {
     // Early reflections grow with distance — dry up close, wet across the room.
     const wet = clamp((distance - 1.5) / 12, 0, 0.35);
     this.reverbGain!.gain.setTargetAtTime(wet, t, 0.12);
-
-    // Notify the UI of the current orbit position.
-    this.fireOrbitCallback(sample.source.angle);
-  }
-
-  /**
-   * Derive fromId/toId/frac from the current source angle and speaker ring, then
-   * fire `orbitUpdateCallback` if one is registered.
-   *
-   * When no speakers are present we fall back to 8D_MODE so the SpatialPanel
-   * visualiser still gets a meaningful pan value.
-   */
-  private fireOrbitCallback(sourceAngle: number): void {
-    if (!this.orbitUpdateCallback) return;
-
-    if (this.speakersRelative.length === 0) {
-      // No speakers: report raw angle so the panel's 8D_MODE branch works.
-      this.orbitUpdateCallback('8D_MODE', '8D_MODE', sourceAngle);
-      return;
-    }
-
-    // Find the two adjacent speakers that bracket the current source angle.
-    const angle = normalizeAngle(sourceAngle);
-    const sorted = this.speakersRelative
-      .map(s => ({ id: s.id, angle: normalizeAngle(s.position.angle) }))
-      .sort((a, b) => a.angle - b.angle);
-
-    let fromIdx = sorted.length - 1;
-    for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].angle > angle) {
-        fromIdx = (i - 1 + sorted.length) % sorted.length;
-        break;
-      }
-    }
-    const toIdx = (fromIdx + 1) % sorted.length;
-    const from = sorted[fromIdx];
-    const to = sorted[toIdx];
-
-    let span = to.angle - from.angle;
-    if (span <= 0) span += 2 * Math.PI;
-    let diff = angle - from.angle;
-    if (diff < 0) diff += 2 * Math.PI;
-    const frac = span > 0 ? clamp(diff / span, 0, 1) : 0;
-
-    this.orbitUpdateCallback(from.id, to.id, frac);
   }
 
   /** Settle every parameter back to neutral so bypass is inaudible. */

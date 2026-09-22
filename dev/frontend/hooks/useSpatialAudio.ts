@@ -6,18 +6,32 @@
  *  1. Splices the engine into the player's audio graph once the context unlocks
  *  2. Keeps the speaker field (devices, seats, listening origin) up to date
  *  3. Feeds it the synced server clock so every device orbits in lockstep
- *  4. Exposes throttled position updates for dragging
+ *  4. Exposes preview/commit position updates for dragging
+ *
+ * Positions travel over the wire as **absolute** room coordinates, but every
+ * caller here works in **local** coordinates relative to `layout.origin` — your
+ * seat in My Space, the room centre in Room. The conversion lives here so the 3D
+ * scene can treat the origin as the middle of the world and nothing else has to
+ * think about it.
  *
  * Deliberately owns no per-frame state: the 3D stage reads positions and gains
- * straight off the engine inside its own render loop, so dragging and orbiting
- * never trigger a React re-render.
+ * straight off the engine inside its own render loop, so orbiting never triggers
+ * a React re-render, and dragging goes through `previewPosition` (engine + socket
+ * only) until the pointer comes up.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { SpatialAudioEngine } from '../audio/SpatialAudioEngine';
 import type { SpatialPosition, Speaker } from '../lib/spatial/geometry';
-import { clamp, MAX_ELEVATION, MAX_RADIUS, MIN_ELEVATION, MIN_RADIUS } from '../lib/spatial/geometry';
+import {
+  absolutePolar,
+  clamp,
+  MAX_ELEVATION,
+  MAX_RADIUS,
+  MIN_ELEVATION,
+  MIN_RADIUS,
+} from '../lib/spatial/geometry';
 import { DEFAULT_MOTION, type MotionConfig } from '../lib/spatial/motion';
 import {
   buildSpatialLayout,
@@ -36,6 +50,9 @@ export type SpatialMode = 'solo' | 'room';
 
 /** Position updates are emitted at most this often while dragging. */
 const EMIT_INTERVAL_MS = 50;
+/** Wait this long after computing a default before claiming it, so a late
+ *  server snapshot wins over our guess. */
+const CLAIM_DELAY_MS = 400;
 
 interface UseSpatialAudioOptions {
   socket: Socket | null;
@@ -61,9 +78,12 @@ interface UseSpatialAudioReturn {
   layout: SpatialLayout;
   /** Absolute positions keyed by socket id / `seat:<userId>` */
   positions: Record<string, SpatialPosition>;
-  updatePosition: (key: string, position: SpatialPosition) => void;
-  /** Push the latest position immediately — call on pointer-up */
-  flushPosition: (key: string) => void;
+  /** Discrete move (slider, quick-place button): local coords in, state + emit */
+  updatePosition: (key: string, local: SpatialPosition) => void;
+  /** Mid-drag: updates audio and remote clients without a React re-render */
+  previewPosition: (key: string, local: SpatialPosition) => void;
+  /** Pointer-up: clears the preview and commits to state */
+  commitPosition: (key: string, local: SpatialPosition) => void;
   resetLayout: () => void;
   motion: MotionConfig;
   setMotion: (patch: Partial<MotionConfig>) => void;
@@ -105,6 +125,8 @@ export function useSpatialAudio({
   const pendingEmitRef = useRef<Map<string, SpatialPosition>>(new Map());
   const lastEmitAtRef = useRef(0);
   const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Keys we've already claimed a default for — stops the claim effect re-firing */
+  const claimedRef = useRef<Set<string>>(new Set());
 
   // ── Layout ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +134,36 @@ export function useSpatialAudio({
     () => buildSpatialLayout(participants, positions, myUserId, myDeviceId, mode),
     [participants, positions, myUserId, myDeviceId, mode],
   );
+
+  // Mirrored into refs so `applyField` can run outside React (mid-drag).
+  const layoutRef = useRef(layout);
+  const modeRef = useRef(mode);
+  const previewRef = useRef<{ key: string; position: SpatialPosition } | null>(null);
+
+  /**
+   * Push the current speaker field to the engine, substituting the in-flight
+   * drag preview if there is one. Cheap enough to call every pointer-move:
+   * a map + sort over at most a handful of devices.
+   */
+  const applyField = useCallback(() => {
+    const l = layoutRef.current;
+    const preview = previewRef.current;
+    // My Space surrounds you with your own devices; Room uses everybody's.
+    const pool = modeRef.current === 'solo' ? (l.me?.devices ?? []) : l.devices;
+
+    const speakers: Speaker[] = pool.map(d => ({
+      id: d.deviceId,
+      position: preview && preview.key === d.deviceId ? preview.position : d.position,
+    }));
+
+    engine.setField(speakers, l.origin);
+  }, [engine]);
+
+  useEffect(() => {
+    layoutRef.current = layout;
+    modeRef.current = mode;
+    applyField();
+  }, [layout, mode, applyField]);
 
   // ── Engine wiring ──────────────────────────────────────────────────────────
 
@@ -130,15 +182,6 @@ export function useSpatialAudio({
   useEffect(() => {
     engine.setMotion(motion);
   }, [engine, motion]);
-
-  // Only your own devices form the surround field in My Space; the whole room
-  // does in Room mode. Either way positions go over as absolute coordinates and
-  // the engine re-centres them on the origin.
-  useEffect(() => {
-    const source = mode === 'solo' ? (layout.me?.devices ?? []) : layout.devices;
-    const speakers: Speaker[] = source.map(d => ({ id: d.deviceId, position: d.position }));
-    engine.setField(speakers, layout.origin);
-  }, [engine, layout, mode]);
 
   useEffect(() => {
     engine.setRunning(isPlaying && enabled);
@@ -184,6 +227,8 @@ export function useSpatialAudio({
     });
   }, [initialDevices]);
 
+  // `spatial:update` is the only spatial event the server broadcasts; departed
+  // devices need no event because the layout is driven by the participant list.
   useEffect(() => {
     if (!socket || !enabled) return;
 
@@ -192,40 +237,15 @@ export function useSpatialAudio({
       setPositions(prev => ({ ...prev, [deviceId]: sanitise(position) }));
     };
 
-    const onSnapshot = ({ devices }: { devices: DeviceSpatialState[] }) => {
-      if (!Array.isArray(devices)) return;
-      setPositions(prev => {
-        const next = { ...prev };
-        devices.forEach(({ deviceId, position }) => {
-          if (deviceId && position) next[deviceId] = sanitise(position);
-        });
-        return next;
-      });
-    };
-
-    const onDeviceLeft = ({ deviceId }: { deviceId: string }) => {
-      setPositions(prev => {
-        if (!(deviceId in prev)) return prev;
-        const next = { ...prev };
-        delete next[deviceId];
-        return next;
-      });
-    };
-
     socket.on('spatial:update', onUpdate);
-    socket.on('spatial:snapshot', onSnapshot);
-    socket.on('spatial:device:left', onDeviceLeft);
-
     return () => {
       socket.off('spatial:update', onUpdate);
-      socket.off('spatial:snapshot', onSnapshot);
-      socket.off('spatial:device:left', onDeviceLeft);
     };
   }, [socket, enabled]);
 
   // ── Emitting ───────────────────────────────────────────────────────────────
 
-  const flushPending = useCallback(() => {
+  const flushEmit = useCallback(() => {
     if (emitTimerRef.current) {
       clearTimeout(emitTimerRef.current);
       emitTimerRef.current = null;
@@ -239,47 +259,90 @@ export function useSpatialAudio({
     lastEmitAtRef.current = Date.now();
   }, [socket, roomId]);
 
-  /**
-   * Apply locally straight away, then emit at a capped rate. Dragging a puck
-   * used to fire a socket message per pointer-move per device.
-   */
-  const updatePosition = useCallback(
-    (key: string, position: SpatialPosition) => {
-      const clean = sanitise(position);
-      setPositions(prev => ({ ...prev, [key]: clean }));
-
-      pendingEmitRef.current.set(key, clean);
+  /** Coalesce to one emit per key per interval, always with a trailing send. */
+  const queueEmit = useCallback(
+    (key: string, absolute: SpatialPosition) => {
+      pendingEmitRef.current.set(key, absolute);
 
       const since = Date.now() - lastEmitAtRef.current;
       if (since >= EMIT_INTERVAL_MS) {
-        flushPending();
+        flushEmit();
       } else if (!emitTimerRef.current) {
-        emitTimerRef.current = setTimeout(flushPending, EMIT_INTERVAL_MS - since);
+        emitTimerRef.current = setTimeout(flushEmit, EMIT_INTERVAL_MS - since);
       }
     },
-    [flushPending],
+    [flushEmit],
   );
-
-  const flushPosition = useCallback(() => flushPending(), [flushPending]);
 
   useEffect(() => () => {
     if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
   }, []);
 
-  // Publish placements we own but the server has never seen, so everyone else
-  // sees the same arrangement. Each client only ever claims its own devices.
+  /** Local (origin-relative) → absolute room coordinates. */
+  const toAbsolute = useCallback(
+    (local: SpatialPosition) => sanitise(absolutePolar(sanitise(local), layoutRef.current.origin)),
+    [],
+  );
+
+  const updatePosition = useCallback(
+    (key: string, local: SpatialPosition) => {
+      const absolute = toAbsolute(local);
+      claimedRef.current.add(key);
+      setPositions(prev => ({ ...prev, [key]: absolute }));
+      queueEmit(key, absolute);
+    },
+    [toAbsolute, queueEmit],
+  );
+
+  /**
+   * Mid-drag path. Skips `setPositions` entirely — the puck is being moved by
+   * mutating its mesh, so a React update here would just re-render the room at
+   * pointer-move rate. Audio and remote clients still follow live.
+   */
+  const previewPosition = useCallback(
+    (key: string, local: SpatialPosition) => {
+      const absolute = toAbsolute(local);
+      previewRef.current = { key, position: absolute };
+      applyField();
+      queueEmit(key, absolute);
+    },
+    [toAbsolute, applyField, queueEmit],
+  );
+
+  const commitPosition = useCallback(
+    (key: string, local: SpatialPosition) => {
+      previewRef.current = null;
+      const absolute = toAbsolute(local);
+      claimedRef.current.add(key);
+      setPositions(prev => ({ ...prev, [key]: absolute }));
+      queueEmit(key, absolute);
+      flushEmit();
+    },
+    [toAbsolute, queueEmit, flushEmit],
+  );
+
+  /**
+   * Claim the placements we own but the server has never seen, so everyone else
+   * sees the same arrangement. Each client only ever claims its own devices,
+   * which avoids two clients racing to place the same one.
+   */
   useEffect(() => {
     if (!socket?.connected || !layout.me) return;
 
     const mine: Array<[string, SpatialPosition]> = [];
-    if (layout.me.seatIsDefault) mine.push([seatKey(layout.me.userId), layout.me.seat]);
+    const mySeatKey = seatKey(layout.me.userId);
+
+    if (layout.me.seatIsDefault && !claimedRef.current.has(mySeatKey)) {
+      mine.push([mySeatKey, layout.me.seat]);
+    }
     layout.me.devices.forEach(d => {
-      if (d.isDefault) mine.push([d.deviceId, d.position]);
+      if (d.isDefault && !claimedRef.current.has(d.deviceId)) mine.push([d.deviceId, d.position]);
     });
     if (mine.length === 0) return;
 
     const timer = setTimeout(() => {
       mine.forEach(([deviceId, position]) => {
+        claimedRef.current.add(deviceId);
         socket.emit('spatial:update', { roomId, deviceId, position });
       });
       setPositions(prev => {
@@ -287,20 +350,29 @@ export function useSpatialAudio({
         mine.forEach(([k, v]) => { next[k] = v; });
         return next;
       });
-    }, 400);
+    }, CLAIM_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [socket, roomId, layout]);
 
+  /**
+   * Drop my stored placements. The claim effect above then recomputes the
+   * deterministic defaults and re-publishes them, so everyone converges.
+   */
   const resetLayout = useCallback(() => {
-    if (!layout.me) return;
+    const me = layoutRef.current.me;
+    if (!me) return;
+
+    previewRef.current = null;
+    const keys = [seatKey(me.userId), ...me.devices.map(d => d.deviceId)];
+    keys.forEach(k => claimedRef.current.delete(k));
+
     setPositions(prev => {
       const next = { ...prev };
-      delete next[seatKey(layout.me!.userId)];
-      layout.me!.devices.forEach(d => delete next[d.deviceId]);
+      keys.forEach(k => delete next[k]);
       return next;
     });
-  }, [layout]);
+  }, []);
 
   const setMotion = useCallback((patch: Partial<MotionConfig>) => {
     setMotionState(prev => ({ ...prev, ...patch }));
@@ -315,7 +387,8 @@ export function useSpatialAudio({
     layout,
     positions,
     updatePosition,
-    flushPosition,
+    previewPosition,
+    commitPosition,
     resetLayout,
     motion,
     setMotion,

@@ -76,14 +76,21 @@ export function polarToCartesian(pos: SpatialPosition, scale = 1): Vec3 {
 /**
  * Inverse of {@link polarToCartesian} on the floor plane — used while dragging a
  * puck, where the pointer raycast gives us x/z and elevation is edited separately.
+ *
+ * `x`/`z` describe the *horizontal projection* of the position, so the radius is
+ * divided back out by cos(elevation). Without that, dropping a raised puck would
+ * re-render it short of where you let go.
  */
 export function cartesianToPolar(x: number, z: number, elevation = 0, scale = 1): SpatialPosition {
   const sx = x / scale;
   const sz = z / scale;
+  const elev = clamp(elevation, MIN_ELEVATION, MAX_ELEVATION);
+  // cos is never near zero: elevation is clamped to ±45°.
+  const cos = Math.cos((elev * Math.PI) / 180);
   return {
     angle: Math.atan2(sx, -sz),
-    radius: clamp(Math.hypot(sx, sz), MIN_RADIUS, MAX_RADIUS),
-    elevation: clamp(elevation, MIN_ELEVATION, MAX_ELEVATION),
+    radius: clamp(Math.hypot(sx, sz) / cos, MIN_RADIUS, MAX_RADIUS),
+    elevation: elev,
   };
 }
 

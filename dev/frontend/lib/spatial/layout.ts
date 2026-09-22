@@ -15,6 +15,7 @@ import type { Participant } from '../types';
 import { getFriendlyDeviceName, initialsFor, parseParticipantNames } from '../deviceNaming';
 import {
   absolutePolar,
+  relativePolar,
   stringHash,
   type SpatialPosition,
 } from './geometry';
@@ -52,8 +53,10 @@ export interface SpatialDevice {
   deviceType?: string;
   isMe: boolean;
   isOwnedByMe: boolean;
-  /** Absolute room coordinates */
+  /** Absolute room coordinates — what goes over the wire */
   position: SpatialPosition;
+  /** Same point re-expressed around {@link SpatialLayout.origin} — what gets drawn */
+  local: SpatialPosition;
   /** True when this is a derived default rather than a placement someone made */
   isDefault: boolean;
 }
@@ -64,6 +67,8 @@ export interface SpatialUser {
   initials: string;
   isMe: boolean;
   seat: SpatialPosition;
+  /** Seat relative to the listening origin — in My Space yours is the centre */
+  seatLocal: SpatialPosition;
   seatIsDefault: boolean;
   devices: SpatialDevice[];
 }
@@ -72,7 +77,7 @@ export interface SpatialLayout {
   users: SpatialUser[];
   devices: SpatialDevice[];
   me: SpatialUser | null;
-  /** Origin of the surround field for the given mode */
+  /** Origin of the surround field for the given mode, in absolute coordinates */
   origin: SpatialPosition;
 }
 
@@ -123,21 +128,35 @@ export function buildSpatialLayout(
     participants.find(p => p.socketId === mySocketId)?.userId ?? myUserId ?? mySocketId;
 
   const userCount = byUser.size;
-  const users: SpatialUser[] = [];
-  const devices: SpatialDevice[] = [];
 
   // Sorted so device slot assignment is stable across clients and reconnects.
   const sortedUserIds = Array.from(byUser.keys()).sort();
 
+  // Seats resolve first: the listening origin depends on mine, and every
+  // device's drawn position depends on that origin.
+  const seats = new Map<string, { seat: SpatialPosition; isDefault: boolean }>();
+  sortedUserIds.forEach(userId => {
+    const stored = positions[seatKey(userId)];
+    seats.set(userId, {
+      seat: stored ?? defaultSeatPosition(userId, userCount),
+      isDefault: !stored,
+    });
+  });
+
+  const mySeat = seats.get(resolvedMyUserId)?.seat;
+  const origin = mode === 'solo' ? (mySeat ?? ROOM_CENTRE) : ROOM_CENTRE;
+
+  const users: SpatialUser[] = [];
+  const devices: SpatialDevice[] = [];
+
   sortedUserIds.forEach(userId => {
     const members = byUser.get(userId)!.slice().sort((a, b) => a.socketId.localeCompare(b.socketId));
     const isMe = userId === resolvedMyUserId;
-
-    const storedSeat = positions[seatKey(userId)];
-    const seat = storedSeat ?? defaultSeatPosition(userId, userCount);
+    const { seat, isDefault: seatIsDefault } = seats.get(userId)!;
 
     const userDevices: SpatialDevice[] = members.map((p, index) => {
       const stored = positions[p.socketId];
+      const position = stored ?? defaultDevicePosition(seat, index, members.length);
       const { deviceName } = parseParticipantNames(p, true);
       return {
         deviceId: p.socketId,
@@ -146,7 +165,8 @@ export function buildSpatialLayout(
         deviceType: p.outputDeviceType,
         isMe: p.socketId === mySocketId,
         isOwnedByMe: isMe,
-        position: stored ?? defaultDevicePosition(seat, index, members.length),
+        position,
+        local: relativePolar(position, origin),
         isDefault: !stored,
       };
     });
@@ -159,14 +179,14 @@ export function buildSpatialLayout(
       initials: initialsFor(displayName),
       isMe,
       seat,
-      seatIsDefault: !storedSeat,
+      seatLocal: relativePolar(seat, origin),
+      seatIsDefault,
       devices: userDevices,
     });
     devices.push(...userDevices);
   });
 
   const me = users.find(u => u.isMe) ?? null;
-  const origin = mode === 'solo' ? (me?.seat ?? ROOM_CENTRE) : ROOM_CENTRE;
 
   return { users, devices, me, origin };
 }

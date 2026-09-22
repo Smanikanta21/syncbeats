@@ -10,6 +10,7 @@
 
 import {
   clamp,
+  GAIN_FLOOR,
   hashSeed,
   lerpAngle,
   normalizeAngle,
@@ -28,6 +29,15 @@ export interface MotionConfig {
   elevation: number;
   /** +1 = clockwise (front → right → back → left), -1 = counter-clockwise */
   direction: 1 | -1;
+  /**
+   * Divergence, 0..1 — how much of the signal spills outside the speakers the
+   * source is currently between. 0 is a hard point source (only the bracketing
+   * pair make sound); 1 fills every speaker equally and the motion stops being
+   * audible as movement. Sits here rather than on the field because it is a
+   * property of *how the source is panned*, and it rides the same plumbing as
+   * the other motion parameters.
+   */
+  spread: number;
 }
 
 /** A beat-jump in flight. Owned by the engine, read by the renderer. */
@@ -45,6 +55,7 @@ export const DEFAULT_MOTION: MotionConfig = {
   radius: 1.6,
   elevation: 0,
   direction: 1,
+  spread: GAIN_FLOOR,
 };
 
 export const MIN_PERIOD_MS = 2000;

@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -26,7 +26,6 @@ export default function AuthPage() {
         .catch(() => router.replace("/room/default"));
     }
   }, [user, authLoading, router]);
-  const [googleReady, setGoogleReady] = useState(false);
   const googleLoginButtonRef  = useRef<HTMLDivElement>(null);
   const googleSignupButtonRef = useRef<HTMLDivElement>(null);
 
@@ -43,13 +42,9 @@ export default function AuthPage() {
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
-  const [theme, setTheme] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (typeof window !== "undefined") {
-      setTheme(localStorage.getItem('theme'));
-    }
     const params = new URLSearchParams(window.location.search);
     
     if (params.get('mode') === 'register') {

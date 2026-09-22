@@ -1,286 +1,306 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Maximize2, X } from "lucide-react";
-import { createPortal } from "react-dom";
-import type { DeviceSpatialState, Participant } from "../../lib/types";
-import { SpatialAudioEngine, type SpatialPosition } from "../../audio/SpatialAudioEngine";
-import { cn } from "@/lib/utils";
-import { SpatialScene3D } from "./spatial/SpatialScene3D";
+/**
+ * SpatialPanel.tsx
+ *
+ * The two-tab shell around the 3D stage.
+ *
+ *  - **My Space** — your own devices become the speakers, and *you* are the
+ *    centre. Put the Mac on your left and the phone on your right and the sound
+ *    genuinely travels between them.
+ *  - **Room** — everyone's devices, grouped by person, around the room centre.
+ *
+ * This component owns the bass `beatRef`: React context does not cross the R3F
+ * reconciler, so the subscription has to live outside `<Canvas>` and be handed
+ * down as a ref.
+ */
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
+import { Maximize2, X, User, Users } from "lucide-react";
+
+import type { SpatialPosition } from "../../lib/spatial/geometry";
+import type { SpatialLayout } from "../../lib/spatial/layout";
+import type { MotionConfig } from "../../lib/spatial/motion";
+import type { SpatialMode } from "../../hooks/useSpatialAudio";
+import { useBeatEngine } from "../../context/BeatContext";
+import { cn } from "@/lib/utils";
+import { SpatialControls } from "./SpatialControls";
+
+// WebGL needs a DOM; keep the canvas out of the server render.
+const SpatialScene3D = dynamic(
+  () => import("./spatial/SpatialScene3D").then(m => m.SpatialScene3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/25">
+          Loading stage…
+        </span>
+      </div>
+    ),
+  },
+);
+
+export type { SpatialMode };
 
 interface SpatialPanelProps {
-  myDeviceId: string;
-  myUserId?: string;
-  spatialDevices: DeviceSpatialState[];
-  participants: Participant[];
+  layout: SpatialLayout;
+  mode: SpatialMode;
+  onModeChange: (mode: SpatialMode) => void;
+  motion: MotionConfig;
+  onMotionChange: (patch: Partial<MotionConfig>) => void;
+  /** Mid-drag: audio + socket only */
+  onPreviewPosition: (key: string, pos: SpatialPosition) => void;
+  /** Pointer-up: commits to state */
+  onCommitPosition: (key: string, pos: SpatialPosition) => void;
+  /** Discrete edits (quick-place buttons) */
+  onUpdatePosition: (key: string, pos: SpatialPosition) => void;
+  onReset: () => void;
   isPlaying: boolean;
-  onUpdatePosition: (deviceId: string, pos: SpatialPosition) => void;
-  orbitSpeed?: number;
-  orbitData?: { fromId: string; toId: string; frac: number } | null;
-  onOrbitSpeedChange?: (speed: number) => void;
-  roomId: string;
-  spatialMode?: 'multiplayer' | '8d-solo';
-  onSpatialModeChange?: (mode: 'multiplayer' | '8d-solo') => void;
-  allow8DSolo?: boolean;
 }
 
-// ── Coordinate Conversion ─────────────────────────────────────────────────
-// (2D helpers removed — positions are now handled by SpatialScene3D / Three.js)
+const TABS: Array<{ id: SpatialMode; label: string; icon: typeof User; blurb: string }> = [
+  {
+    id: "solo",
+    label: "My Space",
+    icon: User,
+    blurb: "Your devices are the speakers — you're in the middle",
+  },
+  {
+    id: "room",
+    label: "Room",
+    icon: Users,
+    blurb: "Everyone's devices, arranged around the room",
+  },
+];
 
-// ── Ego-Centric Room View ─────────────────────────────────────────────────
+/** How fast the bass pulse falls back to rest, per frame at 60fps. */
+const BEAT_DECAY = 0.88;
 
 export function SpatialPanel({
-  myDeviceId,
-  myUserId,
-  spatialDevices,
-  participants,
-  isPlaying,
+  layout,
+  mode,
+  onModeChange,
+  motion,
+  onMotionChange,
+  onPreviewPosition,
+  onCommitPosition,
   onUpdatePosition,
-  orbitSpeed = 3,
-  onOrbitSpeedChange,
-  roomId,
-  spatialMode,
-  onSpatialModeChange,
-  allow8DSolo,
+  onReset,
+  isPlaying,
 }: SpatialPanelProps) {
-  const [orbitData, setOrbitData] = useState<{fromId: string, toId: string, frac: number} | null>(null);
-
-  // Subscribe directly to the audio engine to avoid re-rendering the whole page
-  useEffect(() => {
-    const engine = SpatialAudioEngine.getInstance();
-    engine.setOrbitUpdateCallback((fromId: string, toId: string, frac: number) => {
-      setOrbitData({ fromId, toId, frac });
-    });
-    return () => {
-      engine.setOrbitUpdateCallback(undefined as any);
-    };
-  }, []);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // The modal is `lg:hidden` and the inline stage is `hidden` beneath it, so a
+  // resize up to desktop while expanded would leave neither visible. Collapse
+  // instead — which also guarantees only one WebGL canvas is ever mounted.
+  useEffect(() => {
+    if (!isMobileModalOpen) return;
+    const onResize = () => {
+      if (window.innerWidth >= 1024) setIsMobileModalOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [isMobileModalOpen]);
 
-  // Determine current user
-  const myParticipant = participants.find((p) => p.socketId === myDeviceId);
-  const resolvedMyUserId = myUserId ?? myParticipant?.userId ?? myParticipant?.socketId ?? myDeviceId;
+  // ── Bass pulse, ref-only ───────────────────────────────────────────────────
+  const { subscribeToBeat } = useBeatEngine();
+  const beatRef = useRef(0);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToBeat("bass", intensity => {
+      // Rising edge only — the decay below handles the fall.
+      beatRef.current = Math.max(beatRef.current, Math.min(1, intensity));
+    });
+    let raf = 0;
+    const decay = () => {
+      beatRef.current *= BEAT_DECAY;
+      raf = requestAnimationFrame(decay);
+    };
+    raf = requestAnimationFrame(decay);
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(raf);
+    };
+  }, [subscribeToBeat]);
 
+  // ── Derived ────────────────────────────────────────────────────────────────
 
+  const myDevices = useMemo(() => layout.me?.devices ?? [], [layout]);
+  const otherUserCount = useMemo(
+    () => layout.users.filter(u => !u.isMe).length,
+    [layout.users],
+  );
+  const activeTab = TABS.find(t => t.id === mode) ?? TABS[0];
 
+  /** Swing a device to a cardinal bearing, keeping its distance and height. */
+  const handleQuickPlace = useCallback(
+    (deviceId: string, angle: number) => {
+      const device = layout.devices.find(d => d.deviceId === deviceId);
+      if (!device) return;
+      onUpdatePosition(deviceId, { ...device.local, angle });
+    },
+    [layout.devices, onUpdatePosition],
+  );
 
-  // Compute live stereo pan value from current orbit position (-1 left .. +1 right)
-  const panValue = useMemo(() => {
-    if (!orbitData) return 0;
-    if (orbitData.fromId === '8D_MODE') {
-      // In 8D mode, frac is actually the direct angle. Radius is fixed at 1.5.
-      return Math.max(-1, Math.min(1, Math.sin(orbitData.frac) * 1.5));
-    }
+  const scene = (
+    <SpatialScene3D
+      layout={layout}
+      mode={mode}
+      motionMode={motion.mode}
+      isPlaying={isPlaying}
+      onPreviewPosition={onPreviewPosition}
+      onCommitPosition={onCommitPosition}
+      beatRef={beatRef}
+      className="absolute inset-0 h-full w-full"
+    />
+  );
 
-    const { fromId, toId, frac } = orbitData;
-    const fromDev = spatialDevices.find(d => d.deviceId === fromId);
-    const toDev = spatialDevices.find(d => d.deviceId === toId);
-    if (!fromDev || !toDev) return 0;
-    // Ease frac
-    const ef = frac < 0.5 ? 2 * frac * frac : 1 - Math.pow(-2 * frac + 2, 2) / 2;
-    // Pan is driven by sin(angle) — right = positive
-    const panA = Math.sin(fromDev.position.angle) * fromDev.position.radius;
-    const panB = Math.sin(toDev.position.angle) * toDev.position.radius;
-    return Math.max(-1, Math.min(1, panA + (panB - panA) * ef));
-  }, [orbitData, spatialDevices]);
+  const tabSwitcher = (compact = false) => (
+    <div className="flex rounded-full border border-foreground/10 bg-foreground/5 p-1">
+      {TABS.map(t => {
+        const Icon = t.icon;
+        const active = mode === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={e => {
+              e.stopPropagation();
+              onModeChange(t.id);
+            }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full font-semibold transition-colors",
+              compact ? "px-3 py-1 text-[10px]" : "px-3 py-1 text-[10px] lg:px-4 lg:py-1.5 lg:text-xs",
+              active
+                ? t.id === "solo"
+                  ? "bg-violet-500 text-white shadow-md"
+                  : "bg-blue-500 text-white shadow-md"
+                : "text-foreground/60 hover:text-foreground",
+            )}
+          >
+            <Icon className="h-3 w-3" />
+            {t.label}
+            {t.id === "room" && otherUserCount > 0 && (
+              <span
+                className={cn(
+                  "rounded-full px-1 text-[8px] font-black",
+                  active ? "bg-white/25" : "bg-foreground/10",
+                )}
+              >
+                {otherUserCount + 1}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
-    <div className={cn('flex-1', 'w-full', 'flex', 'flex-col', 'min-h-0', 'min-w-0')}>
-      <div className={cn('flex', 'items-center', 'justify-between', 'mb-2', 'lg:mb-4', 'shrink-0')}>
-        <div>
-          <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
-            Spatial Room
+    <div className="flex w-full min-w-0 flex-1 flex-col min-h-0">
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-3 lg:mb-4">
+        <div className="min-w-0">
+          <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+            Spatial Audio
           </h2>
-          <p className={cn('text-[10px]', 'lg:text-xs', 'text-foreground/40', 'mt-0.5')}>Drag users or devices to position them</p>
+          <p className="mt-0.5 truncate text-[10px] text-foreground/40 lg:text-xs">
+            {activeTab.blurb}
+          </p>
+        </div>
+        {tabSwitcher()}
+      </div>
+
+      <div className="flex min-h-0 w-full flex-1 flex-col-reverse gap-4 lg:flex-row">
+        {/* INLINE STAGE — tap-to-expand on mobile */}
+        <div
+          className={cn(
+            "relative w-full flex-1 touch-none overflow-hidden rounded-3xl",
+            "border border-foreground/5 bg-black/5 dark:bg-[#07090F]",
+            isMobileModalOpen ? "hidden lg:block" : "cursor-pointer lg:cursor-auto",
+          )}
+          onClick={() => {
+            if (window.innerWidth < 1024 && !isMobileModalOpen) setIsMobileModalOpen(true);
+          }}
+        >
+          <div
+            className={cn(
+              "absolute inset-0 h-full w-full",
+              !isMobileModalOpen &&
+                "pointer-events-none opacity-70 blur-sm transition-all lg:pointer-events-auto lg:opacity-100 lg:blur-none",
+            )}
+          >
+            {!isMobileModalOpen && scene}
+          </div>
+
+          {!isMobileModalOpen && (
+            <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-background/10 lg:hidden">
+              <div className="flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-xs font-black tracking-wide text-background shadow-2xl">
+                <Maximize2 className="h-4 w-4" />
+                <span>TAP TO EXPAND</span>
+              </div>
+            </div>
+          )}
+
+          {mode === "room" && otherUserCount === 0 && (
+            <div className="pointer-events-none absolute left-1/2 top-4 hidden -translate-x-1/2 rounded-full bg-background/70 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-foreground/40 backdrop-blur lg:block">
+              You're the only one here
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 select-none text-[9px] font-bold uppercase tracking-widest text-foreground/20 lg:block">
+            Drag a speaker to move it · Drag empty space to orbit · Scroll to zoom
+          </div>
         </div>
 
-        {allow8DSolo && (
-          <div className={cn('flex', 'bg-foreground/5', 'p-1', 'rounded-full', 'border', 'border-foreground/10')}>
-            <button 
-              onClick={() => onSpatialModeChange?.('multiplayer')}
-              className={`px-3 py-1 lg:px-4 lg:py-1.5 text-[10px] lg:text-xs rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
-            >
-              Multiplayer
-            </button>
-            <button 
-              onClick={() => onSpatialModeChange?.('8d-solo')}
-              className={`px-3 py-1 lg:px-4 lg:py-1.5 text-[10px] lg:text-xs rounded-full font-semibold transition-colors flex items-center gap-1.5 ${spatialMode === '8d-solo' ? 'bg-violet-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
-            >
-              8D Solo
-            </button>
-          </div>
-        )}
+        <SpatialControls
+          motion={motion}
+          onMotionChange={onMotionChange}
+          myDevices={myDevices}
+          onQuickPlace={handleQuickPlace}
+          onReset={onReset}
+          isPlaying={isPlaying}
+        />
       </div>
 
-      <div className={cn('flex-1', 'w-full', 'flex', 'flex-col-reverse', 'lg:flex-row', 'gap-4', 'min-h-0')}>
-          {/* ── 3D Spatial Scene ─────────────────────────────────────────── */}
-          {(() => {
-            // ── 3D Canvas (shared between inline + modal) ─────────────────
-            const scene3D = (
-              <SpatialScene3D
-                spatialDevices={spatialDevices}
-                participants={participants}
-                myDeviceId={myDeviceId}
-                myUserId={myUserId}
+      {/* FULL-SCREEN STAGE — mobile */}
+      {mounted &&
+        isMobileModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-100 flex flex-col bg-background/92 p-4 backdrop-blur-3xl duration-200 animate-in fade-in lg:hidden">
+            <div className="mb-4 flex items-center justify-between gap-3 pt-12">
+              {tabSwitcher(true)}
+              <button
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground hover:bg-foreground/20"
+                onClick={e => {
+                  e.stopPropagation();
+                  setIsMobileModalOpen(false);
+                }}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="relative w-full flex-1 touch-none overflow-hidden rounded-3xl border border-foreground/10 bg-black/10 shadow-2xl dark:bg-[#07090F]">
+              {scene}
+            </div>
+
+            <div className="mt-3 max-h-[42vh] shrink-0 overflow-y-auto">
+              <SpatialControls
+                motion={motion}
+                onMotionChange={onMotionChange}
+                myDevices={myDevices}
+                onQuickPlace={handleQuickPlace}
+                onReset={onReset}
                 isPlaying={isPlaying}
-                onUpdatePosition={onUpdatePosition}
-                className="absolute inset-0 w-full h-full"
               />
-            );
-
-            return (
-              <>
-                {/* INLINE VIEW — blurred/overlay on mobile until tapped */}
-                <div
-                  className={`flex-1 w-full relative overflow-hidden bg-black/5 dark:bg-[#07090F] touch-none rounded-3xl border border-foreground/5 ${!isMobileModalOpen ? "cursor-pointer lg:cursor-auto" : "hidden lg:block"}`}
-                  onClick={() => {
-                    if (window.innerWidth < 1024 && !isMobileModalOpen) {
-                      setIsMobileModalOpen(true);
-                    }
-                  }}
-                >
-                  <div className={!isMobileModalOpen ? "absolute inset-0 lg:opacity-100 opacity-70 lg:blur-none blur-sm pointer-events-none lg:pointer-events-auto transition-all w-full h-full" : "absolute inset-0 w-full h-full"}>
-                    {scene3D}
-                  </div>
-
-                  {/* "TAP TO EXPAND" pill — mobile only, shown when not yet opened */}
-                  {!isMobileModalOpen && (
-                    <div className={cn('absolute', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'lg:hidden', 'pointer-events-none', 'bg-background/10')}>
-                      <div className={cn('bg-foreground', 'text-background', 'px-5', 'py-2.5', 'rounded-full', 'font-black', 'text-xs', 'shadow-2xl', 'flex', 'items-center', 'gap-2', 'tracking-wide')}>
-                        <Maximize2 className={cn('w-4', 'h-4')} />
-                        <span>TAP TO EXPAND</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Hint overlay on desktop */}
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-widest text-foreground/20 uppercase pointer-events-none select-none hidden lg:block">
-                    Drag to rotate · Scroll to zoom
-                  </div>
-                </div>
-
-                {/* MODAL VIEW — mobile only, full-screen */}
-                {mounted && isMobileModalOpen && createPortal(
-                  <div className={cn('fixed', 'inset-0', 'z-[100]', 'flex', 'flex-col', 'p-4', 'bg-background/92', 'backdrop-blur-3xl', 'animate-in', 'fade-in', 'duration-200', 'lg:hidden')}>
-                    <div className={cn('flex', 'items-center', 'justify-between', 'mb-4', 'pt-12')}>
-                      <div className={cn('flex', 'items-center', 'gap-4')}>
-                        <h2 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
-                          Spatial Room
-                        </h2>
-                        {allow8DSolo && (
-                          <div className={cn('flex', 'bg-foreground/5', 'p-1', 'rounded-full', 'border', 'border-foreground/10')}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('multiplayer'); }}
-                              className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === 'multiplayer' ? 'bg-blue-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
-                            >
-                              Multiplayer
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onSpatialModeChange?.('8d-solo'); }}
-                              className={`px-3 py-1 text-[10px] rounded-full font-semibold transition-colors ${spatialMode === '8d-solo' ? 'bg-violet-500 text-white shadow-md' : 'text-foreground/60 hover:text-foreground'}`}
-                            >
-                              8D Solo
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        className={cn('w-10', 'h-10', 'rounded-full', 'bg-foreground/10', 'flex', 'items-center', 'justify-center', 'text-foreground', 'hover:bg-foreground/20')}
-                        onClick={(e) => { e.stopPropagation(); setIsMobileModalOpen(false); }}
-                      >
-                        <X className={cn('w-5', 'h-5')} />
-                      </button>
-                    </div>
-                    <div className={cn('flex-1', 'w-full', 'relative', 'overflow-hidden', 'bg-black/10', 'dark:bg-[#07090F]', 'touch-none', 'rounded-3xl', 'border', 'border-foreground/10', 'shadow-2xl')}>
-                      {scene3D}
-                    </div>
-                  </div>,
-                  document.body,
-                )}
-              </>
-            );
-          })()}
-        {/* Right side orbit controls (Responsive) */}
-        {onOrbitSpeedChange && (
-          <div className={cn('order-first', 'lg:order-last', 'lg:w-48', 'shrink-0', 'bg-foreground/5', 'rounded-2xl', 'p-3', 'lg:p-4', 'flex', 'flex-col', 'gap-3', 'lg:gap-4')}>
-            <div className={cn('flex', 'flex-row', 'lg:flex-col', 'justify-between', 'items-center', 'lg:items-start', 'gap-2')}>
-              <h3 className={cn('text-sm', 'font-semibold', 'text-foreground/90')}>Spatial Controller</h3>
-              <div className={cn('text-[10px]', 'sm:text-xs', 'font-mono', 'text-cyan-400/90', 'flex', 'items-center', 'gap-1.5', 'font-bold', 'tracking-tight')}>
-                {orbitSpeed.toFixed(1)}s / device
-              </div>
             </div>
-            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center')}>
-              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>ORBIT SPEED</div>
-              <input
-                type="range"
-                min="0.5"
-                max="10"
-                step="0.5"
-                value={orbitSpeed}
-                onChange={(e) => onOrbitSpeedChange(parseFloat(e.target.value))}
-                style={{
-                  background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) ${((orbitSpeed - 0.5) / 9.5) * 100}%, rgba(255,255,255,0.15) 100%)`
-                }}
-                className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-cyan-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(6,182,212,0.9)]')}
-              />
-              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1')}>
-                <span>Fast</span>
-                <span>Slow</span>
-              </div>
-            </div>
-
-            
-            {/* My Elevation Slider */}
-            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center', 'border-t', 'border-foreground/10', 'pt-3', 'lg:pt-4')}>
-              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>MY ELEVATION</div>
-              <input
-                type="range"
-                min="-45"
-                max="45"
-                step="1"
-                value={spatialDevices.find(d => d.deviceId === myDeviceId)?.position.elevation ?? 0}
-                onChange={(e) => {
-                  const myDev = spatialDevices.find(d => d.deviceId === myDeviceId);
-                  if (myDev) {
-                    onUpdatePosition(myDeviceId, { ...myDev.position, elevation: parseFloat(e.target.value) });
-                  }
-                }}
-                className={cn('w-full', 'accent-white')}
-              />
-              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1', 'font-bold')}>
-                <span>Floor</span>
-                <span>Ear</span>
-                <span>Ceil</span>
-              </div>
-            </div>
-
-            {/* Live Pan Meter */}
-            <div className={cn('flex-1', 'flex', 'flex-col', 'justify-center', 'border-t', 'border-foreground/10', 'pt-3', 'lg:pt-4')}>
-              <div className={cn('text-[10px]', 'text-foreground/50', 'font-bold', 'mb-1')}>LIVE PAN</div>
-              <input
-                type="range"
-                min="-1"
-                max="1"
-                step="0.01"
-                value={panValue}
-                readOnly
-                className={cn('w-full', 'accent-white', 'pointer-events-none')}
-              />
-              <div className={cn('flex', 'justify-between', 'text-[10px]', 'text-foreground/50', 'mt-1', 'font-bold')}>
-                <span>L</span>
-                <span>R</span>
-              </div>
-            </div>
-          </div>
+          </div>,
+          document.body,
         )}
-      </div>
     </div>
   );
 }

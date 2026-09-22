@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useCallback, useState, useMemo } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { use } from "react";
 import { useRoom } from "../../../../hooks/useRoom";
 import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
-import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
+import { useSpatialAudio, type SpatialMode } from "../../../../hooks/useSpatialAudio";
 
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
@@ -20,7 +20,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const router = useRouter();
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
-  const { isOnline, isServerReachable, retryNow } = useConnection();
+  const { retryNow } = useConnection();
   const resolvedParams = use(params);
   const roomId = resolvedParams.id;
 
@@ -57,7 +57,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     userId: user?.id,
   });
 
-  const isConnecting = joinStatus === "connecting" || joinStatus === "pending";
   const connectionError = joinStatus === "denied" || isTimedOut;
 
   // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
@@ -144,13 +143,19 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setPrefetch, setPlay, setPause, setSeek, setNextTrack, setPrevTrack
   ]);
 
-  // ── Spatial Mode State ────────────────────────────────────────────────────────
-  const [spatialMode, setSpatialMode] = useState<'multiplayer' | '8d-solo'>('multiplayer');
+  // ── Spatial ───────────────────────────────────────────────────────────────
+  // "My Space" surrounds you with your own devices; "Room" uses everybody's.
+  const [spatialMode, setSpatialMode] = useState<SpatialMode>('solo');
 
-  const allow8DSolo = false; // Temporarily removed 8D audio solo
-
-  // Spatial audio
-  const { layout, updatePosition, setMotion, motion } = useSpatialAudio({
+  const {
+    layout: spatialLayout,
+    updatePosition: updateSpatialPosition,
+    previewPosition: previewSpatialPosition,
+    commitPosition: commitSpatialPosition,
+    resetLayout: resetSpatialLayout,
+    motion: spatialMotion,
+    setMotion: setSpatialMotion,
+  } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
     eqOutputNode: audio.eqOutputNode,
@@ -163,12 +168,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
     clockOffset: clockOffset,
-    mode: spatialMode === '8d-solo' && allow8DSolo ? 'solo' : 'room',
+    mode: spatialMode,
   });
-
-  // Flatten layout.devices into the DeviceSpatialState shape expected by RoomDashboard/SpatialPanel
-  const spatialDevices = layout.devices.map(d => ({ deviceId: d.deviceId, position: d.position }))
-
   // Playback actions (wired to socket via useRoom)
   const handlePlay = useCallback(() => play(), [play]);
   const handlePause = useCallback(() => pause(), [pause]);
@@ -276,11 +277,15 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
-          allow8DSolo={allow8DSolo}
-          spatialDevices={spatialDevices}
-          onUpdateSpatialPosition={updatePosition}
+          spatialLayout={spatialLayout}
           spatialMode={spatialMode}
           onSpatialModeChange={setSpatialMode}
+          spatialMotion={spatialMotion}
+          onSpatialMotionChange={setSpatialMotion}
+          onUpdateSpatialPosition={updateSpatialPosition}
+          onPreviewSpatialPosition={previewSpatialPosition}
+          onCommitSpatialPosition={commitSpatialPosition}
+          onResetSpatialLayout={resetSpatialLayout}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,

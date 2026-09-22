@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Sparkles, Copy, Check, Download, Trash2, Cpu, Activity, AlertTriangle, RefreshCw, Loader2, ChevronRight, Link2
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Copy, Check, Download, Trash2, Activity, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
@@ -13,7 +13,6 @@ import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import { GlobalLoadingScreen } from "../../../components/GlobalLoadingScreen";
 import { cn } from "../../../lib/utils";
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
@@ -34,7 +33,7 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
+  const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
   
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
@@ -43,17 +42,20 @@ export default function ProfilePage() {
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const [bio, setBio] = useState("Audio Sync Enthusiast • SyncBeats Host");
+
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   // Active production tab ('settings' | 'devices' | 'integrations' | 'security' | 'data')
   const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'integrations' | 'security' | 'data'>('settings');
+
+  // Interaction state for settings panel color picker
   const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
 
+
   // Integrations state
-  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
   const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
+  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
 
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -68,7 +70,6 @@ export default function ProfilePage() {
   const displayName = profileName.trim() || user?.name || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const accountId = user ? `#SB-${user.id.slice(0, 8).toUpperCase()}` : "—";
-  const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
     if (user?.name && !isEditingProfile) {

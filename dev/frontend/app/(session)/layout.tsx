@@ -8,7 +8,7 @@ import { UploadProvider } from "../../context/UploadContext";
 import { SyncProvider } from "../../context/SyncContext";
 const DynamicIsland = dynamic(() => import("../../components/dynamic-island").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
-import { X, Camera, MessageSquare, LoaderCircle } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,6 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const isRoom = pathname?.includes("/room/");
   const isProfile = pathname?.includes("/profile");
-  const isFullscreen = isRoom || isProfile;
   const [deviceName, setDeviceName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
