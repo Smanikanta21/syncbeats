@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
-  Loader2, AlertCircle, Activity,
+  Loader2, AlertCircle, AlertTriangle, Activity,
   ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
   Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
 } from "lucide-react";
@@ -21,7 +21,6 @@ import { formatTime } from "../../hooks/useAudioPlayer";
 import { ThemeToggle } from "../ThemeToggle";
 import { useSyncInfo } from "../../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../../hooks/useNetworkStats";
-import { SpotifyIslandTab } from "../room/SpotifyIslandTab";
 import { SearchTab } from "../room/SearchTab";
 import { useSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";

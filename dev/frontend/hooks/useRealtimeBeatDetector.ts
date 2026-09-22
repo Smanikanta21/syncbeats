@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useBeatEngine } from "../context/BeatContext";
 import { useOptionalAudio } from "../context/AudioContext";
 import { useSyncInfo } from "../context/SyncContext";
-import { useVisualizer } from "../context/VisualizerContext";
+import { useOptionalVisualizer } from "../context/VisualizerContext";
 
 export function useRealtimeBeatDetector(enabled: boolean = true) {
   const { emitBeat } = useBeatEngine();
@@ -12,7 +12,9 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
   const { isRoomPlaying } = useSyncInfo();
   // Read from the shared VisualizerContext RAF loop instead of running a
   // separate getRawAudioData() call — eliminates a duplicate 60fps FFT read.
-  const { dataRef } = useVisualizer();
+  // useOptionalVisualizer returns null safely if called outside the provider
+  // (e.g. SSR, or pages that don’t mount VisualizerProvider) — no throw.
+  const visualizer = useOptionalVisualizer();
 
   const rafRef = useRef<number>(0);
   const stateRef = useRef({
@@ -54,11 +56,16 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
       const deltaMs = Math.min(100, timestamp - s.prevTimestamp);
       s.prevTimestamp = timestamp;
 
-      const isPlaying = isRoomPlaying && dataRef.current.isPlaying;
+      const isPlaying = isRoomPlaying && (
+        visualizer ? visualizer.dataRef.current.isPlaying : (audioContext ? audioContext.isPlaying : false)
+      );
       if (!isPlaying) return;
 
-      // Read from the shared VisualizerContext data — no duplicate FFT allocation
-      const data = dataRef.current.rawAudioData;
+      // Prefer shared VisualizerContext data (no duplicate FFT read);
+      // fall back to direct getRawAudioData() if provider isn’t mounted.
+      const data = visualizer
+        ? visualizer.dataRef.current.rawAudioData
+        : (audioContext?.getRawAudioData ? audioContext.getRawAudioData() : null);
       let isDataActive = false;
 
       if (data && data.length >= 60) {
@@ -194,5 +201,5 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [enabled, dataRef, isRoomPlaying, emitBeat]);
+  }, [enabled, visualizer, audioContext, isRoomPlaying, emitBeat]);
 }
