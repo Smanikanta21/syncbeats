@@ -59,6 +59,9 @@ interface SpatialPanelProps {
   onUpdatePosition: (key: string, pos: SpatialPosition) => void;
   onReset: () => void;
   isPlaying: boolean;
+  /** Whether spatial audio processing is active */
+  enabled?: boolean;
+  onEnabledChange?: (enabled: boolean) => void;
 }
 
 const TABS: Array<{ id: SpatialMode; label: string; icon: typeof User; blurb: string }> = [
@@ -90,6 +93,8 @@ export function SpatialPanel({
   onUpdatePosition,
   onReset,
   isPlaying,
+  enabled = true,
+  onEnabledChange,
 }: SpatialPanelProps) {
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -208,10 +213,34 @@ export function SpatialPanel({
             Spatial Audio
           </h2>
           <p className="mt-0.5 truncate text-[10px] text-foreground/40 lg:text-xs">
-            {activeTab.blurb}
+            {enabled ? activeTab.blurb : "Spatial processing is off"}
           </p>
         </div>
-        {tabSwitcher()}
+
+        {/* Controls row: toggle + tab switcher */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Spatial toggle */}
+          <button
+            onClick={() => onEnabledChange?.(!enabled)}
+            title={enabled ? "Turn off spatial audio" : "Turn on spatial audio"}
+            className={cn(
+              "relative flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-all duration-300",
+              enabled
+                ? "border-violet-500/40 bg-violet-500"
+                : "border-foreground/15 bg-foreground/10",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-300",
+                enabled ? "left-[26px]" : "left-1",
+              )}
+            />
+          </button>
+
+          {/* Solo / Room tabs — hidden when spatial is off */}
+          {enabled && tabSwitcher()}
+        </div>
       </div>
 
       <div className="flex min-h-0 w-full flex-1 flex-col-reverse gap-4 lg:flex-row">
@@ -235,6 +264,24 @@ export function SpatialPanel({
           >
             {!isMobileModalOpen && scene}
           </div>
+
+          {/* Disabled overlay */}
+          {!enabled && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-3xl bg-background/60 backdrop-blur-sm">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground/8 border border-foreground/10">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5 text-foreground/40">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-[11px] font-semibold text-foreground/40">Spatial audio off</p>
+              <button
+                onClick={(e) => { e.stopPropagation(); onEnabledChange?.(true); }}
+                className="mt-1 rounded-full bg-violet-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-violet-600 transition-colors"
+              >
+                Turn on
+              </button>
+            </div>
+          )}
 
           {!isMobileModalOpen && (
             <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-background/10 lg:hidden">

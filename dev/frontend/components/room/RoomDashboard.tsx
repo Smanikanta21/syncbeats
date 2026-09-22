@@ -58,6 +58,8 @@ interface RoomDashboardProps {
   onPreviewSpatialPosition: (key: string, pos: SpatialPosition) => void;
   onCommitSpatialPosition: (key: string, pos: SpatialPosition) => void;
   onResetSpatialLayout: () => void;
+  spatialEnabled: boolean;
+  onSpatialEnabledChange: (enabled: boolean) => void;
 
   // Playback
   audio: {
@@ -411,6 +413,8 @@ export function RoomDashboard({
               onUpdatePosition={onUpdateSpatialPosition}
               onReset={onResetSpatialLayout}
               isPlaying={isPlaying}
+              enabled={spatialEnabled}
+              onEnabledChange={onSpatialEnabledChange}
             />
           </GlassCard>
 
@@ -845,6 +849,8 @@ export function RoomDashboard({
                   onUpdatePosition={onUpdateSpatialPosition}
                   onReset={onResetSpatialLayout}
                   isPlaying={isPlaying}
+                  enabled={spatialEnabled}
+                  onEnabledChange={onSpatialEnabledChange}
                 />
               </GlassCard>
             </motion.div>

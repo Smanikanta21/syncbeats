@@ -146,6 +146,18 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   // ── Spatial ───────────────────────────────────────────────────────────────
   // "My Space" surrounds you with your own devices; "Room" uses everybody's.
   const [spatialMode, setSpatialMode] = useState<SpatialMode>('solo');
+  const [spatialEnabled, setSpatialEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = localStorage.getItem('syncbeats:spatialEnabled');
+      return stored === null ? true : stored === 'true';
+    } catch { return true; }
+  });
+
+  const handleSpatialEnabledChange = useCallback((enabled: boolean) => {
+    setSpatialEnabled(enabled);
+    try { localStorage.setItem('syncbeats:spatialEnabled', String(enabled)); } catch {}
+  }, []);
 
   const {
     layout: spatialLayout,
@@ -163,7 +175,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     myDeviceId: currentSocketId ?? "",
     myUserId: user?.id ?? "",
     roomId: roomId,
-    enabled: isConnected,
+    enabled: isConnected && spatialEnabled,
     initialDevices: snapshot?.spatial ?? [],
     participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
@@ -286,6 +298,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           onPreviewSpatialPosition={previewSpatialPosition}
           onCommitSpatialPosition={commitSpatialPosition}
           onResetSpatialLayout={resetSpatialLayout}
+          spatialEnabled={spatialEnabled}
+          onSpatialEnabledChange={handleSpatialEnabledChange}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,
