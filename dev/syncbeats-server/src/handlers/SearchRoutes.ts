@@ -1,11 +1,7 @@
 import { Router } from 'express';
 import ytSearch from 'yt-search';
-import ytdl from '@distube/ytdl-core';
-import play from 'play-dl';
 import prisma from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
-
-const youtubeUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 export function createSearchRoutes(): Router {
   const router = Router();
