@@ -40,7 +40,7 @@ jobs:
 
       - name: Teardown Staging via SSH
         run: |
-          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="cd /home/abhinay && sudo COMPOSE_PROJECT_NAME=syncbeats-staging docker compose --env-file .env.syncbeats-staging down -v"
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo COMPOSE_PROJECT_NAME=syncbeats-staging docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.syncbeats-staging down -v"
 
   test-backend:
     name: Run Backend Test Suite
@@ -176,4 +176,4 @@ jobs:
 
       - name: Deploy to VM via SSH
         run: |
-          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo mv /tmp/.env.${COMPOSE_PROJECT_NAME} /home/abhinay/.env.${COMPOSE_PROJECT_NAME} && sudo fallocate -l 2G /swapfile || true && sudo chmod 600 /swapfile || true && sudo mkswap /swapfile || true && sudo swapon /swapfile || true && cd /home/abhinay && sudo docker compose --env-file .env.${COMPOSE_PROJECT_NAME} pull server && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose --env-file .env.${COMPOSE_PROJECT_NAME} run --rm server npx prisma migrate deploy && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose --env-file .env.${COMPOSE_PROJECT_NAME} up -d server"
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo mv /tmp/.env.${COMPOSE_PROJECT_NAME} /home/abhinay/.env.${COMPOSE_PROJECT_NAME} && sudo fallocate -l 2G /swapfile || true && sudo chmod 600 /swapfile || true && sudo mkswap /swapfile || true && sudo swapon /swapfile || true && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} pull server && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} run --rm server npx prisma migrate deploy && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} up -d server"
