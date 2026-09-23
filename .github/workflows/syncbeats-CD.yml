@@ -124,7 +124,7 @@ jobs:
             echo "FRONTEND_PORT=3001" >> $GITHUB_ENV
             echo "STUDIO_PORT=5556" >> $GITHUB_ENV
             echo "ENV_POSTGRES_DB=syncbeats_staging" >> $GITHUB_ENV
-            echo "BACKEND_URL=https://dev-api.syncbeats.app" >> $GITHUB_ENV
+            echo "BACKEND_URL=https://dev-api.syncbeats.in" >> $GITHUB_ENV
           else
             echo "COMPOSE_PROJECT_NAME=sync-beats" >> $GITHUB_ENV
             echo "PORT=4000" >> $GITHUB_ENV
