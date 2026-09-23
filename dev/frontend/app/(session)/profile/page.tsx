@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Sparkles, Copy, Check, Download, Trash2, Cpu, Activity, AlertTriangle, RefreshCw, Loader2, ChevronRight, Link2
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Copy, Check, Download, Trash2, Activity, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
@@ -11,8 +11,8 @@ import { devicesApi, roomsApi, spotifyApi, youtubeApi, type Device } from "../..
 import { SettingsPanel } from "../../../components/settings";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
+import { GlobalLoadingScreen } from "../../../components/GlobalLoadingScreen";
 import { cn } from "../../../lib/utils";
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
@@ -33,25 +33,29 @@ function getPlatformLabel(userAgent: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
+  const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
   
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
+  const [isFetchingStats, setIsFetchingStats] = useState(true);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const [bio, setBio] = useState("Audio Sync Enthusiast • SyncBeats Host");
+
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   // Active production tab ('settings' | 'devices' | 'integrations' | 'security' | 'data')
   const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'integrations' | 'security' | 'data'>('settings');
+
+  // Interaction state for settings panel color picker
   const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
 
+
   // Integrations state
-  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
   const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
+  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
 
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -66,7 +70,6 @@ export default function ProfilePage() {
   const displayName = profileName.trim() || user?.name || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const accountId = user ? `#SB-${user.id.slice(0, 8).toUpperCase()}` : "—";
-  const memberSince = user ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
 
   useEffect(() => {
     if (user?.name && !isEditingProfile) {
@@ -76,10 +79,17 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user?.id) {
-      devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {});
-      roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0));
-      spotifyApi.getStatus().then(res => setSpotifyConnected(res.connected)).catch(() => {});
-      youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {});
+      setIsFetchingStats(true);
+      Promise.all([
+        devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {}),
+        roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0)),
+        spotifyApi.getStatus().then(res => setSpotifyConnected(res.connected)).catch(() => {}),
+        youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {})
+      ]).finally(() => {
+        setIsFetchingStats(false);
+      });
+    } else {
+      setIsFetchingStats(false);
     }
   }, [user?.id]);
 
@@ -195,12 +205,16 @@ export default function ProfilePage() {
     router.push('/room/default');
   }, [router]);
 
+  if (!user || isFetchingStats) {
+    return <GlobalLoadingScreen />;
+  }
+
   return (
     <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>
       
       {/* ── Top Header Navigation Bar (Fixed Capsule) ───────────────── */}
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
-        <header className="w-full max-w-[1400px] flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
+        <header className="w-full max-w-350 flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
           <button
             onClick={handleBackToSession}
             className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group cursor-pointer"
@@ -232,7 +246,7 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Main Production Command Center Grid (Dual Pane) ───────────────── */}
-      <main className={cn('w-full', 'max-w-[1400px]', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
+      <main className={cn('w-full', 'max-w-350', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
         
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
         <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative')}>
@@ -241,7 +255,7 @@ export default function ProfilePage() {
           {/* Avatar & Status Ring */}
           <div className={cn('relative', 'mb-4', 'mt-2')}>
             <div className={cn('absolute', 'inset-0', 'bg-amber-500/20', 'blur-2xl', 'rounded-full', 'scale-125', 'animate-pulse')} />
-            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-gradient-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
+            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-linear-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
               <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-[#0B0F17]', 'flex', 'items-center', 'justify-center', 'relative', 'overflow-hidden')}>
                 <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-widest')}>{initials}</span>
               </div>
@@ -363,7 +377,7 @@ export default function ProfilePage() {
         </aside>
 
         {/* ── Right Pane: Active Production Section (8 Cols) ─────────────── */}
-        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-[650px]', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
+        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-162.5', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
           <AnimatePresence mode="wait">
             
             {/* 1. App Settings & Audio Tab */}
@@ -373,7 +387,7 @@ export default function ProfilePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className={cn('w-full', 'flex', 'flex-col', 'min-h-[600px]')}
+                className={cn('w-full', 'flex', 'flex-col', 'min-h-150')}
               >
                 <SettingsPanel
                   isEmbedded={true}

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma from '../db/prisma';
 import { RoomRepository } from '../db/RoomRepository';

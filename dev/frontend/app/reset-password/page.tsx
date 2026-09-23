@@ -48,7 +48,7 @@ function ResetPasswordContent() {
         <div className="absolute top-16 left-1/2 -translate-x-1/2 w-[520px] h-[520px] rounded-full bg-white/[0.03] blur-[140px]" />
       </div>
 
-      <div className="w-full max-w-lg rounded-[2rem] border border-foreground/10 bg-background/55 p-8 sm:p-10 shadow-[0_30px_90px_rgba(0,0,0,0.5)] backdrop-blur-xl relative">
+      <div className="w-full max-w-lg rounded-4xl border border-foreground/10 bg-background/55 p-8 sm:p-10 shadow-[0_30px_90px_rgba(0,0,0,0.5)] backdrop-blur-xl relative">
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-2xl bg-foreground/5 border border-foreground/10 flex items-center justify-center">
             <KeyRound className="h-5 w-5 text-foreground/80" />

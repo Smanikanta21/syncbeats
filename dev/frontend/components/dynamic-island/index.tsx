@@ -3,16 +3,16 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
-  Disc, Pause, Play, SkipForward, SkipBack, Upload, Music2,
-  Loader2, CheckCircle2, AlertCircle, AlertTriangle, RotateCcw, Play as Youtube, Activity,
-  ChevronLeft, Search, Plus, FastForward, Rewind, LogOut, Users,
-  Wifi, Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
+  Disc, Pause, Play, SkipForward, SkipBack, Upload,
+  Loader2, AlertCircle, AlertTriangle, Activity,
+  ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAudio } from "../../context/AudioContext";
-import { useVisualizer } from "../../context/VisualizerContext";
+
 import { useUpload } from "../../context/UploadContext";
 import { JoinRequest } from "../../lib/types";
 import { getSocket } from "../../lib/socket";
@@ -21,7 +21,6 @@ import { formatTime } from "../../hooks/useAudioPlayer";
 import { ThemeToggle } from "../ThemeToggle";
 import { useSyncInfo } from "../../context/SyncContext";
 import { useNetworkStats, qualityColor } from "../../hooks/useNetworkStats";
-import { SpotifyIslandTab } from "../room/SpotifyIslandTab";
 import { SearchTab } from "../room/SearchTab";
 import { useSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
@@ -567,7 +566,7 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
             className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
           />
         </div>
-        <div className={cn('max-h-[260px]', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
+        <div className={cn('max-h-65', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
           {loading ? (
             <div className={cn('flex', 'justify-center', 'py-3')}><Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white/40')} /></div>
           ) : results.length > 0 ? (
@@ -969,7 +968,7 @@ export function DynamicIsland() {
     cyan: "border border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.45)]",
     emerald: "border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
     amber: "border border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
-    dark: "border border-white/[0.08] shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
+    dark: "border border-white/8 shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
     none: "border border-white/10 shadow-none",
   };
   const currentGlowClass = isSearchLoading 
@@ -1658,7 +1657,7 @@ export function DynamicIsland() {
       />
 
       <div 
-        className={cn('fixed', 'left-1/2', '-translate-x-1/2', 'z-[100]', 'flex', 'flex-col', 'items-center', 'pointer-events-none')}
+        className={cn('fixed', 'left-1/2', '-translate-x-1/2', 'z-100', 'flex', 'flex-col', 'items-center', 'pointer-events-none')}
         style={{
           top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}

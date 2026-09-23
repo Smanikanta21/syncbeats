@@ -29,13 +29,13 @@ export default function TermsOfService() {
 
       <div className="max-w-4xl mx-auto px-6 py-24 relative z-10">
         <div className="mb-12 text-center md:text-left">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/50">
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-linear-to-b from-foreground to-foreground/50">
             Terms of Service
           </h1>
           <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm">Last updated: {lastUpdated}</p>
         </div>
 
-        <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-[2rem] p-8 md:p-12 shadow-[0_8px_40px_rgba(0,0,0,0.04)] space-y-12">
+        <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 md:p-12 shadow-[0_8px_40px_rgba(0,0,0,0.04)] space-y-12">
           
           <section>
             <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">

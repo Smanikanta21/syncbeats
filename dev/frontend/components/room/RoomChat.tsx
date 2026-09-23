@@ -175,7 +175,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
             <h3 className="text-sm font-black text-foreground tracking-tight flex items-center gap-2">
               Room Chat
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 {participants.length} online
               </span>
             </h3>
@@ -196,7 +196,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
       </div>
 
       {/* Quick Emoji Reaction Bar */}
-      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-foreground/5 bg-foreground/[0.02] overflow-x-auto shrink-0 no-scrollbar">
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-foreground/5 bg-foreground/2 overflow-x-auto shrink-0 no-scrollbar">
         <Smile className="w-4 h-4 text-foreground/30 shrink-0 ml-1" />
         {EMOJI_REACTIONS.map((emoji) => (
           <button
@@ -264,7 +264,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
                 </div>
                 <div
                   className={cn(
-                    "px-4 py-2.5 rounded-2xl text-xs font-medium leading-relaxed break-words shadow-sm transition-all",
+                    "px-4 py-2.5 rounded-2xl text-xs font-medium leading-relaxed wrap-break-word shadow-sm transition-all",
                     isMe
                       ? "bg-foreground text-background font-semibold rounded-tr-xs"
                       : "bg-foreground/10 text-foreground border border-foreground/10 rounded-tl-xs"

@@ -137,8 +137,8 @@ export function FeaturesExplanation() {
   }, { scope: containerRef });
 
   return (
-    <section ref={containerRef} className="relative z-10 w-full min-h-[100dvh] flex flex-col items-center justify-center py-24 overflow-hidden bg-background">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-foreground/[0.02] to-background pointer-events-none" />
+    <section ref={containerRef} className="relative z-10 w-full min-h-dvh flex flex-col items-center justify-center py-24 overflow-hidden bg-background">
+      <div className="absolute inset-0 bg-linear-to-b from-background via-foreground/[0.02] to-background pointer-events-none" />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16 md:mb-24 relative z-20">
         <span className="px-4 py-1.5 rounded-full border border-foreground/10 bg-foreground/5 text-xs font-bold tracking-widest uppercase text-foreground/60 mb-6 inline-block">
@@ -160,10 +160,10 @@ export function FeaturesExplanation() {
               className={`feature-card will-change-transform w-full max-w-md md:w-[400px] shrink-0 h-auto md:h-[450px] glass-panel rounded-3xl md:rounded-[2.5rem] p-6 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group transition-all duration-500 ${feature.borderHover}`}
             >
               {/* Vibrant Aurora Background Glow */}
-              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-gradient-to-br ${feature.color} rounded-full blur-[65px] opacity-40 md:opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
+              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-linear-to-br ${feature.color} rounded-full blur-[65px] opacity-40 md:opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
               
               {/* Secondary Soft Bottom Aurora Glow */}
-              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-gradient-to-tr ${feature.color} rounded-full blur-[70px] opacity-20 md:opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
+              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-linear-to-tr ${feature.color} rounded-full blur-[70px] opacity-20 md:opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
 
               <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-foreground/5 flex items-center justify-center mb-6 md:mb-8 relative z-10 border border-foreground/10 shadow-lg transition-all duration-300 ${feature.accent}`}>
                 <feature.icon className="w-7 h-7 md:w-8 md:h-8 transition-transform duration-300 group-hover:scale-110" />

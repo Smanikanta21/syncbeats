@@ -1,6 +1,7 @@
 // db/DeviceRepository.ts — Prisma-based implementation
 
 import prisma from './prisma';
+import { UAParser } from 'ua-parser-js';
 
 export interface PublicDevice {
   id:           string;
@@ -26,9 +27,27 @@ export class DeviceRepository {
     });
 
     if (existing) {
+      let newName = existing.name;
+      
+      // Auto-upgrade legacy or generic numbered names (e.g., 'Mac 1', 'iPhone 2', or just 'Mac')
+      // to the new smart naming convention when the user logs in or loads the app.
+      const isGeneric = /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(existing.name);
+      
+      if (isGeneric && userAgent) {
+        const smartName = this.buildDefaultDeviceName(ownerName, userAgent);
+        if (smartName && smartName !== existing.name) {
+          newName = smartName;
+        }
+      }
+
       const updated = await prisma.device.update({
         where: { id: existing.id },
-        data: { lastSeenAt: new Date(), userAgent, ...(ip ? { ip } : {}) }
+        data: { 
+          name: newName,
+          lastSeenAt: new Date(), 
+          userAgent, 
+          ...(ip ? { ip } : {}) 
+        }
       });
       return { device: this.mapDevice(updated), created: false };
     }
@@ -136,13 +155,15 @@ export class DeviceRepository {
     currentDeviceKey: string,
     targetDeviceId: string,
     userAgent: string | null
-  ): Promise<PublicDevice | null> {
+  ): Promise<{ device: PublicDevice, oldDeviceKey: string } | null> {
     const target = await prisma.device.findUnique({ where: { id: targetDeviceId } });
     if (!target || target.userId !== userId) return null;
 
     const current = await prisma.device.findUnique({
       where: { userId_deviceKey: { userId, deviceKey: currentDeviceKey } }
     });
+
+    const oldDeviceKey = target.deviceKey;
 
     if (current && current.id === target.id) {
       const same = await prisma.device.update({
@@ -152,7 +173,7 @@ export class DeviceRepository {
           lastSeenAt: new Date(),
         }
       });
-      return this.mapDevice(same);
+      return { device: this.mapDevice(same), oldDeviceKey };
     }
 
     const updatedTarget = await prisma.$transaction(async (tx) => {
@@ -170,7 +191,7 @@ export class DeviceRepository {
       });
     });
 
-    return this.mapDevice(updatedTarget);
+    return { device: this.mapDevice(updatedTarget), oldDeviceKey };
   }
 
   async remove(userId: string, deviceId: string): Promise<boolean> {
@@ -197,20 +218,37 @@ export class DeviceRepository {
   private buildDefaultDeviceName(ownerName: string, userAgent: string | null): string {
     const owner = ownerName?.trim() || 'My';
     const suffix = owner === 'My' ? '' : `'s`;
-    const platform = this.detectPlatformLabel(userAgent);
-    return `${owner}${suffix} ${platform}`.trim();
-  }
+    
+    if (!userAgent) {
+      return `${owner}${suffix} Device`.trim();
+    }
+    
+    const parser = new UAParser(userAgent);
+    const os = parser.getOS();
+    const browser = parser.getBrowser();
+    const device = parser.getDevice();
+    
+    let platformLabel = "Device";
+    
+    // Prioritize exact device model if available (e.g. Android models)
+    if (device.model) {
+      platformLabel = device.model;
+      if (platformLabel.toLowerCase() === "macintosh" || platformLabel.toLowerCase() === "macbook") {
+        platformLabel = "Mac";
+      }
+    } else if (os.name) {
+      if (os.name.includes("Mac OS")) platformLabel = "Mac";
+      else if (os.name.includes("iOS")) platformLabel = "iPhone";
+      else if (os.name.includes("Windows")) platformLabel = "Windows PC";
+      else if (os.name.includes("Android")) platformLabel = "Android Phone";
+      else platformLabel = os.name;
+    }
 
-  private detectPlatformLabel(userAgent: string | null): string {
-    const ua = (userAgent ?? '').toLowerCase();
+    // Append browser name if desktop
+    if (browser.name && !device.type && !["iPhone", "Android Phone"].includes(platformLabel)) {
+      return `${owner}${suffix} ${platformLabel} (${browser.name})`.trim();
+    }
 
-    if (ua.includes('iphone')) return 'iPhone';
-    if (ua.includes('ipad')) return 'iPad';
-    if (ua.includes('android')) return 'Android';
-    if (ua.includes('mac')) return 'Mac';
-    if (ua.includes('windows')) return 'Windows';
-    if (ua.includes('linux')) return 'Linux';
-
-    return 'Device';
+    return `${owner}${suffix} ${platformLabel}`.trim();
   }
 }

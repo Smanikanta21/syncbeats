@@ -117,8 +117,8 @@ export function TrackItemRow({
         isCurrent
           ? "bg-foreground/20 border border-foreground/20"
           : isHistory 
-            ? "opacity-50 hover:bg-foreground/[0.04] grayscale-[30%]"
-            : "border border-transparent hover:bg-foreground/[0.04]"
+            ? "opacity-50 hover:bg-foreground/4 grayscale-[30%]"
+            : "border border-transparent hover:bg-foreground/4"
       } ${isDragging ? "bg-foreground/5 border-dashed border-foreground/20 rounded-2xl" : ""}`}
       onClick={() => onTrackSelect?.(item)}
     >

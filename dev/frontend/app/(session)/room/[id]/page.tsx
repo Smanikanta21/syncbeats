@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useCallback, useState, useMemo } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { use } from "react";
 import { useRoom } from "../../../../hooks/useRoom";
 import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
-import { useSpatialAudio } from "../../../../hooks/useSpatialAudio";
+import { useSpatialAudio, type SpatialMode } from "../../../../hooks/useSpatialAudio";
 
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
@@ -20,7 +20,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const router = useRouter();
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
-  const { isOnline, isServerReachable, retryNow } = useConnection();
+  const { retryNow } = useConnection();
   const resolvedParams = use(params);
   const roomId = resolvedParams.id;
 
@@ -57,7 +57,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     userId: user?.id,
   });
 
-  const isConnecting = joinStatus === "connecting" || joinStatus === "pending";
   const connectionError = joinStatus === "denied" || isTimedOut;
 
   // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
@@ -144,32 +143,45 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setPrefetch, setPlay, setPause, setSeek, setNextTrack, setPrevTrack
   ]);
 
-  // ── Spatial Mode State ────────────────────────────────────────────────────────
-  const [spatialMode, setSpatialMode] = useState<'multiplayer' | '8d-solo'>('multiplayer');
+  // ── Spatial ───────────────────────────────────────────────────────────────
+  // "My Space" surrounds you with your own devices; "Room" uses everybody's.
+  const [spatialMode, setSpatialMode] = useState<SpatialMode>('solo');
+  const [spatialEnabled, setSpatialEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = localStorage.getItem('syncbeats:spatialEnabled');
+      return stored === null ? true : stored === 'true';
+    } catch { return true; }
+  });
 
-  const allow8DSolo = false; // Temporarily removed 8D audio solo
+  const handleSpatialEnabledChange = useCallback((enabled: boolean) => {
+    setSpatialEnabled(enabled);
+    try { localStorage.setItem('syncbeats:spatialEnabled', String(enabled)); } catch {}
+  }, []);
 
-  // Spatial audio
-  const { spatialDevices, updatePosition, syncUIState, setDeviceSequence, setOrbitSpeed, orbitSpeed } = useSpatialAudio({
+  const {
+    layout: spatialLayout,
+    updatePosition: updateSpatialPosition,
+    previewPosition: previewSpatialPosition,
+    commitPosition: commitSpatialPosition,
+    resetLayout: resetSpatialLayout,
+    motion: spatialMotion,
+    setMotion: setSpatialMotion,
+  } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
-    gainNode: audio.gainNode,
+    eqOutputNode: audio.eqOutputNode,
+    analyserNode: audio.analyserNode,
     myDeviceId: currentSocketId ?? "",
+    myUserId: user?.id ?? "",
     roomId: roomId,
-    enabled: isConnected,
+    enabled: isConnected && spatialEnabled,
     initialDevices: snapshot?.spatial ?? [],
     participants: participants,
     isPlaying: snapshot?.isPlaying ?? false,
-    is8DSoloMode: spatialMode === '8d-solo' && allow8DSolo,
+    clockOffset: clockOffset,
+    mode: spatialMode,
   });
-
-  // Build device sequence from all participants
-  useEffect(() => {
-    if (participants && participants.length > 0) {
-      setDeviceSequence(participants.map(p => p.socketId));
-    }
-  }, [participants, setDeviceSequence]);
-
   // Playback actions (wired to socket via useRoom)
   const handlePlay = useCallback(() => play(), [play]);
   const handlePause = useCallback(() => pause(), [pause]);
@@ -197,7 +209,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Subtle reconnecting banner — shown when socket drops while already in room */}
       {isReconnecting && !isConnected && (
-        <div className="fixed top-safe-top left-0 right-0 z-[9999] flex justify-center pt-16 pointer-events-none">
+        <div className="fixed top-safe-top left-0 right-0 z-9999 flex justify-center pt-16 pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/80 backdrop-blur-xl border border-foreground/10 shadow-lg text-sm font-medium text-foreground/70">
             <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -277,12 +289,17 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
-          allow8DSolo={allow8DSolo}
-          spatialDevices={spatialDevices}
-          onUpdateSpatialPosition={updatePosition}
-          syncUIState={syncUIState}
+          spatialLayout={spatialLayout}
           spatialMode={spatialMode}
           onSpatialModeChange={setSpatialMode}
+          spatialMotion={spatialMotion}
+          onSpatialMotionChange={setSpatialMotion}
+          onUpdateSpatialPosition={updateSpatialPosition}
+          onPreviewSpatialPosition={previewSpatialPosition}
+          onCommitSpatialPosition={commitSpatialPosition}
+          onResetSpatialLayout={resetSpatialLayout}
+          spatialEnabled={spatialEnabled}
+          onSpatialEnabledChange={handleSpatialEnabledChange}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,
@@ -302,8 +319,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             toggleMute: audio.toggleMute,
             unlockAudio: audio.unlockAudio,
           }}
-          orbitSpeed={orbitSpeed}
-          onOrbitSpeedChange={setOrbitSpeed}
           onPlay={handlePlay}
           onPause={handlePause}
           onNext={handleNext}

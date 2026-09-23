@@ -203,7 +203,7 @@ function RoomPreview({
   };
 
   return (
-    <div ref={containerRef} className={cn('w-full', 'aspect-[16/9]', 'max-h-[340px]', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/[0.08]', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'mb-6')}>
+    <div ref={containerRef} className={cn('w-full', 'aspect-video', 'max-h-85', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/8', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'mb-6')}>
       
       {/* Glowing Ambient Background Blobs — animated by demo beat rAF loop */}
       {nodes.map((node, idx) => {
@@ -562,7 +562,7 @@ export function SettingsPanel({
       <div className={cn('sticky', 'top-0', 'z-40', 'w-full', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'py-3', 'px-4', 'mb-3', 'rounded-3xl', 'border', 'border-foreground/15', 'shadow-2xl', 'flex', 'items-center', 'justify-between', 'transition-all')}>
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
-          <h2 className={cn('text-xl', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+          <h2 className={cn('text-lg', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
         </div>
 
         <div className="flex items-center gap-2">
@@ -636,8 +636,8 @@ export function SettingsPanel({
         <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
           <div className={cn('flex', 'items-center', 'justify-between', 'mb-2')}>
             <div className={cn('flex', 'items-center', 'gap-2')}>
-              <Palette className={cn('w-5', 'h-5', 'text-foreground/70')} />
-              <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
+              <Palette className={cn('w-4', 'sm:w-5', 'h-4', 'sm:h-5', 'text-foreground/70')} />
+              <h3 className={cn('text-base', 'sm:text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
             </div>
             <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
               {settings.gradientSettings?.presetName || "Custom Theme"}
@@ -683,7 +683,7 @@ export function SettingsPanel({
           </div>
 
           {/* Ambient Lighting Intensity & Contrast Controls */}
-          <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-foreground/[0.03] border border-foreground/10">
+          <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-foreground/3 border border-foreground/10">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-foreground flex items-center gap-1.5">
@@ -727,7 +727,7 @@ export function SettingsPanel({
 
           {/* Audio Visualizer Debug Overlay (HUD) Toggle Switch (Dev Only) */}
           {process.env.NEXT_PUBLIC_ENV !== "production" && process.env.NODE_ENV === "development" && (
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10 mb-5">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 mb-5">
               <div className="space-y-0.5 pr-2">
                 <div className="flex items-center gap-2">
                   <Zap className="w-3.5 h-3.5 text-cyan-400" />
@@ -756,13 +756,13 @@ export function SettingsPanel({
           )}
 
           {/* Auto Liquid Motion Drift Toggle */}
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10 mb-5">
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 mb-5">
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
                 <span className="text-xs font-bold text-foreground">Auto Liquid Motion Drift</span>
               </div>
-              <span className="text-[10px] text-foreground/50 mt-0.5 max-w-[280px]">
+              <span className="text-[10px] text-foreground/50 mt-0.5 max-w-70">
                 Nodes smoothly glide and flow across the room like liquid lava in sync with the track's beat.
               </span>
             </div>
@@ -784,7 +784,7 @@ export function SettingsPanel({
           </div>
 
           {/* Quick Color Count Presets Switcher */}
-          <div className="mb-5 p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10">
+          <div className="mb-5 p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10">
             <div className="flex items-center justify-between mb-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-foreground/50 block">
                 Select Theme Palette Size
@@ -857,7 +857,7 @@ export function SettingsPanel({
                       'py-2 px-3 rounded-xl text-center transition-all border font-bold text-xs',
                       isActive
                         ? 'bg-foreground text-background border-foreground shadow-md scale-[1.02]'
-                        : 'bg-foreground/[0.03] text-foreground/70 border-foreground/10 hover:bg-foreground/10'
+                        : 'bg-foreground/3 text-foreground/70 border-foreground/10 hover:bg-foreground/10'
                     )}
                   >
                     {label}
@@ -949,7 +949,7 @@ export function SettingsPanel({
                 const bandNames = AUDIO_BAND_NAMES[arr.length] || AUDIO_BAND_NAMES[3];
                 const bandName = bandNames[idx] || `Band ${idx + 1}`;
                 return (
-                  <div key={node.id} className="p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/10 space-y-2.5">
+                  <div key={node.id} className="p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <label className="relative w-7 h-7 rounded-xl shadow-sm border border-foreground/20 cursor-pointer overflow-hidden shrink-0" style={{ background: node.color }}>
@@ -1145,7 +1145,7 @@ export function SettingsPanel({
                 Keep your device screen awake during room listening sessions to prevent browser audio throttling and tab sleep.
               </p>
 
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/5">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-foreground">Keep Screen Awake</span>
                   <span className="text-[10px] text-foreground/40">Uses Web Screen Wake Lock API</span>
@@ -1201,7 +1201,7 @@ export function SettingsPanel({
                           'py-2 px-1 rounded-xl text-[10px] font-bold flex flex-col items-center gap-1 transition-all border cursor-pointer',
                           settings.islandCustomizer?.glowColor === theme.id
                             ? 'bg-foreground text-background border-foreground shadow-sm scale-105'
-                            : 'bg-foreground/[0.03] text-foreground/70 border-foreground/5 hover:bg-foreground/10'
+                            : 'bg-foreground/3 text-foreground/70 border-foreground/5 hover:bg-foreground/10'
                         )}
                       >
                         <div className={cn('w-3 h-3 rounded-full', theme.color)} />
@@ -1231,7 +1231,7 @@ export function SettingsPanel({
                           'py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer',
                           settings.islandCustomizer?.autoShrinkDelaySec === option.sec
                             ? 'bg-foreground text-background border-foreground shadow-sm scale-105'
-                            : 'bg-foreground/[0.03] text-foreground/70 border-foreground/5 hover:bg-foreground/10'
+                            : 'bg-foreground/3 text-foreground/70 border-foreground/5 hover:bg-foreground/10'
                         )}
                       >
                         {option.label}
@@ -1241,7 +1241,7 @@ export function SettingsPanel({
                 </div>
 
                 {/* Show Album Art Toggle */}
-                <div className="flex items-center justify-between p-3 rounded-2xl bg-foreground/[0.03] border border-foreground/5">
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-foreground/3 border border-foreground/5">
                   <span className="text-xs font-bold text-foreground">Show Album Artwork Thumbnail</span>
                   <button
                     type="button"

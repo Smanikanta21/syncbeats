@@ -32,6 +32,29 @@ interface EnqueueTrackResult {
   activated: boolean;
 }
 
+/**
+ * Stable per-track dedup key within a room. Used by the @@unique([roomId, trackKey])
+ * constraint on RoomQueueItem.
+ *
+ * MUST stay byte-identical to the SQL CASE expression in the migration
+ * `<ts>_add_room_queue_track_key/migration.sql` (backfill step), and MUST be computed
+ * from the SAME string that gets stored in track_url (i.e. the post-sanitizeString value),
+ * otherwise old backfilled rows and new inserts would key differently.
+ *
+ * magnet: URIs embed their own `?`/`&`, so a naive query-strip would collapse every
+ * magnet to `magnet:` — key them on the btih hash instead. All other forms
+ * (youtube:ID, spotify-lazy:ID, bare upload filenames) strip the volatile query string
+ * (`?thumb=…&pid=…`) to a stable, distinct key.
+ */
+export function computeTrackKey(trackUrl: string): string {
+  if (trackUrl.startsWith('magnet:')) {
+    const m = trackUrl.match(/xt=urn:btih:([^&]+)/);
+    return m ? `magnet:btih:${m[1].toLowerCase()}` : trackUrl;
+  }
+  const q = trackUrl.indexOf('?');
+  return q === -1 ? trackUrl : trackUrl.slice(0, q);
+}
+
 export class RoomRepository {
   async create(roomId: string, hostId: string): Promise<RoomRow> {
     const room = await prisma.room.create({
@@ -335,22 +358,38 @@ export class RoomRepository {
     const cleanArtist = input.artist ? sanitizeString(input.artist) : undefined;
     const cleanFileName = sanitizeString(input.fileName);
     const cleanMimeType = sanitizeString(input.mimeType);
+    const trackKey = computeTrackKey(cleanTrackUrl);
 
-    const created = await prisma.roomQueueItem.create({
-      data: {
-        roomId,
-        uploaderUserId,
-        trackUrl: cleanTrackUrl,
-        title: cleanTitle,
-        artist: cleanArtist,
-        fileName: cleanFileName,
-        mimeType: cleanMimeType,
-        sizeBytes: BigInt(input.sizeBytes),
-        queueIndex,
-        isCurrent: activated,
-      },
-      include: { uploader: { select: { name: true } } }
-    });
+    let created;
+    try {
+      created = await prisma.roomQueueItem.create({
+        data: {
+          roomId,
+          uploaderUserId,
+          trackUrl: cleanTrackUrl,
+          trackKey,
+          title: cleanTitle,
+          artist: cleanArtist,
+          fileName: cleanFileName,
+          mimeType: cleanMimeType,
+          sizeBytes: BigInt(input.sizeBytes),
+          queueIndex,
+          isCurrent: activated,
+        },
+        include: { uploader: { select: { name: true } } }
+      });
+    } catch (err) {
+      // Track already in this room's queue (unique [roomId, trackKey]) — return the
+      // existing row without activating or mutating room state, so enqueue is idempotent.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await prisma.roomQueueItem.findFirst({
+          where: { roomId, trackKey },
+          include: { uploader: { select: { name: true } } },
+        });
+        if (existing) return { item: this.mapQueueItem(existing), activated: false };
+      }
+      throw err;
+    }
 
     if (activated) {
       await prisma.room.update({

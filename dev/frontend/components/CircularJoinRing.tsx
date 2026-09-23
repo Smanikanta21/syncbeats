@@ -37,7 +37,7 @@ export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRing
   return (
     <div className={cn("relative flex items-center justify-center select-none", className)}>
       {/* Pulsing Concentric Outer Rings Desktop */}
-      <div className="hidden sm:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] h-[440px] rounded-full border border-foreground/20 border-dashed animate-[spin_60s_linear_infinite] pointer-events-none z-10" />
+      <div className="hidden sm:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] h-110 rounded-full border border-foreground/20 border-dashed animate-[spin_60s_linear_infinite] pointer-events-none z-10" />
       <div className="hidden sm:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] rounded-full border border-foreground/15 animate-[spin_40s_linear_infinite_reverse] pointer-events-none z-10" />
       <div className="hidden sm:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full border border-foreground/10 animate-[spin_25s_linear_infinite] pointer-events-none z-10" />
       <div className="hidden sm:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] h-[680px] rounded-full border border-foreground/5 animate-[spin_35s_linear_infinite_reverse] pointer-events-none z-10" />
@@ -69,7 +69,7 @@ export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRing
         className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 rounded-full glass-panel flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 text-center relative z-20 shadow-[0_25px_90px_rgba(0,0,0,0.3)] overflow-hidden border border-foreground/15 hover:border-foreground/40 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:shadow-[0_35px_110px_rgba(0,0,0,0.5)] transition-all duration-500 group cursor-pointer"
       >
         {/* Internal Gradient Glow */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none transition-opacity duration-500 group-hover:opacity-60" />
+        <div className="absolute inset-0 bg-linear-to-b from-white/10 to-transparent pointer-events-none transition-opacity duration-500 group-hover:opacity-60" />
 
         <form onSubmit={handleJoin} className="absolute inset-0 flex flex-col items-center justify-center z-10 w-full px-5 sm:px-8 md:px-14">
           <div className="flex flex-col items-center justify-center w-full -mt-3 sm:-mt-4 md:-mt-8">

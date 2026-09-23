@@ -18,7 +18,7 @@ export function PageSkeleton() {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className="relative z-10 glass-panel bg-foreground/[0.03] dark:bg-white/[0.04] backdrop-blur-3xl border border-foreground/10 dark:border-white/10 rounded-3xl p-8 flex flex-col items-center gap-5 shadow-2xl"
+        className="relative z-10 glass-panel bg-foreground/3 dark:bg-white/[0.04] backdrop-blur-3xl border border-foreground/10 dark:border-white/10 rounded-3xl p-8 flex flex-col items-center gap-5 shadow-2xl"
       >
         <div className="relative flex items-center justify-center">
           <div className="w-14 h-14 rounded-2xl bg-foreground/5 dark:bg-white/5 border border-foreground/10 flex items-center justify-center shadow-inner">

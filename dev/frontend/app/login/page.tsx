@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -26,7 +26,6 @@ export default function AuthPage() {
         .catch(() => router.replace("/room/default"));
     }
   }, [user, authLoading, router]);
-  const [googleReady, setGoogleReady] = useState(false);
   const googleLoginButtonRef  = useRef<HTMLDivElement>(null);
   const googleSignupButtonRef = useRef<HTMLDivElement>(null);
 
@@ -43,13 +42,9 @@ export default function AuthPage() {
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
-  const [theme, setTheme] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (typeof window !== "undefined") {
-      setTheme(localStorage.getItem('theme'));
-    }
     const params = new URLSearchParams(window.location.search);
     
     if (params.get('mode') === 'register') {
@@ -58,11 +53,11 @@ export default function AuthPage() {
     
     const cameFromGoogle = document.referrer.includes("accounts.google.");
     const hasGoogleOAuthParams =
-      params.has("code") ||
-      params.has("state") ||
-      params.has("scope") ||
-      params.has("authuser") ||
-      params.has("error");
+      params.has("state") || params.has("code") || params.has("scope") || params.has("authuser") || params.has("prompt");
+    
+    if (params.get('kicked') === 'true') {
+      setError("You were logged out because this device was replaced in another session.");
+    }
 
     if (!cameFromGoogle && !hasGoogleOAuthParams) return;
 
@@ -322,7 +317,7 @@ export default function AuthPage() {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`relative w-full max-w-5xl ${isLogin ? 'min-h-[650px]' : 'min-h-[850px]'} sm:h-[700px] md:h-[650px] glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500`}
+        className={`relative w-full max-w-5xl ${isLogin ? 'min-h-162.5' : 'min-h-212.5'} sm:h-175 md:h-162.5 glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500`}
       >
 
 

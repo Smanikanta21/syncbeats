@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
+import { getSocket } from "../lib/socket";
 
 interface AuthContextType {
   user:     User | null;
@@ -77,6 +78,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setLoading(false));
   }, [token]);
+
+  // ── Global Socket Connection for Device Management ───────────────────────
+  useEffect(() => {
+    if (!device?.device_key) return;
+
+    const socket = getSocket();
+    
+    const handleLogout = () => {
+      clearAuthToken();
+      setToken(null);
+      setUser(null);
+      setDevice(null);
+      window.location.href = '/login?kicked=true';
+    };
+
+    socket.on('device:logout', handleLogout);
+    
+    if (!socket.connected) {
+      socket.connect();
+    }
+    
+    // Register the device with the socket server
+    socket.emit('device:register', { deviceKey: device.device_key });
+
+    return () => {
+      socket.off('device:logout', handleLogout);
+    };
+  }, [device?.device_key]);
 
   const persist = (token: string, user: User) => {
     setAuthToken(token);

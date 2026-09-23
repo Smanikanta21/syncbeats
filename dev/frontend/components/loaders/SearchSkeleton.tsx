@@ -14,7 +14,7 @@ export function SearchSkeleton({ count = 4 }: SearchSkeletonProps) {
         <div
           key={idx}
           className={cn(
-            "flex items-center gap-3 p-2.5 rounded-xl bg-foreground/[0.04] border border-foreground/[0.06]"
+            "flex items-center gap-3 p-2.5 rounded-xl bg-foreground/4 border border-foreground/[0.06]"
           )}
         >
           {/* Thumbnail Skeleton */}

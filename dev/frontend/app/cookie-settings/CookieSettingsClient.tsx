@@ -79,7 +79,7 @@ export default function CookieSettingsClient() {
             <Cookie className="w-8 h-8 text-foreground/80" />
           </div>
           <div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/50">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-linear-to-b from-foreground to-foreground/50">
               Cookie Settings
             </h1>
             <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm mt-1">Manage your privacy</p>
@@ -90,7 +90,7 @@ export default function CookieSettingsClient() {
           {/* Main content */}
           <div className="lg:col-span-2 space-y-6">
             
-            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-[2rem] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
+            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
               <h2 className="text-2xl font-bold mb-4 tracking-tight">What are cookies?</h2>
               <p className="text-foreground/70 leading-relaxed font-medium">
                 Cookies are small text files stored on your device that help websites remember your preferences and activity. SyncBeats uses cookies to improve your experience, provide analytics, and maintain your session.
@@ -98,7 +98,7 @@ export default function CookieSettingsClient() {
             </div>
 
             {/* Essential Cookies */}
-            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-[2rem] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/[0.02]">
+            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/2">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-emerald-500" /> Essential Cookies</h3>
@@ -114,7 +114,7 @@ export default function CookieSettingsClient() {
             </div>
 
             {/* Analytics Cookies */}
-            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-[2rem] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/[0.02]">
+            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/2">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold">Analytics Cookies</h3>
@@ -139,7 +139,7 @@ export default function CookieSettingsClient() {
             </div>
 
             {/* Marketing Cookies */}
-            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-[2rem] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/[0.02]">
+            <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/2">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold flex items-center gap-3">
@@ -167,7 +167,7 @@ export default function CookieSettingsClient() {
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
               
-              <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 text-foreground rounded-[2rem] p-8 shadow-2xl relative overflow-hidden">
+              <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 text-foreground rounded-4xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-foreground/5 blur-[50px] rounded-full pointer-events-none" />
                 
                 <h3 className="text-xl font-bold mb-6 tracking-tight relative z-10">Your Selection</h3>

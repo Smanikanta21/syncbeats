@@ -56,7 +56,7 @@ export function IOSHomeScreenPrompt() {
           <div className="glass-panel p-5 rounded-3xl border border-foreground/15 shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl relative overflow-hidden flex flex-col gap-4">
             
             {/* Subtle Top Ambient Glow */}
-            <div className="absolute -top-10 -right-10 w-36 h-36 bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-10 -right-10 w-36 h-36 bg-linear-to-br from-emerald-500/20 to-cyan-500/20 rounded-full blur-2xl pointer-events-none" />
 
             {/* Header */}
             <div className="flex items-center justify-between z-10">
