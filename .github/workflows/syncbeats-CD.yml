@@ -92,12 +92,12 @@ jobs:
       - name: Create and Sync .env
         env:
           NODE_ENV: ${{ vars.NODE_ENV || 'production' }}
-          PORT: 4000
-          POSTGRES_USER: syncbeats
-          POSTGRES_PASSWORD: syncbeats
-          POSTGRES_DB: syncbeats
+          PORT: ${{ vars.PORT || '4000' }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'syncbeats' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'syncbeats' }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'syncbeats' }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://syncbeats.in' }}
-          BACKEND_URL: 'https://api.syncbeats.in'
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://api.syncbeats.in' }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
