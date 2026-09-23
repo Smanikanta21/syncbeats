@@ -95,32 +95,33 @@ export function createTelemetryRoutes(): Router {
     }
 
     try {
-      await prisma.syncTelemetry.create({
-        data: {
-          sessionId:        body.sessionId,
-          roomId:           body.roomId,
-          userId:           body.userId ?? null,
-          deviceType:       body.deviceType ?? null,
-          os:               body.os ?? null,
-          exactModel:       body.exactModel ?? null,
-          userAgent:        body.userAgent ?? null,
-          networkQuality:   body.networkQuality,
-          rttMedianMs:      body.rttMedianMs,
-          rttJitterMs:      body.rttJitterMs,
-          rttSamples:       body.rttSamples,
-          clockOffsetMs:    body.clockOffsetMs,
-          driftSamples:     body.driftSamples,
-          driftMeanMs:      body.driftMeanMs,
-          driftMaxMs:       body.driftMaxMs,
-          correctionTier:   body.correctionTier,
-          correctionsCount: body.correctionsCount,
-          playbackRate:     body.playbackRate,
-          audioUnlocked:    body.audioUnlocked,
-          tabVisible:       body.tabVisible,
-          sessionAgeSecs:   body.sessionAgeSecs,
-          participantCount: body.participantCount,
-        },
-      });
+      // Telemetry database writes have been temporarily disabled to save on database writes.
+      // await prisma.syncTelemetry.create({
+      //   data: {
+      //     sessionId:        body.sessionId,
+      //     roomId:           body.roomId,
+      //     userId:           body.userId ?? null,
+      //     deviceType:       body.deviceType ?? null,
+      //     os:               body.os ?? null,
+      //     exactModel:       body.exactModel ?? null,
+      //     userAgent:        body.userAgent ?? null,
+      //     networkQuality:   body.networkQuality,
+      //     rttMedianMs:      body.rttMedianMs,
+      //     rttJitterMs:      body.rttJitterMs,
+      //     rttSamples:       body.rttSamples,
+      //     clockOffsetMs:    body.clockOffsetMs,
+      //     driftSamples:     body.driftSamples,
+      //     driftMeanMs:      body.driftMeanMs,
+      //     driftMaxMs:       body.driftMaxMs,
+      //     correctionTier:   body.correctionTier,
+      //     correctionsCount: body.correctionsCount,
+      //     playbackRate:     body.playbackRate,
+      //     audioUnlocked:    body.audioUnlocked,
+      //     tabVisible:       body.tabVisible,
+      //     sessionAgeSecs:   body.sessionAgeSecs,
+      //     participantCount: body.participantCount,
+      //   },
+      // });
 
       res.status(201).json({ ok: true });
     } catch (err) {

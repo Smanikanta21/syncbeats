@@ -105,36 +105,10 @@ router.delete('/:id', requireAuth, async (req: any, res: any) => {
       return res.status(404).json({ error: 'Playlist not found or access denied.' });
     }
 
-    // Find all queue items that were enqueued from this playlist
-    const affectedQueueItems = await prisma.roomQueueItem.findMany({
-      where: { trackUrl: { contains: `pid=${id}` } }
-    });
-
-    // Group by room ID
-    const affectedRooms = new Set<string>();
-    affectedQueueItems.forEach(item => affectedRooms.add(item.roomId));
-
-    // Delete the queue items
-    if (affectedQueueItems.length > 0) {
-      await prisma.roomQueueItem.deleteMany({
-        where: { trackUrl: { contains: `pid=${id}` } }
-      });
-    }
-
     // Delete the playlist itself
     await prisma.playlist.delete({
       where: { id }
     });
-
-    // Sync the affected rooms so active players update immediately
-    for (const roomId of affectedRooms) {
-      const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.get(roomId);
-      if (room) {
-        const currentItem = latestQueue.find(i => i.isCurrent);
-        room.syncQueue(latestQueue, currentItem?.id ?? null);
-      }
-    }
 
     res.json({ success: true });
   } catch (error) {

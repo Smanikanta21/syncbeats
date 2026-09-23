@@ -55,6 +55,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     roomId: roomId,
     displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
     userId: user?.id,
+    authLoading: authLoading,
   });
 
   const connectionError = joinStatus === "denied" || isTimedOut;

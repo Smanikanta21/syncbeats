@@ -16,6 +16,7 @@ interface UseRoomOptions {
   roomId:      string;
   displayName: string;
   userId?:     string;
+  authLoading?: boolean;
 }
 
 interface UseRoomReturn {
@@ -56,7 +57,7 @@ interface UseRoomReturn {
 // NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
 // See hooks/useAdaptiveSync.ts for the tier table and EWMA blending logic.
 
-export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoomReturn {
+export function useRoom({ roomId, displayName, userId, authLoading = false }: UseRoomOptions): UseRoomReturn {
   // ── Adaptive network-quality engine ──────────────────────────────────────
   // paramsRef holds all 7 NTP/drift constants and updates after every burst.
   // networkQuality is a reactive string tier for UI display.
@@ -417,8 +418,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       audioRef.current.pauseAt(audioRef.current.getTruePosition());
     };
 
-    if (socket.connected) handleConnect();
-    else socket.connect();
+    if (!authLoading) {
+      if (socket.connected) handleConnect();
+      else socket.connect();
+    }
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -775,7 +778,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         try { navigator.mediaSession.setActionHandler('nexttrack', null); } catch (_) {}
       }
     };
-  }, [applyRoomDetails, roomId, displayName, socket, runNtpBurst]);
+  }, [applyRoomDetails, roomId, displayName, userId, authLoading, socket, runNtpBurst]);
 
   useEffect(() => {
     const handleAudioEnded = () => {

@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "send-announcement": "ts-node scripts/send-announcement.ts"
+    "send-announcement": "ts-node scripts/send-announcement.ts",
+    "sync-db": "bash ../../scripts/sync-db.sh"
   },
   "keywords": [],
   "author": "",

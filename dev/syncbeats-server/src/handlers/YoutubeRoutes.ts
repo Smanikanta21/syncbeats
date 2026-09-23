@@ -268,6 +268,52 @@ export function createYoutubeRoutes(): Router {
     }
   });
 
+  // POST /playlistItems — Add a track to a YouTube playlist
+  router.post('/playlistItems', requireAuth, async (req: any, res: any) => {
+    const { playlistId, videoId } = req.body;
+    
+    if (!playlistId || !videoId) {
+      return res.status(400).json({ error: 'Missing playlistId or videoId' });
+    }
+    
+    try {
+      const userId = req.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { ytAccessToken: true, ytRefreshToken: true }
+      });
+
+      if (!user?.ytAccessToken) {
+        return res.status(401).json({ error: 'YouTube not connected' });
+      }
+
+      oauth2Client.setCredentials({
+        access_token: user.ytAccessToken,
+        refresh_token: user.ytRefreshToken
+      });
+
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+      
+      const response = await youtube.playlistItems.insert({
+        part: ['snippet'],
+        requestBody: {
+          snippet: {
+            playlistId: playlistId,
+            resourceId: {
+              kind: 'youtube#video',
+              videoId: videoId
+            }
+          }
+        }
+      });
+      
+      res.json({ success: true, item: response.data });
+    } catch (error) {
+      console.error('[YouTube] Add Playlist Item Error:', error);
+      res.status(500).json({ error: 'Failed to add track to playlist' });
+    }
+  });
+
   // Fetch Curated "Home" data (Recommendations, History, Trending)
   router.get('/home', async (req: any, res: any) => {
     const userId = req.query.userId as string; // passed from client

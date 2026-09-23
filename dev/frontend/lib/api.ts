@@ -426,6 +426,11 @@ export const youtubeApi = {
       return [];
     }
   },
+  addToPlaylist: (playlistId: string, videoId: string) =>
+    request<{ success: boolean; item: any }>('/youtube/playlistItems', {
+      method: 'POST',
+      body: JSON.stringify({ playlistId, videoId })
+    }, true),
 };
 
 export const spotifyApi = {

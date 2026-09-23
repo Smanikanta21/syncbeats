@@ -12,6 +12,7 @@ import { SearchSkeleton } from "../loaders/SearchSkeleton";
 import { AppFeedback } from "../feedback/AppFeedback";
 
 import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
+import { AddToPlaylistModal } from "./AddToPlaylistModal";
 import { getSocket } from "../../lib/socket";
 import { useVisualizer } from "../../context/VisualizerContext";
 
@@ -108,15 +109,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [isSavingPlaylist, setIsSavingPlaylist] = useState(false);
   const [isFixingMetadata, setIsFixingMetadata] = useState(false);
-  const [recentHistory, setRecentHistory] = useState<{ listens: any[]; searches: any[] }>({ listens: [], searches: [] });
-
-  useEffect(() => {
-    if (user?.id) {
-      historyApi.getRecent(user.id).then(res => {
-        if (res) setRecentHistory(res);
-      }).catch(() => {});
-    }
-  }, [user?.id]);
+  const [trackForPlaylistAdd, setTrackForPlaylistAdd] = useState<{ id: string; title: string; thumbnail?: string; artist?: string } | null>(null);
 
   useEffect(() => {
     onImportingStateChange?.(importing);
@@ -306,16 +299,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     if (!q.trim()) return;
     setIsSearching(true); setShowSuggestions(false); setDownloadError(null); setSpError(null); setSelectedIndex(0);
 
-    // Save to search history if user is logged in
-    if (user?.id) {
-      historyApi.logSearch(user.id, q).catch((err) => {
-        console.warn("[SearchTab] Failed to log search history:", err);
-      });
-      setRecentHistory(prev => ({
-        ...prev,
-        searches: [{ id: `temp-${Date.now()}`, query: q, createdAt: new Date().toISOString() }, ...prev.searches.filter(s => s.query !== q)].slice(0, 10)
-      }));
-    }
+    // Search logging removed
 
     if (mode === "youtube") {
       const isUrl = q.trim().startsWith("http") && (q.includes("youtube.com/playlist") || q.includes("youtu.be/") || q.includes("youtube.com/watch"));
@@ -785,16 +769,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         getSocket().emit("playback:jumpTo", { roomId, trackId: (res as any).item.id });
       }
 
-      if (user?.id) {
-        historyApi.logListen(user.id, {
-          youtubeId: videoId,
-          title: result.title,
-          artist: result.uploaderName || result.artist || '',
-          thumbnail: result.thumbnail
-        }).then(() => historyApi.getRecent(user.id))
-          .then(res => { if (res) setRecentHistory(res); })
-          .catch(() => {});
-      }
+      // History logging removed
 
       onSuccess?.();
     } catch (err: any) {
@@ -849,7 +824,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // NOTE: this previously ANDed in `mode === "search"`, but `mode` is only ever
   // "youtube" | "spotify" | null — so isCentered was permanently false and the
   // centered empty state never rendered.
-  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0 && recentHistory.searches.length === 0 && recentHistory.listens.length === 0;
+  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0;
   const containerPadding = isSearchOnly ? "p-[2px]" : "px-5 sm:px-8 py-6";
 
   const getPlaceholder = () => {
@@ -1469,13 +1444,32 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   </div>
                                   <div className={cn('text-white/50', 'text-[10px]', 'truncate')}>{song.artist}</div>
                                 </div>
-                                <button onClick={() => !isAdded && handlePlay(mappedSong)} disabled={enqueuing === mappedSong.url || isAdded}
-                                  className={cn('w-8', 'h-8', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all',
-                                    isAdded ? 'bg-green-500 text-white' : 'bg-white/10 hover:bg-[#FF0000] text-white active:scale-90'
-                                  )}>
-                                  {enqueuing === mappedSong.url ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} />
-                                    : isAdded ? <CheckCircle2 className={cn('w-4', 'h-4')} /> : <Plus className={cn('w-4', 'h-4')} />}
-                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button onClick={() => !isAdded && handlePlay(mappedSong)} disabled={enqueuing === mappedSong.url || isAdded}
+                                    className={cn('w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all',
+                                      isAdded ? 'bg-green-500 text-white' : 'bg-white/10 hover:bg-[#FF0000] text-white active:scale-90'
+                                    )}>
+                                    {enqueuing === mappedSong.url ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} />
+                                      : isAdded ? <CheckCircle2 className={cn('w-4', 'h-4')} /> : <Plus className={cn('w-4', 'h-4')} />}
+                                  </button>
+                                  {youtubeConnected && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setTrackForPlaylistAdd({
+                                          id: yId,
+                                          title: song.title,
+                                          artist: song.artist,
+                                          thumbnail: yThumb,
+                                        });
+                                      }}
+                                      className={cn('w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                                      title="Add to YouTube Playlist"
+                                    >
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -1504,11 +1498,34 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                             <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{r.title}</div>
                             <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.uploaderName}</div>
                           </div>
-                          <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
-                            className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#1DB954] text-black hover:text-white active:scale-90"}`}>
-                            {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
-                              : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
+                              className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#1DB954] text-black hover:text-white active:scale-90"}`}>
+                              {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
+                                : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                            </button>
+                            {youtubeConnected && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  let vId = "";
+                                  if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
+                                  else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
+                                  
+                                  setTrackForPlaylistAdd({
+                                    id: vId,
+                                    title: r.title,
+                                    artist: r.uploaderName,
+                                    thumbnail: r.thumbnail,
+                                  });
+                                }}
+                                className={cn('w-10', 'h-10', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                                title="Add to YouTube Playlist"
+                              >
+                                <MoreHorizontal className="w-5 h-5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1531,11 +1548,34 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{r.title}</div>
                         <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.uploaderName}</div>
                       </div>
-                      <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
-                        className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
-                        {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
-                          : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
+                          className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
+                          {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
+                            : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                        </button>
+                        {youtubeConnected && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              let vId = "";
+                              if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
+                              else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
+                              
+                              setTrackForPlaylistAdd({
+                                id: vId,
+                                title: r.title,
+                                artist: r.uploaderName,
+                                thumbnail: r.thumbnail,
+                              });
+                            }}
+                            className={cn('w-10', 'h-10', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                            title="Add to YouTube Playlist"
+                          >
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -1572,84 +1612,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   </div>
                 )}
 
-                {/* Recent Searches */}
-                {recentHistory.searches.length > 0 && (
-                  <div>
-                    <div className={cn('flex', 'items-center', 'gap-2', 'text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'text-white/50', 'mb-2', 'px-1')}>
-                      <History className={cn('w-3.5', 'h-3.5', 'text-cyan-400')} />
-                      <span>Recent Searches</span>
-                    </div>
-                    <div className={cn('flex', 'flex-wrap', 'gap-2')}>
-                      {recentHistory.searches.slice(0, 8).map((s, idx) => (
-                        <button
-                          key={`s-${s.id || idx}`}
-                          onClick={() => {
-                            setQuery(s.query);
-                            performSearch(s.query);
-                          }}
-                          className={cn('flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-full', 'bg-white/5', 'hover:bg-white/15', 'text-white/80', 'hover:text-white', 'text-xs', 'font-medium', 'border', 'border-white/10', 'transition-all', 'active:scale-95')}
-                        >
-                          <Search className={cn('w-3', 'h-3', 'text-white/40')} />
-                          <span>{s.query}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Recently Listened */}
-                {recentHistory.listens.length > 0 && (
-                  <div>
-                    <div className={cn('flex', 'items-center', 'gap-2', 'text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'text-white/50', 'mb-2', 'px-1')}>
-                      <Clock className={cn('w-3.5', 'h-3.5', 'text-emerald-400')} />
-                      <span>Recently Listened</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {recentHistory.listens.slice(0, 6).map((item, idx) => {
-                        const mappedSong = {
-                          url: `https://youtube.com/watch?v=${item.youtubeId}`,
-                          title: item.title,
-                          thumbnail: item.thumbnail || `https://img.youtube.com/vi/${item.youtubeId}/hqdefault.jpg`,
-                          uploaderName: item.artist || 'SyncBeats',
-                        };
-                        const isAdded = addedSongs.has(mappedSong.url);
-
-                        return (
-                          <div
-                            key={`l-${item.id || idx}`}
-                            className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'hover:bg-white/10', 'transition-all', 'duration-200', 'group', 'shrink-0')}
-                          >
-                            <img
-                              src={mappedSong.thumbnail}
-                              loading="eager"
-                              decoding="sync"
-                              className={cn('w-16', 'h-12', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')}
-                            />
-                            <div className={cn('space-y-0.5', 'min-w-0', 'flex-1', 'pl-1')}>
-                              <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{item.title}</div>
-                              <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{item.artist || 'SyncBeats'}</div>
-                            </div>
-                            <button
-                              onClick={() => !isAdded && handlePlay(mappedSong)}
-                              disabled={enqueuing === mappedSong.url || isAdded}
-                              className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-full transition-all ${
-                                isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"
-                              }`}
-                            >
-                              {enqueuing === mappedSong.url ? (
-                                <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
-                              ) : isAdded ? (
-                                <CheckCircle2 className={cn('w-4', 'h-4')} />
-                              ) : (
-                                <Plus className={cn('w-4', 'h-4')} />
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* Recent sections removed in favor of playlists */}
               </div>
             ) : query && mode !== "spotify" ? <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-10')}>Press Enter to search</div> : null}
           </motion.div>
@@ -1720,6 +1683,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           if (promptTrack) executeEnqueueAndPlay(promptTrack, false);
         }}
         onClose={() => setPromptTrack(null)}
+      />
+
+      {/* Add To Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={!!trackForPlaylistAdd}
+        track={trackForPlaylistAdd}
+        playlists={myYoutubePlaylists}
+        onAdd={async (playlistId, videoId) => {
+          await youtubeApi.addToPlaylist(playlistId, videoId);
+        }}
+        onClose={() => setTrackForPlaylistAdd(null)}
       />
     </div>
   );

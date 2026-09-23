@@ -17,20 +17,6 @@ export interface Participant {
   jitter?:     number;
 }
 
-export interface TrackQueueItem {
-  id:         string;
-  trackUrl:   string;
-  title:      string;
-  artist?:    string;
-  thumbnail?: string;   // album art URL (from Song catalog)
-  fileName:   string;
-  queueIndex: number;
-  isCurrent:  boolean;
-  addedBy:    string;
-  addedByName?: string;
-  createdAt:  number;
-  sizeBytes?: number;
-}
 
 export interface RoomSnapshot {
   roomId:                 string;
@@ -43,15 +29,12 @@ export interface RoomSnapshot {
   sessionDurationMs?:     number;       // active session duration in ms
   accumulatedSessionTime?: number;      // active session duration in seconds
   participants:           Participant[];
-  queue:                  TrackQueueItem[];
   spatial:                DeviceSpatialState[];
   startEpoch?:            number | null;
   pauseOffset?:           number;
   isPlaying?:             boolean;
   pendingPlay?:           boolean;
   isPrivate?:             boolean;
-  shuffle:                boolean;
-  repeatMode:             "off" | "track" | "all";
 }
 
 export interface SpatialPosition {
