@@ -21,7 +21,6 @@
  */
 
 import {
-  GAIN_FLOOR,
   ORIGIN_POSITION,
   addVec,
   clamp,
@@ -37,7 +36,7 @@ import {
 } from '../lib/spatial/geometry';
 import {
   DEFAULT_MOTION,
-  beatSeed,
+  hopBucket,
   pickBeatTarget,
   sourceAt,
   type BeatState,
@@ -71,9 +70,8 @@ const PANNER_DISTANCE = 1.5;
 const SMOOTHING = 0.04;
 /** AudioParams are rewritten at most this often; the visuals still run at 60fps. */
 const AUDIO_WRITE_INTERVAL_MS = 33;
-/** Ignore beats closer together than this, so jumps stay legible. */
-const MIN_BEAT_GAP_MS = 160;
-const BEAT_GLIDE_MS = 140;
+/** How long a beat jump takes to travel, capped so short hops still rest. */
+const BEAT_GLIDE_MS = 260;
 /** How much of the HRTF output also gets hard stereo-panned (phone speakers). */
 const STEREO_STRENGTH = 0.7;
 
@@ -123,7 +121,8 @@ export class SpatialAudioEngine {
 
   private motion: MotionConfig = { ...DEFAULT_MOTION };
   private beat: BeatState | null = null;
-  private lastBeatAt = 0;
+  /** Hop window the last beat jump fired in — see `onBeat`. */
+  private lastHopBucket = -1;
 
   private rafId: number | null = null;
   private lastAudioWrite = 0;
@@ -292,19 +291,29 @@ export class SpatialAudioEngine {
     this.invalidate();
   }
 
-  /** Called on each detected bass beat; only meaningful in 'beat' mode. */
+  /**
+   * Called on each detected bass beat; only meaningful in 'beat' mode.
+   *
+   * Hopping on literally every kick is a strobe, so jumps are gated to one per
+   * clock-aligned window of `motion.hopMs` — which also supplies the seed, so
+   * every device in the room picks the same speaker. See `hopBucket`.
+   */
   onBeat(): void {
     if (this.motion.mode !== 'beat' || this.ringAngles.length === 0) return;
 
     const now = this.serverNow();
-    if (now - this.lastBeatAt < MIN_BEAT_GAP_MS) return;
-    this.lastBeatAt = now;
+    const bucket = hopBucket(now, this.motion.hopMs);
+    if (bucket === this.lastHopBucket) return;
+    this.lastHopBucket = bucket;
 
-    const seed = beatSeed(now);
-    const target = this.ringAngles[pickBeatTarget(seed, this.ringAngles.length)];
+    const target = this.ringAngles[pickBeatTarget(bucket, this.ringAngles.length)];
     const current = this.sample(now).source.angle;
 
-    this.beat = { fromAngle: current, toAngle: target, startedAt: now, glideMs: BEAT_GLIDE_MS };
+    // A fast hop setting must still land and sit for a moment, or the jumps run
+    // into each other and it stops reading as movement between speakers.
+    const glideMs = Math.min(BEAT_GLIDE_MS, this.motion.hopMs * 0.6);
+
+    this.beat = { fromAngle: current, toAngle: target, startedAt: now, glideMs };
     this.invalidate();
   }
 

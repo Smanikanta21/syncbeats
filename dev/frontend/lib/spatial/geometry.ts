@@ -36,7 +36,10 @@ export const MAX_RADIUS = 4;
 export const MIN_ELEVATION = -45;
 export const MAX_ELEVATION = 45;
 
-/** Devices never drop below this share of full volume, so none ever sounds dead. */
+/**
+ * Default divergence. Devices never drop below this share of full volume, so
+ * none ever sounds dead. See {@link computeSpeakerGains} for the full range.
+ */
 export const GAIN_FLOOR = 0.15;
 
 export const clamp = (v: number, min: number, max: number) =>
@@ -149,8 +152,14 @@ export const ORIGIN_POSITION: SpatialPosition = { angle: 0, radius: 0, elevation
  *
  * The two speakers bracketing the source's angle share it with a cos/sin
  * crossfade (so perceived loudness stays constant as it sweeps between them);
- * everyone else sits at the floor. This is what makes the sound physically
+ * everyone else sits at `spread`. This is what makes the sound physically
  * travel from, say, a Mac on your left to an iPhone on your right.
+ *
+ * `spread` is divergence, in Fairlight's sense:
+ *   0   — hard point source: only the bracketing pair make any sound at all
+ *   0.15 — the default; the rest stay audible but clearly in the background
+ *   1   — every speaker at full level; the room is filled and motion stops
+ *         being audible as movement
  *
  * Speakers further from the origin are attenuated a little, so pulling a device
  * away from your seat genuinely makes it quieter.
@@ -158,7 +167,7 @@ export const ORIGIN_POSITION: SpatialPosition = { angle: 0, radius: 0, elevation
 export function computeSpeakerGains(
   sourceAngle: number,
   speakers: Speaker[],
-  floor: number = GAIN_FLOOR,
+  spread: number = GAIN_FLOOR,
 ): Map<string, number> {
   const gains = new Map<string, number>();
   if (speakers.length === 0) return gains;
@@ -168,6 +177,10 @@ export function computeSpeakerGains(
     gains.set(speakers[0].id, 1);
     return gains;
   }
+
+  // A non-finite spread would ride all the way into an AudioParam and throw
+  // there, so it falls back to the default rather than propagating.
+  const floor = Number.isFinite(spread) ? clamp(spread, 0, 1) : GAIN_FLOOR;
 
   const ring = speakers
     .map(s => ({ id: s.id, angle: normalizeAngle(s.position.angle), radius: s.position.radius }))

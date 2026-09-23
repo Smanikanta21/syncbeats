@@ -136,6 +136,11 @@ export function SpatialPanel({
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const myDevices = useMemo(() => layout.me?.devices ?? [], [layout]);
+  /** The speakers actually making up the field — mirrors `applyField` in the hook. */
+  const fieldDevices = useMemo(
+    () => (mode === "solo" ? (layout.me?.devices ?? []) : layout.devices),
+    [mode, layout],
+  );
   const otherUserCount = useMemo(
     () => layout.users.filter(u => !u.isMe).length,
     [layout.users],
@@ -150,6 +155,20 @@ export function SpatialPanel({
       onUpdatePosition(deviceId, { ...device.local, angle });
     },
     [layout.devices, onUpdatePosition],
+  );
+
+  const controls = (
+    <SpatialControls
+      motion={motion}
+      onMotionChange={onMotionChange}
+      myDevices={myDevices}
+      fieldDevices={fieldDevices}
+      onQuickPlace={handleQuickPlace}
+      onPreviewPosition={onPreviewPosition}
+      onCommitPosition={onCommitPosition}
+      onReset={onReset}
+      isPlaying={isPlaying}
+    />
   );
 
   const scene = (
@@ -303,14 +322,7 @@ export function SpatialPanel({
           </div>
         </div>
 
-        <SpatialControls
-          motion={motion}
-          onMotionChange={onMotionChange}
-          myDevices={myDevices}
-          onQuickPlace={handleQuickPlace}
-          onReset={onReset}
-          isPlaying={isPlaying}
-        />
+        {controls}
       </div>
 
       {/* FULL-SCREEN STAGE — mobile */}
@@ -336,14 +348,7 @@ export function SpatialPanel({
             </div>
 
             <div className="mt-3 max-h-[42vh] shrink-0 overflow-y-auto">
-              <SpatialControls
-                motion={motion}
-                onMotionChange={onMotionChange}
-                myDevices={myDevices}
-                onQuickPlace={handleQuickPlace}
-                onReset={onReset}
-                isPlaying={isPlaying}
-              />
+              {controls}
             </div>
           </div>,
           document.body,

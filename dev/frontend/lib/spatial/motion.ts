@@ -38,6 +38,12 @@ export interface MotionConfig {
    * the other motion parameters.
    */
   spread: number;
+  /**
+   * Beat mode only: the shortest time the sound is allowed to stay on one
+   * speaker. Hopping on *every* bass hit is a strobe — at 120bpm that is twice
+   * a second — so jumps are gated to one per window of this length.
+   */
+  hopMs: number;
 }
 
 /** A beat-jump in flight. Owned by the engine, read by the renderer. */
@@ -51,15 +57,70 @@ export interface BeatState {
 
 export const DEFAULT_MOTION: MotionConfig = {
   mode: 'orbit',
-  periodMs: 9000,
-  radius: 1.6,
+  periodMs: 30000,
+  radius: 1.4,
   elevation: 0,
   direction: 1,
   spread: GAIN_FLOOR,
+  hopMs: 1800,
 };
 
-export const MIN_PERIOD_MS = 2000;
-export const MAX_PERIOD_MS = 30000;
+/**
+ * A 6-second lap is already faster than anyone wants for more than a novelty
+ * few seconds; two minutes is a drift you notice without it competing with the
+ * music. The old 2s floor was unlistenable and the old 30s ceiling was still
+ * brisk, which is why the whole feature read as a gimmick.
+ */
+export const MIN_PERIOD_MS = 6000;
+export const MAX_PERIOD_MS = 120000;
+
+export const MIN_HOP_MS = 400;
+export const MAX_HOP_MS = 4000;
+
+export interface MotionPreset {
+  id: string;
+  label: string;
+  hint: string;
+  config: Partial<MotionConfig>;
+}
+
+/**
+ * Starting points, because seven parameters is not a thing anyone wants to
+ * tune before pressing play. Every one of these is a setting you could leave on
+ * for a whole album.
+ */
+export const MOTION_PRESETS: MotionPreset[] = [
+  {
+    id: 'subtle',
+    label: 'Subtle',
+    hint: 'A slow drift you feel rather than hear. Leave it on all day.',
+    config: { mode: 'orbit', periodMs: 75000, radius: 1.2, spread: 0.45, elevation: 0 },
+  },
+  {
+    id: '8d',
+    label: '8D',
+    hint: 'The classic full lap around your head. This is the default.',
+    config: {
+      mode: 'orbit',
+      periodMs: DEFAULT_MOTION.periodMs,
+      radius: DEFAULT_MOTION.radius,
+      spread: DEFAULT_MOTION.spread,
+      elevation: 0,
+    },
+  },
+  {
+    id: 'sweep',
+    label: 'Sweep',
+    hint: 'Side to side across the front, never behind you.',
+    config: { mode: 'pingpong', periodMs: 16000, radius: 1.6, spread: 0.2, elevation: 0 },
+  },
+  {
+    id: 'hop',
+    label: 'Hop',
+    hint: 'Lands on a new speaker about once a bar.',
+    config: { mode: 'beat', hopMs: 1800, radius: 1.8, spread: 0.1, elevation: 0 },
+  },
+];
 
 /** Smooth 0 → 1 → 0 over one period, flat at the turnarounds. */
 const pingPongEase = (phase: number) => 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
@@ -148,7 +209,16 @@ export function pickBeatTarget(seed: number, speakerCount: number): number {
   return hashSeed(seed) % speakerCount;
 }
 
-/** Bucket the synced clock so all devices hashing "this beat" agree on the seed. */
-export function beatSeed(serverNowMs: number): number {
-  return Math.floor(serverNowMs / 100);
+/**
+ * Which hop window the synced clock is in.
+ *
+ * Doubles as the gate and the seed for beat jumps, which is what keeps devices
+ * together. A local beat *counter* would drift the moment one device's detector
+ * missed a kick — it would then be permanently a beat behind and jumping to a
+ * different speaker. Quantising to a shared clock window instead means two
+ * devices detecting the same kick 40ms apart still land in the same window, and
+ * therefore on the same speaker.
+ */
+export function hopBucket(serverNowMs: number, hopMs: number): number {
+  return Math.floor(serverNowMs / clamp(hopMs, MIN_HOP_MS, MAX_HOP_MS));
 }
