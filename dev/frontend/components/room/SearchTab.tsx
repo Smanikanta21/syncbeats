@@ -302,7 +302,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     // Search logging removed
 
     if (mode === "youtube") {
-      const isUrl = q.trim().startsWith("http") && (q.includes("youtube.com/playlist") || q.includes("youtu.be/") || q.includes("youtube.com/watch"));
+      const isUrl = q.trim().startsWith("http") && q.includes("youtube.com/playlist");
       if (isUrl) {
         setIsSearching(false);
         if (!youtubeConnected) {
@@ -649,7 +649,25 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           setLoadingPlaylist(false);
         }
       } else {
-        setSelectedPlaylistData(playlist);
+        setLoadingPlaylist(true);
+        try {
+          const fullPlaylist = await roomsApi.getPlaylist(id);
+          const mappedTracks = fullPlaylist.tracks?.map((t: any) => ({
+            id: t.resolvedYoutubeId || t.song?.youtubeId || t.youtubeId || t.songId || Math.random().toString(),
+            title: t.title || t.song?.title,
+            artist: t.artist || t.song?.artist,
+            thumbnail: t.thumbnail || t.song?.youtubeThumbnail || t.song?.albumArt || playlist.thumbnail,
+            duration: t.song?.duration || 0,
+            dbSongId: t.song?.id,
+            url: t.resolvedYoutubeId || t.song?.youtubeId ? `youtube:${t.resolvedYoutubeId || t.song?.youtubeId}` : undefined
+          })) || [];
+          setSelectedPlaylistData({ ...playlist, tracks: mappedTracks });
+        } catch (err) {
+          setSpError("Failed to fetch playlist tracks.");
+          setSelectedPlaylistData(playlist); // fallback
+        } finally {
+          setLoadingPlaylist(false);
+        }
       }
     }
   };
@@ -879,7 +897,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             data-lpignore="true"
             data-form-type="other"
             aria-autocomplete="none"
-            className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query ? "pr-4" : "pr-24"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
+            className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query && mode === "youtube" && query.includes("youtube.com/playlist") ? "pr-24" : query ? "pr-4" : "pr-24"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
             autoFocus
           />
           <Search className={cn('absolute', 'left-3.5', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-white/50')} />
@@ -888,15 +906,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             {!query && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
                 className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center', 'gap-0.5')}>
-
-                {/* Mode Switchers (Commented out per user request)
-                <button type="button" onClick={() => setMode("youtube")} className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', mode === "youtube" ? 'bg-red-500/20 text-red-500' : 'hover:bg-white/10 text-white/50 hover:text-white', 'transition-colors')} title="YouTube">
-                  <Play className={cn('w-4', 'h-4', 'fill-current')} />
-                </button>
-                <button type="button" onClick={() => setMode("spotify")} className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', mode === "spotify" ? 'bg-[#1DB954]/20 text-[#1DB954]' : 'hover:bg-white/10 text-white/50 hover:text-white', 'transition-colors')} title="Spotify">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z"/></svg>
-                </button>
-                */}
 
                 {/* Upload Button */}
                 <label className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'cursor-pointer', 'text-white/50', 'hover:text-white', 'transition-colors')} title="Upload Local File">
@@ -908,6 +917,29 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       handleUploadFiles(files);
                     }} />
                 </label>
+              </motion.div>
+            )}
+            
+            {query && mode === "youtube" && query.trim().startsWith("http") && query.includes("youtube.com/playlist") && (
+              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center')}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSearching(false);
+                    if (!youtubeConnected) {
+                      setSpError("Connect your YouTube account to import full playlists seamlessly.");
+                      return;
+                    }
+                    handleYoutubeImport(query);
+                  }}
+                  className={cn('px-3', 'py-1.5', 'bg-[#FF0000]', 'hover:bg-[#ff3333]', 'text-white', 'text-[10px]', 'font-bold', 'rounded-full', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5')}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                  </svg>
+                  Import Playlist
+                </button>
               </motion.div>
             )}
           </AnimatePresence>

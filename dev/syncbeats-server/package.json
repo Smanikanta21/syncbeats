@@ -13,7 +13,8 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
     "send-announcement": "ts-node scripts/send-announcement.ts",
-    "sync-db": "bash ../../scripts/sync-db.sh"
+    "sync-db": "bash ../../scripts/sync-db.sh",
+    "db:start": "bash ../../scripts/start-db.sh"
   },
   "keywords": [],
   "author": "",
