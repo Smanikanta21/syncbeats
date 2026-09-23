@@ -95,7 +95,7 @@ export class SocketHandler {
       this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
 
-    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: TrackQueueItem[] }) => {
+    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
       this.io.to(roomId).emit('room:queueChanged', { queue });
     });
 

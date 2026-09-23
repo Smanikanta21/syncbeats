@@ -6,6 +6,8 @@ on:
     paths:
       - 'dev/syncbeats-server/**'
       - '.github/workflows/syncbeats-CD.yml'
+  pull_request:
+    types: [closed]
   workflow_dispatch:
 
 concurrency:
@@ -18,8 +20,31 @@ env:
   VM_NAME: syncbeats-vm
 
 jobs:
+  teardown-staging:
+    name: Teardown Staging on Merge
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'nodejs-dev' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Teardown Staging via SSH
+        run: |
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="cd ~ && sudo COMPOSE_PROJECT_NAME=syncbeats-staging docker compose --env-file .env.syncbeats-staging down -v"
+
   test-backend:
     name: Run Backend Test Suite
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -48,6 +73,7 @@ jobs:
     name: Build & Deploy to VM
     runs-on: ubuntu-latest
     needs: test-backend
+    if: github.event_name != 'pull_request'
     timeout-minutes: 15
     environment: ${{ github.ref_name }}
 
@@ -76,7 +102,7 @@ jobs:
           context: ./dev/syncbeats-server
           push: true
           tags: |
-            ghcr.io/smanikanta21/syncbeats-server:latest
+            ghcr.io/smanikanta21/syncbeats-server:${{ github.ref_name }}-latest
             ghcr.io/smanikanta21/syncbeats-server:${{ github.sha }}
 
       - name: Google Auth
@@ -89,15 +115,28 @@ jobs:
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Set Environment Variables
+        run: |
+          if [ "${{ github.ref_name }}" == "nodejs-dev" ]; then
+            echo "COMPOSE_PROJECT_NAME=syncbeats-staging" >> $GITHUB_ENV
+            echo "PORT=4001" >> $GITHUB_ENV
+            echo "DB_PORT=5433" >> $GITHUB_ENV
+            echo "ENV_POSTGRES_DB=syncbeats_staging" >> $GITHUB_ENV
+            echo "BACKEND_URL=https://dev-api.syncbeats.app" >> $GITHUB_ENV
+          else
+            echo "COMPOSE_PROJECT_NAME=sync-beats" >> $GITHUB_ENV
+            echo "PORT=4000" >> $GITHUB_ENV
+            echo "DB_PORT=5432" >> $GITHUB_ENV
+            echo "ENV_POSTGRES_DB=${{ vars.POSTGRES_DB || 'syncbeats' }}" >> $GITHUB_ENV
+            echo "BACKEND_URL=${{ vars.BACKEND_URL || 'https://api.syncbeats.in' }}" >> $GITHUB_ENV
+          fi
+
       - name: Create and Sync .env
         env:
           NODE_ENV: ${{ vars.NODE_ENV || 'production' }}
-          PORT: ${{ vars.PORT || '4000' }}
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'syncbeats' }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'syncbeats' }}
-          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'syncbeats' }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://syncbeats.in' }}
-          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://api.syncbeats.in' }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -111,11 +150,14 @@ jobs:
           ADMIN_PASSWORD: ${{ vars.ADMIN_PASSWORD || 'syncbeatsadmin' }}
         run: |
           cat <<EOF > .env.vm
+          COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
+          IMAGE_TAG=${{ github.ref_name }}-latest
           NODE_ENV=$NODE_ENV
           PORT=$PORT
+          DB_PORT=$DB_PORT
           POSTGRES_USER=$POSTGRES_USER
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-          POSTGRES_DB=$POSTGRES_DB
+          POSTGRES_DB=$ENV_POSTGRES_DB
           FRONTEND_URL=$FRONTEND_URL
           BACKEND_URL=$BACKEND_URL
           JWT_SECRET=$JWT_SECRET
@@ -130,8 +172,8 @@ jobs:
           UPDATES_FROM_EMAIL=$UPDATES_FROM_EMAIL
           ADMIN_PASSWORD=$ADMIN_PASSWORD
           EOF
-          gcloud compute scp .env.vm ${{ env.VM_NAME }}:~/.env --zone ${{ env.ZONE }} --quiet
+          gcloud compute scp .env.vm ${{ env.VM_NAME }}:~/.env.${COMPOSE_PROJECT_NAME} --zone ${{ env.ZONE }} --quiet
 
       - name: Deploy to VM via SSH
         run: |
-          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo docker compose pull server && sudo docker compose up -d server"
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo fallocate -l 2G /swapfile || true && sudo chmod 600 /swapfile || true && sudo mkswap /swapfile || true && sudo swapon /swapfile || true && cd ~ && sudo docker compose --env-file .env.${COMPOSE_PROJECT_NAME} pull server && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose --env-file .env.${COMPOSE_PROJECT_NAME} run --rm server npx prisma migrate deploy && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose --env-file .env.${COMPOSE_PROJECT_NAME} up -d server"
