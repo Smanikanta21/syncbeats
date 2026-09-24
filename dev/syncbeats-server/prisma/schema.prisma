@@ -30,7 +30,6 @@ model User {
   settings                   Json?
   devices                    Device[]
   roomParticipants           RoomParticipant[]
-  roomQueueItems             RoomQueueItem[]
   rooms                      Room[]
   searchHistory              SearchHistory[]
   listenHistory              ListenHistory[]
@@ -66,40 +65,20 @@ model Room {
   trackUrl         String?           @map("track_url")
   playbackState    String            @default("IDLE") @map("playback_state")
   positionMs       BigInt            @default(0) @map("position_ms")
-  shuffle          Boolean           @default(false)
-  repeatMode       String            @default("off") @map("repeat_mode")
+  // Whole queue as one document: { items, order, currentId, shuffle, repeatMode }.
+  // Deliberately not a row-per-track table — the old one kept its own queue_index/is_current
+  // alongside the in-memory copy and the two drifted apart, which duplicated tracks.
+  queue            Json?
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   endedAt          DateTime?         @map("ended_at") @db.Timestamptz(6)
   lastAccessedAt   DateTime          @default(now()) @map("last_accessed_at") @db.Timestamptz(6)
   roomParticipants RoomParticipant[]
-  queueItems       RoomQueueItem[]
   host             User              @relation(fields: [hostId], references: [id], onDelete: Cascade)
   invites          RoomInvite[]
 
   @@index([hostId])
   @@index([endedAt], map: "idx_rooms_active")
   @@map("rooms")
-}
-
-model RoomQueueItem {
-  id             String   @id @default(cuid())
-  roomId         String   @map("room_id")
-  uploaderUserId String   @map("uploader_user_id")
-  trackUrl       String   @map("track_url")
-  title          String
-  artist         String?
-  fileName       String   @map("file_name")
-  mimeType       String   @map("mime_type")
-  sizeBytes      BigInt   @map("size_bytes")
-  queueIndex     Int      @map("queue_index")
-  isCurrent      Boolean  @default(false) @map("is_current")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  uploader       User     @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
-
-  @@index([roomId, queueIndex])
-  @@index([uploaderUserId])
-  @@map("room_queue_items")
 }
 
 model RoomParticipant {

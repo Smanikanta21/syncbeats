@@ -182,6 +182,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (typeof window !== 'undefined' && !streamingAudioElRef.current) {
       const audioEl = new Audio();
       audioEl.crossOrigin = "anonymous";
+      audioEl.style.display = "none";
+      document.body.appendChild(audioEl);
       streamingAudioElRef.current = audioEl;
     }
 
@@ -837,15 +839,17 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const response = await fetch(fetchUrl, {
                 headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
               });
-              if (response.ok) {
-                const contentLength = response.headers.get('content-length');
-                const total = contentLength ? parseInt(contentLength, 10) : 0;
-                let loaded = 0;
-                const reader = response.body!.getReader();
-                const chunks: Uint8Array[] = [];
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
+              if (!response.ok) {
+                throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+              }
+              const contentLength = response.headers.get('content-length');
+              const total = contentLength ? parseInt(contentLength, 10) : 0;
+              let loaded = 0;
+              const reader = response.body!.getReader();
+              const chunks: Uint8Array[] = [];
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
                   chunks.push(value);
                   loaded += value.length;
                   if (total > 0) {
@@ -870,9 +874,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
                   console.warn('[AudioPlayer] Background stash to IDB warning:', err);
                 });
-              }
             } catch (bgErr) {
-              console.log('[AudioPlayer] Background stream caching bypassed:', bgErr);
+              console.log('[AudioPlayer] Background stream caching bypassed or failed:', bgErr);
+              throw bgErr; // Throw to trigger outer catch and set UI error
             }
           }
         } else {
@@ -1357,8 +1361,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsBuffering(false);
     setError(null);
     audioBufferRef.current = null;
-    pendingArrayBufferRef.current = null; 
-    
+    pendingArrayBufferRef.current = null;
+    setDuration(0); // don't report the previous track's length while the new one loads
+
     trackUrlRef.current = url;
     setTrackUrl(url);
     setTrackTitle(title);

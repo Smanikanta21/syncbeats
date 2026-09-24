@@ -256,6 +256,8 @@ export interface TrackQueueItem {
   id:         string;
   trackUrl:   string;
   title:      string;
+  artist?:    string;
+  thumbnail?: string;
   fileName:   string;
   queueIndex: number;
   isCurrent:  boolean;
@@ -426,6 +428,11 @@ export const youtubeApi = {
       return [];
     }
   },
+  addToPlaylist: (playlistId: string, videoId: string) =>
+    request<{ success: boolean; item: any }>('/youtube/playlistItems', {
+      method: 'POST',
+      body: JSON.stringify({ playlistId, videoId })
+    }, true),
 };
 
 export const spotifyApi = {

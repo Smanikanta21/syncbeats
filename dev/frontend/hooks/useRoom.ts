@@ -12,10 +12,18 @@ import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 import { toast } from 'sonner';
 import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 
+function isSameTrack(u1?: string | null, u2?: string | null) {
+  if (u1 === u2) return true;
+  if (!u1 || !u2) return false;
+  const ext = (u: string) => u.match(/(?:youtube:|ws-p2p:yt:|videoId=)([a-zA-Z0-9_-]{11})/)?.[1] || u;
+  return ext(u1) === ext(u2);
+}
+
 interface UseRoomOptions {
   roomId:      string;
   displayName: string;
   userId?:     string;
+  authLoading?: boolean;
 }
 
 interface UseRoomReturn {
@@ -26,6 +34,7 @@ interface UseRoomReturn {
   pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
+  
   allReady:     boolean;      
   play:         () => void;
   pause:        () => void;
@@ -56,7 +65,7 @@ interface UseRoomReturn {
 // NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
 // See hooks/useAdaptiveSync.ts for the tier table and EWMA blending logic.
 
-export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoomReturn {
+export function useRoom({ roomId, displayName, userId, authLoading = false }: UseRoomOptions): UseRoomReturn {
   // ── Adaptive network-quality engine ──────────────────────────────────────
   // paramsRef holds all 7 NTP/drift constants and updates after every burst.
   // networkQuality is a reactive string tier for UI display.
@@ -417,8 +426,10 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       audioRef.current.pauseAt(audioRef.current.getTruePosition());
     };
 
-    if (socket.connected) handleConnect();
-    else socket.connect();
+    if (!authLoading) {
+      if (socket.connected) handleConnect();
+      else socket.connect();
+    }
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -461,7 +472,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         }).catch(() => {});
       };
 
-      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         logListenHistory(snap.trackUrl, snap.queue);
       } else if (!snap.trackUrl) {
@@ -506,7 +517,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       }
 
       // Track changes
-      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
         sync.setTrack(snap.trackUrl);
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         if (userId && snap.trackUrl) {
@@ -529,22 +540,6 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       }
     };
     socket.on('room:stateChanged', handleStateChanged);
-
-    const handleQueueChanged = (data: { queue: TrackQueueItem[] } | TrackQueueItem[]) => {
-      // Legacy handler kept for shape compatibility — handleQueueChangedNew below is the authoritative one.
-      // Only handle if data is an array (old server format), the new format is handled below.
-      if (Array.isArray(data)) {
-        const newQueue = data;
-        setSnapshot(prev => prev ? { ...prev, queue: newQueue } : prev);
-      }
-    };
-    socket.on('room:queueChanged', handleQueueChanged);
-
-    const handleReset = () => {
-      audioRef.current.clearTrack();
-      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false } : prev);
-    };
-    socket.on('room:reset', handleReset);
 
     const handleParticipantJoined = (p: Participant) => {
       setParticipants(prev => {
@@ -645,7 +640,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         }
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
-        if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
+        if (!playingUrl || !isSameTrack(playingUrl, newCurrentItem.trackUrl)) {
           loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
         }
       }
@@ -654,7 +649,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
 
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
       setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
-      if (payload.trackUrl && audioRef.current.trackUrl !== payload.trackUrl) {
+      if (payload.trackUrl && !isSameTrack(audioRef.current.trackUrl, payload.trackUrl)) {
         sync.setTrack(payload.trackUrl);
         loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
       }
@@ -755,8 +750,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
       socket.off('room:participantJoined', handleParticipantJoined);
       socket.off('room:participantLeft', handleParticipantLeft);
       socket.off('room:trackSet', handleTrackSet);
-      socket.off('room:queueChanged', handleQueueChanged);
-      socket.off('room:reset', handleReset);
+      socket.off('room:reset', handleRoomReset);
       socket.off('playback:schedule', handleSchedule);
       socket.off('playback:pause', handlePause);
       socket.off('room:joinPendingApproval', handlePendingApproval);
@@ -775,7 +769,7 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
         try { navigator.mediaSession.setActionHandler('nexttrack', null); } catch (_) {}
       }
     };
-  }, [applyRoomDetails, roomId, displayName, socket, runNtpBurst]);
+  }, [applyRoomDetails, roomId, displayName, userId, authLoading, socket, runNtpBurst]);
 
   useEffect(() => {
     const handleAudioEnded = () => {
@@ -880,22 +874,14 @@ export function useRoom({ roomId, displayName, userId }: UseRoomOptions): UseRoo
     socket.disconnect();
   }, [socket, roomId]);
 
-  const removeFromQueue = useCallback(async (itemId: string) => {
+  // Socket only — the REST twins do the same mutation, and firing both produced
+  // two broadcasts for one user action.
+  const removeFromQueue = useCallback((itemId: string) => {
     socket.emit('room:removeFromQueue', { roomId, itemId });
-    try {
-      await roomsApi.removeFromQueue(roomId, itemId);
-    } catch (err) {
-      console.warn('[useRoom] removeFromQueue API error:', err);
-    }
   }, [roomId, socket]);
 
-  const resetRoom = useCallback(async () => {
+  const resetRoom = useCallback(() => {
     socket.emit('room:reset', { roomId });
-    try {
-      await roomsApi.reset(roomId);
-    } catch (err) {
-      console.warn('[useRoom] resetRoom API error:', err);
-    }
   }, [roomId, socket]);
 
   return { snapshot, participants, isConnected, joinStatus, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };

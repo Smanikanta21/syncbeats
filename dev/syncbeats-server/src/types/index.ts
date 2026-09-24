@@ -17,19 +17,37 @@ export interface Participant {
   jitter?:     number;
 }
 
-export interface TrackQueueItem {
-  id:         string;
-  trackUrl:   string;
-  title:      string;
-  artist?:    string;
-  thumbnail?: string;   // album art URL (from Song catalog)
-  fileName:   string;
+
+export type RepeatMode = 'off' | 'all' | 'track';
+
+/** What an enqueue route hands to the queue. Metadata is resolved before this point. */
+export interface QueueTrackInput {
+  trackUrl:     string;
+  title?:       string;
+  artist?:      string;
+  thumbnail?:   string;
+  fileName?:    string;
+  durationSec?: number;
+}
+
+export interface QueueItem {
+  id:           string;
+  /** Normalized track identity — the dedup key. See trackKey() in core/RoomQueue.ts. */
+  key:          string;
+  trackUrl:     string;
+  title:        string;
+  artist:       string;
+  thumbnail?:   string;
+  fileName:     string;
+  addedBy:      string;
+  createdAt:    number;
+  durationSec?: number;
+}
+
+/** Queue item as broadcast to clients — position and current flag are derived, never stored. */
+export interface TrackQueueItem extends QueueItem {
   queueIndex: number;
   isCurrent:  boolean;
-  addedBy:    string;
-  addedByName?: string;
-  createdAt:  number;
-  sizeBytes?: number;
 }
 
 export interface RoomSnapshot {
@@ -43,15 +61,16 @@ export interface RoomSnapshot {
   sessionDurationMs?:     number;       // active session duration in ms
   accumulatedSessionTime?: number;      // active session duration in seconds
   participants:           Participant[];
-  queue:                  TrackQueueItem[];
   spatial:                DeviceSpatialState[];
   startEpoch?:            number | null;
   pauseOffset?:           number;
   isPlaying?:             boolean;
   pendingPlay?:           boolean;
   isPrivate?:             boolean;
+  queue:                  TrackQueueItem[];
+  queueVersion:           number;
   shuffle:                boolean;
-  repeatMode:             "off" | "track" | "all";
+  repeatMode:             RepeatMode;
 }
 
 export interface SpatialPosition {

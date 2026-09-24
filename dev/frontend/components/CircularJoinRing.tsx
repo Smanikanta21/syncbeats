@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ChangeEvent, FormEvent } from "react";
+import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Smartphone, Laptop, Speaker, Headphones, Clipboard } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,15 @@ interface CircularJoinRingProps {
 export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRingProps) {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Only steal focus on devices with a real pointer. autoFocus on touch pops the
+  // on-screen keyboard the instant the page loads and shoves the hero up.
+  useEffect(() => {
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      inputRef.current?.focus();
+    }
+  }, []);
 
   const handleJoin = (e: FormEvent) => {
     e.preventDefault();
@@ -80,13 +89,13 @@ export function CircularJoinRing({ onSuccess, className = "" }: CircularJoinRing
             <div className="relative w-full">
               <input
                 name="syncbeats-room-join-code"
+                ref={inputRef}
                 type="text"
                 inputMode="text"
                 maxLength={6}
                 value={joinCode}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setJoinCode(e.target.value.toUpperCase())}
                 placeholder="------"
-                autoFocus
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"

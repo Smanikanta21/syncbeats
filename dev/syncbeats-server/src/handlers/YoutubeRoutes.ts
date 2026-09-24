@@ -137,6 +137,8 @@ export function createYoutubeRoutes(): Router {
         select: { ytAccessToken: true, ytRefreshToken: true }
       });
 
+      let ytPlaylists: any[] = [];
+
       if (user?.ytAccessToken) {
         try {
           oauth2Client.setCredentials({
@@ -145,20 +147,6 @@ export function createYoutubeRoutes(): Router {
           });
 
           const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-          
-          // Note: if token is expired, googleapis handles refresh automatically 
-          // if we pass refresh_token in credentials. But we should save the new token if it refreshes.
-          oauth2Client.on('tokens', async (tokens) => {
-            if (tokens.access_token) {
-              await prisma.user.update({
-                where: { id: userId },
-                data: {
-                  ytAccessToken: tokens.access_token,
-                  ...(tokens.refresh_token && { ytRefreshToken: tokens.refresh_token })
-                }
-              });
-            }
-          });
 
           const response = await youtube.playlists.list({
             part: ['snippet', 'contentDetails'],
@@ -166,29 +154,26 @@ export function createYoutubeRoutes(): Router {
             maxResults: 50,
           });
 
-          const ytPlaylists = response.data.items?.map(p => ({
+          ytPlaylists = response.data.items?.map(p => ({
             id: p.id,
             title: p.snippet?.title,
             thumbnail: p.snippet?.thumbnails?.high?.url || p.snippet?.thumbnails?.default?.url || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
             itemCount: p.contentDetails?.itemCount || 0,
             source: 'YOUTUBE'
           })) || [];
-
-          return res.json({ playlists: ytPlaylists });
         } catch (ytError) {
           console.error('[Library] YouTube API Error:', ytError);
-          // Fall through to local DB
         }
       }
 
-      // Fallback: local DB
+      // Always fetch local DB playlists
       const dbPlaylists = await prisma.playlist.findMany({
         where: { userId },
         include: { _count: { select: { tracks: true } } },
         orderBy: { createdAt: 'desc' }
       });
 
-      const playlists = dbPlaylists.map((p: any) => ({
+      const localPlaylists = dbPlaylists.map((p: any) => ({
         id: p.id,
         title: p.name,
         thumbnail: p.coverUrl || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
@@ -196,7 +181,8 @@ export function createYoutubeRoutes(): Router {
         source: 'SYNCBEATS'
       }));
 
-      res.json({ playlists });
+      // Combine local SyncBeats playlists with Native YouTube playlists
+      res.json({ playlists: [...localPlaylists, ...ytPlaylists] });
     } catch (err) {
       console.error('[Library] fetch error:', err);
       res.status(500).json({ error: 'Failed to fetch library' });
@@ -265,6 +251,52 @@ export function createYoutubeRoutes(): Router {
     } catch (error) {
       console.error('[YouTube] Playlist Items Error:', error);
       res.status(500).json({ error: 'Failed to fetch playlist items' });
+    }
+  });
+
+  // POST /playlistItems — Add a track to a YouTube playlist
+  router.post('/playlistItems', requireAuth, async (req: any, res: any) => {
+    const { playlistId, videoId } = req.body;
+    
+    if (!playlistId || !videoId) {
+      return res.status(400).json({ error: 'Missing playlistId or videoId' });
+    }
+    
+    try {
+      const userId = req.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { ytAccessToken: true, ytRefreshToken: true }
+      });
+
+      if (!user?.ytAccessToken) {
+        return res.status(401).json({ error: 'YouTube not connected' });
+      }
+
+      oauth2Client.setCredentials({
+        access_token: user.ytAccessToken,
+        refresh_token: user.ytRefreshToken
+      });
+
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+      
+      const response = await youtube.playlistItems.insert({
+        part: ['snippet'],
+        requestBody: {
+          snippet: {
+            playlistId: playlistId,
+            resourceId: {
+              kind: 'youtube#video',
+              videoId: videoId
+            }
+          }
+        }
+      });
+      
+      res.json({ success: true, item: response.data });
+    } catch (error) {
+      console.error('[YouTube] Add Playlist Item Error:', error);
+      res.status(500).json({ error: 'Failed to add track to playlist' });
     }
   });
 

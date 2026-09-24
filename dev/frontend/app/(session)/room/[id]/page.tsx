@@ -55,6 +55,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     roomId: roomId,
     displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
     userId: user?.id,
+    authLoading: authLoading,
   });
 
   const connectionError = joinStatus === "denied" || isTimedOut;
@@ -87,7 +88,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     if (isConnected) {
       setReady(audio.isReady);
     }
-  }, [audio.isReady, setReady, isConnected]);
+  }, [audio.isReady, setReady, isConnected, snapshot?.pendingPlay, snapshot?.trackUrl]);
 
   // Sync volume from server if modified remotely
   const myParticipant = participants?.find(p => p.socketId === currentSocketId);
@@ -165,8 +166,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     previewPosition: previewSpatialPosition,
     commitPosition: commitSpatialPosition,
     resetLayout: resetSpatialLayout,
-    motion: spatialMotion,
-    setMotion: setSpatialMotion,
   } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
@@ -292,8 +291,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           spatialLayout={spatialLayout}
           spatialMode={spatialMode}
           onSpatialModeChange={setSpatialMode}
-          spatialMotion={spatialMotion}
-          onSpatialMotionChange={setSpatialMotion}
           onUpdateSpatialPosition={updateSpatialPosition}
           onPreviewSpatialPosition={previewSpatialPosition}
           onCommitSpatialPosition={commitSpatialPosition}

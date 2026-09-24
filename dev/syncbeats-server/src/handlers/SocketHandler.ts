@@ -4,7 +4,7 @@ import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import { UserRepository } from '../auth/UserRepository';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, TrackQueueItem, ChatMessage, SpatialPosition
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition, RepeatMode
 } from '../types';
 
 /**
@@ -41,9 +41,9 @@ function sanitiseSpatialPosition(raw: unknown): SpatialPosition | null {
 }
 
 export class SocketHandler {
-  private nextDebounce = new Map<string, number>();
-  private endedDebounce = new Map<string, number>();
   private userRepo: UserRepository = new UserRepository();
+  /** Coalesces the write-behind queue save; a burst of reorders costs one UPDATE. */
+  private queueSaveTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private io:          Server,
@@ -95,8 +95,9 @@ export class SocketHandler {
       this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
 
-    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: TrackQueueItem[] }) => {
+    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
       this.io.to(roomId).emit('room:queueChanged', { queue });
+      this.scheduleQueueSave(roomId);
     });
 
     eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
@@ -106,6 +107,23 @@ export class SocketHandler {
     eventBus.on(EVENTS.PLAYBACK_PAUSE, (payload: any) => {
       this.io.to(payload.roomId).emit('playback:pause', payload);
     });
+  }
+
+  /**
+   * Write-behind persistence for the queue. Drag-reorder fires a mutation per frame, so
+   * the save is debounced; the whole queue is written as one document, which makes a
+   * dropped tick harmless — the next mutation rewrites it in full.
+   */
+  private scheduleQueueSave(roomId: string): void {
+    const pending = this.queueSaveTimers.get(roomId);
+    if (pending) clearTimeout(pending);
+
+    this.queueSaveTimers.set(roomId, setTimeout(() => {
+      this.queueSaveTimers.delete(roomId);
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      void this.roomRepo.saveQueue(roomId, room.getQueueState());
+    }, 1000));
   }
 
   register(socket: Socket): void {
@@ -136,22 +154,17 @@ export class SocketHandler {
         this.roomManager.handleDisconnect(socket.id);
 
         // Load from DB if fresh or if queue in memory is empty
-        if (room.getQueue().length === 0 || (!room.getTrackUrl() && room.getParticipantCount() === 0)) {
-          const [dbRoom, queue] = await Promise.all([
-            this.roomRepo.findById(roomId),
-            this.roomRepo.getQueue(roomId),
-          ]);
+        if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
+          const dbRoom = await this.roomRepo.findById(roomId);
           if (dbRoom) {
             room.initializeFromDatabase({
               hostId:        dbRoom.host_id,
               trackUrl:      dbRoom.track_url,
               playbackState: dbRoom.playback_state,
               positionMs:    dbRoom.position_ms,
-              queue,
               createdAt:     dbRoom.created_at,
+              queue:         dbRoom.queue,
             });
-          } else if (queue.length > 0) {
-            room.syncQueue(queue, queue.find(q => q.isCurrent)?.id ?? null);
           }
         }
 
@@ -225,29 +238,6 @@ export class SocketHandler {
       room.setIsPrivate(isPrivate);
     });
 
-    socket.on('room:toggleShuffle', async ({ roomId, shuffle }: { roomId: string, shuffle: boolean }) => {
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      try {
-        await this.roomRepo.updatePlaybackSettings(roomId, { shuffle });
-        room.updatePlaybackSettings(shuffle, undefined);
-        const newQueue = await this.roomRepo.getQueue(roomId);
-        room.updateQueueOrder(newQueue);
-      } catch (err) {
-        socket.emit('error', { message: 'Failed to update shuffle mode' });
-      }
-    });
-
-    socket.on('room:toggleRepeat', async ({ roomId, repeatMode }: { roomId: string, repeatMode: "off" | "track" | "all" }) => {
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      try {
-        await this.roomRepo.updatePlaybackSettings(roomId, { repeatMode });
-        room.updatePlaybackSettings(undefined, repeatMode);
-      } catch (err) {
-        socket.emit('error', { message: 'Failed to update repeat mode' });
-      }
-    });
 
     socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
       const room = this.roomManager.get(roomId);
@@ -354,47 +344,52 @@ export class SocketHandler {
       }
     });
 
-    socket.on('playback:ended', async ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
+    // ── Queue ────────────────────────────────────────────────────────────
+    //
+    // next/prev are deliberately not debounced — hammering next should skip
+    // several tracks. Only `playback:ended` needs a guard, and that lives in
+    // RoomQueue.shouldAdvance() where the current track is known.
+
+    socket.on('playback:next', ({ roomId }: { roomId: string }) => {
+      this.roomManager.get(roomId)?.nextTrack(true);
+    });
+
+    socket.on('playback:prev', ({ roomId }: { roomId: string }) => {
+      this.roomManager.get(roomId)?.prevTrack(true);
+    });
+
+    socket.on('playback:jumpTo', ({ roomId, trackId }: { roomId: string; trackId: string }) => {
       const room = this.roomManager.get(roomId);
-      if (!room) return;
-      // Allow any client to notify that the track ended.
-      // The expectedCurrentTrackUrl ensures we only advance once per track end.
-      if (room.getTrackUrl() !== trackUrl) return;
-
-      const key = `${roomId}:${trackUrl}`;
-      const now = Date.now();
-      const last = this.endedDebounce.get(key) || 0;
-      if (now - last < 3000) {
-        return;
-      }
-      this.endedDebounce.set(key, now);
-
-      try {
-        const next = await this.roomRepo.advanceQueue(roomId, trackUrl);
-        if (next === undefined) return;
-        const latestQueue = await this.roomRepo.getQueue(roomId);
-        room.syncQueue(latestQueue, next?.id ?? null);
-        // Automatically play the next track if it exists
-        if (next) room.play(socket.id);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+      if (!room || !trackId) return;
+      if (!room.setCurrentItem(trackId, true)) {
+        socket.emit('error', { message: 'That track is no longer in the queue' });
       }
     });
+
+    // Every device fires this at the end of a track; Room advances at most once.
+    socket.on('playback:ended', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
+      this.roomManager.get(roomId)?.handleTrackEnded(trackUrl);
+    });
+
+    socket.on('room:removeFromQueue', ({ roomId, itemId }: { roomId: string; itemId: string }) => {
+      this.roomManager.get(roomId)?.removeFromQueue(itemId);
+    });
+
+    socket.on('room:toggleShuffle', ({ roomId, shuffle }: { roomId: string; shuffle: boolean }) => {
+      this.roomManager.get(roomId)?.setShuffle(!!shuffle);
+    });
+
+    socket.on('room:toggleRepeat', ({ roomId, repeatMode }: { roomId: string; repeatMode: RepeatMode }) => {
+      if (!['off', 'all', 'track'].includes(repeatMode)) return;
+      this.roomManager.get(roomId)?.setRepeatMode(repeatMode);
+    });
+
 
     socket.on('room:reset', async ({ roomId }: { roomId: string }) => {
       const room = this.roomManager.get(roomId);
       if (room) {
-        await this.roomRepo.clearEntireQueue(roomId).catch(() => {});
         room.resetRoom();
         this.io.to(roomId).emit('room:reset', { roomId });
-      }
-    });
-
-    socket.on('room:removeFromQueue', async ({ roomId, itemId }: { roomId: string; itemId: string }) => {
-      const room = this.roomManager.get(roomId);
-      if (room) {
-        await this.roomRepo.removeQueueItem(roomId, itemId).catch(() => {});
-        room.removeQueueItem(itemId);
       }
     });
 
@@ -415,60 +410,7 @@ export class SocketHandler {
       console.log(`[WS] Force Syncing all ${userSockets.length} devices for user ${userId}`);
     });
 
-    socket.on('playback:next', async ({ roomId }: { roomId: string }) => {
-      const now = Date.now();
-      const last = this.nextDebounce.get(roomId) || 0;
-      if (now - last < 2000) {
-        console.log(`[WS] Ignoring duplicate playback:next for room ${roomId}`);
-        return;
-      }
-      this.nextDebounce.set(roomId, now);
 
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      try {
-        const next = await this.roomRepo.advanceQueue(roomId);
-        const latestQueue = await this.roomRepo.getQueue(roomId);
-        room.syncQueue(latestQueue, next?.id ?? null);
-        if (next) room.play(socket.id);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
-      }
-    });
-
-    socket.on('playback:prev', async ({ roomId }: { roomId: string }) => {
-      const now = Date.now();
-      const last = this.nextDebounce.get(roomId) || 0;
-      if (now - last < 2000) {
-        console.log(`[WS] Ignoring duplicate playback:prev for room ${roomId}`);
-        return;
-      }
-      this.nextDebounce.set(roomId, now);
-
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      try {
-        const prev = await this.roomRepo.prevQueue(roomId);
-        const latestQueue = await this.roomRepo.getQueue(roomId);
-        room.syncQueue(latestQueue, prev?.id ?? null);
-        if (prev) room.play(socket.id);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
-      }
-    });
-
-    socket.on('playback:jumpTo', async ({ roomId, trackId }: { roomId: string, trackId: string }) => {
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      try {
-        const target = await this.roomRepo.jumpToQueueItem(roomId, trackId);
-        const latestQueue = await this.roomRepo.getQueue(roomId);
-        room.syncQueue(latestQueue, target?.id ?? null);
-        if (target) room.play(socket.id);
-      } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
-      }
-    });
 
     socket.on('room:setParticipantVolume', ({ roomId, targetSocketId, volume }: SetParticipantVolumePayload) => {
       try {

@@ -74,7 +74,7 @@ function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Dev
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 0.65, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className={cn('rounded-xl', 'border', 'border-foreground/5', 'bg-foreground/2', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
+      className={cn('group', 'rounded-xl', 'border', 'border-foreground/5', 'bg-foreground/2', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
     >
       <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
         <div className={cn('relative', 'w-8', 'h-8', 'rounded-lg', 'flex', 'items-center', 'justify-center', 'shrink-0', 'bg-foreground/5', 'text-foreground/40')}>
@@ -100,7 +100,7 @@ function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Dev
           ) : (
             <div className={cn('flex', 'items-center', 'gap-2')}>
               <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{displayName}</span>
-              <button onClick={() => setIsEditing(true)} className={cn('opacity-0', 'group-hover:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}>Edit</button>
+              <button onClick={() => setIsEditing(true)} className={cn('opacity-0', 'group-hover:opacity-100', 'focus-visible:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}>Edit</button>
             </div>
           )}
           {!isEditing && <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>}
@@ -230,7 +230,7 @@ function ParticipantRow({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       className={cn(
-        "rounded-xl border transition-all duration-300 overflow-hidden",
+        "group rounded-xl border transition-all duration-300 overflow-hidden",
         isBufferingActive
           ? "border-red-500/40 bg-red-500/10 animate-[pulse_2s_infinite] shadow-[0_0_15px_rgba(239,68,68,0.2)]"
           : isSyncingActive
@@ -242,12 +242,24 @@ function ParticipantRow({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Main row */}
-      <button
-        className={cn('w-full', 'flex', 'items-center', 'gap-3', 'px-3', 'py-2.5', 'text-left')}
+      {/* Main row — a div, not a <button>: it contains the Edit button and the
+          rename input, and <button> may not have interactive descendants. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        className={cn('w-full', 'flex', 'items-center', 'gap-3', 'px-3', 'py-2.5', 'text-left', 'cursor-pointer')}
         onClick={() => {
            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
            setExpanded(v => !v);
+        }}
+        onKeyDown={e => {
+          // Only the row itself — never Space/Enter typed into the rename input.
+          if (e.target !== e.currentTarget) return;
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+          setExpanded(v => !v);
         }}
       >
         {/* Device Icon */}
@@ -279,6 +291,7 @@ function ParticipantRow({
                 autoFocus
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
+                onClick={e => e.stopPropagation()}
                 onKeyDown={e => e.key === 'Enter' && handleSave(e)}
                 className={cn('w-full', 'bg-background', 'text-xs', 'font-bold', 'text-foreground', 'rounded-md', 'px-2', 'py-1', 'border', 'border-foreground/20', 'outline-none')}
                 disabled={saving}
@@ -296,7 +309,7 @@ function ParticipantRow({
                     e.stopPropagation();
                     setIsEditing(true);
                   }}
-                  className={cn('opacity-0', 'group-hover:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}
+                  className={cn('opacity-0', 'group-hover:opacity-100', 'focus-visible:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}
                 >
                   Edit
                 </button>
@@ -318,7 +331,7 @@ function ParticipantRow({
             className={`w-3.5 h-3.5 text-foreground/30 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
           />
         </div>
-      </button>
+      </div>
 
       {/* Expanded controls */}
       <AnimatePresence>

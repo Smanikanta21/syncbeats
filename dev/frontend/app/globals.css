@@ -158,6 +158,39 @@
     content: '';
   }
 
+  /* Synced-lyrics feature preview (see FeaturesExplanation.LyricsMiniDemo).
+     The active line sweeps its word-fill left-to-right like the real player. */
+  @keyframes lyricSweep {
+    0%   { background-position: 120% 0; }
+    55%  { background-position: 0% 0; }
+    100% { background-position: 0% 0; }
+  }
+  .lyric-sweep {
+    background-image: linear-gradient(
+      90deg,
+      var(--foreground) 50%,
+      color-mix(in srgb, var(--foreground) 22%, transparent) 50%
+    );
+    background-size: 220% 100%;
+    background-position: 120% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: lyricSweep 3.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  /* Instrumental dots — shown wherever a stretch of a song has no vocals
+     (lyrics panel, and the feature preview on the landing page). A slow rise
+     and a held rest between pulses; staggering the delay walks the wave across
+     the three dots. Deliberately not audio-reactive — dots chasing an FFT read
+     as jittery, a calm pulse reads as intentional. */
+  @keyframes lyricDot {
+    0%, 70%, 100% { transform: scale(0.72); opacity: 0.28; }
+    35%           { transform: scale(1.3);  opacity: 0.95; }
+  }
+  .lyric-dot {
+    animation: lyricDot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
   input[type="range"].volume-slider {
     height: 40px;
     -webkit-appearance: none;
@@ -212,4 +245,22 @@
 
 .animate-ambient-breathing {
   animation: ambientBreathing 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Accessibility + mobile battery: honour the OS "reduce motion" setting.
+   Calms CSS keyframe loops (orbiting rings, pulses, shimmer, lyric sweep) and
+   long transitions. JS-driven motion (framer/GSAP) isn't covered here — those
+   read prefers-reduced-motion in their own components where it matters. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .lyric-sweep {
+    background-position: 0 0 !important; /* freeze fully sung, still readable */
+  }
 }

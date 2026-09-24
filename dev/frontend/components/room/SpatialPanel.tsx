@@ -22,8 +22,10 @@ import { Maximize2, X, User, Users } from "lucide-react";
 
 import type { SpatialPosition } from "../../lib/spatial/geometry";
 import type { SpatialLayout } from "../../lib/spatial/layout";
-import type { MotionConfig } from "../../lib/spatial/motion";
+import { DEFAULT_MOTION, type MotionConfig } from "../../lib/spatial/motion";
+import { SpatialAudioEngine } from "../../audio/SpatialAudioEngine";
 import type { SpatialMode } from "../../hooks/useSpatialAudio";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useBeatEngine } from "../../context/BeatContext";
 import { cn } from "@/lib/utils";
 import { SpatialControls } from "./SpatialControls";
@@ -49,8 +51,6 @@ interface SpatialPanelProps {
   layout: SpatialLayout;
   mode: SpatialMode;
   onModeChange: (mode: SpatialMode) => void;
-  motion: MotionConfig;
-  onMotionChange: (patch: Partial<MotionConfig>) => void;
   /** Mid-drag: audio + socket only */
   onPreviewPosition: (key: string, pos: SpatialPosition) => void;
   /** Pointer-up: commits to state */
@@ -81,13 +81,13 @@ const TABS: Array<{ id: SpatialMode; label: string; icon: typeof User; blurb: st
 
 /** How fast the bass pulse falls back to rest, per frame at 60fps. */
 const BEAT_DECAY = 0.88;
+/** Below this the pulse is invisible, so the decay loop stops. */
+const BEAT_REST = 5e-4;
 
 export function SpatialPanel({
   layout,
   mode,
   onModeChange,
-  motion,
-  onMotionChange,
   onPreviewPosition,
   onCommitPosition,
   onUpdatePosition,
@@ -100,33 +100,55 @@ export function SpatialPanel({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  /** Matches this component's own `lg:` split between inline stage and modal. */
+  const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+
+  /**
+   * Motion lives here rather than in `useSpatialAudio` so that dragging SPEED or
+   * SPREAD re-renders this panel and nothing else. Up in the room page every
+   * pointer-move re-rendered the dashboard, the lyrics and the WebGL tree — which
+   * is what made the sliders feel like they were fighting back.
+   */
+  const [motion, setMotionState] = useState<MotionConfig>({ ...DEFAULT_MOTION });
+  const onMotionChange = useCallback(
+    (patch: Partial<MotionConfig>) => setMotionState(prev => ({ ...prev, ...patch })),
+    [],
+  );
+  useEffect(() => {
+    SpatialAudioEngine.getInstance().setMotion(motion);
+  }, [motion]);
+
   // The modal is `lg:hidden` and the inline stage is `hidden` beneath it, so a
   // resize up to desktop while expanded would leave neither visible. Collapse
   // instead — which also guarantees only one WebGL canvas is ever mounted.
   useEffect(() => {
-    if (!isMobileModalOpen) return;
-    const onResize = () => {
-      if (window.innerWidth >= 1024) setIsMobileModalOpen(false);
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [isMobileModalOpen]);
+    if (isMobileModalOpen && isLargeScreen) setIsMobileModalOpen(false);
+  }, [isMobileModalOpen, isLargeScreen]);
 
   // ── Bass pulse, ref-only ───────────────────────────────────────────────────
   const { subscribeToBeat } = useBeatEngine();
   const beatRef = useRef(0);
 
   useEffect(() => {
-    const unsubscribe = subscribeToBeat("bass", intensity => {
-      // Rising edge only — the decay below handles the fall.
-      beatRef.current = Math.max(beatRef.current, Math.min(1, intensity));
-    });
     let raf = 0;
     const decay = () => {
       beatRef.current *= BEAT_DECAY;
+      // Below audibility the loop is burning a frame to multiply a tiny number
+      // by 0.88 forever. Stop; the next beat restarts it.
+      if (beatRef.current < BEAT_REST) {
+        beatRef.current = 0;
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(decay);
     };
-    raf = requestAnimationFrame(decay);
+
+    const unsubscribe = subscribeToBeat("bass", intensity => {
+      // Rising edge only — the decay above handles the fall.
+      beatRef.current = Math.max(beatRef.current, Math.min(1, intensity));
+      if (raf === 0) raf = requestAnimationFrame(decay);
+    });
+
     return () => {
       unsubscribe();
       cancelAnimationFrame(raf);
@@ -136,6 +158,11 @@ export function SpatialPanel({
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const myDevices = useMemo(() => layout.me?.devices ?? [], [layout]);
+  /** The speakers actually making up the field — mirrors `applyField` in the hook. */
+  const fieldDevices = useMemo(
+    () => (mode === "solo" ? (layout.me?.devices ?? []) : layout.devices),
+    [mode, layout],
+  );
   const otherUserCount = useMemo(
     () => layout.users.filter(u => !u.isMe).length,
     [layout.users],
@@ -152,17 +179,44 @@ export function SpatialPanel({
     [layout.devices, onUpdatePosition],
   );
 
-  const scene = (
-    <SpatialScene3D
-      layout={layout}
-      mode={mode}
-      motionMode={motion.mode}
-      isPlaying={isPlaying}
+  const controls = (
+    <SpatialControls
+      motion={motion}
+      onMotionChange={onMotionChange}
+      myDevices={myDevices}
+      fieldDevices={fieldDevices}
+      onQuickPlace={handleQuickPlace}
       onPreviewPosition={onPreviewPosition}
       onCommitPosition={onCommitPosition}
-      beatRef={beatRef}
-      className="absolute inset-0 h-full w-full"
+      onReset={onReset}
+      isPlaying={isPlaying}
     />
+  );
+
+  /**
+   * Mounted only when something can actually see it: off-screen the R3F tree
+   * still renders, and the mobile teaser used to keep a second canvas alive
+   * behind a blur purely to look busy.
+   *
+   * Memoised so that a SPREAD or HEIGHT drag — which changes `motion` but not
+   * `motion.mode` — never hands R3F a new element to reconcile.
+   */
+  const sceneVisible = enabled && (isLargeScreen || isMobileModalOpen);
+  const scene = useMemo(
+    () =>
+      sceneVisible ? (
+        <SpatialScene3D
+          layout={layout}
+          mode={mode}
+          motionMode={motion.mode}
+          isPlaying={isPlaying}
+          onPreviewPosition={onPreviewPosition}
+          onCommitPosition={onCommitPosition}
+          beatRef={beatRef}
+          className="absolute inset-0 h-full w-full"
+        />
+      ) : null,
+    [sceneVisible, layout, mode, motion.mode, isPlaying, onPreviewPosition, onCommitPosition],
   );
 
   const tabSwitcher = (compact = false) => (
@@ -252,17 +306,18 @@ export function SpatialPanel({
             isMobileModalOpen ? "hidden lg:block" : "cursor-pointer lg:cursor-auto",
           )}
           onClick={() => {
-            if (window.innerWidth < 1024 && !isMobileModalOpen) setIsMobileModalOpen(true);
+            if (!isLargeScreen && !isMobileModalOpen) setIsMobileModalOpen(true);
           }}
         >
-          <div
-            className={cn(
-              "absolute inset-0 h-full w-full",
-              !isMobileModalOpen &&
-                "pointer-events-none opacity-70 blur-sm transition-all lg:pointer-events-auto lg:opacity-100 lg:blur-none",
+          <div className="absolute inset-0 h-full w-full">
+            {isMobileModalOpen ? null : isLargeScreen ? (
+              scene
+            ) : (
+              /* Mobile: a still card behind TAP TO EXPAND. This used to be the
+                 live stage at opacity-70 and blur-sm — a whole second WebGL
+                 context rendering every frame to be smeared out. */
+              <div className="h-full w-full bg-[radial-gradient(circle_at_50%_45%,rgba(139,92,246,0.28),transparent_62%),radial-gradient(circle_at_50%_100%,rgba(56,189,248,0.2),transparent_55%)]" />
             )}
-          >
-            {!isMobileModalOpen && scene}
           </div>
 
           {/* Disabled overlay */}
@@ -276,7 +331,7 @@ export function SpatialPanel({
               <p className="text-[11px] font-semibold text-foreground/40">Spatial audio off</p>
               <button
                 onClick={(e) => { e.stopPropagation(); onEnabledChange?.(true); }}
-                className="mt-1 rounded-full bg-violet-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-violet-600 transition-colors"
+                className="mt-1 rounded-full bg-foreground px-4 py-1.5 text-[11px] font-bold text-background shadow-md hover:bg-foreground/90 transition-colors"
               >
                 Turn on
               </button>
@@ -303,14 +358,9 @@ export function SpatialPanel({
           </div>
         </div>
 
-        <SpatialControls
-          motion={motion}
-          onMotionChange={onMotionChange}
-          myDevices={myDevices}
-          onQuickPlace={handleQuickPlace}
-          onReset={onReset}
-          isPlaying={isPlaying}
-        />
+        {/* The modal below renders its own copy. Leaving this one mounted under
+            a full-screen portal meant two sets of live-readout rAF loops. */}
+        {!isMobileModalOpen && controls}
       </div>
 
       {/* FULL-SCREEN STAGE — mobile */}
@@ -336,14 +386,7 @@ export function SpatialPanel({
             </div>
 
             <div className="mt-3 max-h-[42vh] shrink-0 overflow-y-auto">
-              <SpatialControls
-                motion={motion}
-                onMotionChange={onMotionChange}
-                myDevices={myDevices}
-                onQuickPlace={handleQuickPlace}
-                onReset={onReset}
-                isPlaying={isPlaying}
-              />
+              {controls}
             </div>
           </div>,
           document.body,

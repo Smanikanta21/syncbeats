@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
 import { getServerUrl, getAuthToken } from "../../lib/api";
+import { getSocket } from "../../lib/socket";
 import { Trash2, Disc, Play, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -154,12 +155,17 @@ export function SpotifyIslandTab({
 
   const handlePlayPlaylist = useCallback(async (playlistId: string) => {
     try {
-      await playAsync.run(playlistId);
+      const res = await playAsync.run(playlistId);
+      // The server dedups, so a re-play returns the item already in the queue —
+      // jump to it instead of expecting the enqueue itself to start playback.
+      if (res?.item?.id && roomId) {
+        getSocket().emit("playback:jumpTo", { roomId, trackId: res.item.id });
+      }
       if (onClose) onClose();
     } catch (e: any) {
       console.error("Failed to play playlist:", e);
     }
-  }, [playAsync, onClose]);
+  }, [playAsync, onClose, roomId]);
 
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
