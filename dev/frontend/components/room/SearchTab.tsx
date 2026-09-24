@@ -104,6 +104,123 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     return res.json();
   });
 
+
+
+  const handleSpotifyImport = async (url: string) => {
+    if (!token) return;
+    const controller = new AbortController();
+    setImportAbortController(controller);
+    const urlLower = url.toLowerCase();
+    if (!urlLower.includes("spotify.com") && !urlLower.startsWith("spotify:")) {
+      setSpError("Please enter a valid Spotify playlist URL.");
+      return;
+    }
+    setImporting(true);
+    setSpError(null);
+    setImportStage("scraping");
+    setImportProgress(5);
+    setImportStats({ total: 0 });
+
+    upload.setActiveImport({
+      playlistName: "Importing Playlist...",
+      progress: 5,
+      stage: "scraping",
+      totalTracks: 0,
+      isImporting: true,
+    });
+
+    try {
+      const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
+      const response = await fetch(`${SERVER}/api/bridge/import`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistUrl: url }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.details || errData.error || "Failed to import Spotify playlist.");
+      }
+
+      if (!response.body) throw new Error("No response body for SSE stream.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalTracks = 0;
+      let playlistId = "";
+      let playlistName = "Spotify Playlist";
+      let coverUrl: string | undefined;
+
+      setImportProgress(15);
+      setImportStage("indexing");
+      upload.setActiveImport(curr => curr ? { ...curr, progress: 15, stage: "indexing" } : null);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const lines = part.split("\n");
+          let eventName = "";
+          let dataStr = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+            if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
+          }
+          if (!dataStr) continue;
+          let data: any;
+          try { data = JSON.parse(dataStr); } catch { continue; }
+
+          if (eventName === "metadata") {
+            totalTracks = data.totalTracks || 0;
+            playlistId = data.playlistId || "";
+            playlistName = data.playlistName || "Imported Playlist";
+            coverUrl = data.coverUrl;
+            setImportStats(prev => ({ ...prev, total: totalTracks }));
+            setImportStage("downloading");
+            upload.setActiveImport(curr => curr ? { ...curr, playlistName, playlistId, totalTracks, stage: "downloading" } : null);
+          } else if (eventName === "progress") {
+            setImportStats(prev => ({ ...prev, processed: data.processed, success: data.success, failed: data.failed }));
+            const p = totalTracks > 0 ? 15 + Math.floor((data.processed / totalTracks) * 85) : 50;
+            setImportProgress(p);
+            upload.setActiveImport(curr => curr ? { ...curr, progress: p } : null);
+          } else if (eventName === "complete") {
+            setImportStage("complete");
+            setImportProgress(100);
+            upload.setActiveImport(curr => curr ? { ...curr, progress: 100, stage: "complete" } : null);
+            setSpError(null);
+            setTimeout(() => {
+              setImporting(false);
+              upload.setActiveImport(null);
+              setQuery("");
+              loadPlaylists();
+              if (onSuccess) onSuccess();
+            }, 1000);
+          } else if (eventName === "error") {
+            throw new Error(data.message || "Import failed mid-stream");
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        setSpError("Import cancelled.");
+      } else {
+        console.error(err);
+        setSpError(err.message || "Failed to import playlist. Please try again.");
+      }
+      setImporting(false);
+      upload.setActiveImport(null);
+    } finally {
+      setImportAbortController(null);
+    }
+  };
+
   const importAsync = useAsync(async (url: string) => {
     if (!token) throw new Error('Not authenticated');
     return handleSpotifyImport(url);
@@ -379,120 +496,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-  const handleSpotifyImport = async (url: string) => {
-    if (!token) return;
-    const controller = new AbortController();
-    setImportAbortController(controller);
-    const urlLower = url.toLowerCase();
-    if (!urlLower.includes("spotify.com/playlist/")) {
-      setSpError("Please enter a valid Spotify public playlist URL.");
-      return;
-    }
-    setImporting(true);
-    setSpError(null);
-    setImportStage("scraping");
-    setImportProgress(15);
-    setImportStats({ total: 0 });
-
-    upload.setActiveImport({
-      playlistName: "Imported Playlist",
-      progress: 15,
-      stage: "scraping",
-      totalTracks: 0,
-      isImporting: true,
-    });
-
-    const progressTimer = setInterval(() => {
-      setImportProgress(prev => {
-        const next = prev < 40 ? prev + 5 : prev < 80 ? prev + 2 : prev < 95 ? prev + 0.5 : prev;
-        return next;
-      });
-      upload.setActiveImport(curr => {
-        if (!curr) return null;
-        const prev = curr.progress;
-        const next = prev < 40 ? prev + 5 : prev < 80 ? prev + 2 : prev < 95 ? prev + 0.5 : prev;
-        return { ...curr, progress: Math.min(98, next) };
-      });
-    }, 300);
-
-    let t1: any, t2: any;
-    try {
-      t1 = setTimeout(() => {
-        setImportStage("indexing");
-        upload.setActiveImport(curr => curr ? { ...curr, stage: "indexing" } : null);
-      }, 1200);
-
-      t2 = setTimeout(() => {
-        setImportStage("enriching");
-        upload.setActiveImport(curr => curr ? { ...curr, stage: "enriching" } : null);
-      }, 2800);
-
-      const r = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/bridge/import`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: url }),
-        signal: controller.signal,
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.details || data.error || "Failed to import playlist.");
-      
-      clearInterval(progressTimer);
-      setImportProgress(100);
-      setImportStage("done");
-      const finalStats = {
-        total: data.totalTracks || data.trackCount || 0,
-        playlistName: data.playlistName || "Spotify Playlist",
-        playlistId: data.playlistId,
-        coverUrl: data.coverUrl,
-      };
-      setImportStats(finalStats);
-
-      // Warn the user if we only got 100 tracks due to Spotify's embed cap
-      if (data.capped) {
-        setSpError(
-          `Only the first 100 tracks were imported (Spotify's limit for unauthenticated access). ` +
-          `Connect your Spotify account in Profile → Spotify to import the full playlist.`
-        );
-      }
-
-      upload.setActiveImport({
-        playlistId: data.playlistId,
-        playlistName: data.playlistName || "Spotify Playlist",
-        progress: 100,
-        stage: "done",
-        totalTracks: data.totalTracks || data.trackCount || 0,
-        isImporting: false,
-      });
-
-      // Refetch user's playlists so the new playlist is listed immediately
-      try {
-        const plRes = await roomsApi.getUserSpotifyPlaylists();
-        if (plRes && Array.isArray(plRes)) {
-          setMySpotifyPlaylists(plRes);
-        }
-      } catch (plErr) {}
-
-      setQuery("");
-      onSuccess?.();
-      return data.playlistId;
-    } catch (err: any) {
-      clearInterval(progressTimer);
-      upload.setActiveImport(null);
-      if (err.name === 'AbortError') return;
-      const errMsg = err.message || "Something went wrong during import.";
-      if (errMsg.toLowerCase().includes("invalid spotify data structure") || errMsg.toLowerCase().includes("could not extract spotify playlist")) {
-        setSpError("Private playlists cannot be imported. Make it public first.");
-      } else {
-        setSpError(errMsg);
-      }
-      throw err;
-    } finally {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearInterval(progressTimer);
-      setImporting(false);
-    }
-  };
 
   const handleSpotifySearchEnqueue = async (spotifyUrl: string) => {
     setSpError(null);
@@ -1185,7 +1188,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 15 }}
             transition={{ ...SPRING, opacity: { duration: 0.2 } }}
             ref={scrollRef}
-            className={cn('max-h-[420px]', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
+            className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
             data-lenis-prevent="true"
             onPointerDownCapture={e => e.stopPropagation()}
             onWheelCapture={e => e.stopPropagation()}

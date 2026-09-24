@@ -550,7 +550,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
             label="Ambient"
             onClick={() => updateSettings({ ambientEnabled: settings.ambientEnabled !== false ? false : true })}
             active={settings.ambientEnabled !== false}
-            activeColor="bg-amber-500/15 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+            activeColor="bg-foreground text-background shadow-md border-foreground/30"
             title={settings.ambientEnabled !== false ? "Disable Ambient Light" : "Enable Ambient Light"}
           />
           {onOpenVisuals && (

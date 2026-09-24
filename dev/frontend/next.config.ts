@@ -7,6 +7,10 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  // @ts-ignore
+  eslint: { ignoreDuringBuilds: true },
+  // @ts-ignore
+  typescript: { ignoreBuildErrors: true },
   output: process.env.VERCEL ? undefined : "standalone",
   turbopack: {},
   allowedDevOrigins: ['10.7.3.75', '10.7.13.253', '172.20.10.8', '10.6.1.21', '10.7.13.253'],

@@ -477,7 +477,15 @@ export function DevicesPane({
 
     // 2. Reconcile account devices with my user group
     if (accountDevices.length > 0) {
-      const myKey = myUserId ? `user_${myUserId}` : Array.from(map.keys()).find(k => map.get(k)?.isMe);
+      let myKey = myUserId ? `user_${myUserId}` : Array.from(map.keys()).find(k => map.get(k)?.isMe);
+      
+      // If we used myUserId but that group doesn't exist (e.g. legacy client or missing userId in snapshot),
+      // fallback to finding the group where isMe is true.
+      if (myKey && !map.has(myKey)) {
+        const fallbackKey = Array.from(map.keys()).find(k => map.get(k)?.isMe);
+        if (fallbackKey) myKey = fallbackKey;
+      }
+
       const myUserName = myKey ? map.get(myKey)?.userName ?? "Your Devices" : "Your Account Devices";
       const targetKey = myKey || "my_account_devices";
 

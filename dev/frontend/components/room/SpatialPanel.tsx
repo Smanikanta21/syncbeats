@@ -235,9 +235,7 @@ export function SpatialPanel({
               "flex items-center gap-1.5 rounded-full font-semibold transition-colors",
               compact ? "px-3 py-1 text-[10px]" : "px-3 py-1 text-[10px] lg:px-4 lg:py-1.5 lg:text-xs",
               active
-                ? t.id === "solo"
-                  ? "bg-violet-500 text-white shadow-md"
-                  : "bg-blue-500 text-white shadow-md"
+                ? "bg-foreground text-background shadow-md"
                 : "text-foreground/60 hover:text-foreground",
             )}
           >
@@ -280,14 +278,14 @@ export function SpatialPanel({
             className={cn(
               "relative flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-all duration-300",
               enabled
-                ? "border-violet-500/40 bg-violet-500"
+                ? "border-foreground bg-foreground"
                 : "border-foreground/15 bg-foreground/10",
             )}
           >
             <span
               className={cn(
-                "absolute h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-300",
-                enabled ? "left-[26px]" : "left-1",
+                "absolute h-4 w-4 rounded-full shadow-sm transition-all duration-300",
+                enabled ? "left-[26px] bg-background" : "left-1 bg-white",
               )}
             />
           </button>
