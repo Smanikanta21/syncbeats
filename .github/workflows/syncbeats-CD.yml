@@ -24,6 +24,7 @@ jobs:
     name: Teardown Staging on Merge
     if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'nodejs-dev' && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
+    environment: nodejs-dev
     permissions:
       contents: read
       id-token: write
