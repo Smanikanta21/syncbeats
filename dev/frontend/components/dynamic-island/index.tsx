@@ -1868,7 +1868,7 @@ export function DynamicIsland() {
             {islandState === "pill" && !wiggle && (
               <motion.div
                 key="pill-content"
-                {...contentMorph(reduceMotion)}
+                {...contentMorph(!!reduceMotion)}
                 className={cn('absolute', 'inset-0')}
               >
                 <RoomPill
@@ -1892,7 +1892,7 @@ export function DynamicIsland() {
             {islandState === "extended" && (
               <motion.div
                 key="extended-content"
-                {...contentMorph(reduceMotion)}
+                {...contentMorph(!!reduceMotion)}
                 className={cn('absolute', 'inset-0')}
               >
                 <RoomExtendedPill
@@ -1926,7 +1926,7 @@ export function DynamicIsland() {
             {isExpanded_room && !wiggle && (
               <motion.div
                 key="expanded-tab-container"
-                {...contentMorph(reduceMotion)}
+                {...contentMorph(!!reduceMotion)}
                 className={cn('w-full', 'relative', 'pointer-events-auto')}
               >
                 {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
