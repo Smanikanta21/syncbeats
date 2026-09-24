@@ -380,9 +380,7 @@ export function useSpatialAudio({
     });
   }, []);
 
-  const setMotion = useCallback((patch: Partial<MotionConfig>) => {
-    setMotionState(prev => ({ ...prev, ...patch }));
-  }, []);
+
 
   const resumeAudio = useCallback(async () => {
     await engine.resume();
