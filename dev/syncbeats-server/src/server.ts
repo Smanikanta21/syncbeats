@@ -144,6 +144,18 @@ export class SyncBeatsServer {
     this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
+    // Mask 500 errors in production to avoid leaking internal details (e.g. Prisma errors)
+    this.app.use((req, res, next) => {
+      const originalJson = res.json;
+      res.json = function(body) {
+        if (res.statusCode >= 500 && body && body.error && process.env.NODE_ENV === 'production') {
+          console.error('[500 Error Masked]', body.error);
+          body.error = 'Internal Server Error';
+        }
+        return originalJson.call(this, body);
+      };
+      next();
+    });
     // Global Request Audit Logging Middleware
     this.app.use((req, res, next) => {
       if (req.path.startsWith('/files') || req.path.startsWith('/health') || req.method === 'OPTIONS') {
