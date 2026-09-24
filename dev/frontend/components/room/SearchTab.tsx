@@ -328,10 +328,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       const isUrl = q.trim().startsWith("http") && q.includes("youtube.com/playlist");
       if (isUrl) {
         setIsSearching(false);
-        if (!youtubeConnected) {
-          setSpError("Connect your YouTube account to import full playlists seamlessly.");
-          return;
-        }
         handleYoutubeImport(q);
       } else {
         try {
@@ -356,6 +352,19 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         } catch (err) { console.error(err); } finally { setIsSearching(false); }
       }
     } else {
+      const isYtPlaylistUrl = q.trim().startsWith("http") && q.includes("youtube.com/playlist");
+      const isSpUrl = q.trim().startsWith("http") && (q.includes("spotify.com") || q.trim().startsWith("spotify:"));
+
+      if (isYtPlaylistUrl) {
+        setIsSearching(false);
+        handleYoutubeImport(q);
+        return;
+      } else if (isSpUrl) {
+        setIsSearching(false);
+        handleSpotifyImport(q);
+        return;
+      }
+
       // Global Search
       try {
         const [ytRes, spRes, dbRes] = await Promise.all([
@@ -880,7 +889,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   };
 
   return (
-    <div className={`relative flex flex-col w-full h-auto ${containerPadding}`}>
+    <div 
+      className={`relative flex flex-col w-full h-auto ${containerPadding}`}
+      style={{ maxHeight: isSearchOnly ? undefined : 'calc(100vh - 80px)' }}
+    >
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
           <button 

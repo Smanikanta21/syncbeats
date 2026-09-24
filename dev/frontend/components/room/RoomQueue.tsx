@@ -482,20 +482,24 @@ export function RoomQueue({
         onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
       />
 
-      {promptTrack && (
-        <PlayOrEnqueueModal
-          trackTitle={promptTrack.title}
-          onPlay={() => {
-            executeEnqueueAndPlay(promptTrack, true);
-            setPromptTrack(null);
-          }}
-          onEnqueue={() => {
-            executeEnqueueAndPlay(promptTrack, false);
-            setPromptTrack(null);
-          }}
-          onCancel={() => setPromptTrack(null)}
-        />
-      )}
+      <PlayOrEnqueueModal
+        isOpen={!!promptTrack}
+        track={promptTrack ? {
+          title: promptTrack.title,
+          artist: promptTrack.artist,
+          thumbnail: promptTrack.thumbnail,
+          url: promptTrack.trackUrl || promptTrack.id,
+        } : null}
+        onPlayNow={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, true);
+          setPromptTrack(null);
+        }}
+        onAddToQueue={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, false);
+          setPromptTrack(null);
+        }}
+        onClose={() => setPromptTrack(null)}
+      />
     </div>
   );
 }
