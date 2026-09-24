@@ -214,16 +214,40 @@ interface SyncedLyricsProps {
   currentTime?: number;     // seconds
   duration?: number;        // seconds — used to match the right lyrics version
   dataRef?: React.MutableRefObject<{ rawAudioData: Uint8Array | null; isPlaying: boolean } | any>;
+  onSeek?: (secs: number) => void;
 }
 
-export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef }: SyncedLyricsProps) {
+export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef, onSeek }: SyncedLyricsProps) {
   const [lines, setLines] = useState<LyricLine[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "no-lyrics">("idle");
   const [activeIdx, setActiveIdx] = useState(0);
   const prevKeyRef = useRef("");
-  const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const lineRefs = useRef<(HTMLElement | null)[]>([]);
   const rafRef = useRef<number>(0);
   const lastIdxRef = useRef(-1);
+
+  /* ── Browsing mode ───────────────────────────────────────────────────────
+     Scrolling by hand means you want to read, not watch: every line unblurs
+     and auto-follow backs off until you stop. Keyed off wheel/touch (user
+     intent) rather than the scroll event, which our own scrollIntoView fires
+     too — no need to disambiguate the two. */
+  const [browsing, setBrowsing] = useState(false);
+  const browseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const nudgeBrowse = useCallback(() => {
+    setBrowsing(true);
+    if (browseTimer.current) clearTimeout(browseTimer.current);
+    browseTimer.current = setTimeout(() => setBrowsing(false), 3000);
+  }, []);
+
+  // Tapping a line seeks to it and hands control straight back to auto-follow.
+  const seekToLine = useCallback((t: number) => {
+    if (browseTimer.current) clearTimeout(browseTimer.current);
+    setBrowsing(false);
+    onSeek?.(t);
+  }, [onSeek]);
+
+  useEffect(() => () => { if (browseTimer.current) clearTimeout(browseTimer.current); }, []);
 
   /* ── Fetch lyrics when track changes ─────────────────────────────────── */
   useEffect(() => {
@@ -281,9 +305,11 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
 
   // Scroll after render, not inside the rAF tick: an instrumental line's dots
   // only mount once it's active, so its ref doesn't exist yet at tick time.
+  // Skipped while browsing; re-centres the moment browsing ends.
   useEffect(() => {
+    if (browsing) return;
     lineRefs.current[activeIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeIdx]);
+  }, [activeIdx, browsing]);
 
   /* ── Status screens ──────────────────────────────────────────────────── */
   if (!title) {
@@ -307,7 +333,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
   if (status === "no-lyrics" || status === "error") {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 text-foreground/50">
-        <InstrumentalDots dataRef={dataRef} />
+        <InstrumentalDots className="scale-150" />
         <p className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-50">
           {status === "error" ? "Couldn't load lyrics" : "Instrumental"}
         </p>
@@ -320,7 +346,9 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
     <div className="relative h-full overflow-hidden">
       <div
         className="h-full overflow-y-auto scrollbar-hide px-6 py-12 space-y-6"
-        style={{ 
+        onWheel={nudgeBrowse}
+        onTouchMove={nudgeBrowse}
+        style={{
           scrollbarWidth: "none",
           maskImage: "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)"
@@ -339,37 +367,44 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
             if (!isActive) return null;
             return (
               <div key={i} ref={el => { lineRefs.current[i] = el; }}>
-                <div className="scale-75 origin-left w-fit">
-                  <InstrumentalDots dataRef={dataRef} />
+                <div className="h-9 flex items-center">
+                  <InstrumentalDots />
                 </div>
               </div>
             );
           }
 
           return (
-            <div
+            <button
               key={i}
+              type="button"
               ref={el => { lineRefs.current[i] = el; }}
+              onClick={() => seekToLine(line.time)}
+              aria-label={`Play from "${line.text}"`}
+              className={cn("block w-full text-left", onSeek && "cursor-pointer")}
             >
               <motion.div
                 animate={{
-                  opacity: isActive ? 1 : isPast ? Math.max(0.1, 0.35 - distance * 0.05) : Math.max(0.1, 0.45 - distance * 0.05),
+                  opacity: browsing
+                    ? 1
+                    : isActive ? 1 : isPast ? Math.max(0.1, 0.35 - distance * 0.05) : Math.max(0.1, 0.45 - distance * 0.05),
                   scale: isActive ? 1.35 : isFarAway ? 0.85 : 0.95,
-                  filter: isActive ? "blur(0px)" : "blur(3px)",
+                  filter: isActive || browsing ? "blur(0px)" : "blur(3px)",
                 }}
+                whileHover={{ opacity: 1, filter: "blur(0px)" }}
                 style={{ transformOrigin: "left center" }}
                 transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
                 className={cn(
-                  "text-foreground text-xl md:text-2xl font-black leading-snug text-left transition-none cursor-default select-none tracking-tight",
+                  "text-foreground text-xl md:text-2xl font-black leading-snug text-left transition-none select-none tracking-tight max-w-[72%]",
                 )}
               >
                 {isActive ? (
                   <ActiveLine line={line} timeRef={timeRef} dataRef={dataRef} />
                 ) : (
-                  <span className="text-foreground/40">{line.text}</span>
+                  <span className={browsing ? "text-foreground/75" : "text-foreground/40"}>{line.text}</span>
                 )}
               </motion.div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -377,51 +412,21 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
   );
 }
 
-/* ─── Instrumental Dots Visualizer ───────────────────────────────────────── */
-function InstrumentalDots({ dataRef }: { dataRef?: React.MutableRefObject<{ rawAudioData: Uint8Array | null } | any> }) {
-  const dotsRef = useRef<(HTMLSpanElement | null)[]>([]);
-  
-  useEffect(() => {
-    let rafId: number;
-    const sm = new Float32Array(7).fill(0);
-
-    const draw = () => {
-      const data = dataRef?.current?.rawAudioData;
-      if (data) {
-        // Map 7 dots to lower/mid frequencies
-        const step = Math.floor((data.length * 0.4) / 7); 
-        for (let i = 0; i < 7; i++) {
-          const el = dotsRef.current[i];
-          if (!el) continue;
-          
-          const val = data[i * step + 4] / 255;
-          // Smooth the animation slightly
-          const target = Math.pow(val, 2) * 5; // scaleY up to 6x
-          sm[i] += (target - sm[i]) * 0.25;
-          
-          const scale = 1 + sm[i];
-          const opacity = 0.3 + val * 0.7;
-          
-          el.style.transform = `scaleY(${scale})`;
-          el.style.opacity = `${opacity}`;
-        }
-      }
-      rafId = requestAnimationFrame(draw);
-    };
-    rafId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(rafId);
-  }, [dataRef]);
-
+/* ─── Instrumental Dots ──────────────────────────────────────────────────────
+   Shown for stretches of a song with no vocals. Real circles, not "." glyphs
+   scaled on one axis — stretching type smears it, which is what made the old
+   version look broken. The pulse itself lives in globals.css (.lyric-dot) so
+   the lyrics panel and the landing-page preview stay identical, and the
+   reduced-motion block covers both for free. */
+function InstrumentalDots({ className }: { className?: string }) {
   return (
-    <div className="flex items-center justify-center gap-1.5 h-16 text-foreground/80 text-4xl leading-none font-black tracking-widest pointer-events-none">
-      {[...Array(7)].map((_, i) => (
-        <span 
-          key={i} 
-          ref={el => { dotsRef.current[i] = el; }}
-          className="inline-block origin-bottom transition-none"
-        >
-          .
-        </span>
+    <div className={cn("flex items-center gap-2 pointer-events-none", className)} aria-hidden="true">
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className="lyric-dot w-2 h-2 rounded-full bg-foreground"
+          style={{ animationDelay: `${i * 0.18}s` }}
+        />
       ))}
     </div>
   );

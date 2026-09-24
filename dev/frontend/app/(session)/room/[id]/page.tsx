@@ -88,7 +88,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     if (isConnected) {
       setReady(audio.isReady);
     }
-  }, [audio.isReady, setReady, isConnected]);
+  }, [audio.isReady, setReady, isConnected, snapshot?.pendingPlay, snapshot?.trackUrl]);
 
   // Sync volume from server if modified remotely
   const myParticipant = participants?.find(p => p.socketId === currentSocketId);

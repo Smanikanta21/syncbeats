@@ -24,7 +24,7 @@ const features = [
   {
     id: "lyrics",
     title: "Lyrics that follow the beat",
-    description: "Words light up line by line as the song plays, then step aside during instrumental breaks — no lyric left hanging where there's nothing to sing. Pulled and time-matched automatically for whatever's playing.",
+    description: "Words light up line by line as the song plays, then step aside during instrumental breaks — pulled and time-matched to whatever's on.",
     icon: Mic2,
     color: "from-rose-400/50 via-pink-500/40 to-fuchsia-500/45",
     borderHover: "group-hover:border-rose-500/40 group-hover:shadow-[0_0_60px_-15px_rgba(244,63,94,0.35)]",
@@ -99,16 +99,16 @@ const features = [
 // reduced-motion block in globals.css calms it automatically.
 function LyricsMiniDemo() {
   return (
-    <div className="relative z-10 mt-6 rounded-2xl border border-foreground/10 bg-background/40 backdrop-blur-md px-4 py-3.5 overflow-hidden">
-      <div className="space-y-2 text-left">
-        <p className="text-sm font-black leading-tight text-foreground/25">I came along</p>
-        <p className="lyric-sweep text-base md:text-lg font-black leading-tight">I wrote a song for you</p>
-        <div className="flex items-center gap-1.5 h-4" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((i) => (
+    <div className="relative z-10 mt-4 rounded-2xl border border-foreground/10 bg-background/40 backdrop-blur-md px-4 py-3 overflow-hidden">
+      <div className="space-y-1.5 text-left">
+        <p className="text-sm font-black leading-tight text-foreground/25">Every phone in the room</p>
+        <p className="lyric-sweep text-base md:text-lg font-black leading-tight">on the very same second</p>
+        <div className="flex items-center gap-2 h-4" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
             <span
               key={i}
               className="lyric-dot w-1.5 h-1.5 rounded-full bg-rose-400/80"
-              style={{ animationDelay: `${i * 0.12}s` }}
+              style={{ animationDelay: `${i * 0.16}s` }}
             />
           ))}
         </div>

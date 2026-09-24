@@ -28,6 +28,13 @@ export class Room extends EventEmitter {
   };
   private readyTimeout: NodeJS.Timeout | null = null;
 
+  /**
+   * False until the DB row has been read into this instance (see db/ensureRoom).
+   * A live-but-unhydrated room has an empty queue that is NOT the truth, so nothing
+   * may persist it — see SocketHandler.scheduleQueueSave.
+   */
+  isHydrated: boolean = false;
+
   constructor(public readonly roomId: string) {
     super();
   }
@@ -70,6 +77,19 @@ export class Room extends EventEmitter {
         : new Date(data.createdAt).getTime();
     }
     if (data.queue) this.queue = RoomQueue.fromJSON(data.queue);
+    
+    // Ensure the trackUrl is always represented in the queue so it's not orphaned
+    const url = data.trackUrl || this.queue.current()?.trackUrl;
+    if (url) {
+      const known = this.queue.findByUrl(url);
+      if (!known) {
+        const { first } = this.queue.add([{ trackUrl: url, title: 'Unknown Track' }], 'system');
+        if (first) this.queue.setCurrent(first.id);
+      } else if (this.queue.current()?.id !== known.id) {
+        this.queue.setCurrent(known.id);
+      }
+    }
+
     this.hostId   = data.hostId;
     this.trackUrl = this.queue.current()?.trackUrl ?? data.trackUrl;
     this.pendingPlay = false;
@@ -281,7 +301,8 @@ export class Room extends EventEmitter {
   // Every mutation routes through here so one change produces exactly one broadcast.
 
   getQueue(): TrackQueueItem[]      { return this.queue.snapshot(); }
-
+  /** Serialized form for persistence — see RoomQueue.toJSON(). */
+  getQueueState(): unknown          { return this.queue.toJSON(); }
   getCurrentItem(): QueueItem | null { return this.queue.current(); }
   getShuffle(): boolean             { return this.queue.shuffle; }
   getRepeatMode(): RepeatMode       { return this.queue.repeatMode; }

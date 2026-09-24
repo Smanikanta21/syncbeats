@@ -111,3 +111,6 @@ Clients do **not** apply playback changes optimistically — commands round-trip
 4. **CORS**: server allows `FRONTEND_URL` and any origin containing `syncbeats.app` (all origins in development). Configured in both the Express middleware and the Socket.IO server options in `server.ts` — keep them in sync.
 5. **New participants converge slowly**: clock offset needs several NTP bursts to stabilize; expect higher drift for the first ~5–10 seconds after join.
 6. **Root `.env` is the single config source** for backend, compose, and CI — the frontend only sees `NEXT_PUBLIC_*` vars at build time.
+
+## Active Tasks
+Please refer to [implementation_plan.md](./implementation_plan.md) for the active list of bugs and UI features being tracked.

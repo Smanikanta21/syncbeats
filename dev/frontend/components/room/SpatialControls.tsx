@@ -102,7 +102,7 @@ function Row({ label, value }: { label: string; value?: string }) {
     <div className="mb-1 flex items-baseline justify-between gap-2">
       <span className="text-[10px] font-bold text-foreground/50">{label}</span>
       {value && (
-        <span className="font-mono text-[10px] font-bold text-cyan-400">{value}</span>
+        <span className="font-mono text-[10px] font-bold text-foreground">{value}</span>
       )}
     </div>
   );
@@ -143,7 +143,7 @@ function LivePanMeter({ isPlaying }: { isPlaying: boolean }) {
         <div className="absolute left-1/2 top-[-3px] h-[12px] w-px bg-foreground/20" />
         <div
           ref={dotRef}
-          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.9)] transition-opacity"
+          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_0_10px_rgba(255,255,255,0.4)] transition-opacity"
           style={{ left: "50%" }}
         />
       </div>
@@ -206,7 +206,7 @@ function DeviceLevels({
           <div className="flex items-baseline justify-between gap-2">
             <span className="truncate text-[10px] font-semibold text-foreground/70">{d.label}</span>
             {d.isMe && (
-              <span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-violet-400">
+              <span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-foreground">
                 here
               </span>
             )}
@@ -217,7 +217,7 @@ function DeviceLevels({
                 if (el) barsRef.current.set(d.deviceId, el);
                 else barsRef.current.delete(d.deviceId);
               }}
-              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-violet-400"
+              className="h-full rounded-full bg-foreground"
               style={{ width: "15%" }}
             />
           </div>
@@ -283,7 +283,7 @@ export function SpatialControls({
               className={cn(
                 "rounded-lg px-2 py-1.5 text-[10px] font-bold transition-colors",
                 p.id === presetId
-                  ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
+                  ? "bg-foreground text-background shadow-md shadow-foreground/25"
                   : "bg-foreground/5 text-foreground/60 hover:bg-foreground/15 hover:text-foreground",
               )}
             >
@@ -316,7 +316,7 @@ export function SpatialControls({
             const v = parseInt(e.target.value, 10);
             onMotionChange(isBeat ? { hopMs: v } : { periodMs: v });
           }}
-          className="w-full accent-cyan-400"
+          className="w-full accent-foreground"
         />
         <Ends>
           <span>{isBeat ? "Every beat" : "Dizzy"}</span>
@@ -365,7 +365,7 @@ export function SpatialControls({
                       "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 lg:justify-start",
                       "text-[10px] font-bold transition-colors",
                       active
-                        ? "bg-violet-500 text-white shadow-md shadow-violet-500/25"
+                        ? "bg-foreground text-background shadow-md shadow-foreground/25"
                         : "bg-foreground/5 text-foreground/60 hover:bg-foreground/10 hover:text-foreground",
                     )}
                   >
@@ -416,7 +416,7 @@ export function SpatialControls({
               step={0.05}
               value={motion.radius}
               onChange={e => onMotionChange({ radius: parseFloat(e.target.value) })}
-              className="w-full accent-violet-400"
+              className="w-full accent-foreground"
             />
           </div>
 
@@ -439,7 +439,7 @@ export function SpatialControls({
               step={0.01}
               value={motion.spread}
               onChange={e => onMotionChange({ spread: parseFloat(e.target.value) })}
-              className="w-full accent-violet-400"
+              className="w-full accent-foreground"
             />
             <p className="mt-1 text-[9px] leading-snug text-foreground/35">
               How many speakers share the sound at once. Wide is smoother; pinpoint
@@ -465,7 +465,7 @@ export function SpatialControls({
               step={1}
               value={motion.elevation}
               onChange={e => onMotionChange({ elevation: parseFloat(e.target.value) })}
-              className="w-full accent-violet-400"
+              className="w-full accent-foreground"
             />
           </div>
 

@@ -134,7 +134,21 @@ export class RoomRepository {
     }
   }
 
-
+  /**
+   * Persist the whole queue as one document. Called debounced from the QUEUE_CHANGED
+   * listener, so a dropped save is harmless — the next mutation rewrites it in full.
+   * updateMany (not update) so an on-the-fly room with no row yet is a no-op, not a throw.
+   */
+  async saveQueue(roomId: string, queue: unknown): Promise<void> {
+    try {
+      await prisma.room.updateMany({
+        where: { id: roomId },
+        data: { queue: queue as Prisma.InputJsonValue },
+      });
+    } catch (err: any) {
+      console.warn(`[RoomRepository] saveQueue failed for room ${roomId}:`, err?.message || err);
+    }
+  }
 
   async markEnded(roomId: string): Promise<void> {
     await prisma.room.update({

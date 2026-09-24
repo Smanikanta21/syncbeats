@@ -331,7 +331,7 @@ export function SpatialPanel({
               <p className="text-[11px] font-semibold text-foreground/40">Spatial audio off</p>
               <button
                 onClick={(e) => { e.stopPropagation(); onEnabledChange?.(true); }}
-                className="mt-1 rounded-full bg-violet-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-md hover:bg-violet-600 transition-colors"
+                className="mt-1 rounded-full bg-foreground px-4 py-1.5 text-[11px] font-bold text-background shadow-md hover:bg-foreground/90 transition-colors"
               >
                 Turn on
               </button>

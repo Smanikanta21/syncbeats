@@ -80,6 +80,12 @@ const COMPACT_HEIGHT = 44;
 // 62 = title (14) + gap (6) + label row (13) + gap (6) + bar (4) + py-2 (16).
 const EXTENDED_SYNC_HEIGHT = 62;
 
+// Secondary island — the detached circle iOS shows beside the pill when a
+// second activity is live. Ring geometry is derived so the size is one knob.
+const SECONDARY_SIZE = 40;
+const SECONDARY_R = 17;
+const SECONDARY_C = 2 * Math.PI * SECONDARY_R;
+
 // Island accent — one flat colour per theme. No gradients anywhere in the
 // island: progress fills, loading beams and badges all use this single hex.
 const GLOW_HEX: Record<string, string> = {
@@ -170,6 +176,8 @@ import { AudioBars } from "./AudioBars";
 
 const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolean; isVisible?: boolean }) => {
   const barRef = useRef<HTMLDivElement>(null);
+  const curRef = useRef<HTMLSpanElement>(null);
+  const durRef = useRef<HTMLSpanElement>(null);
   const audio = useAudio();
 
   useEffect(() => {
@@ -179,6 +187,9 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
       const dur = Math.max(1, audio.duration);
       const progress = Math.min(1, pos / dur);
       if (barRef.current) barRef.current.style.width = `${progress * 100}%`;
+      // textContent, not state — this runs every frame.
+      if (curRef.current) curRef.current.textContent = formatTime(pos);
+      if (durRef.current) durRef.current.textContent = formatTime(audio.duration);
       if (isPlaying && isVisible) rafId = requestAnimationFrame(tick);
     };
     tick();
@@ -186,10 +197,17 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
     return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [isPlaying, audio, isVisible]);
 
+  // Times flank the bar rather than sitting under it: the extended pill has
+  // ~15px left under the title, and leading-none keeps the 9px text at 9px
+  // (arbitrary text-[9px] otherwise inherits leading-normal and clips).
   return (
-    <div className={cn('w-full', 'mt-1.5', 'h-0.75', 'bg-white/15', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
-      <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
-        style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
+    <div className={cn('flex', 'items-center', 'gap-1.5', 'w-full', 'mt-1', 'shrink-0')}>
+      <span ref={curRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/50', 'shrink-0')}>00:00</span>
+      <div className={cn('flex-1', 'min-w-0', 'h-0.75', 'bg-white/15', 'rounded-full', 'overflow-hidden')}>
+        <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
+          style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
+      </div>
+      <span ref={durRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/40', 'shrink-0')}>00:00</span>
     </div>
   );
 };
@@ -1660,6 +1678,15 @@ export function DynamicIsland() {
   // Stay a true pill in every collapsed state — radius tracks the live height.
   const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : currentHeight / 2);
 
+  // Secondary island = background tasks only. Uploads are deliberately excluded:
+  // upload.isUploading already drives isSyncingNow, which auto-extends the main
+  // island and shows "Uploading Song..." there. Prefetch is the only task that
+  // runs behind an unaffected island, so it's the only one that earns a circle.
+  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing;
+  const secondaryLabel = prefetch.nextTrackTitle
+    ? `Downloading next track: ${prefetch.nextTrackTitle} — ${prefetch.nextTrackProgress}%`
+    : `Downloading next track — ${prefetch.nextTrackProgress}%`;
+
   const handlePointerDown_room = () => {
     resetInactivityTimer();
     if (windowWidth >= 768) return;
@@ -1730,6 +1757,8 @@ export function DynamicIsland() {
           top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}
       >
+        {/* relative: anchors the secondary circle to the island's right edge */}
+        <div className={cn('relative', 'flex', 'items-center')}>
         <motion.div
           ref={islandRef}
           onContextMenu={e => e.preventDefault()}
@@ -1982,7 +2011,12 @@ export function DynamicIsland() {
                         onHasContentChange={setHasSearchContent}
                         onErrorStateChange={setSearchError}
                         isPlaying={audio.isPlaying}
-                        onSuccess={() => { setWiggle(true); setTimeout(() => setWiggle(false), 400); }}
+                        hasTrack={hasTrack}
+                        onSuccess={() => { 
+                          setWiggle(true); 
+                          setTimeout(() => setWiggle(false), 400); 
+                          if (isRoom) setIslandState("extended");
+                        }}
                       />
                     </motion.div>
                   )}
@@ -2053,40 +2087,43 @@ export function DynamicIsland() {
         {/* Gloss overlay removed — the island stays flat black, no gradients. */}
         </motion.div>
 
-        {/* ── Prefetch notification pill (below island, fades in/out) ── */}
-        <AnimatePresence>
-          {isRoom && prefetch.isPrefetching && prefetch.nextTrackTitle && !isExpanded_room && (
-            <motion.div
-              key="prefetch-pill"
-              initial={{ opacity: 0, y: -6, scale: 0.94 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.96 }}
-              transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : { type: "spring", stiffness: 300, damping: 28 }}
-              className={cn('mt-2.5', 'pointer-events-none')}
-            >
-              <div className={cn('flex', 'items-center', 'gap-2', 'bg-black/80', 'backdrop-blur-md', 'border', 'border-white/10', 'rounded-full', 'pl-3', 'pr-3.5', 'py-1.5', 'shadow-xl')}>
-                {/* Determinate download ring */}
-                <div className={cn('relative', 'w-3.5', 'h-3.5', 'shrink-0')}>
-                  <svg viewBox="0 0 14 14" className={cn('w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
-                    <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
-                    <circle
-                      cx="7" cy="7" r="5.5" fill="none"
-                      stroke={activeGlowColorHex} strokeWidth="1.5"
-                      strokeDasharray={`${2 * Math.PI * 5.5}`}
-                      strokeDashoffset={`${2 * Math.PI * 5.5 * (1 - prefetch.nextTrackProgress / 100)}`}
-                      strokeLinecap="round"
-                      style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
-                    />
-                  </svg>
-                </div>
-                <span className={cn('text-[10px]', 'font-semibold', 'text-white/60', 'truncate', 'max-w-[140px]')}>
-                  Loading <span className="text-white/90">{prefetch.nextTrackTitle.split(/\s+/).slice(0, 4).join(" ")}</span>
+        {/* ── Secondary island: detached circle for background tasks ──
+            Absolutely placed off the island's right edge so the main island
+            never shifts when this appears, the way iOS pairs the two. */}
+        <div className={cn('absolute', 'left-full', 'top-0', 'h-full', 'flex', 'items-center', 'pl-2', 'pointer-events-none')}>
+          <AnimatePresence>
+            {showSecondary && (
+              <motion.div
+                key="secondary-island"
+                initial={{ scale: 0.3, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.3, opacity: 0 }}
+                transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING}
+                role="status"
+                aria-live="polite"
+                aria-label={secondaryLabel}
+                title={secondaryLabel}
+                className={cn('relative', 'flex', 'items-center', 'justify-center', 'rounded-full', 'shrink-0')}
+                style={{ width: SECONDARY_SIZE, height: SECONDARY_SIZE, backgroundColor: "#000000" }}
+              >
+                <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className={cn('absolute', 'inset-0', 'w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
+                  <circle cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
+                  <circle
+                    cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none"
+                    stroke={activeGlowColorHex} strokeWidth="2.5" strokeLinecap="round"
+                    strokeDasharray={SECONDARY_C}
+                    strokeDashoffset={SECONDARY_C * (1 - prefetch.nextTrackProgress / 100)}
+                    style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
+                  />
+                </svg>
+                <span className={cn('text-[10px]', 'font-black', 'tabular-nums', 'text-white/90')}>
+                  {prefetch.nextTrackProgress}
                 </span>
-                <span className={cn('text-[9px]', 'font-black', 'tabular-nums', 'shrink-0')} style={{ color: activeGlowColorHex }}>{prefetch.nextTrackProgress}%</span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        </div>
       </div>
     </>
   );

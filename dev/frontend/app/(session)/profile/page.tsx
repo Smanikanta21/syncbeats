@@ -26,7 +26,7 @@ function getPlatformLabel(userAgent: string | null): string {
   if (ua.includes("ipad")) return "iPad";
   if (ua.includes("macintosh")) return "Mac";
   if (ua.includes("windows")) return "Windows";
-  if (ua.includes("linux")) return "Linux font-mono";
+  if (ua.includes("linux")) return "Linux";
   if (ua.includes("android")) return "Android";
   return "Desktop";
 }
@@ -246,10 +246,10 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Main Production Command Center Grid (Dual Pane) ───────────────── */}
-      <main className={cn('w-full', 'max-w-350', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'flex-1', 'pt-16', 'sm:pt-20')}>
+      <main className={cn('w-full', 'max-w-350', 'mx-auto', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'pt-16', 'sm:pt-20')}>
         
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
-        <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative')}>
+        <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative', 'overflow-hidden')}>
           <div className={cn('absolute', 'top-0', 'right-0', 'w-64', 'h-64', 'bg-foreground/5', 'blur-3xl', 'rounded-full', 'pointer-events-none')} />
 
           {/* Avatar & Status Ring */}
@@ -391,7 +391,6 @@ export default function ProfilePage() {
               >
                 <SettingsPanel
                   isEmbedded={true}
-                  onClose={() => setActiveTab('settings')}
                   onInteractionStateChange={setIsInteractingWithColors}
                 />
               </motion.div>

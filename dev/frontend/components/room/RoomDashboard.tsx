@@ -9,7 +9,7 @@ import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Radio, Activity, Check, UserPlus, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home
+  LayoutGrid, Radio, Activity, Check, UserPlus, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home, Menu
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { SpatialPanel } from "./SpatialPanel";
@@ -24,7 +24,7 @@ import { ThemeToggle } from "../ThemeToggle";
 
 import { HoverExpandPill } from "../HoverExpandPill";
 import Magnetic from "../Magnetic";
-import { FloatingMobileMenu } from "./FloatingMobileMenu";
+import { MobileDrawerMenu } from "./MobileDrawerMenu";
 import type { RoomSnapshot, Participant, TrackQueueItem, PlaybackState } from "../../lib/types";
 import type { SpatialPosition } from "../../lib/spatial/geometry";
 import type { SpatialLayout } from "../../lib/spatial/layout";
@@ -139,37 +139,50 @@ function VisualsModal({
     };
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <AnimatePresence>
-      <div
-        ref={backdropRef}
-        className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'items-center', 'justify-center', 'p-0', 'sm:p-4', 'bg-black/60', 'pointer-events-auto')}
+    <motion.div
+      ref={backdropRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className={cn(
+        'fixed inset-0 z-9999 flex items-center justify-center p-0 sm:p-4 pointer-events-auto transition-colors duration-300',
+        // While dragging light nodes the panel fades out — clear the scrim too so
+        // the user can actually see the room lighting they're adjusting.
+        isVisualsInteracting ? 'bg-black/10' : 'bg-black/50 backdrop-blur-sm'
+      )}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 15 }}
+        animate={{ opacity: isVisualsInteracting ? 0.25 : 1, scale: isVisualsInteracting ? 0.96 : 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 15 }}
+        transition={{ type: "spring", damping: 24, stiffness: 220 }}
+        className={cn(
+          "w-full max-w-2xl md:max-w-3xl h-dvh sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-195 p-4 sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-4xl relative z-10 pointer-events-auto overflow-hidden transition-colors duration-300 border-0 sm:border",
+          isVisualsInteracting
+            ? "bg-background/5 dark:bg-black/10 backdrop-blur-[2px] border-foreground/5 dark:border-white/5"
+            : "bg-background dark:bg-black border-foreground/8 dark:border-white/10"
+        )}
       >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 15 }}
-          animate={{ opacity: 1, scale: isVisualsInteracting ? 0.98 : 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 15 }}
-          transition={{ type: "spring", damping: 24, stiffness: 220 }}
-          className={cn(
-            "w-full max-w-2xl md:max-w-3xl h-dvh sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-195 p-4 sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-4xl relative z-10 pointer-events-auto overflow-hidden transition-all duration-300 border-0 sm:border",
-            isVisualsInteracting
-              ? "bg-background/5 dark:bg-black/10 backdrop-blur-[2px] border-foreground/5 dark:border-white/5 opacity-25 scale-95"
-              : "bg-background dark:bg-black border-foreground/8 dark:border-white/10"
-          )}
-        >
-          <SettingsPanel
-            onClose={onClose}
-            onlyVisuals={true}
-            onInteractionStateChange={setIsVisualsInteracting}
-          />
-        </motion.div>
-        {/* Click outside to close */}
-        <div
-          className={cn('absolute', 'inset-0', 'z-0', 'cursor-pointer', 'pointer-events-auto')}
-          onClick={onClose}
+        <SettingsPanel
+          onClose={onClose}
+          onlyVisuals={true}
+          onInteractionStateChange={setIsVisualsInteracting}
         />
-      </div>
-    </AnimatePresence>
+      </motion.div>
+      {/* Click outside to close */}
+      <div
+        className={cn('absolute', 'inset-0', 'z-0', 'cursor-pointer', 'pointer-events-auto')}
+        onClick={onClose}
+      />
+    </motion.div>
   );
 }
 
@@ -190,6 +203,7 @@ export function RoomDashboard({
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
   const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -605,6 +619,12 @@ export function RoomDashboard({
                   onClick={openProfilePage}
                   title="View Profile"
                 />
+                <HoverExpandPill
+                  icon={LogOut}
+                  label="Logout"
+                  onClick={logout}
+                  title="Logout"
+                />
                 <ThemeToggle size="sm" />
               </div>
             </div>
@@ -708,8 +728,15 @@ export function RoomDashboard({
       <div className={cn('flex', 'md:hidden', 'flex-col', 'flex-1', 'min-h-0', 'pt-16', 'pb-2', 'px-1')}>
         {/* Mobile Header — Single Sleek Unified Bar */}
         <div className={cn('flex', 'items-center', 'justify-between', 'gap-2', 'px-3', 'pb-2', 'border-b', 'border-foreground/10', 'mb-2', 'shrink-0', 'z-30')}>
-          {/* Left: Room Code & Telemetry Privacy */}
+          {/* Left: Hamburger & Room Code */}
           <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0')}>
+            <button 
+              onClick={() => setIsMobileNavOpen(true)}
+              className={cn('p-1.5', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:bg-foreground/10', 'text-foreground/80')}
+              title="Open Navigation Menu"
+            >
+              <Menu className={cn('w-5', 'h-5')} />
+            </button>
             <div className={cn('flex', 'items-center', 'gap-1', 'bg-foreground/5', 'border', 'border-foreground/10', 'px-2', 'py-1', 'rounded-xl', 'shrink-0')}>
               <span className={cn('font-mono', 'text-xs', 'font-bold', 'text-foreground/80')}>{roomId}</span>
               {/* Copy Code */}
@@ -863,8 +890,13 @@ export function RoomDashboard({
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col', 'justify-between', 'py-1', 'gap-2')}>
 
-              {/* Top Hero Stage: Spinning Vinyl Record Player & Track Info */}
-              <GlassCard className={cn('w-full', 'flex-1', 'min-h-0', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'items-center', 'justify-between', 'relative', 'overflow-hidden', 'group')} isPlaying={isPlaying}>
+              {/* Top Section: Equalizer & Frequency Visualizer (Lyrics) */}
+              <GlassCard className={cn('w-full', 'flex-1', 'min-h-0', 'p-3', 'sm:p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
+                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
+              </GlassCard>
+
+              {/* Bottom Hero Stage: Spinning Vinyl Record Player & Track Info */}
+              <GlassCard className={cn('w-full', 'h-[280px]', 'sm:h-[320px]', 'shrink-0', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'items-center', 'justify-between', 'relative', 'overflow-hidden', 'group')} isPlaying={isPlaying}>
                 {/* Subtle Ambient Glow Aura */}
                 <div className={cn('absolute', 'inset-0', 'bg-linear-to-b', 'from-purple-500/10', 'via-transparent', 'to-emerald-500/10', 'pointer-events-none')} />
 
@@ -872,30 +904,30 @@ export function RoomDashboard({
                 <div className={cn('relative', 'flex', 'items-center', 'justify-center', 'my-auto')}>
                   {isPlaying && (
                     <>
-                      <div className={cn('absolute', 'w-40', 'h-40', 'sm:w-48', 'sm:h-48', 'rounded-full', 'border', 'border-emerald-500/20', 'animate-ping', 'pointer-events-none')} />
-                      <div className={cn('absolute', 'w-48', 'h-48', 'sm:w-56', 'sm:h-56', 'rounded-full', 'border', 'border-purple-500/15', 'animate-[pulse_3s_ease-in-out_infinite]', 'pointer-events-none')} />
+                      <div className={cn('absolute', 'w-32', 'h-32', 'sm:w-40', 'sm:h-40', 'rounded-full', 'border', 'border-emerald-500/20', 'animate-ping', 'pointer-events-none')} />
+                      <div className={cn('absolute', 'w-40', 'h-40', 'sm:w-48', 'sm:h-48', 'rounded-full', 'border', 'border-purple-500/15', 'animate-[pulse_3s_ease-in-out_infinite]', 'pointer-events-none')} />
                     </>
                   )}
 
                   <div className={cn(
-                    "w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-zinc-950 border-4 border-zinc-800/80 shadow-[0_15px_40px_rgba(0,0,0,0.6)] flex items-center justify-center relative overflow-hidden transition-all duration-700",
+                    "w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-zinc-950 border-4 border-zinc-800/80 shadow-[0_15px_40px_rgba(0,0,0,0.6)] flex items-center justify-center relative overflow-hidden transition-all duration-700",
                     isPlaying ? "animate-[spin_20s_linear_infinite]" : "scale-95 opacity-80"
                   )}>
                     <div className={cn('absolute', 'inset-2', 'rounded-full', 'border', 'border-zinc-800/60', 'pointer-events-none')} />
-                    <div className={cn('absolute', 'inset-5', 'rounded-full', 'border', 'border-zinc-800/40', 'pointer-events-none')} />
-                    <div className={cn('absolute', 'inset-8', 'rounded-full', 'border', 'border-zinc-800/30', 'pointer-events-none')} />
+                    <div className={cn('absolute', 'inset-4', 'rounded-full', 'border', 'border-zinc-800/40', 'pointer-events-none')} />
+                    <div className={cn('absolute', 'inset-6', 'rounded-full', 'border', 'border-zinc-800/30', 'pointer-events-none')} />
 
-                    <div className={cn('w-14', 'h-14', 'sm:w-18', 'sm:h-18', 'rounded-full', 'overflow-hidden', 'border-2', 'border-zinc-900', 'shadow-inner', 'relative', 'z-10')}>
+                    <div className={cn('w-12', 'h-12', 'sm:w-16', 'sm:h-16', 'rounded-full', 'overflow-hidden', 'border-2', 'border-zinc-900', 'shadow-inner', 'relative', 'z-10')}>
                       {currentThumbnail ? (
                         <img src={currentThumbnail} alt="Album Art" className={cn('w-full', 'h-full', 'object-cover')} />
                       ) : (
                         <div className={cn('w-full', 'h-full', 'bg-linear-to-tr', 'from-purple-600', 'to-indigo-600', 'flex', 'items-center', 'justify-center')}>
-                          <Disc3 className={cn('w-7', 'h-7', 'text-white', 'animate-spin')} />
+                          <Disc3 className={cn('w-6', 'h-6', 'text-white', 'animate-spin')} />
                         </div>
                       )}
                     </div>
 
-                    <div className={cn('w-2.5', 'h-2.5', 'rounded-full', 'bg-zinc-900', 'border', 'border-zinc-700', 'absolute', 'z-20', 'pointer-events-none')} />
+                    <div className={cn('w-2', 'h-2', 'rounded-full', 'bg-zinc-900', 'border', 'border-zinc-700', 'absolute', 'z-20', 'pointer-events-none')} />
                   </div>
                 </div>
 
@@ -955,7 +987,7 @@ export function RoomDashboard({
                 </div>
 
                 {/* Playback Actions */}
-                <div className={cn('w-full', 'flex', 'items-center', 'justify-center', 'gap-5', 'z-10', 'pt-1')}>
+                <div className={cn('w-full', 'flex', 'items-center', 'justify-center', 'gap-5', 'z-10', 'pt-1', 'pb-1')}>
                   <button onClick={onPrev} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'active:scale-95', 'transition-all')}>
                     <SkipBack className={cn('w-3.5', 'h-3.5')} />
                   </button>
@@ -966,11 +998,6 @@ export function RoomDashboard({
                     <SkipForward className={cn('w-3.5', 'h-3.5')} />
                   </button>
                 </div>
-              </GlassCard>
-
-              {/* Bottom Section: Equalizer & Frequency Visualizer */}
-              <GlassCard className={cn('w-full', 'h-45', 'sm:h-52.5', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
-                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
               </GlassCard>
             </motion.div>
           )}
@@ -1026,8 +1053,10 @@ export function RoomDashboard({
           )}
         </AnimatePresence>
 
-        {/* Floating Mobile Navigation Menu */}
-        <FloatingMobileMenu
+        {/* Drawer Mobile Navigation Menu */}
+        <MobileDrawerMenu
+          isOpen={isMobileNavOpen}
+          onClose={() => setIsMobileNavOpen(false)}
           activeTab={mobileTab}
           onChangeTab={setMobileTab}
         />
@@ -1075,13 +1104,15 @@ export function RoomDashboard({
         <QRScannerModal onClose={() => setShowScanner(false)} />
       )}
 
-      {showVisualsPanel && (
-        <VisualsModal
-          onClose={() => setShowVisualsPanel(false)}
-          isVisualsInteracting={isVisualsInteracting}
-          setIsVisualsInteracting={setIsVisualsInteracting}
-        />
-      )}
+      <AnimatePresence>
+        {showVisualsPanel && (
+          <VisualsModal
+            onClose={() => setShowVisualsPanel(false)}
+            isVisualsInteracting={isVisualsInteracting}
+            setIsVisualsInteracting={setIsVisualsInteracting}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Sleek, Minimal Room Activity Notification Pill (No Emojis, No Toasts) */}
       <AnimatePresence>

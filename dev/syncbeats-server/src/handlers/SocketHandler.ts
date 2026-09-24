@@ -43,7 +43,7 @@ function sanitiseSpatialPosition(raw: unknown): SpatialPosition | null {
 export class SocketHandler {
   private userRepo: UserRepository = new UserRepository();
   /** Coalesces the write-behind queue save; a burst of reorders costs one UPDATE. */
-
+  private queueSaveTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private io:          Server,
@@ -97,6 +97,7 @@ export class SocketHandler {
 
     eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
       this.io.to(roomId).emit('room:queueChanged', { queue });
+      this.scheduleQueueSave(roomId);
     });
 
     eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
@@ -108,6 +109,22 @@ export class SocketHandler {
     });
   }
 
+  /**
+   * Write-behind persistence for the queue. Drag-reorder fires a mutation per frame, so
+   * the save is debounced; the whole queue is written as one document, which makes a
+   * dropped tick harmless — the next mutation rewrites it in full.
+   */
+  private scheduleQueueSave(roomId: string): void {
+    const pending = this.queueSaveTimers.get(roomId);
+    if (pending) clearTimeout(pending);
+
+    this.queueSaveTimers.set(roomId, setTimeout(() => {
+      this.queueSaveTimers.delete(roomId);
+      const room = this.roomManager.get(roomId);
+      if (!room) return;
+      void this.roomRepo.saveQueue(roomId, room.getQueueState());
+    }, 1000));
+  }
 
   register(socket: Socket): void {
     console.log(`[WS] connected: ${socket.id}`);

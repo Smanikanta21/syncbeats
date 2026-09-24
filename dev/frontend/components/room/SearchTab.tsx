@@ -30,6 +30,7 @@ interface SearchTabProps {
   onHasContentChange?: (hasContent: boolean) => void;
   onErrorStateChange?: (error: string | null) => void;
   isPlaying?: boolean;
+  hasTrack?: boolean;
 }
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
@@ -41,7 +42,7 @@ const YoutubeGlyph = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
-export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange, isPlaying = false }: SearchTabProps) {
+export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange, isPlaying = false, hasTrack = false }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -828,7 +829,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const { dataRef } = useVisualizer();
 
   const handlePlay = (result: any) => {
-    const activePlayback = isPlaying || (dataRef?.current?.isPlaying) || false;
+    const activePlayback = isPlaying || (dataRef?.current?.isPlaying) || hasTrack || false;
     if (activePlayback) {
       // Prompt user with PlayOrEnqueueModal when a song is currently playing
       setPromptTrack(result);

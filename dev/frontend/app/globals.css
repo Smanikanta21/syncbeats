@@ -178,13 +178,17 @@
     color: transparent;
     animation: lyricSweep 3.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
+  /* Instrumental dots — shown wherever a stretch of a song has no vocals
+     (lyrics panel, and the feature preview on the landing page). A slow rise
+     and a held rest between pulses; staggering the delay walks the wave across
+     the three dots. Deliberately not audio-reactive — dots chasing an FFT read
+     as jittery, a calm pulse reads as intentional. */
   @keyframes lyricDot {
-    0%, 100% { transform: scaleY(0.5); opacity: 0.35; }
-    50%      { transform: scaleY(1.7); opacity: 1; }
+    0%, 70%, 100% { transform: scale(0.72); opacity: 0.28; }
+    35%           { transform: scale(1.3);  opacity: 0.95; }
   }
   .lyric-dot {
-    transform-origin: center;
-    animation: lyricDot 1s ease-in-out infinite;
+    animation: lyricDot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
   input[type="range"].volume-slider {

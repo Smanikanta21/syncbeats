@@ -12,6 +12,13 @@ import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 import { toast } from 'sonner';
 import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 
+function isSameTrack(u1?: string | null, u2?: string | null) {
+  if (u1 === u2) return true;
+  if (!u1 || !u2) return false;
+  const ext = (u: string) => u.match(/(?:youtube:|ws-p2p:yt:|videoId=)([a-zA-Z0-9_-]{11})/)?.[1] || u;
+  return ext(u1) === ext(u2);
+}
+
 interface UseRoomOptions {
   roomId:      string;
   displayName: string;
@@ -27,6 +34,7 @@ interface UseRoomReturn {
   pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
+  
   allReady:     boolean;      
   play:         () => void;
   pause:        () => void;
@@ -464,7 +472,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         }).catch(() => {});
       };
 
-      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         logListenHistory(snap.trackUrl, snap.queue);
       } else if (!snap.trackUrl) {
@@ -509,7 +517,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       }
 
       // Track changes
-      if (snap.trackUrl && audioRef.current.trackUrl !== snap.trackUrl) {
+      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
         sync.setTrack(snap.trackUrl);
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
         if (userId && snap.trackUrl) {
@@ -632,7 +640,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         }
       } else if (newCurrentItem) {
         const playingUrl = audioRef.current.trackUrl;
-        if (!playingUrl || playingUrl !== newCurrentItem.trackUrl) {
+        if (!playingUrl || !isSameTrack(playingUrl, newCurrentItem.trackUrl)) {
           loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
         }
       }
@@ -641,7 +649,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
       setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
-      if (payload.trackUrl && audioRef.current.trackUrl !== payload.trackUrl) {
+      if (payload.trackUrl && !isSameTrack(audioRef.current.trackUrl, payload.trackUrl)) {
         sync.setTrack(payload.trackUrl);
         loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
       }

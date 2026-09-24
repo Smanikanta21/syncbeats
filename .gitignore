@@ -81,3 +81,6 @@ cli/
 
 # Sentry auto-generated demo pages (not real app code)
 pages/
+AGENTS.md
+AGENTS.md
+implementation_plan.md

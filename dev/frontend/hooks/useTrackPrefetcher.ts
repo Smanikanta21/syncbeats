@@ -138,8 +138,11 @@ export function useTrackPrefetcher({
     const finalVideoId = extractVideoId(resolvedUrl);
     if (!finalVideoId || finalVideoId.length < 11) return;
 
+    // Ensure we use the exact IDB key that useAudioPlayer expects
+    const idbKey = resolvedUrl.startsWith('youtube:') ? finalVideoId : resolvedUrl;
+
     const { getTrack, saveTrack } = await import("../lib/idb");
-    const existing = await getTrack(resolvedUrl);
+    const existing = await getTrack(idbKey);
     if (existing) {
       setNextTrackProgress(100);
       setIsPrefetching(false);
@@ -183,7 +186,7 @@ export function useTrackPrefetcher({
       let off = 0;
       for (const c of chunks) { merged.set(c, off); off += c.length; }
       const blob = new Blob([merged.buffer], { type: "audio/mpeg" });
-      await saveTrack(resolvedUrl, blob);
+      await saveTrack(idbKey, blob);
 
       const elapsed = (Date.now() - startedAt) / 1000;
       if (elapsed > 0) saveSpeedEstimate(loaded / elapsed);

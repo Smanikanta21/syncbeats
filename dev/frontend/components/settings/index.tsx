@@ -357,7 +357,6 @@ export function SettingsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
-  const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
   const [hasUserEdited, setHasUserEdited] = useState(false);
 
   const baselineSettingsRef = useRef<string>(JSON.stringify(settings));
@@ -379,14 +378,6 @@ export function SettingsPanel({
   }, [rawUpdateSettings]);
 
   const isDirty = hasUserEdited && JSON.stringify(settings) !== baselineSettingsRef.current;
-
-  const handleCloseAttempt = () => {
-    if (isDirty) {
-      setShowUnsavedPrompt(true);
-    } else if (onClose) {
-      onClose();
-    }
-  };
 
   useEffect(() => {
     if (!isInteracting) return;
@@ -558,8 +549,8 @@ export function SettingsPanel({
 
   return (
     <div className={cn('flex', 'flex-col', 'h-full', 'w-full', 'min-h-0', 'relative')}>
-      {/* ── Sticky App Settings Header Bar with Floating Dialogue Box ── */}
-      <div className={cn('sticky', 'top-0', 'z-40', 'w-full', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'py-3', 'px-4', 'mb-3', 'rounded-3xl', 'border', 'border-foreground/15', 'shadow-2xl', 'flex', 'items-center', 'justify-between', 'transition-all')}>
+      {/* ── App Settings Header Bar with Floating Dialogue Box ── */}
+      <div className={cn('shrink-0', 'w-full', 'pb-3', 'mb-4', 'border-b', 'border-foreground/10', 'flex', 'items-center', 'justify-between', 'gap-3')}>
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
           <h2 className={cn('text-lg', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
@@ -612,7 +603,7 @@ export function SettingsPanel({
           {onClose && (
             <button
               type="button"
-              onClick={handleCloseAttempt}
+              onClick={onClose}
               className="p-2 rounded-full hover:bg-foreground/10 active:bg-foreground/20 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
               title="Close"
             >
@@ -622,23 +613,30 @@ export function SettingsPanel({
         </div>
       </div>
 
-      <div 
+      <div
         className={cn(
-          'space-y-6 mt-2',
+          'space-y-6',
           isEmbedded
             ? 'w-full'
             : 'flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar pb-10 overscroll-contain'
-        )} 
+        )}
         {...(!isEmbedded && { 'data-lenis-prevent': 'true' })}
       >
-        
+
         {/* Gradient & Lighting Theme Editor */}
-        <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
+        <section className={cn(
+          onlyVisuals
+            ? 'pb-2'
+            : 'p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg'
+        )}>
           <div className={cn('flex', 'items-center', 'justify-between', 'mb-2')}>
-            <div className={cn('flex', 'items-center', 'gap-2')}>
-              <Palette className={cn('w-4', 'sm:w-5', 'h-4', 'sm:h-5', 'text-foreground/70')} />
-              <h3 className={cn('text-base', 'sm:text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
-            </div>
+            {/* In the room modal the panel title already says "Room Visuals" — don't repeat it. */}
+            {!onlyVisuals && (
+              <div className={cn('flex', 'items-center', 'gap-2')}>
+                <Palette className={cn('w-4', 'sm:w-5', 'h-4', 'sm:h-5', 'text-foreground/70')} />
+                <h3 className={cn('text-base', 'sm:text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
+              </div>
+            )}
             <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
               {settings.gradientSettings?.presetName || "Custom Theme"}
             </span>
