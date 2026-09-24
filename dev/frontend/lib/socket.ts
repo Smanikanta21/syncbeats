@@ -14,7 +14,7 @@ export function getSocket(): Socket {
 
     socket = io(socketUrl, {
       autoConnect: false,
-      transports: ["polling", "websocket"],
+      transports: ["websocket"],
       path: socketPath,
       withCredentials: true,
       reconnectionDelay: 3000,

@@ -3,10 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw } from "lucide-react";
+import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw, Infinity, Timer, Star, MoreHorizontal } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
 import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
 import { ConfirmModal } from "../ConfirmModal";
+import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
+import { getSocket } from "../../lib/socket";
 import { 
   DndContext, 
   closestCenter, 
@@ -70,6 +72,10 @@ export function RoomQueue({
   const [optimisticQueue, setOptimisticQueue] = useState(queue);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // Track Menu Modal State
+  const [menuTrackId, setMenuTrackId] = useState<string | null>(null);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -150,6 +156,13 @@ export function RoomQueue({
     }
   };
 
+  const handleRemoveTrack = (id: string) => {
+    // Optimistically remove the track from local state so the UI snaps instantly
+    setOptimisticQueue(prev => prev.filter(q => q.id !== id));
+    // Call the parent handler to actually hit the DB
+    onRemoveTrack?.(id);
+  };
+
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -163,6 +176,19 @@ export function RoomQueue({
     message: "",
     onConfirm: () => {},
   });
+
+  const [promptTrack, setPromptTrack] = useState<TrackQueueItem | null>(null);
+
+  const executeEnqueueAndPlay = async (track: TrackQueueItem, playNow: boolean) => {
+    try {
+      const res = await roomsApi.enqueueYoutube(roomId, track.trackUrl || "", track.title);
+      if (playNow && res?.item?.id) {
+        getSocket().emit("playback:jumpTo", { roomId, trackId: res.item.id });
+      }
+    } catch (e) {
+      console.error("Failed to enqueue history track", e);
+    }
+  };
 
   const [isClearing, setIsClearing] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -221,47 +247,8 @@ export function RoomQueue({
   return (
     <div className={cn('flex', 'flex-col', 'h-full', 'overflow-hidden')}>
       {/* Header Section */}
-      <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
-        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-          <Disc className="w-3.5 h-3.5 text-foreground/50 shrink-0" />
-          <h3 className="text-xs font-black uppercase tracking-wider text-foreground/70 truncate">
-            Queue
-          </h3>
-          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-foreground/10 text-foreground/50 shrink-0">
-            {optimisticQueue.length}
-          </span>
-        </div>
+      <div className="flex items-center justify-end px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
         <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={onToggleShuffle}
-            className={cn(
-              "p-1.5 rounded-md transition-colors",
-              shuffle ? "bg-foreground/15 text-foreground font-bold" : "text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5"
-            )}
-            title="Shuffle Queue"
-          >
-            <Shuffle className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onToggleRepeat}
-            className={cn(
-              "p-1.5 rounded-md transition-colors",
-              repeatMode !== "off" ? "bg-foreground/15 text-foreground font-bold" : "text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5"
-            )}
-            title={`Repeat (${repeatMode})`}
-          >
-            <RepeatIcon className="w-3.5 h-3.5" />
-          </button>
-          {/* Spotify Import */}
-          <button
-            onClick={() => document.dispatchEvent(new CustomEvent("island:expand-spotify"))}
-            className="p-1.5 rounded-md text-foreground/40 hover:text-[#1DB954] hover:bg-foreground/5 transition-colors"
-            title="Import from Spotify"
-          >
-            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
-              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-            </svg>
-          </button>
           {/* Clear Queue (Single Click Lock + Halfway Load Animation) */}
           {draggableQueue.length > 0 && (
             <button
@@ -279,33 +266,6 @@ export function RoomQueue({
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </motion.div>
-            </button>
-          )}
-          {/* Reset Room (Single Click Lock + Halfway Rotate Load Animation) */}
-          <button
-            disabled={isResetting}
-            onClick={handleResetRoom}
-            className={cn(
-              "p-1.5 rounded-md text-foreground/40 hover:text-amber-400 hover:bg-amber-500/10 transition-colors",
-              isResetting && "opacity-50 cursor-not-allowed text-amber-400"
-            )}
-            title="Reset Room (Clear Queue & State)"
-          >
-            <motion.div
-              animate={isResetting ? { rotate: -180, scale: 0.85 } : { rotate: 0, scale: 1 }}
-              transition={{ duration: 0.4, ease: "easeInOut" }}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </motion.div>
-          </button>
-          {/* Add Song */}
-          {onAddSong && (
-            <button
-              onClick={onAddSong}
-              className="p-1.5 rounded-md text-foreground/40 hover:text-foreground hover:bg-foreground/10 transition-colors"
-              title="Add a song"
-            >
-              <Plus className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -339,7 +299,16 @@ export function RoomQueue({
           >
             {/* History Section */}
             {historyQueue.length > 0 && (
-              <div className={cn('space-y-1.5', 'mb-6')}>
+              <div className={cn('space-y-1.5', 'mb-6', 'pb-4', 'border-b', 'border-foreground/[0.06]')}>
+                <div className="flex items-center justify-between px-2 mb-3 mt-1">
+                  <h3 className="font-bold text-foreground text-sm">History</h3>
+                  <button 
+                    onClick={() => console.log('Clear history')} 
+                    className="text-foreground/50 text-xs hover:text-foreground font-semibold transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
                 {historyQueue.map((item, idx) => (
                   <SortableTrackItem
                     key={item.id}
@@ -352,7 +321,8 @@ export function RoomQueue({
                     onHoverStart={() => setHoveredId(item.id)}
                     onHoverEnd={() => setHoveredId(null)}
                     onTrackSelect={onTrackSelect!}
-                    onRemoveTrack={onRemoveTrack!}
+                    onAddTrack={setPromptTrack}
+                    onRemoveTrack={handleRemoveTrack}
                     disableDrag={true}
                     isHistory={true}
                     isJumping={jumpingTrackId === item.id}
@@ -361,30 +331,93 @@ export function RoomQueue({
               </div>
             )}
 
-            {/* Continue Playing Header */}
-            {(historyQueue.length > 0 || currentSong || draggableQueue.length > 0) && (
-              <div className={cn('font-bold', 'text-foreground/80', 'text-sm', 'mt-4', 'mb-3', 'pl-2')}>
-                Continue Playing
+            {/* Currently Playing Header (Spotify-like) */}
+            {currentSong && (
+              <div className="mb-6 px-1 flex flex-col gap-4 relative z-10">
+                <div className="flex items-center gap-3">
+                  {/* Thumbnail */}
+                  <div className="w-14 h-14 rounded-md overflow-hidden bg-foreground/10 shrink-0 relative flex items-center justify-center border border-foreground/10 shadow-sm">
+                    {ytThumb(currentSong.trackUrl) ? (
+                      <img src={ytThumb(currentSong.trackUrl)!} alt="Thumbnail" className="w-full h-full object-cover" />
+                    ) : (
+                      <Music2 className="w-6 h-6 text-foreground/30" />
+                    )}
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className="font-bold text-foreground text-base tracking-tight truncate leading-snug">
+                      {cleanTitle(currentSong.title)}
+                    </div>
+                    <div className="text-foreground/60 text-xs truncate uppercase tracking-widest font-medium mt-0.5">
+                      {currentSong.artist || "Unknown Artist"}
+                    </div>
+                  </div>
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0 text-foreground/60">
+                    <button className="p-2 hover:text-foreground transition-colors rounded-full hover:bg-foreground/10">
+                      <Star className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => setMenuTrackId(currentSong.id)}
+                      className="p-2 hover:text-foreground transition-colors rounded-full hover:bg-foreground/10"
+                    >
+                      <MoreHorizontal className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Queue controls */}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={onToggleShuffle}
+                    className={cn(
+                      "flex-1 h-9 rounded-full flex items-center justify-center transition-all",
+                      shuffle ? "bg-foreground text-background" : "bg-foreground/10 text-foreground/80 hover:bg-foreground/15"
+                    )}
+                  >
+                    <Shuffle className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={onToggleRepeat}
+                    className={cn(
+                      "flex-1 h-9 rounded-full flex items-center justify-center transition-all",
+                      repeatMode !== "off" ? "bg-foreground text-background" : "bg-foreground/10 text-foreground/80 hover:bg-foreground/15"
+                    )}
+                  >
+                    {repeatMode === "track" ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
+                  </button>
+                  <button 
+                    onClick={onAddSong}
+                    title="Add Song"
+                    className="flex-1 h-9 rounded-full bg-foreground/10 text-foreground/80 hover:bg-foreground/15 hover:text-foreground flex items-center justify-center transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button 
+                    disabled={isResetting}
+                    onClick={handleResetRoom}
+                    title="Reset Room"
+                    className={cn(
+                      "flex-1 h-9 rounded-full flex items-center justify-center transition-all",
+                      isResetting ? "bg-amber-500/20 text-amber-500 opacity-50 cursor-not-allowed" : "bg-foreground/10 text-foreground/80 hover:bg-amber-500/15 hover:text-amber-400"
+                    )}
+                  >
+                    <motion.div
+                      animate={isResetting ? { rotate: -180, scale: 0.85 } : { rotate: 0, scale: 1 }}
+                      transition={{ duration: 0.4, ease: "easeInOut" }}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </motion.div>
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Currently Playing — NOT draggable, pinned at top of upcoming */}
-            {currentSong && (
-              <SortableTrackItem
-                key={currentSong.id}
-                item={currentSong}
-                idx={splitIndex}
-                isCurrent={true}
-                isPlaying={isPlaying}
-                isHovered={hoveredId === currentSong.id}
-                isHost={isHost}
-                onHoverStart={() => setHoveredId(currentSong.id)}
-                onHoverEnd={() => setHoveredId(null)}
-                onTrackSelect={onTrackSelect!}
-                onRemoveTrack={onRemoveTrack!}
-                disableDrag={true}
-                isJumping={false}
-              />
+            {/* Continue Playing Header */}
+            {draggableQueue.length > 0 && (
+              <div className={cn('font-bold', 'text-foreground/80', 'text-sm', 'mt-2', 'mb-3', 'pl-2')}>
+                Continue Playing
+              </div>
             )}
 
             {/* Draggable upcoming songs (after current) */}
@@ -401,7 +434,7 @@ export function RoomQueue({
                   onHoverStart={() => setHoveredId(item.id)}
                   onHoverEnd={() => setHoveredId(null)}
                   onTrackSelect={onTrackSelect!}
-                  onRemoveTrack={onRemoveTrack!}
+                  onRemoveTrack={handleRemoveTrack}
                   disableDrag={false}
                   isNew={newIds.has(item.id)}
                   isJumping={jumpingTrackId === item.id}
@@ -447,6 +480,25 @@ export function RoomQueue({
         isDanger={confirmConfig.isDanger}
         onConfirm={confirmConfig.onConfirm}
         onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <PlayOrEnqueueModal
+        isOpen={!!promptTrack}
+        track={promptTrack ? {
+          title: promptTrack.title,
+          artist: promptTrack.artist,
+          thumbnail: promptTrack.thumbnail,
+          url: promptTrack.trackUrl || promptTrack.id,
+        } : null}
+        onPlayNow={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, true);
+          setPromptTrack(null);
+        }}
+        onAddToQueue={() => {
+          if (promptTrack) executeEnqueueAndPlay(promptTrack, false);
+          setPromptTrack(null);
+        }}
+        onClose={() => setPromptTrack(null)}
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
-import { Smartphone, Radio, Settings2, Share2, Play, Zap, Globe, Shield } from "lucide-react";
+import { Smartphone, Radio, Settings2, Share2, Play, Zap, Globe, Shield, Mic2 } from "lucide-react";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -20,6 +20,16 @@ const features = [
     borderHover: "group-hover:border-cyan-500/40 group-hover:shadow-[0_0_60px_-15px_rgba(6,182,212,0.35)]",
     accent: "group-hover:text-cyan-400 group-hover:bg-cyan-500/10 group-hover:border-cyan-500/30",
     buttonHover: "group-hover:bg-cyan-400 group-hover:text-zinc-950 group-hover:border-cyan-300 group-hover:shadow-[0_0_25px_rgba(34,211,238,0.8)]",
+  },
+  {
+    id: "lyrics",
+    title: "Lyrics that follow the beat",
+    description: "Words light up line by line as the song plays, then step aside during instrumental breaks — pulled and time-matched to whatever's on.",
+    icon: Mic2,
+    color: "from-rose-400/50 via-pink-500/40 to-fuchsia-500/45",
+    borderHover: "group-hover:border-rose-500/40 group-hover:shadow-[0_0_60px_-15px_rgba(244,63,94,0.35)]",
+    accent: "group-hover:text-rose-400 group-hover:bg-rose-500/10 group-hover:border-rose-500/30",
+    buttonHover: "group-hover:bg-rose-400 group-hover:text-zinc-950 group-hover:border-rose-300 group-hover:shadow-[0_0_25px_rgba(251,113,133,0.8)]",
   },
   {
     id: "sync",
@@ -83,6 +93,30 @@ const features = [
   }
 ];
 
+// A live preview of the synced-lyrics feature: a past line dimmed, the active
+// line sweeping its word-fill (same gradient the real player uses), and the
+// instrumental dots that show when a break has no vocals. Pure CSS so the
+// reduced-motion block in globals.css calms it automatically.
+function LyricsMiniDemo() {
+  return (
+    <div className="relative z-10 mt-4 rounded-2xl border border-foreground/10 bg-background/40 backdrop-blur-md px-4 py-3 overflow-hidden">
+      <div className="space-y-1.5 text-left">
+        <p className="text-sm font-black leading-tight text-foreground/25">Every phone in the room</p>
+        <p className="lyric-sweep text-base md:text-lg font-black leading-tight">on the very same second</p>
+        <div className="flex items-center gap-2 h-4" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="lyric-dot w-1.5 h-1.5 rounded-full bg-rose-400/80"
+              style={{ animationDelay: `${i * 0.16}s` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FeaturesExplanation() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
@@ -137,8 +171,8 @@ export function FeaturesExplanation() {
   }, { scope: containerRef });
 
   return (
-    <section ref={containerRef} className="relative z-10 w-full min-h-[100dvh] flex flex-col items-center justify-center py-24 overflow-hidden bg-background">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-foreground/[0.02] to-background pointer-events-none" />
+    <section ref={containerRef} className="relative z-10 w-full min-h-dvh flex flex-col items-center justify-center py-24 overflow-hidden bg-background">
+      <div className="absolute inset-0 bg-linear-to-b from-background via-foreground/[0.02] to-background pointer-events-none" />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16 md:mb-24 relative z-20">
         <span className="px-4 py-1.5 rounded-full border border-foreground/10 bg-foreground/5 text-xs font-bold tracking-widest uppercase text-foreground/60 mb-6 inline-block">
@@ -160,10 +194,10 @@ export function FeaturesExplanation() {
               className={`feature-card will-change-transform w-full max-w-md md:w-[400px] shrink-0 h-auto md:h-[450px] glass-panel rounded-3xl md:rounded-[2.5rem] p-6 md:p-10 flex flex-col border border-foreground/10 relative overflow-hidden group transition-all duration-500 ${feature.borderHover}`}
             >
               {/* Vibrant Aurora Background Glow */}
-              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-gradient-to-br ${feature.color} rounded-full blur-[65px] opacity-40 md:opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
+              <div className={`absolute -right-10 -top-10 w-72 h-72 bg-linear-to-br ${feature.color} rounded-full blur-[65px] opacity-40 md:opacity-20 group-hover:opacity-100 group-hover:scale-125 transition-all duration-500 pointer-events-none`} />
               
               {/* Secondary Soft Bottom Aurora Glow */}
-              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-gradient-to-tr ${feature.color} rounded-full blur-[70px] opacity-20 md:opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
+              <div className={`absolute -left-10 -bottom-10 w-60 h-60 bg-linear-to-tr ${feature.color} rounded-full blur-[70px] opacity-20 md:opacity-0 group-hover:opacity-60 transition-all duration-500 pointer-events-none`} />
 
               <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-foreground/5 flex items-center justify-center mb-6 md:mb-8 relative z-10 border border-foreground/10 shadow-lg transition-all duration-300 ${feature.accent}`}>
                 <feature.icon className="w-7 h-7 md:w-8 md:h-8 transition-transform duration-300 group-hover:scale-110" />
@@ -175,9 +209,13 @@ export function FeaturesExplanation() {
               </p>
               
               <div className="mt-auto relative z-10 pt-2">
-                <div className={`w-10 h-10 md:w-11 md:h-11 rounded-full border border-foreground/20 flex items-center justify-center transition-all duration-500 ease-out cursor-pointer hover:scale-115 active:scale-95 ${feature.buttonHover}`}>
-                  <Play className="w-4 h-4 ml-0.5 fill-current" />
-                </div>
+                {feature.id === "lyrics" ? (
+                  <LyricsMiniDemo />
+                ) : (
+                  <div className={`w-10 h-10 md:w-11 md:h-11 rounded-full border border-foreground/20 flex items-center justify-center transition-all duration-500 ease-out cursor-pointer hover:scale-115 active:scale-95 ${feature.buttonHover}`}>
+                    <Play className="w-4 h-4 ml-0.5 fill-current" />
+                  </div>
+                )}
               </div>
             </div>
           ))}

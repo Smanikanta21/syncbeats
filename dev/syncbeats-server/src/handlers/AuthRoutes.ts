@@ -230,7 +230,11 @@ export function createAuthRoutes(): Router {
     } catch (err) {
       console.error('[Auth] me error:', err);
       const msg = err instanceof Error ? err.message : String(err);
-      res.status(404).json({ error: msg });
+      if (msg === 'User not found') {
+        res.status(404).json({ error: msg });
+      } else {
+        res.status(500).json({ error: 'Internal server error' });
+      }
     }
   });
 

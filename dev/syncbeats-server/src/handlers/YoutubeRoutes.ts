@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { google } from 'googleapis';
 import prisma from '../db/prisma';
+import { requireAuth } from '../auth/authMiddleware';
 
 export function createYoutubeRoutes(): Router {
   const router = Router();
@@ -17,25 +18,34 @@ export function createYoutubeRoutes(): Router {
 
   // Endpoint to generate auth URL
   router.get('/auth', (req: any, res: any) => {
-    const redirectUrl = req.query.redirect as string || 'http://localhost:3000';
-    // We encode the final destination in the state parameter
-    const state = Buffer.from(JSON.stringify({ redirectUrl })).toString('base64');
+    const token = req.query.token as string;
+    if (!token) return res.status(401).json({ error: 'Missing token' });
+
+    let userId: string;
+    try {
+      const { AuthService } = require('../auth/AuthService');
+      const authService = new AuthService();
+      const payload = authService.verifyToken(token);
+      userId = payload.sub;
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    // We encode the user ID and redirect destination in the state parameter
+    const redirectUrl = req.query.redirect as string || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=youtube&youtube_connected=true`;
+    const state = Buffer.from(JSON.stringify({ redirectUrl, userId })).toString('base64');
     
-    // We need to temporarily override the redirect URI for the OAuth2 client if necessary, 
-    // but it's safer to use the one registered in the console. 
-    // Assuming http://localhost:4000/youtube/callback is registered.
     const scopes = [
       'https://www.googleapis.com/auth/youtube.readonly'
     ];
 
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
+      prompt: 'consent', // Force consent so we always get a refresh token
       scope: scopes,
       state: state,
       redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback` 
     });
-
-    console.log(`[YouTube Auth] Using redirect_uri: ${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`);
 
     res.redirect(url);
   });
@@ -44,88 +54,249 @@ export function createYoutubeRoutes(): Router {
   router.get('/callback', async (req: any, res: any) => {
     const code = req.query.code as string;
     const stateB64 = req.query.state as string;
+    const error = req.query.error as string;
     
-    let redirectUrl = 'syncbeats://auth'; // Default to Mac app deep link
+    let redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=youtube`;
+    let userId: string = '';
+    
+    if (error) {
+      return res.redirect(`${redirectUrl}&youtube_error=${error}`);
+    }
+
     if (stateB64) {
       try {
         const stateStr = Buffer.from(stateB64, 'base64').toString('ascii');
         const state = JSON.parse(stateStr);
         if (state.redirectUrl) redirectUrl = state.redirectUrl;
+        if (state.userId) userId = state.userId;
       } catch (e) {
         console.error('Failed to parse state', e);
+        return res.status(400).send('Invalid state parameter');
       }
     }
 
+    if (!userId) {
+      return res.status(400).send('User ID missing from state parameter');
+    }
+
     try {
-      // Must match the redirect_uri used in generateAuthUrl
       const { tokens } = await oauth2Client.getToken({
         code: code,
         redirect_uri: `${process.env.BACKEND_URL || 'http://localhost:4000'}/youtube/callback`
       });
       
-      // Redirect back to the client app (Mac or Web) with the tokens securely passed
-      // In a production app, we would encrypt this or save it in a DB and pass a session ID.
-      // For this implementation, we pass the access token back via URL hash fragment
-      const redirectUri = new URL(redirectUrl);
-      redirectUri.hash = `access_token=${tokens.access_token}&refresh_token=${tokens.refresh_token || ''}`;
+      // Save tokens to DB
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          ytAccessToken: tokens.access_token,
+          ytRefreshToken: tokens.refresh_token || undefined,
+        }
+      });
       
-      res.redirect(redirectUri.toString());
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error('[YouTube] Auth error:', error);
-      res.status(500).send('Authentication failed');
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=youtube&youtube_error=token_failed`);
     }
   });
 
-  // Fetch user's imported playlists from DB
-  router.get('/library', async (req: any, res: any) => {
+  // GET /status — check if the user has connected YouTube
+  router.get('/status', requireAuth, async (req: any, res: any) => {
     try {
-      const userId = req.query.userId as string;
-      if (!userId) {
-        return res.json({ playlists: [] });
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.sub },
+        select: { ytAccessToken: true },
+      });
+      res.json({ connected: !!user?.ytAccessToken });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    }
+  });
+
+  // DELETE /disconnect — disconnect YouTube
+  router.delete('/disconnect', requireAuth, async (req: any, res: any) => {
+    try {
+      await prisma.user.update({
+        where: { id: req.user.sub },
+        data: { ytAccessToken: null, ytRefreshToken: null },
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Internal Server Error' });
+    }
+  });
+
+  // Fetch user's live playlists from YouTube API (fallback to local DB)
+  router.get('/library', requireAuth, async (req: any, res: any) => {
+    try {
+      const userId = req.user.sub;
+      
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { ytAccessToken: true, ytRefreshToken: true }
+      });
+
+      let ytPlaylists: any[] = [];
+
+      if (user?.ytAccessToken) {
+        try {
+          oauth2Client.setCredentials({
+            access_token: user.ytAccessToken,
+            refresh_token: user.ytRefreshToken
+          });
+
+          const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+          const response = await youtube.playlists.list({
+            part: ['snippet', 'contentDetails'],
+            mine: true,
+            maxResults: 50,
+          });
+
+          ytPlaylists = response.data.items?.map(p => ({
+            id: p.id,
+            title: p.snippet?.title,
+            thumbnail: p.snippet?.thumbnails?.high?.url || p.snippet?.thumbnails?.default?.url || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
+            itemCount: p.contentDetails?.itemCount || 0,
+            source: 'YOUTUBE'
+          })) || [];
+        } catch (ytError) {
+          console.error('[Library] YouTube API Error:', ytError);
+        }
       }
 
+      // Always fetch local DB playlists
       const dbPlaylists = await prisma.playlist.findMany({
         where: { userId },
         include: { _count: { select: { tracks: true } } },
         orderBy: { createdAt: 'desc' }
       });
 
-      const playlists = dbPlaylists.map((p: any) => ({
+      const localPlaylists = dbPlaylists.map((p: any) => ({
         id: p.id,
         title: p.name,
         thumbnail: p.coverUrl || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
-        itemCount: p._count.tracks
+        itemCount: p._count.tracks,
+        source: 'SYNCBEATS'
       }));
 
-      res.json({ playlists });
+      // Combine local SyncBeats playlists with Native YouTube playlists
+      res.json({ playlists: [...localPlaylists, ...ytPlaylists] });
     } catch (err) {
-      console.error('[Library] DB fetch error:', err);
+      console.error('[Library] fetch error:', err);
       res.status(500).json({ error: 'Failed to fetch library' });
     }
   });
   
-  // Fetch specific playlist items using yt-search instead of googleapis
-  router.get('/playlistItems', async (req: any, res: any) => {
+  // Fetch specific playlist items using Google API (supports private playlists)
+  router.get('/playlistItems', requireAuth, async (req: any, res: any) => {
     const playlistId = req.query.playlistId as string;
     
     if (!playlistId) return res.status(400).json({ error: 'Missing playlistId' });
     
     try {
-      // @ts-ignore - importing inline to avoid top-level require if not needed, but we can just use require
-      const ytSearch = require('yt-search');
-      const list = await ytSearch({ listId: playlistId });
+      const userId = req.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { ytAccessToken: true, ytRefreshToken: true }
+      });
+
+      if (!user?.ytAccessToken) {
+        return res.status(401).json({ error: 'YouTube not connected' });
+      }
+
+      oauth2Client.setCredentials({
+        access_token: user.ytAccessToken,
+        refresh_token: user.ytRefreshToken
+      });
+
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
       
-      const tracks = list.videos.map((v: any) => ({
-        id: v.videoId,
-        title: v.title,
-        artist: v.author?.name || 'Unknown Artist',
-        thumbnail: v.thumbnail
-      })).filter((t: any) => t.id) || [];
+      let allItems: any[] = [];
+      let nextPageToken: string | null | undefined = undefined;
+
+      do {
+        const response: any = await youtube.playlistItems.list({
+          part: ['snippet', 'contentDetails'],
+          playlistId: playlistId,
+          maxResults: 50,
+          pageToken: nextPageToken
+        });
+        
+        if (response.data.items) {
+          allItems = allItems.concat(response.data.items);
+        }
+        nextPageToken = response.data.nextPageToken;
+        
+        // Cap at 300 to prevent API quota exhaustion on massive playlists
+        if (allItems.length >= 300) break;
+      } while (nextPageToken);
+
+      const tracks = allItems.map((item: any) => {
+        const snippet = item.snippet;
+        const videoId = snippet?.resourceId?.videoId;
+        if (!videoId) return null;
+        
+        return {
+          id: videoId,
+          title: snippet?.title || 'Unknown Title',
+          artist: snippet?.videoOwnerChannelTitle || 'Unknown Artist',
+          thumbnail: snippet?.thumbnails?.high?.url || snippet?.thumbnails?.default?.url || 'https://music.youtube.com/img/on_platform_logo_dark.svg',
+          duration: 0
+        };
+      }).filter(Boolean) || [];
 
       res.json({ tracks });
     } catch (error) {
       console.error('[YouTube] Playlist Items Error:', error);
-      res.status(500).json({ error: 'Failed to fetch playlist items via yt-search' });
+      res.status(500).json({ error: 'Failed to fetch playlist items' });
+    }
+  });
+
+  // POST /playlistItems — Add a track to a YouTube playlist
+  router.post('/playlistItems', requireAuth, async (req: any, res: any) => {
+    const { playlistId, videoId } = req.body;
+    
+    if (!playlistId || !videoId) {
+      return res.status(400).json({ error: 'Missing playlistId or videoId' });
+    }
+    
+    try {
+      const userId = req.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { ytAccessToken: true, ytRefreshToken: true }
+      });
+
+      if (!user?.ytAccessToken) {
+        return res.status(401).json({ error: 'YouTube not connected' });
+      }
+
+      oauth2Client.setCredentials({
+        access_token: user.ytAccessToken,
+        refresh_token: user.ytRefreshToken
+      });
+
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+      
+      const response = await youtube.playlistItems.insert({
+        part: ['snippet'],
+        requestBody: {
+          snippet: {
+            playlistId: playlistId,
+            resourceId: {
+              kind: 'youtube#video',
+              videoId: videoId
+            }
+          }
+        }
+      });
+      
+      res.json({ success: true, item: response.data });
+    } catch (error) {
+      console.error('[YouTube] Add Playlist Item Error:', error);
+      res.status(500).json({ error: 'Failed to add track to playlist' });
     }
   });
 

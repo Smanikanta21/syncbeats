@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
 import { getServerUrl, getAuthToken } from "../../lib/api";
+import { getSocket } from "../../lib/socket";
 import { Trash2, Disc, Play, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -110,6 +111,13 @@ export function SpotifyIslandTab({
         playlistId: data.playlistId,
       });
       setPlaylistUrl("");
+
+      // Warn if we were capped at 100 due to no user Spotify auth
+      if (data.capped) {
+        setError(
+          `Only the first 100 tracks were imported. Connect your Spotify account in Profile → Spotify to import the full playlist.`
+        );
+      }
       
       await fetchImported();
     } catch (err: any) {
@@ -147,12 +155,17 @@ export function SpotifyIslandTab({
 
   const handlePlayPlaylist = useCallback(async (playlistId: string) => {
     try {
-      await playAsync.run(playlistId);
+      const res = await playAsync.run(playlistId);
+      // The server dedups, so a re-play returns the item already in the queue —
+      // jump to it instead of expecting the enqueue itself to start playback.
+      if (res?.item?.id && roomId) {
+        getSocket().emit("playback:jumpTo", { roomId, trackId: res.item.id });
+      }
       if (onClose) onClose();
     } catch (e: any) {
       console.error("Failed to play playlist:", e);
     }
-  }, [playAsync, onClose]);
+  }, [playAsync, onClose, roomId]);
 
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -301,7 +314,7 @@ export function SpotifyIslandTab({
                 <div className="flex flex-col gap-1.5 items-start w-full">
                   <div className="text-[10px] bg-foreground/10 text-foreground/80 px-2 py-0.5 rounded-full font-semibold">Instructions</div>
                   <p className="text-xs text-foreground/80 text-left pl-1">Tap the three dots on your playlist and tap "Make Public".</p>
-                  <div className="w-full aspect-[9/16] max-h-[280px] bg-foreground/[0.03] rounded-lg border border-foreground/10 flex items-center justify-center overflow-hidden p-2 mx-auto">
+                  <div className="w-full aspect-[9/16] max-h-[280px] bg-foreground/3 rounded-lg border border-foreground/10 flex items-center justify-center overflow-hidden p-2 mx-auto">
                     <video src="/make-public.mov" className="object-contain w-full h-full rounded-md" autoPlay loop muted playsInline />
                   </div>
                 </div>
@@ -311,8 +324,19 @@ export function SpotifyIslandTab({
         )}
 
         {error && (
-          <div className="text-red-400 text-xs text-center p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-            {error}
+          <div className={error.includes("Connect your Spotify account")
+            ? "text-amber-300 text-xs text-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex flex-col items-center gap-2"
+            : "text-red-400 text-xs text-center p-2 rounded-lg bg-red-500/10 border border-red-500/20"
+          }>
+            <span>{error}</span>
+            {error.includes("Connect your Spotify account") && (
+              <a
+                href={`${getServerUrl()}/spotify/auth?token=${token || getAuthToken()}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1DB954] text-black font-semibold text-xs hover:bg-[#1ed760] transition-colors"
+              >
+                Connect Spotify Account
+              </a>
+            )}
           </div>
         )}
 
@@ -336,7 +360,7 @@ export function SpotifyIslandTab({
             <h3 className="text-xs font-bold text-foreground/50 uppercase tracking-widest pl-1 mt-4 mb-2">Imported</h3>
             <div className="grid grid-cols-1 gap-2">
               {imported.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/[0.03] border border-foreground/[0.05] hover:bg-foreground/[0.06] transition-colors group">
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-xl bg-foreground/3 border border-foreground/5 hover:bg-foreground/[0.06] transition-colors group">
                   <div className="relative w-12 h-12 flex-shrink-0 cursor-pointer" onClick={() => !playAsync.isPending && handlePlayPlaylist(p.id)}>
                     {p.coverUrl ? (
                       <img src={p.coverUrl} alt={p.name} loading="eager" decoding="sync" className="w-12 h-12 rounded-lg object-cover" />

@@ -1,8 +1,12 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma from '../db/prisma';
+import { RoomRepository } from '../db/RoomRepository';
+import { RoomManager } from '../core/RoomManager';
 
 const router = Router();
+const repo = new RoomRepository();
+const roomManager = RoomManager.getInstance();
 
 // GET /api/playlists/:id - Fetch playlist and its tracks (with Song catalog data)
 router.get('/:id', requireAuth, async (req: any, res: any) => {
@@ -98,9 +102,10 @@ router.delete('/:id', requireAuth, async (req: any, res: any) => {
     });
 
     if (!playlist) {
-      return res.status(404).json({ error: 'Playlist not found.' });
+      return res.status(404).json({ error: 'Playlist not found or access denied.' });
     }
 
+    // Delete the playlist itself
     await prisma.playlist.delete({
       where: { id }
     });
@@ -261,6 +266,8 @@ router.get('/', requireAuth, async (req: any, res: any) => {
         id: p.id,
         name: p.name,
         trackCount: p._count.tracks,
+        sourceType: p.sourceType,
+        coverUrl: p.coverUrl,
       })),
     });
   } catch (error) {

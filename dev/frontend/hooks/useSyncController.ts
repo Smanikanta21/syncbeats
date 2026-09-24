@@ -81,8 +81,8 @@ const MICRO_RATE_SLOW = 0.999;
 const MICRO_RATE_DEADZONE_MS = 2; // Don't adjust if drift < 2ms — already perfect
 
 // Macro-rate: proportional correction, scales with drift size.
-// Max 0.6% (~10 cents pitch shift, imperceptible), closes a 100ms gap in ~16 seconds.
-const MACRO_RATE_MAX_DEVIATION = 0.006; // cap at 0.6% (1.006 / 0.994)
+// Max 1.0% (imperceptible), closes a 100ms gap much faster.
+const MACRO_RATE_MAX_DEVIATION = 0.010; // cap at 1.0% (1.010 / 0.990)
 const MACRO_RATE_MIN_DEVIATION = 0.002; // floor at 0.2%
 
 // Crossfade durations (ms)
@@ -348,6 +348,21 @@ export class SyncController {
     audio.scheduleStart(payload, clockOffset);
   }
 
+  /**
+   * Position the audio graph should currently be *rendering*.
+   *
+   * getTruePosition() reports the render position, not what is audible — the
+   * graph runs ahead of the speaker by the output latency, because
+   * scheduleStart() deliberately starts the buffer that much early so the
+   * sound emerges on time. So the ideal timeline position has to be shifted
+   * FORWARD by the same latency to be comparable.
+   */
+  private _expectedRenderPosition(audio: AudioHandle): number {
+    if (this._intent.startEpoch == null) return this._intent.pauseOffset;
+    const latency = (audio.outputLatency || 0) + (audio.manualLatency || 0);
+    return Math.max(0, (this.getServerNow() - this._intent.startEpoch) / 1000 + latency);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // 4-Tier Drift Correction (called every 50ms by the interval)
   // ─────────────────────────────────────────────────────────────────────────
@@ -372,13 +387,18 @@ export class SyncController {
 
     const nowServer = this.getServerNow();
 
-    // Don't correct before the scheduled start time
-    if (nowServer < this._intent.startEpoch) return;
+    // Don't correct before playback has actually started.
+    // startEpoch is the epoch at which position would be ZERO, not when the
+    // source starts — for any resume mid-track it is already in the past. The
+    // real start is startEpoch + pauseOffset (the server's `atEpoch`). Getting
+    // this wrong let drift correction run during the ~800ms window while
+    // scheduleStart still has a source queued in the future, which reports a
+    // frozen getTruePosition() and sent this into a seek-forward/seek-back loop.
+    const startAtEpoch = this._intent.startEpoch + this._intent.pauseOffset * 1000;
+    if (nowServer < startAtEpoch) return;
 
-    // Subtract hardware+manual output latency so expected matches what actually
-    // reached the speaker (scheduleStart already pre-compensates for this).
-    const totalLatencySec = (audio.outputLatency || 0) + (audio.manualLatency || 0);
-    const expected = Math.max(0, (nowServer - this._intent.startEpoch) / 1000 - totalLatencySec);
+    // Compare like with like: both sides are graph-render positions.
+    const expected = this._expectedRenderPosition(audio);
     const actual = audio.getTruePosition();
 
     // Skip if buffering (getTruePosition returns -1)
@@ -398,9 +418,11 @@ export class SyncController {
     const params = this._paramsRef?.current;
     if (!params) return;
 
-    // ── Sync Diagnostics (rate-limited to every 2s) ──
+    // ── Sync Diagnostics (dev only, rate-limited to every 2s) ──
+    // Production telemetry is handled by useSyncTelemetry, which batches on
+    // idle callbacks — this is the raw per-device trace for local debugging.
     const _now = Date.now();
-    if (!this._lastLogTime || _now - this._lastLogTime >= 2000) {
+    if (process.env.NODE_ENV !== 'production' && (!this._lastLogTime || _now - this._lastLogTime >= 2000)) {
       this._lastLogTime = _now;
       const hwLat = Math.round(((audio.outputLatency || 0) + (audio.manualLatency || 0)) * 1000);
       const msg = `pos=${(actual * 1000).toFixed(0)}ms | expected=${(expected * 1000).toFixed(0)}ms | drift=${drift > 0 ? '+' : ''}${driftMs.toFixed(1)}ms | hw=${hwLat}ms | epoch=${this._intent.startEpoch} | clockOffset=${Math.round(this._clockOffsetRef?.current ?? 0)}ms | rate=${this._currentRate}`;
@@ -464,7 +486,7 @@ export class SyncController {
 
         setTimeout(() => {
           if (this._intent.state !== 'playing' || this._intent.startEpoch == null) return;
-          const newExpected = Math.max(0, (this.getServerNow() - this._intent.startEpoch) / 1000);
+          const newExpected = this._expectedRenderPosition(audio);
           audio.playNow(newExpected);
           if (audio.setPlaybackRate) audio.setPlaybackRate(1);
 

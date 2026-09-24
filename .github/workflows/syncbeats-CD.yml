@@ -1,4 +1,4 @@
-name: Syncbeats CD (Cloud Run)
+name: Syncbeats CD (VM Deployment)
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
     paths:
       - 'dev/syncbeats-server/**'
       - '.github/workflows/syncbeats-CD.yml'
+  pull_request:
+    types: [closed]
   workflow_dispatch:
 
 concurrency:
@@ -14,13 +16,35 @@ concurrency:
 
 env:
   PROJECT_ID: sync-beats-472708
-  REGION: asia-south1
-  SERVICE_NAME: syncbeats-server
-  GAR_REPO: asia-south1-docker.pkg.dev/sync-beats-472708/syncbeats-repo
+  ZONE: us-central1-f
+  VM_NAME: syncbeats-vm
 
 jobs:
+  teardown-staging:
+    name: Teardown Staging on Merge
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'nodejs-dev' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Teardown Staging via SSH
+        run: |
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo COMPOSE_PROJECT_NAME=syncbeats-staging docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.syncbeats-staging down -v"
+
   test-backend:
     name: Run Backend Test Suite
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -46,27 +70,40 @@ jobs:
         run: npm test
 
   deploy:
-    name: Build & Deploy to Cloud Run
+    name: Build & Deploy to VM
     runs-on: ubuntu-latest
     needs: test-backend
+    if: github.event_name != 'pull_request'
     timeout-minutes: 15
     environment: ${{ github.ref_name }}
 
     permissions:
       contents: read
       id-token: write   # Required for Workload Identity Federation
+      packages: write   # Required to push to GHCR
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set Service Name
-        run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-            echo "SERVICE_NAME=syncbeats-server" >> $GITHUB_ENV
-          else
-            echo "SERVICE_NAME=syncbeats-server-staging" >> $GITHUB_ENV
-          fi
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dev/syncbeats-server
+          push: true
+          tags: |
+            ghcr.io/smanikanta21/syncbeats-server:${{ github.ref_name }}-latest
+            ghcr.io/smanikanta21/syncbeats-server:${{ github.sha }}
 
       - name: Google Auth
         id: auth
@@ -78,21 +115,32 @@ jobs:
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker asia-south1-docker.pkg.dev
-
-      - name: Build and Push Docker Image
-        working-directory: ./dev/syncbeats-server
+      - name: Set Environment Variables
         run: |
-          IMAGE="${{ env.GAR_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
+          if [ "${{ github.ref_name }}" == "nodejs-dev" ]; then
+            echo "COMPOSE_PROJECT_NAME=syncbeats-staging" >> $GITHUB_ENV
+            echo "PORT=4001" >> $GITHUB_ENV
+            echo "DB_PORT=5433" >> $GITHUB_ENV
+            echo "FRONTEND_PORT=3001" >> $GITHUB_ENV
+            echo "STUDIO_PORT=5556" >> $GITHUB_ENV
+            echo "ENV_POSTGRES_DB=syncbeats_staging" >> $GITHUB_ENV
+            echo "BACKEND_URL=https://dev-api.syncbeats.in" >> $GITHUB_ENV
+          else
+            echo "COMPOSE_PROJECT_NAME=sync-beats" >> $GITHUB_ENV
+            echo "PORT=4000" >> $GITHUB_ENV
+            echo "DB_PORT=5432" >> $GITHUB_ENV
+            echo "FRONTEND_PORT=3000" >> $GITHUB_ENV
+            echo "STUDIO_PORT=5555" >> $GITHUB_ENV
+            echo "ENV_POSTGRES_DB=${{ vars.POSTGRES_DB || 'syncbeats' }}" >> $GITHUB_ENV
+            echo "BACKEND_URL=${{ vars.BACKEND_URL || 'https://api.syncbeats.in' }}" >> $GITHUB_ENV
+          fi
 
-      - name: Create Env JSON for Cloud Run
+      - name: Create and Sync .env
         env:
           NODE_ENV: ${{ vars.NODE_ENV || 'production' }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'syncbeats' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'syncbeats' }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://syncbeats.in' }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -105,15 +153,34 @@ jobs:
           UPDATES_FROM_EMAIL: ${{ vars.UPDATES_FROM_EMAIL || 'updates@syncbeats.in' }}
           ADMIN_PASSWORD: ${{ vars.ADMIN_PASSWORD || 'syncbeatsadmin' }}
         run: |
-          jq -n '{NODE_ENV: env.NODE_ENV, FRONTEND_URL: env.FRONTEND_URL, DATABASE_URL: env.DATABASE_URL, JWT_SECRET: env.JWT_SECRET, GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET, SPOTIFY_CLIENT_ID: env.SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET: env.SPOTIFY_CLIENT_SECRET, RESEND_API_KEY: env.RESEND_API_KEY, RAPID_API_KEY: env.RAPID_API_KEY, RAPID_API_KEYS: env.RAPID_API_KEYS, AUTH_FROM_EMAIL: env.AUTH_FROM_EMAIL, UPDATES_FROM_EMAIL: env.UPDATES_FROM_EMAIL, ADMIN_PASSWORD: env.ADMIN_PASSWORD}' > env.json
+          cat <<EOF > .env.vm
+          COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
+          IMAGE_TAG=${{ github.ref_name }}-latest
+          NODE_ENV=$NODE_ENV
+          PORT=$PORT
+          DB_PORT=$DB_PORT
+          FRONTEND_PORT=$FRONTEND_PORT
+          STUDIO_PORT=$STUDIO_PORT
+          POSTGRES_USER=$POSTGRES_USER
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          POSTGRES_DB=$ENV_POSTGRES_DB
+          FRONTEND_URL=$FRONTEND_URL
+          BACKEND_URL=$BACKEND_URL
+          JWT_SECRET=$JWT_SECRET
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+          SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID
+          SPOTIFY_CLIENT_SECRET=$SPOTIFY_CLIENT_SECRET
+          RESEND_API_KEY=$RESEND_API_KEY
+          RAPID_API_KEY=$RAPID_API_KEY
+          RAPID_API_KEYS=$RAPID_API_KEYS
+          AUTH_FROM_EMAIL=$AUTH_FROM_EMAIL
+          UPDATES_FROM_EMAIL=$UPDATES_FROM_EMAIL
+          ADMIN_PASSWORD=$ADMIN_PASSWORD
+          EOF
+          gcloud compute scp .env.vm ${{ env.VM_NAME }}:/tmp/.env.${COMPOSE_PROJECT_NAME} --zone ${{ env.ZONE }} --quiet
+          gcloud compute scp docker-compose.yml ${{ env.VM_NAME }}:/tmp/docker-compose.yml --zone ${{ env.ZONE }} --quiet
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to VM via SSH
         run: |
-          IMAGE="${{ env.GAR_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image "$IMAGE" \
-            --region ${{ env.REGION }} \
-            --allow-unauthenticated \
-            --max-instances 1 \
-            --session-affinity \
-            --env-vars-file env.json
+          gcloud compute ssh ${{ env.VM_NAME }} --zone ${{ env.ZONE }} --quiet --command="sudo mv /tmp/.env.${COMPOSE_PROJECT_NAME} /home/abhinay/.env.${COMPOSE_PROJECT_NAME} && sudo mv /tmp/docker-compose.yml /home/abhinay/docker-compose.yml && sudo fallocate -l 2G /swapfile || true && sudo chmod 600 /swapfile || true && sudo mkswap /swapfile || true && sudo swapon /swapfile || true && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} pull server && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} run --rm server npx prisma migrate deploy && sudo COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} docker compose -f /home/abhinay/docker-compose.yml --env-file /home/abhinay/.env.${COMPOSE_PROJECT_NAME} up -d server"

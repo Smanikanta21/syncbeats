@@ -84,3 +84,8 @@ export function useVisualizer() {
   if (!ctx) throw new Error("useVisualizer must be used within VisualizerProvider");
   return ctx;
 }
+
+/** Safe version — returns null if called outside VisualizerProvider (e.g. during SSR). */
+export function useOptionalVisualizer() {
+  return useContext(VisualizerContext);
+}

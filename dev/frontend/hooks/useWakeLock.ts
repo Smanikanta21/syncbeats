@@ -135,7 +135,7 @@ export function useWakeLock(active: boolean) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pageshow", handlePageShow);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [active]);
 
   // Try to acquire the video lock on any user interaction if it failed initially

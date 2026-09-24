@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
+import { getSocket } from "../lib/socket";
 
 interface AuthContextType {
   user:     User | null;
@@ -16,6 +17,7 @@ interface AuthContextType {
   emailVerified: boolean;
   token:    string | null;
   loading:  boolean;
+  serverError: boolean;
   login:    (email: string, password: string) => Promise<string>;
   register: (name: string, email: string, password: string) => Promise<void>;
   googleLogin: (credential: string) => Promise<string>;
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [emailVerified, setEmailVerified] = useState(false);
   const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [serverError, setServerError] = useState<boolean>(false);
 
   // Hydration-safe bootstrap: read browser token only after mount.
   useEffect(() => {
@@ -53,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Rehydrate auth state when token is present ─────────────────────────
   useEffect(() => {
     if (!token) return;
+    setServerError(false);
 
     authApi.me()
       .then(({ user, device, needsDeviceRename }) => {
@@ -64,14 +68,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         // Only clear token if we get a definitive authentication failure.
         // If the server is restarting (502, 503) or network fails, do NOT log out the user!
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404)) {
           clearAuthToken();
           setToken(null);
           setEmailVerified(false);
+        } else {
+          setServerError(true);
         }
       })
       .finally(() => setLoading(false));
   }, [token]);
+
+  // ── Global Socket Connection for Device Management ───────────────────────
+  useEffect(() => {
+    if (!device?.device_key) return;
+
+    const socket = getSocket();
+    
+    const handleLogout = () => {
+      clearAuthToken();
+      setToken(null);
+      setUser(null);
+      setDevice(null);
+      window.location.href = '/login?kicked=true';
+    };
+
+    socket.on('device:logout', handleLogout);
+    
+    if (!socket.connected) {
+      socket.connect();
+    }
+    
+    // Register the device with the socket server
+    socket.emit('device:register', { deviceKey: device.device_key });
+
+    return () => {
+      socket.off('device:logout', handleLogout);
+    };
+  }, [device?.device_key]);
 
   const persist = (token: string, user: User) => {
     setAuthToken(token);
@@ -126,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         googleLogin(idToken)
           .then(() => {
             const params = new URLSearchParams(window.location.search);
-            const returnTo = params.get("returnTo") || "/hub";
+            const returnTo = params.get("returnTo") || "/room/default";
             window.location.href = returnTo;
           })
           .catch((err) => {
@@ -142,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await googleLogin(e.data.idToken);
           const params = new URLSearchParams(window.location.search);
-          const returnTo = params.get("returnTo") || "/hub";
+          const returnTo = params.get("returnTo") || "/room/default";
           window.location.href = returnTo;
         } catch (err) {
           console.error("[Auth] Google OAuth popup message error:", err);
@@ -202,10 +236,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(() => ({
-    user, device, needsDeviceRename, emailVerified, token, loading,
+    user, device, needsDeviceRename, emailVerified, token, loading, serverError,
     login, register, googleLogin, resendVerification,
     renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout,
-  }), [user, device, needsDeviceRename, emailVerified, token, loading,
+  }), [user, device, needsDeviceRename, emailVerified, token, loading, serverError,
     login, register, googleLogin, resendVerification,
     renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout]);
 

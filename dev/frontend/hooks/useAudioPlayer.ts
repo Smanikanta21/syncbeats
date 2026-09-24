@@ -48,6 +48,14 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   audioEl:     HTMLAudioElement | null;
   audioCtx?:   AudioContext | null;
   gainNode?:   GainNode | null;
+  /**
+   * Last node of the EQ chain. Spatial audio splices itself in *between* this
+   * and `analyserNode` so the signal is panned in series rather than duplicated
+   * alongside the dry path.
+   */
+  eqOutputNode?: AudioNode | null;
+  /** Analyser feeding the destination — the far side of the spatial splice. */
+  analyserNode?: AnalyserNode | null;
   getAudioData: () => number;
   getRawAudioData: () => Uint8Array | null;
   eqGains: number[];
@@ -174,6 +182,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (typeof window !== 'undefined' && !streamingAudioElRef.current) {
       const audioEl = new Audio();
       audioEl.crossOrigin = "anonymous";
+      audioEl.style.display = "none";
+      document.body.appendChild(audioEl);
       streamingAudioElRef.current = audioEl;
     }
 
@@ -211,8 +221,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     analyserNodeRef.current.connect(audioCtxRef.current.destination);
 
     // Apply iOS latency fallback immediately, since enumerateDevices might be blocked on HTTP
-    let outLat = audioCtxRef.current.outputLatency || 0;
-    let baseLat = audioCtxRef.current.baseLatency || 0;
+    const outLat = audioCtxRef.current.outputLatency || 0;
+    const baseLat = audioCtxRef.current.baseLatency || 0;
     let totalLat = outLat + baseLat;
 
     if (totalLat === 0 && typeof navigator !== 'undefined') {
@@ -498,8 +508,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }
       
       if (audioCtxRef.current) {
-        let outLat = audioCtxRef.current.outputLatency || 0;
-        let baseLat = audioCtxRef.current.baseLatency || 0;
+        const outLat = audioCtxRef.current.outputLatency || 0;
+        const baseLat = audioCtxRef.current.baseLatency || 0;
         let totalLat = outLat + baseLat;
 
         // Fallback for iOS/Safari where latency is 0
@@ -818,31 +828,28 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (cachedBlob) {
             console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
             setDownloadProgress(100);
-            const blobUrl = URL.createObjectURL(cachedBlob);
-            setStreamingAudioSrc(blobUrl);
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
             console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
             const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
             const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-            
-            // Assign src immediately for Instant Playback!
-            setStreamingAudioSrc(fetchUrl);
 
             // Concurrently fetch stream bytes in background to stash to IDB
             try {
               const response = await fetch(fetchUrl, {
                 headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
               });
-              if (response.ok) {
-                const contentLength = response.headers.get('content-length');
-                const total = contentLength ? parseInt(contentLength, 10) : 0;
-                let loaded = 0;
-                const reader = response.body!.getReader();
-                const chunks: Uint8Array[] = [];
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
+              if (!response.ok) {
+                throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+              }
+              const contentLength = response.headers.get('content-length');
+              const total = contentLength ? parseInt(contentLength, 10) : 0;
+              let loaded = 0;
+              const reader = response.body!.getReader();
+              const chunks: Uint8Array[] = [];
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
                   chunks.push(value);
                   loaded += value.length;
                   if (total > 0) {
@@ -867,13 +874,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
                   console.warn('[AudioPlayer] Background stash to IDB warning:', err);
                 });
-              }
             } catch (bgErr) {
-              console.log('[AudioPlayer] Background stream caching bypassed:', bgErr);
+              console.log('[AudioPlayer] Background stream caching bypassed or failed:', bgErr);
+              throw bgErr; // Throw to trigger outer catch and set UI error
             }
           }
         } else {
-          let fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
 
           const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
           if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
@@ -919,21 +926,30 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           return null;
         }
 
+        // Release the compressed bytes reference before starting decode so the
+        // browser can GC them. decodeAudioData transfers (detaches) the buffer
+        // when called without .slice(0), so passing it directly frees the
+        // original allocation as decode proceeds — no double-hold.
+        pendingArrayBufferRef.current = null;
+
         let decodedData: AudioBuffer;
         try {
-          decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
+          // Pass arrayBuffer directly (no .slice(0)) so the Web Audio API
+          // transfers it instead of copying — saves 6–8 MB at peak decode.
+          decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer);
         } catch (decodeErr) {
           console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
           setError("Playback Error: Failed to decode audio. Track may be blocked or corrupted.");
           setIsBuffering(false);
           setIsReady(false);
-          pendingArrayBufferRef.current = arrayBuffer;
-          
+          // Do NOT store arrayBuffer back into pendingArrayBufferRef — it was
+          // transferred (detached) by decodeAudioData, so the reference is dead.
+
           if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {
             const { removeTrack } = await import('../lib/idb');
             await removeTrack(url).catch(console.error);
           }
-          
+
           return null;
         }
         audioBufferRef.current = decodedData;
@@ -993,7 +1009,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     pendingArrayBufferRef.current = null;
 
-    audioCtxRef.current.decodeAudioData(pending.slice(0))
+    // Pass directly (no .slice(0)) — transfers the buffer, avoids a copy
+    audioCtxRef.current.decodeAudioData(pending)
       .then((decodedData) => {
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
@@ -1279,9 +1296,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     // 1. Commit elapsed time at the OLD rate so getTruePosition() doesn't retroactively distort past time
     if (isPlayingRef.current) {
       if (audioCtxRef.current) {
-        const oldElapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
-        pauseOffsetRef.current += oldElapsed;
-        startTimeRef.current = audioCtxRef.current.currentTime;
+        // Only rebase if the source has actually started. scheduleStart() can
+        // queue a source up to ~800ms in the future (startTimeRef is a future
+        // ctx time); rebasing to `now` here would discard that schedule and
+        // make getTruePosition() report a position the audio hasn't reached.
+        if (audioCtxRef.current.currentTime > startTimeRef.current) {
+          const oldElapsed = (audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
+          pauseOffsetRef.current += oldElapsed;
+          startTimeRef.current = audioCtxRef.current.currentTime;
+        }
       } else {
         const oldElapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
         pauseOffsetRef.current += oldElapsed;
@@ -1338,8 +1361,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsBuffering(false);
     setError(null);
     audioBufferRef.current = null;
-    pendingArrayBufferRef.current = null; 
-    
+    pendingArrayBufferRef.current = null;
+    setDuration(0); // don't report the previous track's length while the new one loads
+
     trackUrlRef.current = url;
     setTrackUrl(url);
     setTrackTitle(title);
@@ -1427,6 +1451,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     audioEl: null,
     audioCtx: audioCtxRef.current,
     gainNode: gainNodeRef.current,
+    eqOutputNode: eqNodesRef.current.length > 0 ? eqNodesRef.current[eqNodesRef.current.length - 1] : null,
+    analyserNode: analyserNodeRef.current,
     getAudioData,
     getRawAudioData,
     setEqBand,

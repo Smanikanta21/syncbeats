@@ -6,21 +6,22 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { UploadProvider } from "../../context/UploadContext";
 import { SyncProvider } from "../../context/SyncContext";
-const DynamicIsland = dynamic(() => import("../../components/DynamicIsland").then(m => m.DynamicIsland), { ssr: false });
+const DynamicIsland = dynamic(() => import("../../components/dynamic-island").then(m => m.DynamicIsland), { ssr: false });
 import { devicesApi, type Device } from "../../lib/api";
-import { X, Camera, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
+import { GlobalLoadingScreen } from "../../components/GlobalLoadingScreen";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
-  const { user, device, needsDeviceRename, emailVerified, loading, resendVerification, renameDevice, replaceDevice } = useAuth();
+  const { user, device, needsDeviceRename, emailVerified, loading, serverError, resendVerification, renameDevice, replaceDevice } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const isRoom = pathname?.includes("/room/");
   const isProfile = pathname?.includes("/profile");
-  const isFullscreen = isRoom || isProfile;
   const [deviceName, setDeviceName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showExistingFlow, setShowExistingFlow] = useState(false);
   const [savedDevices, setSavedDevices] = useState<Device[]>([]);
@@ -29,6 +30,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [fetchingDevices, setFetchingDevices] = useState(false);
 
   // Auto-prompt feedback modal once per session after 5 mins in room
   useEffect(() => {
@@ -59,13 +61,27 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     return `${owner}${suffix} ${label}`;
   };
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated and server is reachable
   useEffect(() => {
-    if (!loading && !user) {
-      const returnTo = encodeURIComponent(pathname || "/hub");
+    if (!loading && !user && !serverError) {
+      const returnTo = encodeURIComponent(pathname || "/room/default");
       router.replace(`/login?returnTo=${returnTo}`);
     }
-  }, [user, loading, router, pathname]);
+  }, [user, loading, serverError, router, pathname]);
+
+  if (serverError) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-background text-foreground">
+        <h1 className="text-2xl font-bold mb-4">Cannot connect to server</h1>
+        <p className="text-white/60 mb-8 max-w-md text-center">
+          The SyncBeats server is currently unreachable. Please check your connection or wait a moment for the server to wake up.
+        </p>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-emerald-500 text-black font-semibold rounded-full hover:bg-emerald-400 transition-colors">
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!device) return;
@@ -76,24 +92,43 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     if (!needsDeviceRename) {
       setSavedDevices([]);
       setShowExistingFlow(false);
+      setFetchingDevices(false);
       return;
     }
 
+    setFetchingDevices(true);
     devicesApi.mine()
       .then(({ devices }) => {
         setSavedDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')));
       })
       .catch(() => {
         setSavedDevices([]);
+      })
+      .finally(() => {
+        setFetchingDevices(false);
       });
   }, [needsDeviceRename]);
 
   const replacementCandidates = savedDevices.filter((saved) => saved.id !== device?.id);
 
+  useEffect(() => {
+    if (replacementCandidates.length > 0 && !showExistingFlow) {
+      setShowExistingFlow(true);
+    }
+  }, [replacementCandidates.length]);
+
   const handleRename = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deviceName.trim()) return;
+    const trimmed = deviceName.trim();
+    if (!trimmed) return;
+    
+    // Check if the name already exists
+    if (savedDevices.some(d => d.name.toLowerCase() === trimmed.toLowerCase() && d.id !== device?.id)) {
+      setNameError("This device name is already in use. Please choose another name or select it from existing devices.");
+      return;
+    }
 
+    setNameError(null);
     setSaving(true);
     try {
       await renameDevice(deviceName.trim());
@@ -135,6 +170,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
+      {(loading || fetchingDevices) && <GlobalLoadingScreen />}
       {user && !loading && !isProfile && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className={cn('fixed', 'top-24', 'left-1/2', 'z-60', 'w-[min(92vw,720px)]', '-translate-x-1/2', 'rounded-3xl', 'border', 'border-amber-400/30', 'bg-amber-500/10', 'px-4', 'py-3', 'backdrop-blur-xl')}>
@@ -155,7 +191,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           {verificationError && <p className={cn('mt-2', 'text-xs', 'text-red-300')}>{verificationError}</p>}
         </div>
       )}
-      {user && !loading && needsDeviceRename && (
+      {user && !loading && !fetchingDevices && needsDeviceRename && (
         <div className={cn('fixed', 'inset-0', 'z-60', 'flex', 'items-center', 'justify-center', 'bg-background/70', 'backdrop-blur-xl', 'px-4')}>
           <div className={cn('w-full', 'max-w-md', 'rounded-4xl', 'border', 'border-foreground/10', 'bg-background', 'p-6', 'shadow-[0_30px_120px_rgba(0,0,0,0.7)]')}>
             <div className="mb-4">
@@ -180,10 +216,13 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                 <input
                   autoFocus
                   value={deviceName}
-                  onChange={(e) => setDeviceName(e.target.value)}
-                  className={cn('w-full', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40', 'focus:border-foreground/30')}
+                  onChange={(e) => { setDeviceName(e.target.value); setNameError(null); }}
+                  className={cn('w-full', 'rounded-2xl', 'border', nameError ? 'border-red-500/50 focus:border-red-500' : 'border-foreground/10 focus:border-foreground/30', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40')}
                   placeholder="Abhinay's iPhone"
                 />
+                {nameError && (
+                  <p className="text-red-400 text-xs font-semibold px-1">{nameError}</p>
+                )}
                 <button
                   disabled={saving || !deviceName.trim()}
                   className={cn('h-12', 'w-full', 'rounded-2xl', 'bg-foreground', 'font-bold', 'text-background', 'transition-opacity', 'disabled:cursor-not-allowed', 'disabled:opacity-60')}
@@ -230,7 +269,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
 
-      <div className={isRoom ? "h-[100dvh] overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
+      <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
         {(!loading && user) ? children : null}
       </div>
 

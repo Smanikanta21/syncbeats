@@ -1,5 +1,7 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { MusicBridgeService } from '../services/MusicBridgeService';
+import { exec } from 'child_process';
+import path from 'path';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma, { sanitizeNullBytes } from '../db/prisma';
 import ytSearch from 'yt-search';
@@ -579,6 +581,223 @@ export function createMusicBridgeRoutes(): Router {
         details: error.message
       });
       return;
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /api/bridge/import-youtube
+  // Imports a YouTube or YouTube Music playlist via yt-dlp.
+  // Uses Server-Sent Events to stream real per-chunk progress to the client.
+  // ─────────────────────────────────────────────────────────────────────
+  router.post('/import-youtube', requireAuth, async (req: any, res: any): Promise<void> => {
+    try {
+      const { playlistUrl } = req.body;
+
+      if (!playlistUrl) {
+        res.status(400).json({ error: 'playlistUrl is required.' });
+        return;
+      }
+
+      console.log(`[Import-YouTube] Starting import: ${playlistUrl}`);
+      const t0 = Date.now();
+
+      // Allow yt-dlp to natively parse music.youtube.com playlists which prevents the 100-item limit.
+      const url = playlistUrl;
+
+      const videos = await new Promise<any[]>((resolve, reject) => {
+        const ytDlpPath = path.resolve(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
+        exec(`"${ytDlpPath}" --dump-json --flat-playlist "${url}"`, { maxBuffer: 1024 * 1024 * 20 }, (error, stdout) => {
+          const lines = stdout.trim().split('\n').filter(l => l.length > 0);
+          const parsed = lines.map(l => {
+            try { return JSON.parse(l); } catch(e) { return null; }
+          }).filter(Boolean);
+          
+          if (parsed.length === 0 && error) reject(error);
+          else resolve(parsed);
+        });
+      });
+
+      if (!videos || videos.length === 0) {
+        res.status(404).json({ error: 'Playlist is empty, private, or could not be parsed.' });
+        return;
+      }
+
+      console.log(`[Import-YouTube] Fetched ${videos.length} videos via yt-dlp`);
+
+      const cleanStr = (s: any): string => {
+        if (!s || typeof s !== 'string') return '';
+        return s.replace(/\x00/g, '').replace(/[\r\n]+/g, ' ').trim();
+      };
+
+      const userProvidedName = cleanStr(req.body.playlistName);
+      const fetchedPlaylistTitle = videos[0]?.playlist_title || videos[0]?.playlist || 'Imported YouTube Playlist';
+      const playlistName = (userProvidedName && userProvidedName !== 'Imported Playlist') 
+        ? userProvidedName 
+        : cleanStr(fetchedPlaylistTitle);
+        
+      const coverUrl = videos[0]?.thumbnails?.[0]?.url || null;
+      const cleanSourceId = cleanStr(playlistUrl);
+
+      // Create or update playlist
+      let playlist = await prisma.playlist.findFirst({
+        where: {
+          userId: req.user.sub,
+          sourceType: 'YOUTUBE_BRIDGE',
+          sourceId: cleanSourceId,
+        },
+      });
+
+      if (playlist) {
+        playlist = await prisma.playlist.update({
+          where: { id: playlist.id },
+          data: { name: playlistName, coverUrl: coverUrl || playlist.coverUrl, updatedAt: new Date() },
+        });
+        await prisma.playlistTrack.deleteMany({ where: { playlistId: playlist.id } });
+      } else {
+        playlist = await prisma.playlist.create({
+          data: {
+            userId: req.user.sub,
+            name: playlistName,
+            coverUrl,
+            sourceType: 'YOUTUBE_BRIDGE',
+            sourceId: cleanSourceId,
+          },
+        });
+      }
+
+      // ── Switch to SSE streaming ──────────────────────────────────────
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+      res.flushHeaders();
+
+      const sendEvent = (event: string, data: object) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Send initial event with total count and playlist info
+      sendEvent('start', {
+        total: videos.length,
+        playlistId: playlist.id,
+        playlistName: playlist.name,
+        coverUrl: playlist.coverUrl,
+      });
+
+      const playlistTrackData: any[] = [];
+      const processingCache = new Map<string, Promise<any>>();
+      let importedCount = 0;
+
+      const processVideo = async (v: any, position: number) => {
+        const title = cleanStr(v.title);
+        const artist = cleanStr(v.uploader || v.channel || v.playlist_uploader || 'Unknown Artist');
+        const ytId = v.id;
+        const thumbnail = (v.thumbnails && v.thumbnails.length > 0) ? v.thumbnails[v.thumbnails.length - 1].url : null;
+        if (!ytId) return null;
+
+        const taKey = `${title}:::${artist}`;
+
+        if (!processingCache.has(taKey)) {
+          processingCache.set(taKey, (async () => {
+            let song = await prisma.song.findFirst({ where: { youtubeId: ytId } });
+            if (!song) {
+              song = await prisma.song.findFirst({ where: { title, artist } });
+              if (song) {
+                if (!song.youtubeId) {
+                  song = await prisma.song.update({
+                    where: { id: song.id },
+                    data: {
+                      youtubeId: ytId,
+                      youtubeThumbnail: thumbnail,
+                      duration: song.duration || Math.round((parseFloat(v.duration) || 0) * 1000)
+                    }
+                  });
+                }
+              } else {
+                try {
+                  song = await prisma.song.create({
+                    data: {
+                      title,
+                      artist,
+                      youtubeId: ytId,
+                      youtubeThumbnail: thumbnail,
+                      duration: Math.round((parseFloat(v.duration) || 0) * 1000),
+                    }
+                  });
+                } catch (err: any) {
+                  // Handle race condition: if another concurrent import created this song just now
+                  if (err.code === 'P2002') {
+                    song = await prisma.song.findFirst({ where: { title, artist } });
+                    if (song && !song.youtubeId) {
+                      song = await prisma.song.update({
+                        where: { id: song.id },
+                        data: {
+                          youtubeId: ytId,
+                          youtubeThumbnail: thumbnail,
+                          duration: song.duration || Math.round((parseFloat(v.duration) || 0) * 1000)
+                        }
+                      });
+                    }
+                  } else {
+                    throw err;
+                  }
+                }
+              }
+            }
+            return song;
+          })());
+        }
+
+        const song = await processingCache.get(taKey);
+
+        return {
+          playlistId: playlist.id,
+          songId: song.id,
+          youtubeId: ytId,
+          title: title,
+          artist: artist,
+          thumbnail: thumbnail,
+          position,
+        };
+      };
+
+      for (let i = 0; i < videos.length; i += 20) {
+        const chunk = videos.slice(i, i + 20);
+        const results = await Promise.all(chunk.map((v, idx) => processVideo(v, i + idx)));
+        const validResults = results.filter(Boolean);
+        playlistTrackData.push(...validResults);
+        importedCount += validResults.length;
+
+        // Stream real progress after each chunk
+        const lastTitle = validResults[validResults.length - 1]?.title || '';
+        sendEvent('progress', {
+          imported: importedCount,
+          total: videos.length,
+          currentTitle: lastTitle,
+        });
+      }
+
+      // Batch insert PlaylistTracks
+      for (let i = 0; i < playlistTrackData.length; i += 20) {
+        const chunk = playlistTrackData.slice(i, i + 20);
+        await prisma.playlistTrack.createMany({ data: chunk }).catch(console.warn);
+      }
+
+      // Final done event
+      sendEvent('done', {
+        ok: true,
+        playlistId: playlist.id,
+        playlistName: playlist.name,
+        coverUrl: playlist.coverUrl,
+        totalTracks: playlistTrackData.length,
+        elapsed: Date.now() - t0,
+      });
+
+      res.end();
+
+    } catch (error: any) {
+      console.error('[BridgeRoutes] Error importing YouTube playlist:', error);
+      res.status(500).json({ error: 'Failed to import YouTube playlist.', details: error.message });
     }
   });
 

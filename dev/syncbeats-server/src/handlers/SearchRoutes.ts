@@ -1,11 +1,7 @@
 import { Router } from 'express';
 import ytSearch from 'yt-search';
-import ytdl from '@distube/ytdl-core';
-import play from 'play-dl';
 import prisma from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
-
-const youtubeUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 export function createSearchRoutes(): Router {
   const router = Router();
@@ -430,7 +426,13 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
 
   // Promise 1: yt-dlp execution
   const ytDlpPromise = new Promise<boolean>((resolve) => {
-    const ytDlpArgs = ['-f', 'bestaudio[ext=m4a]', '-o', outputFile, watchUrl];
+    const ytDlpArgs = [
+      '-f', 'bestaudio',
+      '--concurrent-fragments', '4',
+      '--http-chunk-size', '10M',
+      '-o', outputFile,
+      watchUrl
+    ];
     const ytDlp = spawn(ytDlpPath, ytDlpArgs);
     ytDlp.on('close', (code: number) => {
       if (code === 0 && fs.existsSync(outputFile)) {

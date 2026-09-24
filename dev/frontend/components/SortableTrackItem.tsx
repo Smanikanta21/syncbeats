@@ -2,7 +2,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TrackQueueItem } from "../lib/types";
-import { Play, Disc, Trash2, GripVertical } from "lucide-react";
+import { Play, Disc, Trash2, GripVertical, Loader2, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 
 const globalSortableYtCache = new Map<string, string>();
@@ -69,6 +69,7 @@ export interface TrackItemRowProps {
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
   onTrackSelect?: (item: TrackQueueItem) => void;
+  onAddTrack?: (item: TrackQueueItem) => void;
   onRemoveTrack?: (id: string) => void;
   disableDrag?: boolean;
   isHistory?: boolean;
@@ -82,12 +83,14 @@ export interface TrackItemRowProps {
 
 export function TrackItemRow({
   item, idx, isCurrent, isPlaying, isHovered, isHost,
-  onHoverStart, onHoverEnd, onTrackSelect, onRemoveTrack, disableDrag, isHistory, isNew,
+  onHoverStart, onHoverEnd, onTrackSelect, onAddTrack, onRemoveTrack, disableDrag, isHistory, isNew,
   isDragging, isJumping, style, dragHandleProps, setNodeRef
 }: TrackItemRowProps) {
   const thumb = ytThumb(item.trackUrl);
 
   const [isMobile, setIsMobile] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  
   React.useEffect(() => {
     setIsMobile(window.innerWidth < 768);
   }, []);
@@ -97,8 +100,13 @@ export function TrackItemRow({
       ref={setNodeRef}
       style={style}
       {...(isMobile && !disableDrag && !isHistory ? dragHandleProps : {})}
-      initial={isNew ? { opacity: 0, y: -16, scale: 1.12 } : { opacity: 1, y: 0, scale: 1 }}
-      animate={{ opacity: isDragging ? 0.3 : 1, y: 0, scale: 1 }}
+      initial={isNew ? { opacity: 0, y: -16, scale: 1.12 } : { opacity: 1, y: 0, scale: 1, x: 0 }}
+      animate={{ 
+        opacity: isDeleting ? 0 : (isDragging ? 0.3 : 1), 
+        x: isDeleting ? -50 : 0,
+        y: 0, 
+        scale: 1 
+      }}
       transition={{ 
         type: "spring", 
         stiffness: 500, 
@@ -110,8 +118,8 @@ export function TrackItemRow({
         isCurrent
           ? "bg-foreground/20 border border-foreground/20"
           : isHistory 
-            ? "opacity-50 hover:bg-foreground/[0.04] grayscale-[30%]"
-            : "border border-transparent hover:bg-foreground/[0.04]"
+            ? "opacity-50 hover:bg-foreground/4 grayscale-[30%]"
+            : "border border-transparent hover:bg-foreground/4"
       } ${isDragging ? "bg-foreground/5 border-dashed border-foreground/20 rounded-2xl" : ""}`}
       onClick={() => onTrackSelect?.(item)}
     >
@@ -167,7 +175,7 @@ export function TrackItemRow({
             <span className="text-[11px] font-bold text-foreground/20 group-hover:opacity-0 transition-opacity">
               {idx + 1}
             </span>
-            {isHovered && !isDragging && (
+            {isHovered && !isDragging && !isHistory && (
               <Play className="absolute w-3.5 h-3.5 text-foreground/60 fill-foreground/60" />
             )}
           </>
@@ -200,15 +208,40 @@ export function TrackItemRow({
         )}
       </div>
 
-      {/* Remove button */}
-      {isHovered && !isDragging && !isHistory && (
+      {/* Add Button for History */}
+      {isHistory && isHovered && onAddTrack && (
         <motion.button
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          onClick={e => { e.stopPropagation(); onRemoveTrack?.(item.id); }}
-          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+          onClick={e => { 
+            e.stopPropagation(); 
+            onAddTrack(item); 
+          }}
+          className="shrink-0 p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors ml-2"
         >
-          <Trash2 className="w-3 h-3" />
+          <Plus className="w-4 h-4 fill-current stroke-current" strokeWidth={2.5} />
+        </motion.button>
+      )}
+
+      {/* Remove button */}
+      {isHovered && !isDragging && !isHistory && !isCurrent && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          disabled={isDeleting}
+          onClick={e => { 
+            e.stopPropagation(); 
+            if (isDeleting) return;
+            setIsDeleting(true);
+            onRemoveTrack?.(item.id); 
+          }}
+          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+        >
+          {isDeleting ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Trash2 className="w-3 h-3" />
+          )}
         </motion.button>
       )}
     </motion.div>
@@ -225,6 +258,7 @@ export interface SortableTrackItemProps {
   onHoverStart: () => void;
   onHoverEnd: () => void;
   onTrackSelect: (item: TrackQueueItem) => void;
+  onAddTrack?: (item: TrackQueueItem) => void;
   onRemoveTrack: (id: string) => void;
   disableDrag?: boolean;
   isHistory?: boolean;

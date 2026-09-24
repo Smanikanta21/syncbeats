@@ -6,7 +6,7 @@ import { Play, Users, Zap, QrCode, Smartphone, Laptop, Speaker, CheckCircle2, Mu
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 
-const JoinRoomModal = dynamic(() => import("./JoinRoomModal").then(mod => mod.JoinRoomModal), { ssr: false });
+const QRScannerModal = dynamic(() => import("./room/QRScannerModal").then(mod => mod.QRScannerModal), { ssr: false });
 
 export function HowItWorksScroll() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -193,10 +193,12 @@ export function HowItWorksScroll() {
     <div ref={containerRef} className="relative w-full h-[280vh] select-none z-10">
       
       {/* Join Room Modal Triggered directly on mobile phone interaction */}
-      <JoinRoomModal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
+      {isJoinModalOpen && (
+        <QRScannerModal onClose={() => setIsJoinModalOpen(false)} />
+      )}
 
       {/* Sticky Fullscreen Viewport for both Mobile and Desktop */}
-      <div className="sticky top-0 h-screen w-full flex flex-col items-center justify-between py-6 md:py-10 px-4 sm:px-8 lg:px-16 overflow-hidden">
+      <div className="sticky top-0 h-dvh w-full flex flex-col items-center justify-between py-6 md:py-10 px-4 sm:px-8 lg:px-16 overflow-hidden">
         
         {/* Section Title Header */}
         <div className="text-center flex flex-col items-center max-w-3xl z-20 mt-2 md:mt-4 shrink-0">
@@ -251,7 +253,7 @@ export function HowItWorksScroll() {
         <div className="hidden md:flex w-full max-w-6xl flex-1 flex-row items-center justify-center gap-12 relative z-20 min-h-0">
           
           {/* Left Column: Step Description (Arc Motion) */}
-          <div className="w-5/12 text-left flex flex-col justify-center min-h-[220px]">
+          <div className="w-5/12 text-left flex flex-col justify-center min-h-55">
             <div className="relative w-full">
               <AnimatePresence mode="wait" custom={scrollDirection} initial={false}>
                 <motion.div
@@ -305,7 +307,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-foreground/5 via-transparent to-foreground/5"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-br from-foreground/5 via-transparent to-foreground/5"
                 >
                   <div className="relative flex items-center justify-center">
                     <motion.div 
@@ -344,7 +346,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-foreground/5 via-transparent to-foreground/5"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-br from-foreground/5 via-transparent to-foreground/5"
                 >
                   <div className="flex flex-row items-center gap-8 z-10">
                     <div className="relative w-36 h-36 bg-background/80 backdrop-blur-xl border border-foreground/20 rounded-2xl flex items-center justify-center overflow-hidden shadow-2xl p-3">
@@ -391,7 +393,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-foreground/5 via-transparent to-foreground/5"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-br from-foreground/5 via-transparent to-foreground/5"
                 >
                   <div className="flex items-end justify-center gap-3 h-36 mb-6">
                     {[40, 75, 55, 95, 60, 85, 45, 90, 70, 50, 80, 65].map((h, i) => (
@@ -424,7 +426,7 @@ export function HowItWorksScroll() {
         <div className="md:hidden w-full flex-1 flex flex-col items-center justify-between relative z-20 min-h-0 py-2">
           
           {/* Compact Step Text Header */}
-          <div className="w-full text-center shrink-0 min-h-[95px] flex flex-col justify-center items-center px-2">
+          <div className="w-full text-center shrink-0 min-h-23.75 flex flex-col justify-center items-center px-2">
             <AnimatePresence mode="wait" custom={scrollDirection} initial={false}>
               <motion.div
                 key={activeStep}
@@ -460,10 +462,10 @@ export function HowItWorksScroll() {
             </AnimatePresence>
           </div>
 
-          {/* Portrait Mobile-Shaped Smartphone Mockup Card Showcase (Clickable to open JoinRoomModal) */}
+          {/* Portrait Mobile-Shaped Smartphone Mockup Card Showcase (Clickable to open QRScannerModal) */}
           <div 
             onClick={() => setIsJoinModalOpen(true)}
-            className="w-[300px] xs:w-[330px] sm:w-[360px] h-[370px] xs:h-[410px] sm:h-[440px] rounded-[42px] glass-panel border-2 border-foreground/20 shadow-2xl relative overflow-hidden flex items-center justify-center p-5 my-auto cursor-pointer group active:scale-98 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/40 transition-all duration-500"
+            className="w-75 xs:w-[330px] sm:w-90 h-92.5 xs:h-[410px] sm:h-110 rounded-[42px] glass-panel border-2 border-foreground/20 shadow-2xl relative overflow-hidden flex items-center justify-center p-5 my-auto cursor-pointer group active:scale-98 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl hover:border-foreground/40 transition-all duration-500"
           >
             {/* Top Phone Speaker Pill Notch */}
             <div className="w-20 h-3.5 rounded-full bg-foreground/20 absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none" />
@@ -477,7 +479,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-foreground/5 via-transparent to-foreground/5 space-y-4"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-b from-foreground/5 via-transparent to-foreground/5 space-y-4"
                 >
                   <div className="relative flex items-center justify-center">
                     <motion.div 
@@ -513,7 +515,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-foreground/5 via-transparent to-foreground/5 space-y-4"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-b from-foreground/5 via-transparent to-foreground/5 space-y-4"
                 >
                   <div className="relative w-24 h-24 sm:w-28 sm:h-28 bg-background/80 backdrop-blur-xl border border-foreground/20 rounded-2xl flex items-center justify-center overflow-hidden shadow-2xl p-3">
                     <QrCode className="w-full h-full text-foreground/80" />
@@ -544,7 +546,7 @@ export function HowItWorksScroll() {
                   initial="initial"
                   animate="animate"
                   exit="exit"
-                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-foreground/5 via-transparent to-foreground/5 space-y-5"
+                  className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-linear-to-b from-foreground/5 via-transparent to-foreground/5 space-y-5"
                 >
                   <div className="flex items-end justify-center gap-2 h-24 sm:h-28">
                     {[40, 75, 55, 95, 60, 85, 45, 90, 65, 80].map((h, i) => (

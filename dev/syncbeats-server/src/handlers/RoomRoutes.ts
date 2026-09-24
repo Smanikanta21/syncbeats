@@ -2,6 +2,7 @@
 
 import { Router, Request, Response } from 'express';
 import { RoomManager }    from '../core/RoomManager';
+import { RoomQueue }      from '../core/RoomQueue';
 import { RoomRepository } from '../db/RoomRepository';
 import { requireAuth, optionalAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
@@ -12,9 +13,26 @@ import ytSearch from 'yt-search';
 import { streamYoutubeAudio } from './SearchRoutes';
 import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
 import { AuditLogger } from '../services/AuditLogger';
+import { QueueTrackInput } from '../types';
 
 // Strict YouTube video ID format — 11 alphanumeric/dash/underscore chars only
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/
+
+/** Playlists are capped so one import can't wedge a room. */
+const MAX_PLAYLIST_TRACKS = 500;
+
+/**
+ * The client reads the cover art and source playlist straight off trackUrl, so they
+ * ride along as a query string. `trackKey()` strips it, so two adds of the same video
+ * from different playlists still dedup to one item.
+ */
+function withMeta(url: string, thumbnail?: string | null, playlistId?: string | null): string {
+  const qs = [
+    thumbnail  ? `thumb=${encodeURIComponent(thumbnail)}` : '',
+    playlistId ? `pid=${encodeURIComponent(playlistId)}`  : '',
+  ].filter(Boolean).join('&');
+  return qs ? `${url}?${qs}` : url;
+}
 
 const repo = new RoomRepository();
 const users = new UserRepository();
@@ -123,13 +141,17 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   router.get('/:roomId', requireAuth, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
     try {
-      const [dbRow, participants, queue] = await Promise.all([
+      const [dbRow, participants] = await Promise.all([
         repo.findById(roomId),
         repo.getParticipants(roomId),
-        repo.getQueue(roomId),
       ]);
       const liveRoom = roomManager.get(roomId);
       const snapshot = liveRoom ? liveRoom.snapshot() : null;
+      // Room not in memory yet — rehydrate the queue from the stored document so the
+      // client paints the right list before the socket connects.
+      const queue = liveRoom
+        ? liveRoom.getQueue()
+        : RoomQueue.fromJSON(dbRow?.queue ?? null).snapshot();
 
       res.json({ db: dbRow, live: snapshot, participants, queue });
     } catch (err) {
@@ -257,202 +279,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // POST /rooms/:roomId/enqueue-playlist
-  router.post('/:roomId/enqueue-playlist', requireAuth, async (req: Request, res: Response): Promise<void> => {
-    try {
-      const roomId = req.params.roomId as string;
-      const { playlistId } = req.body;
-      const userId = req.user!.sub;
-
-      if (!playlistId) {
-        res.status(400).json({ error: 'Missing playlistId' });
-        return;
-      }
-
-      // Fetch the playlist and its tracks
-      const playlist = await prisma.playlist.findUnique({
-        where: { id: playlistId },
-        include: { tracks: { orderBy: { position: 'asc' } } }
-      });
-
-      if (!playlist || playlist.tracks.length === 0) {
-        res.status(404).json({ error: 'Playlist not found or empty' });
-        return;
-      }
-
-      // Cap at 500 tracks to prevent server overload
-      const MAX_TRACKS = 500;
-      const tracks = playlist.tracks.slice(0, MAX_TRACKS);
-      const wasCapped = playlist.tracks.length > MAX_TRACKS;
-
-      const room = roomManager.getOrCreate(roomId);
-
-      // ── Step 1: Check if room already has items (for isCurrent logic) ──
-      const [existingCurrent, lastItem] = await Promise.all([
-        prisma.roomQueueItem.findFirst({
-          where: { roomId, isCurrent: true },
-          select: { id: true }
-        }),
-        prisma.roomQueueItem.findFirst({
-          where: { roomId },
-          orderBy: { queueIndex: 'desc' },
-          select: { queueIndex: true }
-        })
-      ]);
-
-      const isFirstTrack = !existingCurrent;
-      let nextQueueIndex = (lastItem?.queueIndex ?? -1) + 1;
-
-      // ── Step 2: Resolve first track synchronously if queue is empty ──
-      // This ensures playback can start immediately
-      let firstTrackUrl = '';
-      const firstTrack = tracks[0];
-      const firstThumb = firstTrack.thumbnail ? `thumb=${encodeURIComponent(firstTrack.thumbnail)}` : '';
-      const firstPidParam = `pid=${playlistId}`;
-      const firstQs = `?${[firstThumb, firstPidParam].filter(Boolean).join('&')}`;
-
-      if (isFirstTrack && !firstTrack.youtubeId) {
-        console.log(`[Rooms] Resolving first lazy track synchronously: ${firstTrack.title}`);
-        try {
-          const ytResult = await matchToYouTubeFallback(firstTrack.title, firstTrack.artist || '');
-          if (ytResult?.youtubeId) {
-            firstTrackUrl = `youtube:${ytResult.youtubeId}${firstQs}`;
-            await prisma.playlistTrack.update({
-              where: { id: firstTrack.id },
-              data: { youtubeId: ytResult.youtubeId }
-            }).catch(() => {});
-          } else {
-            firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
-          }
-        } catch {
-          firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
-        }
-      } else if (firstTrack.youtubeId) {
-        firstTrackUrl = `youtube:${firstTrack.youtubeId}${firstQs}`;
-      } else {
-        firstTrackUrl = `spotify-lazy:${firstTrack.id}${firstQs}`;
-      }
-
-      // ── Step 3: Build all queue item data in memory ──
-      const allItemData: any[] = [];
-
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
-        let trackUrl: string;
-
-        if (i === 0) {
-          trackUrl = firstTrackUrl;
-        } else {
-          const thumbParam = track.thumbnail ? `thumb=${encodeURIComponent(track.thumbnail)}` : '';
-          const pidParam = `pid=${playlistId}`;
-          const qs = `?${[thumbParam, pidParam].filter(Boolean).join('&')}`;
-          trackUrl = track.youtubeId ? `youtube:${track.youtubeId}${qs}` : `spotify-lazy:${track.id}${qs}`;
-        }
-
-        allItemData.push({
-          roomId,
-          uploaderUserId: userId,
-          trackUrl,
-          title: track.title || 'Unknown Track',
-          artist: track.artist || null,
-          fileName: 'playlist_track.yt',
-          mimeType: 'video/youtube',
-          sizeBytes: BigInt(0),
-          queueIndex: nextQueueIndex + i,
-          isCurrent: isFirstTrack && i === 0,
-        });
-      }
-
-      // ── Step 4: Bulk insert in chunks of 200 ──
-      // (createMany doesn't return IDs, so we fetch them after)
-      const CHUNK_SIZE = 200;
-      for (let i = 0; i < allItemData.length; i += CHUNK_SIZE) {
-        const chunk = allItemData.slice(i, i + CHUNK_SIZE);
-        // Workaround for Prisma createMany bug that causes Postgres syntax errors/binary corruption
-        await prisma.$transaction(
-          chunk.map((item: any) => prisma.roomQueueItem.create({ data: item }))
-        );
-      }
-
-      // ── Step 5: Activate first track in room table if this is the first item ──
-      if (isFirstTrack) {
-        await prisma.room.update({
-          where: { id: roomId },
-          data: { trackUrl: firstTrackUrl, playbackState: 'PAUSED', positionMs: 0n }
-        }).catch(() => {});
-      }
-
-      // ── Step 6: Fetch the final queue from DB and sync room state once ──
-      const latestQueue = await repo.getQueue(roomId);
-      room.syncQueue(latestQueue, latestQueue.find(q => q.isCurrent)?.id ?? null);
-
-      // Emit single queueChanged event to all clients
-      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-
-      console.log(`[Rooms] Enqueued ${tracks.length} tracks from playlist ${playlistId} in room ${roomId} (bulk insert)`);
-      res.json({ 
-        success: true, 
-        enqueuedCount: tracks.length,
-        ...(wasCapped ? { warning: `Playlist capped at ${MAX_TRACKS} tracks` } : {})
-      });
-    } catch (err) {
-      console.error('[Rooms] enqueue playlist error:', err);
-      res.status(500).json({ error: 'Failed to enqueue playlist' });
-    }
-  });
-
-  // POST /rooms/:roomId/resolve-lazy
-  // Used by the frontend prefetcher to resolve a lazy Spotify track into a YouTube track just-in-time
-  router.post('/:roomId/resolve-lazy', requireAuth, async (req: Request, res: Response): Promise<void> => {
-    try {
-      const roomId = req.params.roomId as string;
-      const { queueItemId, trackId, title, artist } = req.body;
-      
-      if (!queueItemId || !title) {
-        res.status(400).json({ error: 'queueItemId and title required' });
-        return;
-      }
-
-      console.log(`[Rooms] Resolving lazy track: ${title} - ${artist}`);
-      
-      // Make a call to our bridge resolve endpoint logic (we can just hit localhost or duplicate the RapidAPI fallback call here)
-      // Since it's better to keep logic central, we'll fetch our own internal bridge endpoint
-      const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:4000';
-      const resolveRes = await fetch(`${BACKEND_URL}/api/bridge/resolve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.authorization || ''
-        },
-        body: JSON.stringify({ trackId, title, artist })
-      });
-
-      if (!resolveRes.ok) {
-        res.status(404).json({ error: 'Failed to resolve lazy track' });
-        return;
-      }
-
-      const data = await resolveRes.json() as { youtubeId?: string };
-      const youtubeId = data.youtubeId;
-
-      if (youtubeId) {
-        const room = roomManager.getOrCreate(roomId);
-        // Find the item in the queue and update its trackUrl
-        const qItem = room.getQueue().find(q => q.id === queueItemId);
-        if (qItem) {
-          qItem.trackUrl = `youtube:${youtubeId}`;
-          room.emit('queueChanged', room.getQueue());
-        }
-        res.json({ success: true, youtubeId });
-      } else {
-        res.status(404).json({ error: 'No youtube id returned' });
-      }
-    } catch (err) {
-      console.error('[Rooms] resolve-lazy error:', err);
-      res.status(500).json({ error: 'Failed to resolve lazy track' });
-    }
-  });
-
+  
+  
   // PATCH /rooms/:roomId/host — transfer room ownership
   router.patch('/:roomId/host', requireAuth, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
@@ -489,118 +317,23 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  // DELETE /rooms/:roomId/queue (Clear upcoming)
-  router.delete('/:roomId/queue', requireAuth, async (req, res) => {
+  
+  
+  
+  
+  
+  
+  // ── Queue ────────────────────────────────────────────────────────────────
+  //
+  // Every mutation goes through Room, which emits queueChanged + stateChanged
+  // exactly once and lets SocketHandler broadcast + persist. Routes never emit on
+  // `io` themselves — the old double-broadcast is what let clients drift.
+
+  // POST /rooms/:roomId/enqueue-youtube
+  router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
     try {
-      const roomId = req.params['roomId'] as string;
-      await repo.clearUpcomingQueue(roomId);
-      
-      const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.getOrCreate(roomId);
-      room.syncQueue(latestQueue, null);
-      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId).emit('room:stateChanged', room.snapshot());
-
-      res.json({ ok: true });
-    } catch (err) {
-      console.error('[Rooms] clear queue error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
-    }
-  });
-
-  // POST /rooms/:roomId/reset (Reset room completely — clear all queue & reset playback)
-  router.post('/:roomId/reset', requireAuth, async (req: Request, res: Response) => {
-    try {
-      const roomId = req.params['roomId'] as string;
-      await repo.clearEntireQueue(roomId);
-      
-      const room = roomManager.getOrCreate(roomId);
-      room.resetRoom();
-      io.to(roomId).emit('room:queueChanged', { queue: [] });
-      io.to(roomId).emit('room:stateChanged', room.snapshot());
-      io.to(roomId).emit('room:reset', { roomId });
-
-      res.json({ ok: true, message: 'Room has been reset successfully.' });
-    } catch (err) {
-      console.error('[Rooms] reset room error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
-    }
-  });
-
-  // DELETE /rooms/:roomId/queue/:itemId
-  router.delete('/:roomId/queue/:itemId', requireAuth, async (req, res) => {
-    try {
-      const roomId = req.params['roomId'] as string;
-      const itemId = req.params['itemId'] as string;
-      console.log(`[Rooms] Request to remove queue item. Room: ${roomId}, Item: ${itemId}`);
-      const success = await repo.removeQueueItem(roomId, itemId);
-      
-      if (!success) {
-        console.error(`[Rooms] removeQueueItem failed for room ${roomId}, item ${itemId}`);
-        res.status(400).json({ error: 'Failed to remove queue item.' });
-        return;
-      }
-
-      // Re-fetch queue and broadcast to room
-      const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.get(roomId);
-      if (room) {
-        const currentItem = latestQueue.find(i => i.isCurrent);
-        room.syncQueue(latestQueue, currentItem?.id ?? null);
-        io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      }
-
-      res.json({ ok: true });
-    } catch (err) {
-      console.error('[Rooms] remove queue item error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
-    }
-  });
-
-  // PUT /rooms/:roomId/queue/reorder
-  router.put('/:roomId/queue/reorder', requireAuth, async (req, res) => {
-    try {
-      const roomId = req.params['roomId'] as string;
-      const { itemId, newIndex } = req.body as { itemId: string; newIndex: number };
-
-      if (typeof newIndex !== 'number' || !itemId) {
-        res.status(400).json({ error: 'Missing itemId or newIndex' });
-        return;
-      }
-
-      const success = await repo.reorderQueue(roomId, itemId, newIndex);
-      if (!success) {
-        res.status(404).json({ error: 'Failed to reorder queue. Item may not exist.' });
-        return;
-      }
-
-      // Re-fetch queue and broadcast to room
-      const latestQueue = await repo.getQueue(roomId);
-      const room = roomManager.get(roomId);
-      if (room) {
-        // Use updateQueueOrder — NOT syncQueue — so we don't interrupt
-        // the currently playing track (no position reset, no pause).
-        room.updateQueueOrder(latestQueue);
-        io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      }
-
-      res.json({ ok: true, queue: latestQueue });
-    } catch (err) {
-      console.error('[Rooms] reorder queue error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
-    }
-  });
-
-  // POST /rooms/:roomId/enqueue-youtube — rate limited
-  router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
-    try {
-      const { roomId } = req.params;
       const { youtubeUrl, title: customTitle } = req.body as { youtubeUrl?: string; title?: string };
-      const userId = req.user!.sub;
 
       if (!youtubeUrl) {
         res.status(400).json({ error: 'Missing youtubeUrl' });
@@ -611,110 +344,262 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      // Extract video ID
-      const patterns = [
-        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-        /^([a-zA-Z0-9_-]{11})$/,
-      ];
+      const videoId =
+        youtubeUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)?.[1]
+        ?? youtubeUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/)?.[1];
 
-      let videoId = null;
-      for (const pattern of patterns) {
-        const match = youtubeUrl.match(pattern);
-        if (match) {
-          videoId = match[1];
-          break;
-        }
-      }
-
-      if (!videoId) {
+      if (!videoId || !YOUTUBE_ID_RE.test(videoId)) {
         res.status(400).json({ error: 'Invalid YouTube URL' });
         return;
       }
 
-      // Fetch title via oEmbed if not provided
-      let title = customTitle || "YouTube Video";
+      let title = customTitle || 'YouTube Video';
       if (!customTitle) {
         try {
-          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-          const oembedRes = await fetch(oembedUrl);
-          if (oembedRes.ok) {
-            const data = await oembedRes.json() as { title?: string };
-            // Sanitize: external APIs can return strings with null bytes (0x00)
+          const oembed = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+          if (oembed.ok) {
+            const data = await oembed.json() as { title?: string };
+            // External APIs occasionally return null bytes, which Postgres rejects.
             if (data.title) title = data.title.replace(/\0/g, '').trim() || title;
           }
         } catch (e) {
-          console.warn('[Rooms] Failed to fetch YouTube title via oEmbed', e);
+          console.warn('[Rooms] oEmbed title lookup failed', e);
         }
       }
 
-      // Try to extract artist from title if it looks like "Artist - Title"
-      let parsedArtist;
-      let parsedTitle = title;
+      // "Artist - Title" is the dominant YouTube music convention; split it if present.
+      let artist: string | undefined;
+      let cleanTitle = title;
       if (title.includes(' - ')) {
         const parts = title.split(' - ');
-        parsedArtist = parts[0].trim();
-        parsedTitle = parts.slice(1).join(' - ').trim();
+        artist = parts[0].trim();
+        cleanTitle = parts.slice(1).join(' - ').trim();
       }
 
-      const { item, activated } = await repo.enqueueTrack(roomId as string, userId, {
-        trackUrl: `youtube:${videoId}`,
-        title: parsedTitle,
-        artist: parsedArtist,
-        fileName: `youtube_${videoId}.yt`,
-        mimeType: 'video/youtube',
-        sizeBytes: 0,
-      });
+      const room = roomManager.getOrCreate(roomId);
+      const { added, first } = room.addTracks([{
+        trackUrl:  withMeta(`youtube:${videoId}`, `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`),
+        title:     cleanTitle,
+        artist,
+        fileName:  `youtube_${videoId}.yt`,
+      }], req.user!.sub);
 
-      const room = roomManager.getOrCreate(roomId as string);
-      room.addToQueue(item);
-
-      const latestQueue = await repo.getQueue(roomId as string);
-      io.to(roomId as string).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId as string).emit('room:stateChanged', room.snapshot());
-
-      console.log(`[Rooms] Enqueued YouTube video ${videoId} in room ${roomId}`);
-      res.status(201).json({ trackUrl: `youtube:${videoId}`, title, queued: !activated });
+      // `first` is the existing item when this is a duplicate, so the client's
+      // follow-up "play now" jump still lands on the right track.
+      res.status(201).json({ item: first, queued: added.length > 0, duplicate: added.length === 0 });
     } catch (err) {
       console.error('[Rooms] enqueue youtube error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
-  // POST /rooms/:roomId/enqueue-magnet — rate limited
-  router.post('/:roomId/enqueue-magnet', requireAuth, enqueueLimiter, async (req: Request, res: Response) => {
+  // POST /rooms/:roomId/enqueue-magnet
+  router.post('/:roomId/enqueue-magnet', requireAuth, enqueueLimiter, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
     try {
-      const roomId = req.params['roomId'] as string;
       const { magnetUri, title, artist } = req.body as { magnetUri?: string; title?: string; artist?: string };
-      const userId = req.user!.sub;
-
-      if (!magnetUri) {
-        res.status(400).json({ error: 'Missing magnetUri' });
+      if (!magnetUri?.startsWith('magnet:')) {
+        res.status(400).json({ error: 'Missing or invalid magnetUri' });
         return;
       }
 
-      const { item, activated } = await repo.enqueueTrack(roomId, userId, {
+      const room = roomManager.getOrCreate(roomId);
+      const { added, first } = room.addTracks([{
         trackUrl: magnetUri,
-        title: title || 'P2P Track',
-        artist: artist,
+        title:    title || 'P2P Track',
+        artist,
         fileName: 'webtorrent.mp3',
-        mimeType: 'audio/mpeg',
-        sizeBytes: 0,
+      }], req.user!.sub);
+
+      res.status(201).json({ item: first, queued: added.length > 0, duplicate: added.length === 0 });
+    } catch (err) {
+      console.error('[Rooms] enqueue-magnet error:', err);
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /rooms/:roomId/enqueue-playlist
+  router.post('/:roomId/enqueue-playlist', requireAuth, enqueueLimiter, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
+    try {
+      const { playlistId, tracks: clientTracks } = req.body as { playlistId?: string; tracks?: any[] };
+      if (!playlistId && !Array.isArray(clientTracks)) {
+        res.status(400).json({ error: 'Missing playlistId or tracks' });
+        return;
+      }
+
+      // YouTube playlists arrive already expanded from the client; SyncBeats/Spotify
+      // playlists are read from our own tables.
+      const isYoutube = Array.isArray(clientTracks) && clientTracks.length > 0;
+      let rows: any[];
+
+      if (isYoutube) {
+        rows = clientTracks!;
+      } else {
+        if (!playlistId) {
+          res.status(400).json({ error: 'Missing playlistId' });
+          return;
+        }
+        const playlist = await prisma.playlist.findUnique({
+          where: { id: playlistId },
+          include: { tracks: { orderBy: { position: 'asc' } } },
+        });
+        if (!playlist || playlist.tracks.length === 0) {
+          res.status(404).json({ error: 'Playlist not found or empty' });
+          return;
+        }
+        rows = playlist.tracks;
+      }
+
+      const wasCapped = rows.length > MAX_PLAYLIST_TRACKS;
+      rows = rows.slice(0, MAX_PLAYLIST_TRACKS);
+
+      const inputs: QueueTrackInput[] = rows.map((t: any) => {
+        const ytId = isYoutube ? (t.id || t.youtubeId) : t.youtubeId;
+        // No YouTube match yet — queue a placeholder the prefetcher resolves just-in-time.
+        const base = ytId ? `youtube:${ytId}` : `spotify-lazy:${t.id}`;
+        return {
+          trackUrl:  withMeta(base, t.thumbnail, playlistId),
+          title:     t.title || 'Unknown Track',
+          artist:    t.artist || '',
+          thumbnail: t.thumbnail || undefined,
+          fileName:  ytId ? `youtube_${ytId}.yt` : 'playlist_track.yt',
+        };
       });
 
       const room = roomManager.getOrCreate(roomId);
-      room.addToQueue(item);
+      const { added, skipped, first } = room.addTracks(inputs, req.user!.sub);
 
-      const latestQueue = await repo.getQueue(roomId);
-      io.to(roomId).emit('room:queueChanged', { queue: latestQueue });
-      io.to(roomId).emit('room:stateChanged', room.snapshot());
+      // The client jumps to `first` right after this returns, so it has to be playable.
+      // Only pay for the lookup when it's still a placeholder (a re-play of an already
+      // queued playlist returns the existing, already-resolved item).
+      let head = first;
+      if (head && head.trackUrl.startsWith('spotify-lazy:')) {
+        const row = rows[0];
+        try {
+          const match = await matchToYouTubeFallback(head.title, head.artist || '');
+          if (match?.youtubeId) {
+            head = room.resolveQueueItem(head.id, withMeta(`youtube:${match.youtubeId}`, row?.thumbnail, playlistId)) ?? head;
+            if (!isYoutube && row?.id) {
+              await prisma.playlistTrack.update({
+                where: { id: row.id },
+                data: { youtubeId: match.youtubeId },
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn('[Rooms] first-track resolve failed, leaving placeholder:', e);
+        }
+      }
 
-      res.status(201).json({ item, queued: !activated });
+      console.log(`[Rooms] Playlist ${playlistId ?? '(client)'} → room ${roomId}: +${added.length}, ${skipped} already queued`);
+      res.json({
+        success: true,
+        item: head,
+        enqueuedCount: added.length,
+        skippedCount: skipped,
+        ...(wasCapped ? { warning: `Playlist capped at ${MAX_PLAYLIST_TRACKS} tracks` } : {}),
+      });
     } catch (err) {
-      console.error('[Rooms] enqueue-magnet error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      console.error('[Rooms] enqueue playlist error:', err);
+      res.status(500).json({ error: 'Failed to enqueue playlist' });
     }
+  });
+
+  // POST /rooms/:roomId/resolve-lazy — prefetcher turns a spotify-lazy placeholder into a real track
+  router.post('/:roomId/resolve-lazy', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
+    try {
+      const { queueItemId, trackId, title, artist } = req.body as {
+        queueItemId?: string; trackId?: string; title?: string; artist?: string;
+      };
+      if (!queueItemId || !title) {
+        res.status(400).json({ error: 'queueItemId and title required' });
+        return;
+      }
+
+      const room = roomManager.get(roomId);
+      const item = room?.getQueue().find(q => q.id === queueItemId);
+      if (!room || !item) {
+        res.status(404).json({ error: 'Queue item not found' });
+        return;
+      }
+
+      // Already resolved by another device that got here first.
+      if (!item.trackUrl.startsWith('spotify-lazy:')) {
+        res.json({ success: true, youtubeId: item.trackUrl.split('?')[0].replace('youtube:', '') });
+        return;
+      }
+
+      const match = await matchToYouTubeFallback(title, artist || '');
+      if (!match?.youtubeId) {
+        res.status(404).json({ error: 'No YouTube match found' });
+        return;
+      }
+
+      // Carry the `?thumb=…&pid=…` across — the client renders art from it.
+      const qs = item.trackUrl.includes('?') ? `?${item.trackUrl.split('?')[1]}` : '';
+      room.resolveQueueItem(queueItemId, `youtube:${match.youtubeId}${qs}`);
+
+      if (trackId) {
+        await prisma.playlistTrack.update({
+          where: { id: trackId },
+          data: { youtubeId: match.youtubeId },
+        }).catch(() => {});
+      }
+
+      res.json({ success: true, youtubeId: match.youtubeId });
+    } catch (err) {
+      console.error('[Rooms] resolve-lazy error:', err);
+      res.status(500).json({ error: 'Failed to resolve lazy track' });
+    }
+  });
+
+  // PUT /rooms/:roomId/queue/reorder
+  router.put('/:roomId/queue/reorder', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
+    const { itemId, newIndex } = req.body as { itemId?: string; newIndex?: number };
+
+    if (!itemId || typeof newIndex !== 'number' || !Number.isFinite(newIndex)) {
+      res.status(400).json({ error: 'Missing itemId or newIndex' });
+      return;
+    }
+
+    const room = roomManager.get(roomId);
+    if (!room || !room.moveInQueue(itemId, newIndex)) {
+      res.status(404).json({ error: 'Queue item not found' });
+      return;
+    }
+    res.json({ ok: true, queue: room.getQueue() });
+  });
+
+  // DELETE /rooms/:roomId/queue/:itemId
+  router.delete('/:roomId/queue/:itemId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
+    const itemId = req.params['itemId'] as string;
+
+    const room = roomManager.get(roomId);
+    if (!room?.removeFromQueue(itemId)) {
+      res.status(404).json({ error: 'Queue item not found' });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  // DELETE /rooms/:roomId/queue — drop everything after the current track
+  router.delete('/:roomId/queue', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const room = roomManager.get(req.params['roomId'] as string);
+    room?.clearQueue(true);
+    res.json({ ok: true });
+  });
+
+  // POST /rooms/:roomId/reset — clear the queue and stop playback
+  router.post('/:roomId/reset', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const roomId = req.params['roomId'] as string;
+    const room = roomManager.getOrCreate(roomId);
+    room.resetRoom();
+    io.to(roomId).emit('room:reset', { roomId });
+    res.json({ ok: true, message: 'Room has been reset successfully.' });
   });
 
   // GET /rooms/:roomId/yt-proxy — CRITICAL: optionalAuth (supports ?token= query or guest streaming) + rate limited + videoId validation

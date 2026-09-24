@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useState, useMemo } from "react";
-import { SlidersHorizontal, RotateCcw, ChevronDown, Lightbulb, Settings, Check } from "lucide-react";
+import { SlidersHorizontal, RotateCcw, ChevronDown, Lightbulb, Settings, Check, Mic2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSettings, AppSettings } from "../../hooks/useSettings";
 import { useVisualizer } from "../../context/VisualizerContext";
 import { getSocket } from "../../lib/socket";
 import { cn } from "../../lib/utils";
 import { HoverExpandPill } from "../HoverExpandPill";
+import { SyncedLyrics } from "./SyncedLyrics";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Apple AirPods-style EQ + Ambient Visualizer
@@ -51,6 +52,10 @@ interface AudioEQProps {
   setEqBand: (index: number, gain: number) => void;
   setAllEqBands?: (gains: number[]) => void;
   onOpenVisuals?: () => void;
+  trackTitle?: string | null;
+  trackArtist?: string | null;
+  currentTime?: number;
+  duration?: number;
 }
 
 /* ─── Build logarithmic bin-to-bar mapping table ─────────────────────────
@@ -185,12 +190,15 @@ function catmullRom(pts: [number, number][], tension = 0.38): string {
   return d;
 }
 
-export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: AudioEQProps) {
+export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trackTitle, trackArtist, currentTime, duration }: AudioEQProps) {
   const { settings, updateSettings } = useSettings();
   const { dataRef } = useVisualizer();
 
-  const svgRef      = useRef<SVGSVGElement>(null);
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const [activeTab, setActiveTab] = useState<'lyrics' | 'eq'>('lyrics');
+
+  const [svgNode, setSvgNode] = useState<SVGSVGElement | null>(null);
+  const [canvasNode, setCanvasNode] = useState<HTMLCanvasElement | null>(null);
+  
   const rafRef      = useRef<number>(0);
   const smoothedRef = useRef<Float32Array>(new Float32Array(VIS_BARS).fill(0));
   const logMapRef   = useRef<Array<[number, number]> | null>(null);
@@ -216,15 +224,14 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
 
   /* Resize observer */
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
+    if (!svgNode) return;
     const ro = new ResizeObserver(e => {
       for (const en of e) setSvgSize({ w: en.contentRect.width, h: en.contentRect.height });
     });
-    ro.observe(svg);
-    setSvgSize({ w: svg.clientWidth, h: svg.clientHeight });
+    ro.observe(svgNode);
+    setSvgSize({ w: svgNode.clientWidth, h: svgNode.clientHeight });
     return () => ro.disconnect();
-  }, []);
+  }, [svgNode]);
 
   const { w, h } = svgSize;
   const PAD_L = 12;
@@ -258,19 +265,18 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
      Canvas: center-aligned logarithmic frequency bars reacting to song
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvasNode) return;
 
     const draw = () => {
-      const ctx = canvas.getContext("2d");
+      const ctx = canvasNode.getContext("2d");
       if (!ctx) { rafRef.current = requestAnimationFrame(draw); return; }
 
       const dpr = window.devicePixelRatio || 1;
-      const cw  = canvas.clientWidth;
-      const ch  = canvas.clientHeight;
-      if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
-        canvas.width  = cw * dpr;
-        canvas.height = ch * dpr;
+      const cw  = canvasNode.clientWidth;
+      const ch  = canvasNode.clientHeight;
+      if (canvasNode.width !== cw * dpr || canvasNode.height !== ch * dpr) {
+        canvasNode.width  = cw * dpr;
+        canvasNode.height = ch * dpr;
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cw, ch);
@@ -375,7 +381,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
 
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [eqGains, dataRef, settings]);
+  }, [canvasNode, eqGains, dataRef, settings]);
 
   /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      Drag interaction & Socket sync
@@ -387,8 +393,8 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
   }, []);
 
   const onMove = useCallback((e: React.PointerEvent) => {
-    if (dragging === null || !svgRef.current) return;
-    const rect = svgRef.current.getBoundingClientRect();
+    if (dragging === null || !svgNode) return;
+    const rect = svgNode.getBoundingClientRect();
     const gain = yToGain(e.clientY - rect.top);
     setEqBand(dragging, gain);
 
@@ -447,22 +453,49 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
      Render
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   return (
-    <div className="w-full h-full flex flex-col relative select-none">
+    <div className={cn('w-full', 'h-full', 'flex', 'flex-col', 'relative', 'select-none')}>
+
+      {/* Floating Tab switcher on the right */}
+      <div className={cn('absolute', '-top-2', 'right-1', 'flex', 'items-center', 'gap-1', 'bg-foreground/8', 'rounded-full', 'p-1', 'border', 'border-foreground/10', 'z-50', 'shadow-md')}>
+        <button
+          onClick={() => setActiveTab('lyrics')}
+          className={cn(
+            "flex items-center justify-center w-8 h-8 rounded-full text-[10px] font-black uppercase tracking-wider transition-all",
+            activeTab === 'lyrics'
+              ? "bg-foreground text-background shadow-sm"
+              : "text-foreground/50 hover:text-foreground/80"
+          )}
+          title="Lyrics"
+        >
+          <Mic2 className={cn('w-4', 'h-4')} />
+        </button>
+        <button
+          onClick={() => setActiveTab('eq')}
+          className={cn(
+            "flex items-center justify-center w-8 h-8 rounded-full text-[10px] font-black uppercase tracking-wider transition-all",
+            activeTab === 'eq'
+              ? "bg-foreground text-background shadow-sm"
+              : "text-foreground/50 hover:text-foreground/80"
+          )}
+          title="EQ"
+        >
+          <SlidersHorizontal className={cn('w-4', 'h-4')} />
+        </button>
+      </div>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-1.5 shrink-0 gap-1.5">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-foreground/40 shrink-0 hidden xs:block" />
-          <span className="text-[10px] font-black tracking-widest uppercase text-foreground/40 hidden sm:block shrink-0">EQ</span>
+      <div className={cn('flex', 'items-center', 'justify-end', 'mb-1.5', 'shrink-0', 'gap-1.5', 'relative', 'z-40', 'pr-24')}>
 
-          {/* Custom Compact Glassmorphic Preset Dropdown */}
-          <div ref={dropdownRef} className="relative shrink-0 z-50">
+        {activeTab === 'eq' && (
+          <div className={cn('flex', 'items-center', 'gap-1.5', 'min-w-0', 'flex-1')}>
+            {/* Custom Compact Glassmorphic Preset Dropdown */}
+            <div ref={dropdownRef} className={cn('relative', 'shrink-0', 'z-50')}>
             <button
               type="button"
               onClick={() => setIsPresetOpen(!isPresetOpen)}
-              className="bg-foreground/10 border border-foreground/15 text-foreground/90 text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/20 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
+              className={cn('bg-foreground/10', 'border', 'border-foreground/15', 'text-foreground/90', 'text-[10px]', 'sm:text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'px-2.5', 'h-6', 'rounded-full', 'outline-none', 'cursor-pointer', 'hover:bg-foreground/20', 'active:scale-95', 'transition-all', 'flex', 'items-center', 'gap-1', 'shadow-sm')}
             >
-              <span className="truncate max-w-[85px] xs:max-w-none">{currentPreset}</span>
+              <span className={cn('truncate', 'max-w-21.25', 'xs:max-w-none')}>{currentPreset}</span>
               <ChevronDown className={cn("w-3 h-3 text-foreground/50 transition-transform duration-200", isPresetOpen && "rotate-180")} />
             </button>
 
@@ -473,7 +506,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.95 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute left-0 top-full mt-1.5 w-40 bg-zinc-900/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl p-1 z-[100] max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
+                  className={cn('absolute', 'left-0', 'top-full', 'mt-1.5', 'w-40', 'bg-zinc-900/95', 'backdrop-blur-2xl', 'border', 'border-white/15', 'rounded-xl', 'shadow-2xl', 'p-1', 'z-100', 'max-h-56', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-0.5')}
                 >
                   {Object.keys(PRESETS).map(p => {
                     const isSelected = currentPreset === p;
@@ -493,7 +526,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                         )}
                       >
                         <span className="truncate">{p}</span>
-                        {isSelected && <Check className="w-3 h-3 text-emerald-400 shrink-0 ml-1" />}
+                        {isSelected && <Check className={cn('w-3', 'h-3', 'text-emerald-400', 'shrink-0', 'ml-1')} />}
                       </button>
                     );
                   })}
@@ -502,21 +535,22 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
             </AnimatePresence>
           </div>
 
-          {isModified && (
+          {activeTab === 'eq' && isModified && (
             <button onClick={resetFlat} title="Reset to Flat"
-              className="w-6 h-6 rounded-full bg-foreground/8 border border-foreground/10 hover:bg-foreground/20 text-foreground/50 hover:text-foreground transition-all flex items-center justify-center cursor-pointer shrink-0">
-              <RotateCcw className="w-3 h-3" />
+              className={cn('w-6', 'h-6', 'rounded-full', 'bg-foreground/8', 'border', 'border-foreground/10', 'hover:bg-foreground/20', 'text-foreground/50', 'hover:text-foreground', 'transition-all', 'flex', 'items-center', 'justify-center', 'cursor-pointer', 'shrink-0')}>
+              <RotateCcw className={cn('w-3', 'h-3')} />
             </button>
           )}
         </div>
+        )}
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className={cn('flex', 'items-center', 'gap-1', 'shrink-0')}>
           <HoverExpandPill
             icon={Lightbulb}
             label="Ambient"
             onClick={() => updateSettings({ ambientEnabled: settings.ambientEnabled !== false ? false : true })}
             active={settings.ambientEnabled !== false}
-            activeColor="bg-amber-500/15 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+            activeColor="bg-foreground text-background shadow-md border-foreground/30"
             title={settings.ambientEnabled !== false ? "Disable Ambient Light" : "Enable Ambient Light"}
           />
           {onOpenVisuals && (
@@ -530,21 +564,47 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
         </div>
       </div>
 
-      {/* ── EQ + Visualizer area ──────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 relative rounded-2xl overflow-hidden"
-        style={{ background: "rgba(0,0,0,0.32)", border: "1px solid rgba(255,255,255,0.06)" }}>
+      {/* ── Tab content ───────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'lyrics' ? (
+          <motion.div
+            key="lyrics"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className={cn('flex-1', 'min-h-0', 'flex', 'flex-col', 'w-full', 'h-full')}
+          >
+            <SyncedLyrics
+              title={trackTitle ?? null}
+              artist={trackArtist ?? null}
+              currentTime={currentTime ?? 0}
+              duration={duration}
+              dataRef={dataRef}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="eq"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className={cn('flex-1', 'min-h-0', 'flex', 'flex-col', 'w-full', 'h-full')}
+          >
+      <div className={cn('flex-1', 'min-h-0', 'relative', 'rounded-2xl', 'overflow-hidden', 'bg-foreground/5', 'dark:bg-black/30', 'border', 'border-foreground/10', 'dark:border-white/5')}>
 
         {/* Canvas: center-aligned frequency bars */}
         <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none"
+          ref={setCanvasNode}
+          className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none')}
           style={{ zIndex: 0 }}
         />
 
         {/* SVG: EQ curve + handles */}
         <svg
-          ref={svgRef}
-          className="absolute inset-0 w-full h-full"
+          ref={setSvgNode}
+          className={cn('absolute', 'inset-0', 'w-full', 'h-full')}
           style={{ cursor: dragging !== null ? "grabbing" : "default", touchAction: "none", zIndex: 1 }}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -565,7 +625,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
 
           {/* Subtle center line */}
           <line x1={PAD_L} y1={zeroY} x2={w - PAD_R} y2={zeroY}
-            stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+            stroke="currentColor" className="text-foreground/10" strokeWidth={1} />
 
           {/* Dashed vertical guide lines at LOW / MID / HIGH */}
           {ANCHOR_IDX.map(i => {
@@ -574,7 +634,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
               <line key={`guide-${i}`}
                 x1={x} y1={PAD_T + 4}
                 x2={x} y2={h - PAD_B}
-                stroke="rgba(255,255,255,0.18)"
+                stroke="currentColor" className="text-foreground/20"
                 strokeWidth={1}
                 strokeDasharray="4 5" />
             );
@@ -624,7 +684,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 <circle
                   cx={x} cy={y} r={R}
                   fill={fill}
-                  stroke={anchor ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.12)"}
+                  stroke="currentColor" className={anchor ? "text-foreground/50" : "text-foreground/15"}
                   strokeWidth={anchor ? 2 : 1}
                   style={{
                     cursor: isDrag ? "grabbing" : anchor ? "grab" : "ns-resize",
@@ -638,7 +698,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 {/* Inner white dot on anchors */}
                 {anchor && (
                   <circle cx={x} cy={y} r={2.5}
-                    fill="rgba(255,255,255,0.95)"
+                    fill="currentColor" className="text-foreground"
                     style={{ pointerEvents: "none" }} />
                 )}
 
@@ -656,20 +716,34 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals }: Au
                 {/* LOW / MID / HIGH label */}
                 {band.label && (
                   <text
-                    x={x} y={h - PAD_B + 16}
-                    textAnchor="middle" fontSize="9"
-                    fill={active ? "#f5c842" : "rgba(255,255,255,0.4)"}
-                    fontWeight="700" letterSpacing="1.5"
+                    x={x} y={h - PAD_B + 12}
+                    textAnchor="middle" fontSize="8"
+                    fill={active ? "#f5c842" : "currentColor"}
+                    className={active ? "" : "text-foreground/60"}
+                    fontWeight="800" letterSpacing="1.5"
                     fontFamily="var(--font-sans,sans-serif)"
                     style={{ transition: "fill 0.15s" }}>
                     {band.label}
                   </text>
                 )}
+                {/* Frequency axis label */}
+                <text
+                  x={x} y={h - PAD_B + (band.label ? 22 : 17)}
+                  textAnchor="middle" fontSize="7.5"
+                  fill="currentColor" className={active ? "text-foreground/90" : "text-foreground/50"}
+                  fontWeight="700" letterSpacing="0.5"
+                  fontFamily="var(--font-mono,monospace)"
+                  style={{ transition: "fill 0.15s" }}>
+                  {band.freq >= 1000 ? `${band.freq / 1000}k` : band.freq}
+                </text>
               </g>
             );
           })}
         </svg>
-      </div>
+          </div>
+        </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
