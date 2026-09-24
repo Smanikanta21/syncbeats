@@ -318,12 +318,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className={cn('w-full', 'grid', 'grid-cols-2', 'gap-3', 'mb-5')}>
-            <div className={cn('bg-foreground/5', 'hover:bg-foreground/10', 'rounded-2xl', 'p-3.5', 'flex', 'flex-col', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'transition-all', 'hover:scale-[1.02]')}>
-              <Radio className="w-4 h-4 text-amber-400 mb-1" />
-              <span className={cn('text-xl', 'font-black', 'text-foreground')}>{hostedSessionCount}</span>
-              <span className={cn('text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-0.5')}>Sessions Hosted</span>
-            </div>
+          <div className={cn('w-full', 'grid', 'grid-cols-1', 'gap-3', 'mb-5')}>
             <div className={cn('bg-foreground/5', 'hover:bg-foreground/10', 'rounded-2xl', 'p-3.5', 'flex', 'flex-col', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'transition-all', 'hover:scale-[1.02]')}>
               <MonitorSmartphone className="w-4 h-4 text-indigo-400 mb-1" />
               <span className={cn('text-xl', 'font-black', 'text-foreground')}>{devices.length}</span>

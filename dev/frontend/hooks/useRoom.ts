@@ -456,25 +456,10 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         window.dispatchEvent(new CustomEvent("syncbeats:welcome-burst"));
       }
 
-      const logListenHistory = (url: string, queueItems?: TrackQueueItem[]) => {
-        if (!userId || !url) return;
-        const currentItem = queueItems?.find(q => q.isCurrent || q.trackUrl === url);
-        const title = currentItem?.title || getTrackTitle(url, queueItems);
-        const artist = currentItem?.artist || currentItem?.addedByName || '';
-        const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
-        const youtubeId = url.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
-
-        historyApi.logListen(userId, {
-          youtubeId,
-          title,
-          artist,
-          thumbnail,
-        }).catch(() => {});
-      };
 
       if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
-        logListenHistory(snap.trackUrl, snap.queue);
+        // Don't log history on snapshot join — the track may not have been played
       } else if (!snap.trackUrl) {
         audioRef.current.clearTrack();
       }
@@ -518,9 +503,12 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
       // Track changes
       if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
+        const previouslyPlaying = snapshotRef.current?.isPlaying ?? false;
         sync.setTrack(snap.trackUrl);
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
-        if (userId && snap.trackUrl) {
+        // Only log history when the previous track was actually playing before the switch.
+        // This prevents skips, jumpTo, and playlist enqueues from polluting listen history.
+        if (userId && snap.trackUrl && previouslyPlaying) {
           const currentItem = snap.queue?.find(q => q.isCurrent || q.trackUrl === snap.trackUrl);
           const title = currentItem?.title || getTrackTitle(snap.trackUrl, snap.queue);
           const artist = currentItem?.artist || currentItem?.addedByName || '';

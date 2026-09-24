@@ -232,13 +232,28 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      // If no active room exists, create a new persistent room
-      const roomId = Math.floor(100000 + Math.random() * 900000).toString();
-      const dbRoom = await repo.create(roomId, hostUserId);
-      roomManager.getOrCreate(roomId);
-      console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
-      void AuditLogger.info('ROOM_CREATE', `Created new room #${roomId} for user ${req.user?.email || hostUserId}`, req.ip);
-      res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
+      // No active room — create one. Handle race condition: if two devices hit this
+      // simultaneously both see "no room" and both try to create. We retry the lookup
+      // on any error so the second device returns the room the first one just created.
+      let dbRoom;
+      try {
+        const roomId = Math.floor(100000 + Math.random() * 900000).toString();
+        dbRoom = await repo.create(roomId, hostUserId);
+        roomManager.getOrCreate(roomId);
+        console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
+        void AuditLogger.info('ROOM_CREATE', `Created new room #${roomId} for user ${req.user?.email || hostUserId}`, req.ip);
+        res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
+      } catch (createErr) {
+        // Concurrent device may have just created a room — retry the lookup
+        const retryRoom = await repo.findActiveByHost(hostUserId);
+        if (retryRoom) {
+          roomManager.getOrCreate(retryRoom.id);
+          console.log(`[Rooms] Race condition resolved — returning room ${retryRoom.id} for user ${hostUserId}`);
+          res.json({ roomId: retryRoom.id, createdAt: retryRoom.created_at, isNew: false });
+        } else {
+          throw createErr; // genuine error, propagate
+        }
+      }
     } catch (err) {
       console.error('[Rooms] default room error:', err);
       const msg = err instanceof Error ? err.message : String(err);
@@ -250,10 +265,18 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   // POST /rooms — create room, persist to DB
   router.post('/', requireAuth, async (req: Request, res: Response) => {
     const hostUserId = req.user!.sub;
-    const roomId = (req.body as { roomId?: string })?.roomId
-      ?? Math.floor(100000 + Math.random() * 900000).toString();
-
+    
     try {
+      // Strictly enforce one room per user
+      let existingRoom = await repo.findActiveByHost(hostUserId);
+      if (existingRoom) {
+        res.status(400).json({ error: 'You already have an active room. Please end your current room before creating a new one.' });
+        return;
+      }
+
+      const roomId = (req.body as { roomId?: string })?.roomId
+        ?? Math.floor(100000 + Math.random() * 900000).toString();
+
       const dbRoom = await repo.create(roomId, hostUserId);
       roomManager.getOrCreate(roomId);
       console.log(`[Rooms] Created room ${roomId} by user ${hostUserId}`);

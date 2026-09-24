@@ -31,10 +31,7 @@ export default function DefaultRoomDirector() {
       .catch(err => {
         clearTimeout(timer);
         console.error('[DefaultRoomDirector] Failed to get/create default room:', err);
-        
-        // Fallback: create a local room and go there if server fails
-        const randomId = Math.floor(100000 + Math.random() * 900000).toString();
-        router.replace(`/room/${randomId}`);
+        setError("Failed to connect to your room. Please try again.");
       });
 
     return () => clearTimeout(timer);
