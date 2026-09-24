@@ -74,7 +74,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [importing, setImporting] = useState(false);
   const [spError, setSpError] = useState<string | null>(null);
-  const [importStage, setImportStage] = useState<"scraping" | "indexing" | "enriching" | "done">("scraping");
+  const [importStage, setImportStage] = useState<"scraping" | "indexing" | "enriching" | "downloading" | "complete" | "done">("scraping");
   const [importProgress, setImportProgress] = useState(0);
   const [importStats, setImportStats] = useState<{ total: number; playlistName?: string; playlistId?: string; coverUrl?: string }>({ total: 0 });
   const [importAbortController, setImportAbortController] = useState<AbortController | null>(null);
@@ -199,7 +199,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               setImporting(false);
               upload.setActiveImport(null);
               setQuery("");
-              loadPlaylists();
               if (onSuccess) onSuccess();
             }, 1000);
           } else if (eventName === "error") {
@@ -882,7 +881,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // NOTE: this previously ANDed in `mode === "search"`, but `mode` is only ever
   // "youtube" | "spotify" | null — so isCentered was permanently false and the
   // centered empty state never rendered.
-  const isCentered = !query.trim() && !isSearching && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0;
+  const isCentered = !query.trim() && !isSearching && !loadingPlaylists && ytResults.length === 0 && spResults.length === 0 && dbResults.length === 0 && uploadQueue.length === 0 && displayedYoutubePlaylists.length === 0 && displayedSpotifyPlaylists.length === 0;
   const containerPadding = isSearchOnly ? "p-[2px]" : "px-5 sm:px-8 py-6";
 
   const getPlaceholder = () => {
@@ -964,7 +963,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   ) : (
                     <button
                       type="button"
-                      onClick={loadYoutubePlaylists}
+                      onClick={e => { e.stopPropagation(); loadYoutubePlaylists(); }}
+                      onPointerDown={e => e.stopPropagation()}
                       disabled={loadingPlaylists || youtubeConnected === null}
                       title="Load my YouTube playlists"
                       aria-label="Load my YouTube playlists"
@@ -1202,7 +1202,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               <AppFeedback message={downloadError} severity="error" onDismiss={() => setDownloadError(null)} className="mb-2" />
             )}
 
-            {isSearching ? (
+            {loadingPlaylists && !isSearching ? (
+              <div className={cn('flex', 'items-center', 'justify-center', 'py-12')}>
+                <Loader2 className={cn('w-6', 'h-6', 'animate-spin', 'text-white/30')} />
+              </div>
+            ) : isSearching ? (
               <SearchSkeleton count={5} />
             ) : showSuggestions && ytSuggestions.length > 0 ? (
               ytSuggestions.map((s, idx) => (

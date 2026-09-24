@@ -25,7 +25,7 @@ export interface PlaylistImportState {
   playlistId?: string;
   playlistName?: string;
   progress: number;
-  stage: "scraping" | "indexing" | "enriching" | "done";
+  stage: "scraping" | "indexing" | "enriching" | "downloading" | "complete" | "done";
   totalTracks: number;
   isImporting: boolean;
   currentTitle?: string;
