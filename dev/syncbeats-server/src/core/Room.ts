@@ -1,40 +1,7 @@
 import { EventEmitter }  from 'events';
 import { PlaybackState } from './PlaybackState';
-import { Participant, RoomSnapshot, SpatialPosition, ChatMessage } from '../types';
-
-function matchesTrackUrl(itemUrl: string, trackUrl: string | null): boolean {
-  if (!trackUrl) return false;
-  if (itemUrl === trackUrl) return true;
-  
-  const extractId = (url: string): string | null => {
-    if (!url) return null;
-    const m = url.match(/[?&](?:videoId|songId|id)=([a-zA-Z0-9_-]+)/)
-      || url.match(/youtube:([a-zA-Z0-9_-]{11})/)
-      || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/)
-      || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
-    if (m) return m[1];
-    if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
-    return null;
-  };
-
-  const idA = extractId(itemUrl);
-  const idB = extractId(trackUrl);
-  if (idA !== null && idB !== null && idA === idB) return true;
-
-  const getCleanPath = (u: string) => {
-    try {
-      if (u.startsWith('http://') || u.startsWith('https://')) {
-        const parsed = new URL(u);
-        return parsed.pathname + parsed.search;
-      }
-      return u;
-    } catch {
-      return u;
-    }
-  };
-
-  return getCleanPath(itemUrl) === getCleanPath(trackUrl);
-}
+import { RoomQueue }     from './RoomQueue';
+import { Participant, RoomSnapshot, SpatialPosition, ChatMessage, QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
 
 export class Room extends EventEmitter {
   private state:        PlaybackState          = PlaybackState.IDLE;
@@ -42,6 +9,7 @@ export class Room extends EventEmitter {
   private trackUrl:     string | null          = null;
   private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
+  private queue:        RoomQueue              = new RoomQueue();
   private spatial:      Map<string, SpatialPosition> = new Map();
   private chatHistory:  ChatMessage[]          = [];
   private snapshotTime: number                 = Date.now();
@@ -94,14 +62,16 @@ export class Room extends EventEmitter {
     playbackState: string;
     positionMs: number;
     createdAt?: Date | string | number;
+    queue?: unknown;
   }): void {
     if (data.createdAt) {
-      this.createdAt = typeof data.createdAt === 'number' 
-        ? data.createdAt 
+      this.createdAt = typeof data.createdAt === 'number'
+        ? data.createdAt
         : new Date(data.createdAt).getTime();
     }
+    if (data.queue) this.queue = RoomQueue.fromJSON(data.queue);
     this.hostId   = data.hostId;
-    this.trackUrl = data.trackUrl;
+    this.trackUrl = this.queue.current()?.trackUrl ?? data.trackUrl;
     this.pendingPlay = false;
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
@@ -154,15 +124,16 @@ export class Room extends EventEmitter {
     const ytMatch = this.trackUrl ? this.trackUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/) : null;
     const ytId = ytMatch ? ytMatch[1] : null;
     const fallbackThumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
+    const item = this.queue.current();
 
     this.emit('schedule', {
       atEpoch,
       fromPosition: this.timeline.pauseOffset,
       trackUrl: this.trackUrl,
       startEpoch: this.timeline.startEpoch,
-      title: 'Unknown Track',
-      artist: 'Unknown Artist',
-      thumbnail: fallbackThumb || null,
+      title: item?.title || 'Unknown Track',
+      artist: item?.artist || 'Unknown Artist',
+      thumbnail: item?.thumbnail || fallbackThumb || null,
     });
     this.emit('stateChanged', this.snapshot());
   }
@@ -192,6 +163,24 @@ export class Room extends EventEmitter {
     this.trackUrl = trackUrl;
     this.position = positionMs;
     this.timeline.pauseOffset = positionMs / 1000;
+
+    // Point the queue at whatever the client is playing. The old implementation prepended a
+    // synthetic item whenever fuzzy URL matching failed here, which is how queues grew on their
+    // own — add() is exact-keyed and idempotent, so a repeat of the same track is a no-op.
+    const known = this.queue.findByUrl(trackUrl);
+    if (known) {
+      if (this.queue.current()?.id !== known.id) {
+        this.queue.setCurrent(known.id);
+        this.emitQueueChanged();
+      }
+    } else {
+      const { first } = this.queue.add(
+        [{ trackUrl, title: hintTitle, artist: hintArtist, thumbnail: hintThumbnail }],
+        senderId || 'system',
+      );
+      if (first) this.queue.setCurrent(first.id);
+      this.emitQueueChanged();
+    }
 
     // Reset readiness for all participants if changing track so everyone buffers before play
     if (!isSameTrack) {
@@ -287,8 +276,141 @@ export class Room extends EventEmitter {
 
 
 
+  // ── Queue ─────────────────────────────────────────────────────────────
+  //
+  // Every mutation routes through here so one change produces exactly one broadcast.
+
+  getQueue(): TrackQueueItem[]      { return this.queue.snapshot(); }
+
+  getCurrentItem(): QueueItem | null { return this.queue.current(); }
+  getShuffle(): boolean             { return this.queue.shuffle; }
+  getRepeatMode(): RepeatMode       { return this.queue.repeatMode; }
+
+  addTracks(tracks: QueueTrackInput[], addedBy: string, mode: 'end' | 'next' = 'end') {
+    const hadTrack = !!this.trackUrl;
+    const result = this.queue.add(tracks, addedBy, mode);
+    if (result.added.length > 0) {
+      this.emitQueueChanged();
+      // First track into an idle room gets loaded so clients have something to show,
+      // but playback stays an explicit user action.
+      const current = this.queue.current();
+      if (!hadTrack && current) this._loadItem(current, false);
+    }
+    return result;
+  }
+
+  /** Make an item current. `autoplay` runs it through the readiness gate; otherwise it just loads. */
+  setCurrentItem(id: string, autoplay = true): QueueItem | null {
+    const item = this.queue.setCurrent(id);
+    if (!item) return null;
+    this._loadItem(item, autoplay);
+    return item;
+  }
+
+  removeFromQueue(id: string): boolean {
+    const wasCurrent = this.queue.current()?.id === id;
+    if (!this.queue.remove(id)) return false;
+
+    if (!wasCurrent) { this.emitQueueChanged(); return true; }
+
+    const next = this.queue.current();
+    if (next) this._loadItem(next, this.timeline.isPlaying);
+    else this.resetPlayback();
+    return true;
+  }
+
+  clearQueue(upcomingOnly = true): void {
+    if (!upcomingOnly) { this.queue.clear(); this.resetPlayback(); return; }
+    this.queue.clearUpcoming();
+    this.emitQueueChanged();
+  }
+
+  moveInQueue(id: string, toIndex: number): boolean {
+    const moved = this.queue.move(id, toIndex);
+    if (moved) this.emitQueueChanged();
+    return moved;
+  }
+
+  nextTrack(autoplay = true): QueueItem | null {
+    const item = this.queue.next();
+    if (!item) { this.resetPlayback(); return null; }
+    this._loadItem(item, autoplay);
+    return item;
+  }
+
+  prevTrack(autoplay = true): QueueItem | null {
+    const item = this.queue.prev();
+    if (!item) return null;
+    this._loadItem(item, autoplay);
+    return item;
+  }
+
+  /** Called for every device's `playback:ended`; only the first one through advances. */
+  handleTrackEnded(trackUrl: string): QueueItem | null {
+    if (!this.queue.shouldAdvance(trackUrl)) return null;
+    return this.nextTrack(true);
+  }
+
+  setShuffle(on: boolean): void {
+    this.queue.setShuffle(on);
+    this.emitQueueChanged();
+  }
+
+  setRepeatMode(mode: RepeatMode): void {
+    this.queue.setRepeat(mode);
+    this.emitQueueChanged();
+  }
+
+  /** Swap a lazy placeholder url for its resolved one (spotify-lazy: → youtube:). */
+  resolveQueueItem(id: string, trackUrl: string): QueueItem | null {
+    const item = this.queue.resolve(id, trackUrl);
+    if (item) this.emitQueueChanged();
+    return item;
+  }
+
+  private _loadItem(item: QueueItem, autoplay: boolean): void {
+    this.trackUrl = item.trackUrl;
+    this.position = 0;
+    this.timeline.pauseOffset = 0;
+    this.timeline.startEpoch = null;
+    this.timeline.isPlaying = false;
+    this.pendingPlay = false;
+    // Everyone re-buffers so the next start is still sample-aligned.
+    for (const p of this.participants.values()) { p.isReady = false; p.isBlocked = false; }
+
+    this.emit('trackSet', { trackUrl: item.trackUrl, title: item.title });
+    this.emitQueueChanged();
+
+    if (autoplay) {
+      this.play('system');
+    } else {
+      this.state = PlaybackState.PAUSED;
+      this.snapshotTime = Date.now();
+      this.emit('stateChanged', this.snapshot());
+    }
+  }
+
+  private resetPlayback(): void {
+    this.trackUrl = null;
+    this.position = 0;
+    this.state = PlaybackState.IDLE;
+    this.timeline.isPlaying = false;
+    this.timeline.startEpoch = null;
+    this.timeline.pauseOffset = 0;
+    this.pendingPlay = false;
+    if (this.readyTimeout) { clearTimeout(this.readyTimeout); this.readyTimeout = null; }
+    this.emitQueueChanged();
+  }
+
+  private emitQueueChanged(): void {
+    this.snapshotTime = Date.now();
+    this.emit('queueChanged', this.queue.snapshot());
+    this.emit('stateChanged', this.snapshot());
+  }
+
   resetRoom(): void {
     this.chatHistory = [];
+    this.queue.clear();
     this.trackUrl = null;
     this.position = 0;
     this.state = PlaybackState.IDLE;
@@ -305,7 +427,7 @@ export class Room extends EventEmitter {
       p.isBlocked = false;
     }
     this.snapshotTime = Date.now();
-    this.emit('stateChanged', this.snapshot());
+    this.emitQueueChanged();
   }
 
   // ── Readiness tracking ────────────────────────────────────────────────
@@ -500,7 +622,15 @@ export class Room extends EventEmitter {
       accumulatedSessionTime: Math.floor(sessionDurationMs / 1000),
       participants:           Array.from(this.participants.values()),
       spatial:                Array.from(this.spatial.entries()).map(([deviceId, position]) => ({ deviceId, position })),
-      isPrivate:              this.isPrivate
+      startEpoch:             this.timeline.startEpoch,
+      pauseOffset:            this.timeline.pauseOffset,
+      isPlaying:              this.timeline.isPlaying,
+      pendingPlay:            this.pendingPlay,
+      isPrivate:              this.isPrivate,
+      queue:                  this.queue.snapshot(),
+      queueVersion:           this.queue.version,
+      shuffle:                this.queue.shuffle,
+      repeatMode:             this.queue.repeatMode,
     };
   }
 

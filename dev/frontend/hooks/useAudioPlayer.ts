@@ -1357,8 +1357,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     setIsBuffering(false);
     setError(null);
     audioBufferRef.current = null;
-    pendingArrayBufferRef.current = null; 
-    
+    pendingArrayBufferRef.current = null;
+    setDuration(0); // don't report the previous track's length while the new one loads
+
     trackUrlRef.current = url;
     setTrackUrl(url);
     setTrackTitle(title);

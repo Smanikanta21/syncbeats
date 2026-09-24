@@ -18,6 +18,38 @@ export interface Participant {
 }
 
 
+export type RepeatMode = 'off' | 'all' | 'track';
+
+/** What an enqueue route hands to the queue. Metadata is resolved before this point. */
+export interface QueueTrackInput {
+  trackUrl:     string;
+  title?:       string;
+  artist?:      string;
+  thumbnail?:   string;
+  fileName?:    string;
+  durationSec?: number;
+}
+
+export interface QueueItem {
+  id:           string;
+  /** Normalized track identity — the dedup key. See trackKey() in core/RoomQueue.ts. */
+  key:          string;
+  trackUrl:     string;
+  title:        string;
+  artist:       string;
+  thumbnail?:   string;
+  fileName:     string;
+  addedBy:      string;
+  createdAt:    number;
+  durationSec?: number;
+}
+
+/** Queue item as broadcast to clients — position and current flag are derived, never stored. */
+export interface TrackQueueItem extends QueueItem {
+  queueIndex: number;
+  isCurrent:  boolean;
+}
+
 export interface RoomSnapshot {
   roomId:                 string;
   trackUrl:               string | null;
@@ -35,6 +67,10 @@ export interface RoomSnapshot {
   isPlaying?:             boolean;
   pendingPlay?:           boolean;
   isPrivate?:             boolean;
+  queue:                  TrackQueueItem[];
+  queueVersion:           number;
+  shuffle:                boolean;
+  repeatMode:             RepeatMode;
 }
 
 export interface SpatialPosition {

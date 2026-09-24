@@ -28,8 +28,8 @@ import { FloatingMobileMenu } from "./FloatingMobileMenu";
 import type { RoomSnapshot, Participant, TrackQueueItem, PlaybackState } from "../../lib/types";
 import type { SpatialPosition } from "../../lib/spatial/geometry";
 import type { SpatialLayout } from "../../lib/spatial/layout";
-import type { MotionConfig } from "../../lib/spatial/motion";
 import type { SpatialMode } from "../../hooks/useSpatialAudio";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { QRCode } from 'react-qrcode-logo';
@@ -47,13 +47,11 @@ interface RoomDashboardProps {
   deviceSyncProgress: Record<string, number>;
   isPrivate: boolean;
 
-  // Spatial — the resolved layout plus the motion config; positions handed in
-  // and out are origin-relative (see lib/spatial/layout.ts).
+  // Spatial — the resolved layout; positions handed in and out are
+  // origin-relative (see lib/spatial/layout.ts). Motion lives in SpatialPanel.
   spatialLayout: SpatialLayout;
   spatialMode: SpatialMode;
   onSpatialModeChange: (mode: SpatialMode) => void;
-  spatialMotion: MotionConfig;
-  onSpatialMotionChange: (patch: Partial<MotionConfig>) => void;
   onUpdateSpatialPosition: (key: string, pos: SpatialPosition) => void;
   onPreviewSpatialPosition: (key: string, pos: SpatialPosition) => void;
   onCommitSpatialPosition: (key: string, pos: SpatialPosition) => void;
@@ -178,7 +176,7 @@ function VisualsModal({
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate,
-  spatialLayout, spatialMode, onSpatialModeChange, spatialMotion, onSpatialMotionChange,
+  spatialLayout, spatialMode, onSpatialModeChange,
   onUpdateSpatialPosition, onPreviewSpatialPosition, onCommitSpatialPosition, onResetSpatialLayout,
   spatialEnabled, onSpatialEnabledChange,
   audio,
@@ -197,6 +195,8 @@ export function RoomDashboard({
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  /** Mirrors the `md:` breakpoint the two layouts below are split on. */
+  const isDesktopLayout = useMediaQuery("(min-width: 768px)");
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [seekValue, setSeekValue] = useState<number | null>(null);
@@ -365,8 +365,8 @@ export function RoomDashboard({
   }, [roomId, isPrivate, onTogglePrivate]);
 
   const toggleShuffle = useCallback(() => {
-    getSocket().emit("room:toggleShuffle", { roomId, shuffle: true });
-  }, [roomId]);
+    getSocket().emit("room:toggleShuffle", { roomId, shuffle: !snapshot?.shuffle });
+  }, [roomId, snapshot?.shuffle]);
 
   const toggleRepeat = useCallback(() => {
     const current = snapshot?.repeatMode ?? "off";
@@ -403,20 +403,23 @@ export function RoomDashboard({
         <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'gap-3', 'min-h-0')}>
           {/* Top: Spatial Audio */}
           <GlassCard className={cn('flex-1', 'min-h-0', 'p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
-            <SpatialPanel
-              layout={spatialLayout}
-              mode={spatialMode}
-              onModeChange={onSpatialModeChange}
-              motion={spatialMotion}
-              onMotionChange={onSpatialMotionChange}
-              onPreviewPosition={onPreviewSpatialPosition}
-              onCommitPosition={onCommitSpatialPosition}
-              onUpdatePosition={onUpdateSpatialPosition}
-              onReset={onResetSpatialLayout}
-              isPlaying={isPlaying}
-              enabled={spatialEnabled}
-              onEnabledChange={onSpatialEnabledChange}
-            />
+            {/* Both layouts below mount a SpatialPanel. `hidden md:flex` keeps
+                the wrong one in the DOM, where its WebGL canvas goes on
+                rendering — so gate on the same breakpoint in JS. */}
+            {isDesktopLayout && (
+              <SpatialPanel
+                layout={spatialLayout}
+                mode={spatialMode}
+                onModeChange={onSpatialModeChange}
+                onPreviewPosition={onPreviewSpatialPosition}
+                onCommitPosition={onCommitSpatialPosition}
+                onUpdatePosition={onUpdateSpatialPosition}
+                onReset={onResetSpatialLayout}
+                isPlaying={isPlaying}
+                enabled={spatialEnabled}
+                onEnabledChange={onSpatialEnabledChange}
+              />
+            )}
           </GlassCard>
 
           {/* Desktop Playback Controls */}
@@ -476,7 +479,7 @@ export function RoomDashboard({
 
           {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
           <GlassCard className={cn('h-65', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} />
+            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
           </GlassCard>
         </div>
 
@@ -839,20 +842,20 @@ export function RoomDashboard({
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
               <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-                <SpatialPanel
-                  layout={spatialLayout}
-                  mode={spatialMode}
-                  onModeChange={onSpatialModeChange}
-                  motion={spatialMotion}
-                  onMotionChange={onSpatialMotionChange}
-                  onPreviewPosition={onPreviewSpatialPosition}
-                  onCommitPosition={onCommitSpatialPosition}
-                  onUpdatePosition={onUpdateSpatialPosition}
-                  onReset={onResetSpatialLayout}
-                  isPlaying={isPlaying}
-                  enabled={spatialEnabled}
-                  onEnabledChange={onSpatialEnabledChange}
-                />
+                {!isDesktopLayout && (
+                  <SpatialPanel
+                    layout={spatialLayout}
+                    mode={spatialMode}
+                    onModeChange={onSpatialModeChange}
+                    onPreviewPosition={onPreviewSpatialPosition}
+                    onCommitPosition={onCommitSpatialPosition}
+                    onUpdatePosition={onUpdateSpatialPosition}
+                    onReset={onResetSpatialLayout}
+                    isPlaying={isPlaying}
+                    enabled={spatialEnabled}
+                    onEnabledChange={onSpatialEnabledChange}
+                  />
+                )}
               </GlassCard>
             </motion.div>
           )}
@@ -967,7 +970,7 @@ export function RoomDashboard({
 
               {/* Bottom Section: Equalizer & Frequency Visualizer */}
               <GlassCard className={cn('w-full', 'h-45', 'sm:h-52.5', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'min-h-0', 'shrink-0')} isPlaying={isPlaying}>
-                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} />
+                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
               </GlassCard>
             </motion.div>
           )}

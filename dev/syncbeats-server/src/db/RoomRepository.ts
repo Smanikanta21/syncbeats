@@ -14,22 +14,12 @@ export interface RoomRow {
   created_at: Date;
   ended_at: Date | null;
   participant_count?: number;
+  /** Serialized RoomQueue — see RoomQueue.toJSON()/fromJSON(). */
+  queue: unknown | null;
+  shuffle: boolean;
+  repeat_mode: string;
 }
 
-/**
- * Stable per-track dedup key within a room. Used by the @@unique([roomId, trackKey])
- * constraint on RoomQueueItem.
- *
- * MUST stay byte-identical to the SQL CASE expression in the migration
- * `<ts>_add_room_queue_track_key/migration.sql` (backfill step), and MUST be computed
- * from the SAME string that gets stored in track_url (i.e. the post-sanitizeString value),
- * otherwise old backfilled rows and new inserts would key differently.
- *
- * magnet: URIs embed their own `?`/`&`, so a naive query-strip would collapse every
- * magnet to `magnet:` — key them on the btih hash instead. All other forms
- * (youtube:ID, spotify-lazy:ID, bare upload filenames) strip the volatile query string
- * (`?thumb=…&pid=…`) to a stable, distinct key.
- */
 export class RoomRepository {
   async create(roomId: string, hostId: string): Promise<RoomRow> {
     const room = await prisma.room.create({
@@ -60,7 +50,7 @@ export class RoomRepository {
       where: { endedAt: null },
       orderBy: { createdAt: 'desc' }
     });
-    return rooms.map(r => this.mapRoom(r));
+    return rooms.map(r => this.mapRoom(r, false));
   }
 
   async listByUser(userId: string): Promise<{ rooms: RoomRow[], invitedRooms: any[] }> {
@@ -80,7 +70,7 @@ export class RoomRepository {
       orderBy: { createdAt: 'desc' }
     });
     const mappedRooms = rooms.map(r => ({
-      ...this.mapRoom(r),
+      ...this.mapRoom(r, false),
       participant_count: r._count.roomParticipants
     }));
 
@@ -96,7 +86,7 @@ export class RoomRepository {
     const invitedRooms = invited.map(inv => ({
       inviteId: inv.id,
       inviterName: inv.inviter.name,
-      ...this.mapRoom(inv.room as any),
+      ...this.mapRoom(inv.room as any, false),
       participant_count: inv.room._count.roomParticipants
     }));
 
@@ -143,6 +133,8 @@ export class RoomRepository {
       }
     }
   }
+
+
 
   async markEnded(roomId: string): Promise<void> {
     await prisma.room.update({
@@ -246,7 +238,12 @@ export class RoomRepository {
     }));
   }
 
-  private mapRoom(r: any): RoomRow {
+  private mapRoom(r: any, withQueue = true): RoomRow {
+    // shuffle/repeat live inside the queue document; flattened here because the
+    // client's RoomRecord has read them as top-level columns since before the rewrite.
+    // List endpoints pass withQueue=false — nothing reads the blob there and it can be
+    // 500 tracks per room.
+    const q = r.queue ?? null;
     return {
       id: r.id,
       host_id: r.hostId,
@@ -256,6 +253,9 @@ export class RoomRepository {
       created_at: r.createdAt,
       ended_at: r.endedAt,
       participant_count: r.participant_count,
+      queue: withQueue ? q : null,
+      shuffle: !!q?.shuffle,
+      repeat_mode: q?.repeatMode ?? 'off',
     };
   }
 }

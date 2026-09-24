@@ -533,22 +533,6 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     };
     socket.on('room:stateChanged', handleStateChanged);
 
-    const handleQueueChanged = (data: { queue: TrackQueueItem[] } | TrackQueueItem[]) => {
-      // Legacy handler kept for shape compatibility — handleQueueChangedNew below is the authoritative one.
-      // Only handle if data is an array (old server format), the new format is handled below.
-      if (Array.isArray(data)) {
-        const newQueue = data;
-        setSnapshot(prev => prev ? { ...prev, queue: newQueue } : prev);
-      }
-    };
-    socket.on('room:queueChanged', handleQueueChanged);
-
-    const handleReset = () => {
-      audioRef.current.clearTrack();
-      setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false } : prev);
-    };
-    socket.on('room:reset', handleReset);
-
     const handleParticipantJoined = (p: Participant) => {
       setParticipants(prev => {
         if (prev.find(x => x.socketId === p.socketId)) return prev;
@@ -758,8 +742,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:participantJoined', handleParticipantJoined);
       socket.off('room:participantLeft', handleParticipantLeft);
       socket.off('room:trackSet', handleTrackSet);
-      socket.off('room:queueChanged', handleQueueChanged);
-      socket.off('room:reset', handleReset);
+      socket.off('room:reset', handleRoomReset);
       socket.off('playback:schedule', handleSchedule);
       socket.off('playback:pause', handlePause);
       socket.off('room:joinPendingApproval', handlePendingApproval);
@@ -883,22 +866,14 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     socket.disconnect();
   }, [socket, roomId]);
 
-  const removeFromQueue = useCallback(async (itemId: string) => {
+  // Socket only — the REST twins do the same mutation, and firing both produced
+  // two broadcasts for one user action.
+  const removeFromQueue = useCallback((itemId: string) => {
     socket.emit('room:removeFromQueue', { roomId, itemId });
-    try {
-      await roomsApi.removeFromQueue(roomId, itemId);
-    } catch (err) {
-      console.warn('[useRoom] removeFromQueue API error:', err);
-    }
   }, [roomId, socket]);
 
-  const resetRoom = useCallback(async () => {
+  const resetRoom = useCallback(() => {
     socket.emit('room:reset', { roomId });
-    try {
-      await roomsApi.reset(roomId);
-    } catch (err) {
-      console.warn('[useRoom] resetRoom API error:', err);
-    }
   }, [roomId, socket]);
 
   return { snapshot, participants, isConnected, joinStatus, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };

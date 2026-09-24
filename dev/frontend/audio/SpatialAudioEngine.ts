@@ -10,14 +10,25 @@
  * function of the synced server clock, so every device agrees on where the
  * sound is without a single extra socket message.
  *
- * Graph — spliced **in series** into the existing player chain:
+ * Graph — spliced into the existing player chain as a dry path plus two sends:
  *
- *   … → EQ[last] → spatialGain → airFilter → panner(HRTF) → stereoPanner → analyser → destination
- *                                              └→ reverbDelay → reverbGain ┘
+ *                          ┌→ stereoPanner → dryGain ─────────────┐
+ *   … → EQ[last] → spatialGain → airFilter → panner(HRTF) → wetGain ├→ analyser → destination
+ *                          └→ convolver → reverbGain ─────────────┘
  *
- * The previous version hung this chain off `gainNode` in *parallel* with the dry
- * EQ path, so a full-volume unpanned copy was always mixed on top and the
- * spatial effect was inaudible. Splicing in series is the fix.
+ * Two earlier topologies were wrong in opposite directions. Hanging the whole
+ * chain off `gainNode` in parallel with the *dry EQ path* mixed a full-volume
+ * unpanned copy on top, so the effect was inaudible. Putting the HRTF panner in
+ * *series* fixed that but discarded the track's own stereo image — a PannerNode
+ * places every input channel at one virtual point, so a wide stereo master came
+ * out as a single mono source — and the "reverb" was one 45ms delay tap summed
+ * back in, which is a comb filter, not a room.
+ *
+ * So: the dry path carries the untouched stereo signal and only gets level
+ * (`spatialGain`, the cross-device pan) and a gentle stereo rebalance. HRTF is a
+ * parallel *send*, which is what keeps the over-the-head cue on headphones
+ * without the mono collapse, and the tail is a real decorrelated convolution.
+ * Air absorption lives on the sends alone, so the dry signal is bit-transparent.
  */
 
 import {
@@ -72,8 +83,56 @@ const SMOOTHING = 0.04;
 const AUDIO_WRITE_INTERVAL_MS = 33;
 /** How long a beat jump takes to travel, capped so short hops still rest. */
 const BEAT_GLIDE_MS = 260;
-/** How much of the HRTF output also gets hard stereo-panned (phone speakers). */
-const STEREO_STRENGTH = 0.7;
+/** How much of the dry stereo signal gets rebalanced L/R (phone speakers). */
+const STEREO_STRENGTH = 0.4;
+/**
+ * Dry/send balance.
+ *
+ * ponytail: tuned by ear, not measured. The two paths are correlated, so worst
+ * case they sum to 1.15 in amplitude — drop DRY_LEVEL first if a loud master
+ * clips. Raising WET_LEVEL makes the over-the-head cue stronger on headphones at
+ * the cost of the original stereo width.
+ */
+const DRY_LEVEL = 0.8;
+const WET_LEVEL = 0.35;
+/** Air absorption on the send only, so the dry path stays transparent. */
+const AIR_MIN_HZ = 4000;
+const AIR_MAX_HZ = 20000;
+
+/**
+ * Synthetic reverb impulse length in seconds, and the most of it that ever
+ * reaches the output.
+ *
+ * ponytail: a ~0.8s partitioned convolution is the priciest node in this graph.
+ * If low-end phones struggle, thread the `useDevicePerf` tier through and skip
+ * the convolver on "low" — the tail is atmosphere, not the feature itself.
+ */
+const REVERB_SECONDS = 0.8;
+const REVERB_MAX = 0.28;
+/** Distance at which the tail starts coming up, in world units. */
+const REVERB_ONSET = 1.5;
+
+/**
+ * Exponentially-decaying filtered noise — the standard stand-in for a recorded
+ * impulse response. Two independent channels, so the tail is decorrelated and
+ * reads as a room rather than as a centred echo.
+ */
+function buildReverbImpulse(ctx: AudioContext): AudioBuffer {
+  const length = Math.floor(ctx.sampleRate * REVERB_SECONDS);
+  const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+
+  for (let ch = 0; ch < 2; ch++) {
+    const data = impulse.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < length; i++) {
+      const decay = Math.pow(1 - i / length, 2.5);
+      // One-pole lowpass on the noise: an unfiltered tail is a bright hiss.
+      lp += 0.32 * ((Math.random() * 2 - 1) - lp);
+      data[i] = lp * decay;
+    }
+  }
+  return impulse;
+}
 
 export class SpatialAudioEngine {
   private static instance: SpatialAudioEngine | null = null;
@@ -94,10 +153,12 @@ export class SpatialAudioEngine {
   private spliceOut: AudioNode | null = null;
 
   private spatialGain: GainNode | null = null;
+  private stereoPanner: StereoPannerNode | null = null;
+  private dryGain: GainNode | null = null;
   private airFilter: BiquadFilterNode | null = null;
   private panner: PannerNode | null = null;
-  private stereoPanner: StereoPannerNode | null = null;
-  private reverbDelay: DelayNode | null = null;
+  private wetGain: GainNode | null = null;
+  private convolver: ConvolverNode | null = null;
   private reverbGain: GainNode | null = null;
 
   private isInitialised = false;
@@ -124,8 +185,13 @@ export class SpatialAudioEngine {
   /** Hop window the last beat jump fired in — see `onBeat`. */
   private lastHopBucket = -1;
 
-  private rafId: number | null = null;
-  private lastAudioWrite = 0;
+  /**
+   * AudioParam writes run on a plain interval, not rAF: the values only need to
+   * be roughly current (every write is a `setTargetAtTime` ramp), and a rAF loop
+   * stalls on render jank and stops dead in a background tab — both of which
+   * froze the orbit mid-lap and then jumped.
+   */
+  private writeTimer: ReturnType<typeof setInterval> | null = null;
 
   /** One-frame memo so audio and renderer sampling the same instant agree exactly. */
   private cachedAt = -1;
@@ -136,21 +202,38 @@ export class SpatialAudioEngine {
   /**
    * @param spliceIn  Node currently feeding `spliceOut` (the last EQ band)
    * @param spliceOut Node to hand the spatialised signal back to (the analyser)
+   *
+   * Re-splices when handed a different context or different endpoints. Leaving
+   * and re-entering a room builds a fresh AudioContext, and the engine is a
+   * process-lifetime singleton: without this it would keep writing to the old
+   * context's nodes and spatial audio would be silently dead on the second visit.
    */
   init(ctx: AudioContext, spliceIn: AudioNode, spliceOut: AudioNode, myDeviceId: string): void {
-    if (this.isInitialised) return;
+    this.myDeviceId = myDeviceId || this.myDeviceId;
+
+    if (this.isInitialised) {
+      if (this.ctx === ctx && this.spliceIn === spliceIn && this.spliceOut === spliceOut) return;
+      this.dispose();
+    }
 
     this.ctx = ctx;
     this.spliceIn = spliceIn;
     this.spliceOut = spliceOut;
-    this.myDeviceId = myDeviceId || this.myDeviceId;
 
     this.spatialGain = ctx.createGain();
     this.spatialGain.gain.value = 1;
 
+    // ── Dry: the track, untouched but for level and a stereo rebalance ───────
+    this.stereoPanner = ctx.createStereoPanner();
+    this.stereoPanner.pan.value = 0;
+
+    this.dryGain = ctx.createGain();
+    this.dryGain.gain.value = DRY_LEVEL;
+
+    // ── Send: mono-collapsed by design, carries the binaural cue ─────────────
     this.airFilter = ctx.createBiquadFilter();
     this.airFilter.type = 'lowpass';
-    this.airFilter.frequency.value = 20000;
+    this.airFilter.frequency.value = AIR_MAX_HZ;
     this.airFilter.Q.value = 0.7;
 
     this.panner = ctx.createPanner();
@@ -167,11 +250,19 @@ export class SpatialAudioEngine {
     this.panner.positionY.value = 0;
     this.panner.positionZ.value = -PANNER_DISTANCE;
 
-    this.stereoPanner = ctx.createStereoPanner();
-    this.stereoPanner.pan.value = 0;
+    this.wetGain = ctx.createGain();
+    this.wetGain.gain.value = WET_LEVEL;
 
-    this.reverbDelay = ctx.createDelay(1.0);
-    this.reverbDelay.delayTime.value = 0.045;
+    // ── Tail: distance reads as "further into the room" ──────────────────────
+    // Tapped pre-panner and output undirected, which is how a reverb send is
+    // normally wired: early reflections arrive from everywhere, not from the
+    // source's bearing. The previous version used a single 45ms delay tap summed
+    // back into the output — that is a comb filter, and it was the audible
+    // "glitch" people heard as the source moved away.
+    this.convolver = ctx.createConvolver();
+    this.convolver.normalize = true;
+    this.convolver.buffer = buildReverbImpulse(ctx);
+
     this.reverbGain = ctx.createGain();
     this.reverbGain.gain.value = 0;
 
@@ -183,25 +274,37 @@ export class SpatialAudioEngine {
     }
 
     spliceIn.connect(this.spatialGain);
+
+    this.spatialGain.connect(this.stereoPanner);
+    this.stereoPanner.connect(this.dryGain);
+    this.dryGain.connect(spliceOut);
+
     this.spatialGain.connect(this.airFilter);
     this.airFilter.connect(this.panner);
-    this.panner.connect(this.stereoPanner);
-    this.panner.connect(this.reverbDelay);
-    this.reverbDelay.connect(this.reverbGain);
-    this.reverbGain.connect(this.stereoPanner);
-    this.stereoPanner.connect(spliceOut);
+    this.panner.connect(this.wetGain);
+    this.wetGain.connect(spliceOut);
+
+    this.spatialGain.connect(this.convolver);
+    this.convolver.connect(this.reverbGain);
+    this.reverbGain.connect(spliceOut);
 
     this.resetListener();
     this.isInitialised = true;
   }
 
-  /** Restore the plain EQ → analyser path. */
+  /**
+   * Restore the plain EQ → analyser path, so the signal is bit-identical to
+   * having never been spliced. Called when spatial is switched off, and by
+   * `init` before re-splicing into a new context.
+   */
   dispose(): void {
     if (!this.isInitialised || !this.spliceIn || !this.spliceOut) return;
     this.stop();
     try {
       this.spliceIn.disconnect(this.spatialGain!);
-      this.stereoPanner!.disconnect(this.spliceOut);
+      this.dryGain!.disconnect(this.spliceOut);
+      this.wetGain!.disconnect(this.spliceOut);
+      this.reverbGain!.disconnect(this.spliceOut);
       this.spliceIn.connect(this.spliceOut);
     } catch {
       /* graph already torn down */
@@ -390,22 +493,15 @@ export class SpatialAudioEngine {
   // ── Audio loop ───────────────────────────────────────────────────────────
 
   private start(): void {
-    if (this.rafId !== null) return;
-    const tick = () => {
-      const now = performance.now();
-      if (now - this.lastAudioWrite >= AUDIO_WRITE_INTERVAL_MS) {
-        this.lastAudioWrite = now;
-        this.applyAudio();
-      }
-      this.rafId = requestAnimationFrame(tick);
-    };
-    this.rafId = requestAnimationFrame(tick);
+    if (this.writeTimer !== null) return;
+    this.applyAudio();
+    this.writeTimer = setInterval(() => this.applyAudio(), AUDIO_WRITE_INTERVAL_MS);
   }
 
   private stop(): void {
-    if (this.rafId === null) return;
-    cancelAnimationFrame(this.rafId);
-    this.rafId = null;
+    if (this.writeTimer === null) return;
+    clearInterval(this.writeTimer);
+    this.writeTimer = null;
     this.applyBypass();
   }
 
@@ -433,14 +529,17 @@ export class SpatialAudioEngine {
 
     this.spatialGain!.gain.setTargetAtTime(clamp(myGain, 0, 1), t, SMOOTHING);
     this.stereoPanner!.pan.setTargetAtTime(pan * STEREO_STRENGTH, t, SMOOTHING);
+    this.dryGain!.gain.setTargetAtTime(DRY_LEVEL, t, SMOOTHING);
+    this.wetGain!.gain.setTargetAtTime(WET_LEVEL, t, SMOOTHING);
 
-    // Air absorption: distant sound loses its top end.
-    const cutoff = clamp(20000 * Math.pow(0.8, distance), 1500, 20000);
+    // Air absorption: distant sound loses its top end. Send path only — the dry
+    // signal is never filtered, which is what keeps the track full-bandwidth.
+    const cutoff = clamp(AIR_MAX_HZ * Math.pow(0.8, distance), AIR_MIN_HZ, AIR_MAX_HZ);
     this.airFilter!.frequency.setTargetAtTime(cutoff, t, 0.08);
 
-    // Early reflections grow with distance — dry up close, wet across the room.
-    const wet = clamp((distance - 1.5) / 12, 0, 0.35);
-    this.reverbGain!.gain.setTargetAtTime(wet, t, 0.12);
+    // Tail grows with distance — dry up close, roomy across the room.
+    const reverb = clamp((distance - REVERB_ONSET) / 12, 0, REVERB_MAX);
+    this.reverbGain!.gain.setTargetAtTime(reverb, t, 0.12);
   }
 
   /** Settle every parameter back to neutral so bypass is inaudible. */
@@ -449,10 +548,11 @@ export class SpatialAudioEngine {
     const t = this.ctx.currentTime;
     this.spatialGain!.gain.setTargetAtTime(1, t, SMOOTHING);
     this.stereoPanner!.pan.setTargetAtTime(0, t, SMOOTHING);
-    this.airFilter!.frequency.setTargetAtTime(20000, t, 0.08);
+    // Full dry, nothing on either send: the only thing left in the path is a
+    // unity gain, so bypass is a genuine passthrough rather than a quiet effect.
+    this.dryGain!.gain.setTargetAtTime(1, t, SMOOTHING);
+    this.wetGain!.gain.setTargetAtTime(0, t, SMOOTHING);
     this.reverbGain!.gain.setTargetAtTime(0, t, 0.12);
-    this.panner!.positionX.setTargetAtTime(0, t, SMOOTHING);
-    this.panner!.positionY.setTargetAtTime(0, t, SMOOTHING);
-    this.panner!.positionZ.setTargetAtTime(-PANNER_DISTANCE, t, SMOOTHING);
+    this.airFilter!.frequency.setTargetAtTime(AIR_MAX_HZ, t, 0.08);
   }
 }

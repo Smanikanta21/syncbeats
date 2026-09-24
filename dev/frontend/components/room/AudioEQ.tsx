@@ -55,6 +55,7 @@ interface AudioEQProps {
   trackTitle?: string | null;
   trackArtist?: string | null;
   currentTime?: number;
+  duration?: number;
 }
 
 /* ─── Build logarithmic bin-to-bar mapping table ─────────────────────────
@@ -189,7 +190,7 @@ function catmullRom(pts: [number, number][], tension = 0.38): string {
   return d;
 }
 
-export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trackTitle, trackArtist, currentTime }: AudioEQProps) {
+export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trackTitle, trackArtist, currentTime, duration }: AudioEQProps) {
   const { settings, updateSettings } = useSettings();
   const { dataRef } = useVisualizer();
 
@@ -579,6 +580,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
               title={trackTitle ?? null}
               artist={trackArtist ?? null}
               currentTime={currentTime ?? 0}
+              duration={duration}
               dataRef={dataRef}
             />
           </motion.div>

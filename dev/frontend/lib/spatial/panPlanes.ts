@@ -68,11 +68,20 @@ export const PLANES: Plane[] = [
   },
 ];
 
-/** Cartesian → the clamped polar form the rest of the app speaks. */
-export function toPosition(v: Vec3): SpatialPosition {
+/**
+ * Cartesian → the clamped polar form the rest of the app speaks.
+ *
+ * `fallbackAngle` is used when the vector is shorter than `MIN_RADIUS`: dragging
+ * a handle across the centre of a pad sends the vector through the origin, where
+ * `atan2` is meaningless and swings through every bearing in a couple of frames.
+ * Radius is clamped up anyway, so without this the device's *angle* flails and
+ * the sound snaps between speakers. Holding the previous bearing instead makes
+ * the pad centre behave like a floor on distance rather than a direction glitch.
+ */
+export function toPosition(v: Vec3, fallbackAngle = 0): SpatialPosition {
   const p = vecToPolar(v);
   return {
-    angle: p.angle,
+    angle: p.radius < MIN_RADIUS ? fallbackAngle : p.angle,
     radius: clamp(p.radius, MIN_RADIUS, MAX_RADIUS),
     elevation: clamp(p.elevation, MIN_ELEVATION, MAX_ELEVATION),
   };

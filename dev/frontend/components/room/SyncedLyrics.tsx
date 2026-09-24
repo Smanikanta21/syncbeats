@@ -17,6 +17,7 @@ interface LyricLine {
   endTime: number;
   text: string;
   words: LyricWord[];
+  instrumental?: boolean; // no vocals here — render dots, not text
 }
 
 /* ─── LRC Parser ─────────────────────────────────────────────────────────── */
@@ -27,7 +28,9 @@ function parseLrc(lrc: string): LyricLine[] {
   const offsetMatch = lrc.match(/\[offset:([+-]?\d+)\]/i);
   const globalOffset = offsetMatch ? parseInt(offsetMatch[1]) / 1000 : 0;
 
-  // 2. Parse timestamps and text
+  // 2. Parse timestamps and text. Blank timed lines (e.g. "[01:26.07] ") are how
+  // LRC files mark the end of a vocal section — keep them as instrumental markers
+  // instead of discarding them, or the previous line stays lit through the break.
   const re = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(lrc)) !== null) {
@@ -35,16 +38,21 @@ function parseLrc(lrc: string): LyricLine[] {
     const s = parseInt(match[2]);
     const ms = parseInt(match[3].padEnd(3, "0"));
     const text = match[4].trim();
-    if (text) {
-      let time = (m * 60 + s + ms / 1000) - globalOffset;
-      if (time < 0) time = 0;
-      lines.push({ time, text, endTime: 0, words: [] });
-    }
+    let time = (m * 60 + s + ms / 1000) - globalOffset;
+    if (time < 0) time = 0;
+    lines.push({ time, text, endTime: 0, words: [], instrumental: !text });
   }
-  
-  lines.sort((a, b) => a.time - b.time);
 
-  // 3. Insert synthetic instrumental gaps ("...")
+  lines.sort((a, b) => a.time - b.time);
+  if (!lines.length) return [];
+
+  // Cover the intro: most files have no marker at 0, so t=0 would light up line 1.
+  if (lines[0].time > 1 && !lines[0].instrumental) {
+    lines.unshift({ time: 0, text: "", endTime: 0, words: [], instrumental: true });
+  }
+
+  // 3. Fallback for files with no explicit markers: guess where vocals end from
+  // text length and insert a synthetic gap.
   const finalLines: LyricLine[] = [];
   const GAP_THRESHOLD = 2.5; // seconds
 
@@ -52,32 +60,33 @@ function parseLrc(lrc: string): LyricLine[] {
     const line = lines[i];
     finalLines.push(line);
 
-    if (i < lines.length - 1) {
-      const nextLine = lines[i + 1];
-      // Estimate active singing duration based on text length (~10 chars per second), cap at gap size
-      const textLen = line.text.replace(/\s/g, "").length;
-      const estimatedVocalTime = Math.max(1.0, textLen * 0.12);
-      const activeDuration = Math.min(nextLine.time - line.time, estimatedVocalTime);
-      const endOfVocal = line.time + activeDuration;
-      const gapLength = nextLine.time - endOfVocal;
+    const nextLine = lines[i + 1];
+    // An explicit marker already covers this gap — don't second-guess it.
+    if (!nextLine || line.instrumental || nextLine.instrumental) continue;
 
-      // If the silence before the next lyric is long enough, insert '...'
-      if (gapLength > GAP_THRESHOLD) {
-        finalLines.push({
-          time: endOfVocal + 0.5,
-          endTime: 0,
-          text: "...",
-          words: [{ text: "...", start: endOfVocal + 0.5, end: nextLine.time - 0.5 }]
-        });
-      }
+    // Estimate active singing duration based on text length (~8 chars per second), cap at gap size
+    const textLen = line.text.replace(/\s/g, "").length;
+    const estimatedVocalTime = Math.max(1.0, textLen * 0.12);
+    const activeDuration = Math.min(nextLine.time - line.time, estimatedVocalTime);
+    const endOfVocal = line.time + activeDuration;
+
+    if (nextLine.time - endOfVocal > GAP_THRESHOLD) {
+      finalLines.push({
+        time: endOfVocal + 0.5,
+        endTime: 0,
+        text: "",
+        words: [],
+        instrumental: true,
+      });
     }
   }
 
-  // 4. Second pass: calculate word timings for all lines (including gaps)
+  // 4. Second pass: calculate word timings for all lines
   for (let i = 0; i < finalLines.length; i++) {
     const line = finalLines[i];
     line.endTime = i < finalLines.length - 1 ? finalLines[i + 1].time : line.time + 5;
-    
+    if (line.instrumental) continue;
+
     // Check for Enhanced LRC tags e.g. <00:12.34> word
     const wordMatches = Array.from(line.text.matchAll(/<(\d{2}):(\d{2})\.(\d{2,3})>([^<]+)/g));
     
@@ -95,8 +104,8 @@ function parseLrc(lrc: string): LyricLine[] {
         line.words[j].end = j < line.words.length - 1 ? line.words[j + 1].start : line.endTime;
       }
       line.text = line.text.replace(/<\d{2}:\d{2}\.\d{2,3}>/g, "").trim();
-    } else if (line.words.length === 0) {
-      // Heuristic line-to-word distribution (only if not already set, e.g. synthetic gap)
+    } else {
+      // Heuristic line-to-word distribution
       const rawWords = line.text.split(" ");
       const totalChars = line.text.replace(/\s/g, "").length;
       let currentTimeAcc = line.time;
@@ -162,9 +171,13 @@ function cleanForSearch(rawTitle: string, providedArtist?: string | null): { tit
 }
 
 /* ─── LrcLib fetcher ─────────────────────────────────────────────────────── */
-async function fetchLyrics(rawTitle: string, rawArtist?: string | null): Promise<LyricLine[] | null> {
+async function fetchLyrics(
+  rawTitle: string,
+  rawArtist?: string | null,
+  duration?: number
+): Promise<LyricLine[] | null> {
   const { title, artist } = cleanForSearch(rawTitle, rawArtist);
-  
+
   // Build a generic query for the 'q=' endpoint which searches all fields (artist, track, album)
   // This is much more robust for messy YouTube titles.
   const query = artist ? `${artist} ${title}` : title;
@@ -178,10 +191,15 @@ async function fetchLyrics(rawTitle: string, rawArtist?: string | null): Promise
     const data = await res.json();
     if (!data || !Array.isArray(data) || !data.length) return null;
 
-    // The 'q=' endpoint sorts by relevance. We just find the first result with synced lyrics.
-    const best = data.find((d: any) => d.syncedLyrics);
+    const synced = data.filter((d: any) => d.syncedLyrics);
+    // Prefer the result whose length matches ours. Search is relevance-sorted, so
+    // the top hit is often a remix/live/sped-up cut whose timings are seconds off.
+    const best =
+      (duration
+        ? synced.find((d: any) => Math.abs((d.duration ?? 0) - duration) <= 2)
+        : null) ?? synced[0];
     if (!best?.syncedLyrics) return null;
-    
+
     return parseLrc(best.syncedLyrics);
   } catch (error) {
     console.error("fetchLyrics error:", error);
@@ -194,10 +212,11 @@ interface SyncedLyricsProps {
   title: string | null;
   artist?: string | null;
   currentTime?: number;     // seconds
+  duration?: number;        // seconds — used to match the right lyrics version
   dataRef?: React.MutableRefObject<{ rawAudioData: Uint8Array | null; isPlaying: boolean } | any>;
 }
 
-export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: SyncedLyricsProps) {
+export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef }: SyncedLyricsProps) {
   const [lines, setLines] = useState<LyricLine[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "no-lyrics">("idle");
   const [activeIdx, setActiveIdx] = useState(0);
@@ -211,14 +230,18 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
     if (!title) return;
     const key = `${title}::${artist ?? ""}`;
     if (key === prevKeyRef.current) return;
-    prevKeyRef.current = key;
 
     setStatus("loading");
+    // Wait for the decoder to report duration — we need it to pick the lyrics
+    // version that actually matches this cut. The effect re-runs when it lands.
+    if (!duration) return;
+    prevKeyRef.current = key;
+
     setLines([]);
     setActiveIdx(0);
     lastIdxRef.current = -1;
 
-    fetchLyrics(title, artist)
+    fetchLyrics(title, artist, duration)
       .then(result => {
         if (result && result.length > 0) {
           setLines(result);
@@ -228,7 +251,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
         }
       })
       .catch(() => setStatus("error"));
-  }, [title, artist]);
+  }, [title, artist, duration]);
 
   /* ── rAF-driven active line tracker (device-native FPS) ─────────────── */
   const timeRef = useRef(currentTime);
@@ -247,11 +270,6 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
       if (idx !== lastIdxRef.current) {
         lastIdxRef.current = idx;
         setActiveIdx(idx);
-        // Scroll active line into center
-        const el = lineRefs.current[idx];
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -260,6 +278,12 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [lines]);
+
+  // Scroll after render, not inside the rAF tick: an instrumental line's dots
+  // only mount once it's active, so its ref doesn't exist yet at tick time.
+  useEffect(() => {
+    lineRefs.current[activeIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeIdx]);
 
   /* ── Status screens ──────────────────────────────────────────────────── */
   if (!title) {
@@ -307,6 +331,20 @@ export function SyncedLyrics({ title, artist, currentTime = 0, dataRef }: Synced
           const isPast = i < activeIdx;
           const distance = Math.abs(i - activeIdx);
           const isFarAway = distance > 4;
+
+          // No vocals here — show the dots only while this break is active (Apple
+          // Music behaviour), and take up no space otherwise so the surrounding
+          // lyrics don't get pushed apart by every instrumental marker.
+          if (line.instrumental) {
+            if (!isActive) return null;
+            return (
+              <div key={i} ref={el => { lineRefs.current[i] = el; }}>
+                <div className="scale-75 origin-left w-fit">
+                  <InstrumentalDots dataRef={dataRef} />
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div

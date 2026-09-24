@@ -65,6 +65,10 @@ model Room {
   trackUrl         String?           @map("track_url")
   playbackState    String            @default("IDLE") @map("playback_state")
   positionMs       BigInt            @default(0) @map("position_ms")
+  // Whole queue as one document: { items, order, currentId, shuffle, repeatMode }.
+  // Deliberately not a row-per-track table — the old one kept its own queue_index/is_current
+  // alongside the in-memory copy and the two drifted apart, which duplicated tracks.
+  queue            Json?
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   endedAt          DateTime?         @map("ended_at") @db.Timestamptz(6)
   lastAccessedAt   DateTime          @default(now()) @map("last_accessed_at") @db.Timestamptz(6)

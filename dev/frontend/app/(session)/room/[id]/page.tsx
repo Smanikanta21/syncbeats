@@ -166,8 +166,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     previewPosition: previewSpatialPosition,
     commitPosition: commitSpatialPosition,
     resetLayout: resetSpatialLayout,
-    motion: spatialMotion,
-    setMotion: setSpatialMotion,
   } = useSpatialAudio({
     socket: isConnected ? getSocket() : null,
     audioCtx: audio.audioCtx,
@@ -293,8 +291,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           spatialLayout={spatialLayout}
           spatialMode={spatialMode}
           onSpatialModeChange={setSpatialMode}
-          spatialMotion={spatialMotion}
-          onSpatialMotionChange={setSpatialMotion}
           onUpdateSpatialPosition={updateSpatialPosition}
           onPreviewSpatialPosition={previewSpatialPosition}
           onCommitSpatialPosition={commitSpatialPosition}

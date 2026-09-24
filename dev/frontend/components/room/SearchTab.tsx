@@ -34,6 +34,13 @@ interface SearchTabProps {
 
 const SPRING = { type: "spring", stiffness: 350, damping: 30 } as any;
 
+// lucide-react v1 dropped brand icons, so the YouTube mark is a local glyph.
+const YoutubeGlyph = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+  </svg>
+);
+
 export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, onModeChange, onLoadingStateChange, isSearchOnly, onSuccess, onPlaylistViewChange, onImportingStateChange, onHasContentChange, onErrorStateChange, isPlaying = false }: SearchTabProps) {
   const { token, user } = useAuth();
   const upload = useUpload();
@@ -251,16 +258,31 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   }, [mode, user?.id]);
 
-  useEffect(() => {
-    if (mode === "youtube" && youtubeConnected && !myYoutubePlaylists.length && !loadingPlaylists) {
-      setLoadingPlaylists(true);
-      youtubeApi.getUserYoutubePlaylists().then(data => {
-        setMyYoutubePlaylists(data || []);
-      }).finally(() => {
-        setLoadingPlaylists(false);
-      });
+  // Manual fetch — the library used to load itself the moment the search input
+  // opened, spending a YouTube API call on every open. The button beside Upload
+  // asks for it now. No connection check here: when disconnected that button
+  // renders as a connect link instead, and the panel below explains the state.
+  const [ytFetched, setYtFetched] = useState(false);
+  const loadYoutubePlaylists = useCallback(async () => {
+    if (loadingPlaylists) return;
+    setLoadingPlaylists(true);
+    try {
+      const data = await youtubeApi.getUserYoutubePlaylists();
+      setMyYoutubePlaylists(data || []);
+      setYtFetched(true);
+    } finally {
+      setLoadingPlaylists(false);
     }
-  }, [mode, youtubeConnected, myYoutubePlaylists.length, loadingPlaylists]);
+  }, [loadingPlaylists]);
+
+  // AddToPlaylistModal picks from the same library, so fetch it on demand now
+  // that opening search no longer does. ytFetched keeps an account with zero
+  // playlists from re-requesting on every render.
+  useEffect(() => {
+    if (trackForPlaylistAdd && youtubeConnected && !myYoutubePlaylists.length && !ytFetched) {
+      loadYoutubePlaylists();
+    }
+  }, [trackForPlaylistAdd, youtubeConnected, myYoutubePlaylists.length, ytFetched, loadYoutubePlaylists]);
 
   const isLoading = (mode !== "spotify" && isSearching) || loadingPlaylists || loadingPlaylist || importing || enqueuing !== null;
 
@@ -624,14 +646,19 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     setSpError(null);
     setEnqueuing(playlistId);
     try {
-      await enqueueAsync.run(playlistId, source);
+      const res = await enqueueAsync.run(playlistId, source);
+      // Server dedups, so replaying a queued playlist returns its existing first
+      // item — jump to it rather than counting on the enqueue to start playback.
+      if (res?.item?.id && roomId) {
+        getSocket().emit("playback:jumpTo", { roomId, trackId: res.item.id });
+      }
       onSuccess?.();
     } catch (e: any) {
       setSpError(e?.message || "Failed to add playlist to queue.");
     } finally {
       setEnqueuing(null);
     }
-  }, [enqueueAsync, onSuccess]);
+  }, [enqueueAsync, onSuccess, roomId]);
 
   const handlePlaylistClick = async (id: string) => {
     setSelectedPlaylistId(id);
@@ -906,6 +933,31 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             {!query && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
                 className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center', 'gap-0.5')}>
+
+                {/* YouTube: fetch my playlists, or connect if the account isn't linked */}
+                {mode === "youtube" && (
+                  youtubeConnected === false ? (
+                    <a
+                      href={youtubeApi.getConnectUrl()}
+                      title="YouTube not connected — tap to connect"
+                      aria-label="YouTube not connected, tap to connect"
+                      className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'transition-colors', 'text-amber-400/80', 'hover:text-amber-300')}
+                    >
+                      <YoutubeGlyph />
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={loadYoutubePlaylists}
+                      disabled={loadingPlaylists || youtubeConnected === null}
+                      title="Load my YouTube playlists"
+                      aria-label="Load my YouTube playlists"
+                      className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'transition-colors', 'disabled:opacity-40', 'text-white/50', 'hover:text-[#FF0000]')}
+                    >
+                      {loadingPlaylists ? <Loader2 className={cn('w-3.5', 'h-3.5', 'animate-spin')} /> : <YoutubeGlyph />}
+                    </button>
+                  )
+                )}
 
                 {/* Upload Button */}
                 <label className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'cursor-pointer', 'text-white/50', 'hover:text-white', 'transition-colors')} title="Upload Local File">
@@ -1185,7 +1237,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 ))}
 
                 {/* My Spotify Playlists */}
-                {displayedSpotifyPlaylists.map((r, idx) => {
+                {mode === "spotify" && displayedSpotifyPlaylists.map((r, idx) => {
                   const isThisPlaylistImporting = !!(
                     upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
@@ -1274,7 +1326,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 })}
 
                 {/* My YouTube Playlists */}
-                {displayedYoutubePlaylists.map((r, idx) => {
+                {mode === "youtube" && displayedYoutubePlaylists.map((r, idx) => {
                   const isThisPlaylistImporting = !!(
                     upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
@@ -1640,7 +1692,11 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     <div className={cn('w-12', 'h-12', 'bg-white/5', 'rounded-full', 'flex', 'items-center', 'justify-center', 'mb-4')}>
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-white/30"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                     </div>
-                    <div className={cn('text-white/50', 'text-sm')}>No playlists found in your YouTube library.</div>
+                    <div className={cn('text-white/50', 'text-sm')}>
+                      {ytFetched
+                        ? "No playlists found in your YouTube library."
+                        : "Tap the YouTube icon in the search bar to load your playlists."}
+                    </div>
                   </div>
                 )}
 

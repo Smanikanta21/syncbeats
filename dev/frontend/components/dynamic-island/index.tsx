@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
@@ -36,16 +36,66 @@ const SPRING = {
   mass: 0.9,
 };
 
+const EASE_OUT = [0.32, 0.72, 0, 1] as [number, number, number, number];
+const EASE_IN = [0.4, 0, 1, 1] as [number, number, number, number];
+
+// Damping ratio 24/(2*sqrt(300*1)) = 0.69 -> ~5% overshoot over ~0.35s, which is
+// what the real island does. At the old 320/26/0.8 the ratio was 0.81, so it
+// overshot 1.2% -- invisible, and the shape read as a plain ease instead.
 const SHAPE_SPRING = {
   type: "spring" as const,
-  stiffness: 240,
-  damping: 28,
-  mass: 0.8,
+  stiffness: 300,
+  damping: 24,
+  mass: 1,
 };
+
+// Apple morphs shape-first: the outgoing content blurs out fast, the black shape
+// springs while briefly empty, then the incoming content blurs in as the shape
+// settles. Fading both on one symmetric clock (what this was) reads as two
+// stacked layers cross-dissolving, not as one shape changing form.
+const contentMorph = (reduce: boolean) =>
+  reduce
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0, transition: { duration: 0.15 } },
+        transition: { duration: 0.2, ease: "easeOut" as const },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.92, filter: "blur(6px)" },
+        animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
+        exit: {
+          opacity: 0,
+          scale: 0.92,
+          filter: "blur(6px)",
+          transition: { duration: 0.12, ease: EASE_IN },
+        },
+        // Delay ~1/3 of the spring so the shape leads and the content catches up.
+        transition: { duration: 0.24, delay: 0.1, ease: EASE_OUT },
+      };
 
 const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
-const EXPANDED_HEIGHT = 410;
+// Extended grows while syncing: the sync bar adds a label row that clips at 44.
+// 62 = title (14) + gap (6) + label row (13) + gap (6) + bar (4) + py-2 (16).
+const EXTENDED_SYNC_HEIGHT = 62;
+
+// Island accent — one flat colour per theme. No gradients anywhere in the
+// island: progress fills, loading beams and badges all use this single hex.
+const GLOW_HEX: Record<string, string> = {
+  violet: "#a855f7",
+  cyan: "#06b6d4",
+  emerald: "#10b981",
+  amber: "#f59e0b",
+  dark: "#a855f7",
+  none: "#a855f7",
+};
+const STUCK_HEX = "#f59e0b";
+
+function useIslandAccent() {
+  const { settings } = useSettings();
+  return GLOW_HEX[settings.islandCustomizer?.glowColor || "none"] ?? GLOW_HEX.none;
+}
 
 // Room island states
 type IslandState = "pill" | "extended" | "expanded";
@@ -137,7 +187,7 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
   }, [isPlaying, audio, isVisible]);
 
   return (
-    <div className={cn('w-[80%]', 'mx-auto', 'mt-0.5', 'h-0.75', 'bg-white/20', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
+    <div className={cn('w-full', 'mt-1.5', 'h-0.75', 'bg-white/15', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
       <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
         style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
     </div>
@@ -156,6 +206,7 @@ const SyncProgressBar = ({
   incomingTrack,
   isReady,
   isStuck,
+  onSkip,
 }: {
   downloadProgress: number;
   deviceSyncProgress: Record<string, number>;
@@ -163,9 +214,10 @@ const SyncProgressBar = ({
   incomingTrack: { title: string; progress: number } | null;
   isReady: boolean;
   isStuck?: boolean;
+  onSkip?: () => void;
 }) => {
   const upload = useUpload();
-  const barRef = useRef<HTMLDivElement>(null);
+  const accent = useIslandAccent();
 
   // Compute overall sync progress only for active room participants
   const activeSocketIds = new Set((participants || []).map((p: any) => p.socketId));
@@ -192,31 +244,41 @@ const SyncProgressBar = ({
     : incomingTrack
     ? (incomingTrack.title ? `Receiving "${incomingTrack.title.substring(0, 18)}..."` : "Receiving Track")
     : isStuck
-    ? "Stuck (0%) • Tap to skip"
+    ? "Stuck • Tap to skip"
     : !isReady
     ? "Downloading Track"
     : hasSync && avgSync < 100
     ? "Syncing Devices"
     : "Synced";
 
-  const color = isStuck
-    ? "from-amber-600 to-red-500 animate-pulse"
-    : "from-violet-500 via-emerald-500 to-emerald-400";
+  const canSkip = !!(isStuck && onSkip);
 
   return (
-    <div className={cn('flex', 'flex-col', 'justify-center', 'gap-1', 'w-full')}>
-      <div className={cn('flex', 'items-center', 'justify-between')}>
-        <span className={`text-[9px] font-black uppercase tracking-widest ${isStuck ? "text-amber-400 flex items-center gap-1" : "text-white/40"}`}>
-          {isStuck && <AlertTriangle className={cn('w-3', 'h-3', 'text-amber-400', 'shrink-0', 'animate-bounce')} />}
-          {label}
+    <div
+      className={cn('flex', 'flex-col', 'justify-center', 'gap-1.5', 'w-full', canSkip && 'cursor-pointer pointer-events-auto')}
+      onPointerDown={canSkip ? e => e.stopPropagation() : undefined}
+      onClick={canSkip ? e => { e.stopPropagation(); onSkip!(); } : undefined}
+      title={canSkip ? "Track is stuck. Tap to skip." : undefined}
+    >
+      <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
+        <span
+          className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'flex', 'items-center', 'gap-1', 'min-w-0')}
+          style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.45)" }}
+        >
+          {isStuck && <AlertTriangle className={cn('w-3', 'h-3', 'shrink-0', 'animate-bounce')} />}
+          <span className="truncate">{label}</span>
         </span>
-        <span className={`text-[10px] font-black ${isStuck ? "text-amber-400 font-bold" : "text-white/60"}`}>{progress}%</span>
+        <span
+          className={cn('text-[10px]', 'font-black', 'tabular-nums', 'shrink-0')}
+          style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.6)" }}
+        >
+          {progress}%
+        </span>
       </div>
-      <div className={cn('w-full', 'h-1.5', 'rounded-full', 'bg-white/10', 'overflow-hidden')}>
+      <div className={cn('w-full', 'h-1', 'rounded-full', 'bg-white/15', 'overflow-hidden')}>
         <div
-          ref={barRef}
-          className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`}
-          style={{ width: `${progress}%` }}
+          className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out', isStuck && 'animate-pulse')}
+          style={{ width: `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
         />
       </div>
     </div>
@@ -302,6 +364,7 @@ const PlayerTab = ({
   const thumbnailUrl = getTrackThumbnail(trackUrl, 'hq');
   const trackInitials = cleanTrackTitle(trackTitle).substring(0, 2).toUpperCase();
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const accent = useIslandAccent();
 
   const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
@@ -311,7 +374,7 @@ const PlayerTab = ({
       {/* Track header */}
       <div className={cn('flex', 'items-start', 'gap-3', 'sm:gap-4', 'w-full')}>
         <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
-          thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-linear-to-br from-white/10 to-white/5 border-white/10"
+          thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-white/10 border-white/10"
         }`}>
           {thumbnailUrl
             ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
@@ -353,8 +416,8 @@ const PlayerTab = ({
                       <div key={p.socketId} className={cn('flex', 'items-center', 'gap-2', 'bg-white/10', 'rounded-full', 'pl-2.5', 'pr-3', 'py-1.5')}>
                         <Loader2 className={cn('w-3', 'h-3', 'text-white/50', 'animate-spin', 'shrink-0')} />
                         <span className={cn('text-[10px]', 'font-bold', 'text-white/70', 'uppercase', 'tracking-widest', 'whitespace-nowrap')}>{p.displayName}</span>
-                        <div className={cn('w-12', 'h-1.5', 'bg-black/40', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
-                          <div className={cn('h-full', 'bg-white/80', 'rounded-full', 'transition-all', 'duration-300')} style={{ width: `${progress}%` }} />
+                        <div className={cn('w-12', 'h-1', 'bg-black/40', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
+                          <div className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out')} style={{ width: `${progress}%`, backgroundColor: accent }} />
                         </div>
                         <span className={cn('text-[9px]', 'font-black', 'text-white/40', 'tabular-nums')}>{progress}%</span>
                       </div>
@@ -381,9 +444,9 @@ const PlayerTab = ({
             : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
-            <button onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
+            <button type="button" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
               className={cn('p-1.5', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'bg-white/5', 'hover:bg-white/20', 'group')}
-              title="Your Profile">
+              aria-label="Your profile" title="Your Profile">
               <User className={cn('w-4', 'h-4', 'text-white/80', 'group-hover:text-white', 'transition-colors')} />
             </button>
           )}
@@ -393,13 +456,13 @@ const PlayerTab = ({
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
       {/* Controls */}
-      <div className={cn('flex', 'items-center', 'justify-between', 'w-full')}>
-        <div className={cn('flex', 'items-center', 'gap-2')}>
-          <button onClick={e => { e.stopPropagation(); onTabChange("network"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+      <div className={cn('flex', 'items-center', 'justify-between', 'w-full', 'gap-2')}>
+        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
+          <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             <Activity className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
           </button>
           {isRoom && isHost && isPrivate && (
-            <button onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'relative')}>
+            <button type="button" aria-label={`Join requests${pendingRequestsCount > 0 ? ` (${pendingRequestsCount} pending)` : ""}`} onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'relative')}>
               <Users className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
               {pendingRequestsCount > 0 && (
                 <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-3', 'bg-red-500', 'rounded-full', 'border-2', 'border-background', 'animate-pulse')} />
@@ -409,21 +472,21 @@ const PlayerTab = ({
         </div>
 
         <div className={cn('flex', 'items-center', 'justify-center', 'gap-6', 'sm:gap-10')}>
-          <button onClick={e => { e.stopPropagation(); onPrev(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             <SkipBack className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
           </button>
-          <button onClick={e => { e.stopPropagation(); onToggle(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             {effectivePlaying
               ? <Pause className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'text-white')} fill="currentColor" />
               : <Play className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'ml-1', 'text-white')} fill="currentColor" />}
           </button>
-          <button onClick={e => { e.stopPropagation(); onNext(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             <SkipForward className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
           </button>
         </div>
 
         <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
-          <button onClick={e => { e.stopPropagation(); onTabChange("search"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label="Search tracks" onClick={e => { e.stopPropagation(); onTabChange("search"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
             <Search className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
           </button>
         </div>
@@ -439,11 +502,13 @@ const PlayerTab = ({
 const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats: any; audio: any }) => {
   const history = netStats.history || [];
   const maxLat = Math.max(...history.map((h: any) => h.latency), 100);
+  const accent = useIslandAccent();
 
   return (
-    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'p-4', 'sm:p-6', 'pb-2')}>
-      {/* Header */}     <div className={cn('flex', 'items-center', 'gap-3', 'mb-6', 'shrink-0')}>
-        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors')}>
+    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'px-5', 'sm:px-6', 'pt-4', 'pb-5')}>
+      {/* Header */}
+      <div className={cn('flex', 'items-center', 'gap-3', 'mb-6', 'shrink-0')}>
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors', 'pointer-events-auto')}>
           <ChevronLeft className={cn('w-6', 'h-6')} />
         </button>
         <h3 className={cn('text-white', 'font-bold', 'tracking-widest', 'uppercase')}>Network Health</h3>
@@ -467,18 +532,19 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
             return <div key={i} className={cn('flex-1', 'bg-white/40', 'rounded-sm', 'transition-all', 'duration-300')} style={{ height: `${hPct}%` }} />;
           })}
         </div>
-        <div className={cn('mt-4', 'flex', 'flex-col', 'gap-2')}>
+        <div className={cn('flex', 'flex-col', 'gap-2')}>
           <div className={cn('flex', 'justify-between', 'items-center')}>
             <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Sync Correction</span>
-            <span className={cn('text-white', 'font-bold', 'text-sm')}>{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
+            <span className={cn('text-white', 'font-bold', 'text-sm', 'tabular-nums')}>{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
           <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
+            aria-label="Manual sync correction in seconds"
             onChange={e => audio.setManualLatency(Number(e.target.value))}
-            className={cn('w-full', 'h-2', 'rounded-full', 'appearance-none', 'outline-none', 'bg-white/20', 'cursor-pointer')}
-            style={{ background: `linear-gradient(to right, rgba(255,255,255,0.8) ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}%)` }} />
+            className={cn('w-full', 'h-2', 'rounded-full', 'appearance-none', 'outline-none', 'bg-white/20', 'cursor-pointer', 'pointer-events-auto')}
+            style={{ background: `linear-gradient(to right, ${accent} 0 ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}% 100%)` }} />
           <div className={cn('flex', 'items-center', 'justify-between', 'mt-1')}>
             <p className={cn('text-[10px]', 'text-white/40')}>Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
-            <button onClick={() => audio.setManualLatency(0)} className={cn('px-2', 'py-1', 'rounded', 'bg-white/10', 'hover:bg-white/20', 'text-[10px]', 'font-bold', 'text-white', 'transition-colors')}>Auto Sync</button>
+            <button type="button" onClick={() => audio.setManualLatency(0)} className={cn('px-2', 'py-1', 'rounded', 'bg-white/10', 'hover:bg-white/20', 'text-[10px]', 'font-bold', 'text-white', 'transition-colors', 'pointer-events-auto')}>Auto Sync</button>
           </div>
         </div>
       </div>
@@ -532,7 +598,7 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
   return (
     <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
       <div className={cn('flex', 'items-center', 'gap-2', 'mb-3', 'shrink-0')}>
-        <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
           <ChevronLeft className={cn('w-4', 'h-4', 'text-white/70')} />
         </button>
         <span className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/60')}>Invite Friends</span>
@@ -622,7 +688,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
 }) => (
   <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-2', 'pb-4')}>
     <div className={cn('flex', 'items-center', 'justify-between', 'px-6', 'mb-4')}>
-      <button onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
+      <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
         <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
       </button>
       <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Join Requests ({requests.length})</span>
@@ -683,34 +749,31 @@ const RoomPill = ({
   }
 
   return (
-    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-2', 'gap-2')}>
+    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-2.5', 'gap-2.5')}>
       {/* Tiny thumbnail or disc */}
-      <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
+      <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
         {showAlbumArt && thumbUrl
           ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
-      {/* Dynamic Right Side: Seek | EQ | Pause */}
-      <div 
-        className={cn('flex', 'items-center', 'gap-1', 'flex-1', 'justify-center', 'pr-1', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+      {/* Dynamic Right Side: Seek | Vol | EQ | Play */}
+      <div
+        className={cn('flex', 'items-center', 'gap-1', 'flex-1', 'justify-center', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
         onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
         onPointerDown={(e) => e.stopPropagation()}
+        role="button"
+        aria-label={effectivePlaying ? "Pause" : "Play"}
       >
         {volIndicator ? (
           <>
             {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <VolumeX className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white')}>{volIndicator.text}</span>
+            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{volIndicator.text}</span>
           </>
         ) : seekIndicator ? (
           <>
             {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <Rewind className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white')}>{seekIndicator.text}</span>
+            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{seekIndicator.text}</span>
           </>
-        ) : isSyncing ? (
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'bg-foreground/10', 'px-2', 'py-0.5', 'rounded-full', 'border', 'border-foreground/20')}>
-            <Loader2 className={cn('w-3', 'h-3', 'text-foreground/70', 'animate-spin', 'shrink-0')} />
-            <span className={cn('text-[9px]', 'font-black', 'text-foreground/70', 'uppercase', 'tracking-widest')}>Buffering</span>
-          </div>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
@@ -794,15 +857,17 @@ const RoomExtendedPill = ({
 }) => {
   const audio = useAudio();
   const upload = useUpload();
+  const accent = useIslandAccent();
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
   const title = cleanTrackTitle(trackTitle);
 
   // If there's an active audio error (decoding failed / blocked track), display error alert in Dynamic Island
   if (audio.error) {
     return (
-      <div 
-        className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3.5', 'gap-2', 'bg-red-950/90', 'border', 'border-red-500/50', 'rounded-full', 'text-red-200', 'cursor-pointer', 'pointer-events-auto', 'shadow-[0_0_25px_rgba(239,68,68,0.5)]')}
-        onClick={() => onNextTrack?.()}
+      <div
+        className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2', 'bg-red-950/90', 'border', 'border-red-500/50', 'rounded-full', 'text-red-200', 'cursor-pointer', 'pointer-events-auto', 'shadow-[0_0_25px_rgba(239,68,68,0.5)]')}
+        onPointerDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onNextTrack?.(); }}
         title="Playback Error. Tap to skip track."
       >
         <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0', 'flex-1')}>
@@ -831,25 +896,25 @@ const RoomExtendedPill = ({
 
   return (
     <>
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-2', 'gap-2')}>
+      <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-3', 'gap-2.5')}>
       {/* LEFT half: track info + playback progress */}
-      <div className={cn('flex', 'items-center', 'gap-2', 'flex-1', 'min-w-0', 'py-1.5')}>
+      <div className={cn('flex', 'items-center', 'gap-2.5', 'flex-1', 'min-w-0', 'py-2')}>
         {/* Thumbnail */}
-        <div className={cn('w-7', 'h-7', 'rounded-lg', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
+        <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
           {thumbUrl
             ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
-            : isSyncing 
+            : isSyncing
             ? <Loader2 className={`w-4 h-4 text-white/50 animate-spin`} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
         {/* Title + progress line */}
-        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0')}>
+        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pr-0.5')}>
           <div className={cn('text-white', 'text-[11px]', 'font-semibold', 'truncate', 'leading-tight')}>
             {title ? title.split(/\s+/).slice(0, 5).join(" ") : (isSyncing ? "Syncing..." : "No track")}
           </div>
           {isSyncing ? (
-            <div className={cn('mt-0.5', 'w-full')}>
+            <div className={cn('mt-1.5', 'w-full')}>
               <SyncProgressBar
                 downloadProgress={downloadProgress}
                 deviceSyncProgress={deviceSyncProgress}
@@ -857,6 +922,7 @@ const RoomExtendedPill = ({
                 incomingTrack={incomingTrack}
                 isReady={isReady}
                 isStuck={isStuck}
+                onSkip={onNextTrack}
               />
             </div>
           ) : (
@@ -865,10 +931,12 @@ const RoomExtendedPill = ({
         </div>
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
-        <div 
-          className={cn('flex', 'items-center', 'gap-1', 'shrink-0', 'px-2', 'rounded-full', 'py-0.5', 'mr-1', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+        <div
+          className={cn('flex', 'items-center', 'justify-center', 'gap-1', 'shrink-0', 'min-w-8', 'rounded-full', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
           onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
           onPointerDown={(e) => e.stopPropagation()}
+          role="button"
+          aria-label={effectivePlaying ? "Pause" : "Play"}
         >
           {volIndicator ? (
             <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
@@ -883,7 +951,7 @@ const RoomExtendedPill = ({
           ) : effectivePlaying ? (
             <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
           ) : (
-            <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80', 'shrink-0', 'mx-1')} />
+            <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80', 'shrink-0')} />
           )}
         </div>
       </div>
@@ -892,12 +960,14 @@ const RoomExtendedPill = ({
       {isHost && isPrivate && pendingRequestsCount > 0 && (
         <>
           {/* Divider */}
-          <div className={cn('w-px', 'bg-white/10', 'self-stretch', 'my-1.5', 'shrink-0')} />
-          <div className={cn('flex', 'items-center', 'py-1.5', 'px-1', 'shrink-0')}>
+          <div className={cn('w-px', 'bg-white/10', 'self-stretch', 'my-2.5', 'shrink-0')} />
+          <div className={cn('flex', 'items-center', 'py-2', 'shrink-0')}>
             <button
+              type="button"
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onRequestsClick(); }}
-              className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-1', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'transition-colors', 'text-[10px]', 'font-black', 'pointer-events-auto', 'whitespace-nowrap')}
+              aria-label={`${pendingRequestsCount} pending join requests`}
+              className={cn('flex', 'items-center', 'gap-1.5', 'px-2.5', 'py-1', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'transition-colors', 'text-[10px]', 'font-black', 'pointer-events-auto', 'whitespace-nowrap')}
             >
               <Users className={cn('w-3', 'h-3')} />
               {pendingRequestsCount} pending
@@ -908,10 +978,10 @@ const RoomExtendedPill = ({
       </div>
       {/* Prefetch progress bar — thin strip at very bottom */}
       {isPrefetching && prefetchTitle && (
-        <div className={cn('absolute', 'bottom-0', 'left-0', 'right-0', 'h-[2px]', 'rounded-b-full', 'overflow-hidden', 'bg-white/5', 'pointer-events-none')}>
+        <div className={cn('absolute', 'bottom-0', 'left-0', 'right-0', 'h-[2px]', 'rounded-b-full', 'overflow-hidden', 'bg-white/10', 'pointer-events-none')}>
           <div
-            className={cn('h-full', 'bg-gradient-to-r', 'from-violet-500', 'to-blue-500', 'transition-all', 'duration-500')}
-            style={{ width: `${prefetchProgress}%` }}
+            className={cn('h-full', 'transition-[width]', 'duration-300', 'ease-out')}
+            style={{ width: `${prefetchProgress}%`, backgroundColor: accent }}
           />
         </div>
       )}
@@ -929,7 +999,7 @@ export function DynamicIsland() {
   const audio = useAudio();
   const upload = useUpload();
   const {
-    clockOffset, isRoomPlaying, participants: roomParticipants, pendingPlay,
+    isRoomPlaying, participants: roomParticipants, pendingPlay,
     incomingTrack, pendingRequests, hostId, joinStatus, isPrivate, deviceSyncProgress,
     play, pause, seek, nextTrack, prevTrack, prefetch,
   } = useSyncInfo();
@@ -946,22 +1016,13 @@ export function DynamicIsland() {
       ([sid, p]) => activeSocketIds.has(sid) && p < 100
     );
   }, [deviceSyncProgress, activeSocketIds]);
-  const [isHoverLocked, setIsHoverLocked] = useState(false);
+  const reduceMotion = useReducedMotion();
   const { settings } = useSettings();
   const islandCustomizer = settings.islandCustomizer || { glowColor: "violet", autoShrinkDelaySec: 6, showAlbumArt: true };
 
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 
-  const activeGlowKey = islandCustomizer.glowColor || "none";
-  const glowHexMap: Record<string, string> = {
-    violet: "#a855f7",
-    cyan: "#06b6d4",
-    emerald: "#10b981",
-    amber: "#f59e0b",
-    dark: "#a855f7",
-    none: "#a855f7",
-  };
-  const activeGlowColorHex = glowHexMap[activeGlowKey] || "#a855f7";
+  const activeGlowColorHex = useIslandAccent();
 
   const glowClassMap = {
     violet: "border border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.45)]",
@@ -1153,7 +1214,6 @@ export function DynamicIsland() {
   const lastTapRef = useRef<number>(0);
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const scrubTimeRef = useRef<number | null>(null);
-  const [isSpotifyPrivateError, setIsSpotifyPrivateError] = useState(false);
   useEffect(() => { scrubTimeRef.current = scrubTime; }, [scrubTime]);
 
   const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
@@ -1566,6 +1626,9 @@ export function DynamicIsland() {
   // Extended dimensions (iOS live-activity style)
   const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
   const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
+  // While syncing the extended pill carries a second row (sync label + bar), so
+  // it needs the extra height or the bar clips against the bottom edge.
+  const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
   const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
 
   // ── Auto-sized height: drive island size from actual rendered content ─────
@@ -1577,8 +1640,6 @@ export function DynamicIsland() {
 
   // Current animated dimensions
   // When radial navigator active: expand to 265px
-  // When syncing: use a compact width (spinner + progress bar only, no track info)
-  const syncingExtendedWidth = Math.min(340, (windowWidth > 0 ? windowWidth : 380) - 32);
   const dropZoneSize = windowWidth > 0 ? Math.min(240, windowWidth - 64) : 240;
   const currentWidth = wiggle || isSwallowing
     ? dropZoneSize
@@ -1589,8 +1650,15 @@ export function DynamicIsland() {
     : isExtended_room
     ? extendedWidth
     : pillWidth;
-  const currentHeight = wiggle || isSwallowing ? dropZoneSize : (isExpanded_room ? expandedHeight : pillHeight);
-  const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : pillHeight / 2);
+  const currentHeight = wiggle || isSwallowing
+    ? dropZoneSize
+    : isExpanded_room
+    ? expandedHeight
+    : isExtended_room
+    ? extendedHeight
+    : pillHeight;
+  // Stay a true pill in every collapsed state — radius tracks the live height.
+  const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : currentHeight / 2);
 
   const handlePointerDown_room = () => {
     resetInactivityTimer();
@@ -1651,7 +1719,7 @@ export function DynamicIsland() {
       <motion.div
         className={cn('fixed', 'inset-0', 'z-40', 'pointer-events-none')}
         animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
-        transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+        transition={{ duration: 0.35, ease: EASE_OUT }}
         style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
         onClick={() => setIslandState("pill")}
       />
@@ -1716,9 +1784,9 @@ export function DynamicIsland() {
           }}
           initial={false}
           transition={{
-            width: SHAPE_SPRING,
-            height: SHAPE_SPRING,
-            borderRadius: SHAPE_SPRING,
+            width: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
+            height: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
+            borderRadius: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
             scale: isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
             x: wiggle && !isSwallowing ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30 }
           }}
@@ -1727,7 +1795,7 @@ export function DynamicIsland() {
             height: currentHeight,
             borderRadius: currentRadius,
             scale: isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
-            x: wiggle && !isSwallowing ? [0, -5, 5, -5, 5, -5, 5, 0] : 0
+            x: wiggle && !isSwallowing && !reduceMotion ? [0, -5, 5, -5, 5, -5, 5, 0] : 0
           }}
           style={{
             backgroundColor: "#000000",
@@ -1745,7 +1813,7 @@ export function DynamicIsland() {
           }}
           className={cn("pointer-events-auto select-none no-touch-select", currentGlowClass)}
         >
-          {/* Rotating Border Light Beam with Trailing Glow */}
+          {/* Rotating Border Light Beam — one flat accent arc, no colour fade */}
           <AnimatePresence>
             {isSearchLoading && (
               <motion.div
@@ -1762,17 +1830,15 @@ export function DynamicIsland() {
                 }}
               >
                 <motion.div
-                  animate={{ rotate: 360 }}
+                  animate={reduceMotion ? { rotate: 0 } : { rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
                   className={cn('w-[300%]', 'h-[300%]', '-top-[100%]', '-left-[100%]', 'absolute')}
                   style={{
-                    background: `conic-gradient(from 0deg at 50% 50%, 
-                      transparent 0deg, 
-                      transparent 220deg, 
-                      ${activeGlowColorHex}22 260deg, 
-                      ${activeGlowColorHex}99 320deg, 
-                      ${activeGlowColorHex} 355deg, 
-                      transparent 360deg
+                    background: `conic-gradient(from 0deg at 50% 50%,
+                      transparent 0deg,
+                      transparent 250deg,
+                      ${activeGlowColorHex} 250deg,
+                      ${activeGlowColorHex} 360deg
                     )`,
                     filter: `drop-shadow(0 0 6px ${activeGlowColorHex}) drop-shadow(0 0 14px ${activeGlowColorHex})`,
                   }}
@@ -1802,10 +1868,7 @@ export function DynamicIsland() {
             {islandState === "pill" && !wiggle && (
               <motion.div
                 key="pill-content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                {...contentMorph(reduceMotion)}
                 className={cn('absolute', 'inset-0')}
               >
                 <RoomPill
@@ -1829,10 +1892,7 @@ export function DynamicIsland() {
             {islandState === "extended" && (
               <motion.div
                 key="extended-content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, delay: 0.05 }}
+                {...contentMorph(reduceMotion)}
                 className={cn('absolute', 'inset-0')}
               >
                 <RoomExtendedPill
@@ -1866,10 +1926,7 @@ export function DynamicIsland() {
             {isExpanded_room && !wiggle && (
               <motion.div
                 key="expanded-tab-container"
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ opacity: { duration: 0.2 }, scale: { ...SPRING, stiffness: 200 } }}
+                {...contentMorph(reduceMotion)}
                 className={cn('w-full', 'relative', 'pointer-events-auto')}
               >
                 {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
@@ -1993,9 +2050,7 @@ export function DynamicIsland() {
             )}
           </AnimatePresence>
 
-          {/* Gloss overlay */}
-          <div className={cn('absolute', 'inset-0', 'rounded-[inherit]', 'pointer-events-none')}
-            style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 60%)" }} />
+        {/* Gloss overlay removed — the island stays flat black, no gradients. */}
         </motion.div>
 
         {/* ── Prefetch notification pill (below island, fades in/out) ── */}
@@ -2006,28 +2061,28 @@ export function DynamicIsland() {
               initial={{ opacity: 0, y: -6, scale: 0.94 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className={cn('mt-2', 'pointer-events-none')}
+              transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : { type: "spring", stiffness: 300, damping: 28 }}
+              className={cn('mt-2.5', 'pointer-events-none')}
             >
-              <div className={cn('flex', 'items-center', 'gap-2', 'bg-black/80', 'backdrop-blur-md', 'border', 'border-white/10', 'rounded-full', 'px-3', 'py-1.5', 'shadow-xl')}>
-                {/* Spinning download icon */}
+              <div className={cn('flex', 'items-center', 'gap-2', 'bg-black/80', 'backdrop-blur-md', 'border', 'border-white/10', 'rounded-full', 'pl-3', 'pr-3.5', 'py-1.5', 'shadow-xl')}>
+                {/* Determinate download ring */}
                 <div className={cn('relative', 'w-3.5', 'h-3.5', 'shrink-0')}>
                   <svg viewBox="0 0 14 14" className={cn('w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
                     <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
                     <circle
                       cx="7" cy="7" r="5.5" fill="none"
-                      stroke="rgba(139,92,246,0.9)" strokeWidth="1.5"
+                      stroke={activeGlowColorHex} strokeWidth="1.5"
                       strokeDasharray={`${2 * Math.PI * 5.5}`}
                       strokeDashoffset={`${2 * Math.PI * 5.5 * (1 - prefetch.nextTrackProgress / 100)}`}
                       strokeLinecap="round"
-                      style={{ transition: "stroke-dashoffset 0.4s ease" }}
+                      style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
                     />
                   </svg>
                 </div>
                 <span className={cn('text-[10px]', 'font-semibold', 'text-white/60', 'truncate', 'max-w-[140px]')}>
                   Loading <span className="text-white/90">{prefetch.nextTrackTitle.split(/\s+/).slice(0, 4).join(" ")}</span>
                 </span>
-                <span className={cn('text-[9px]', 'font-black', 'text-violet-400', 'shrink-0')}>{prefetch.nextTrackProgress}%</span>
+                <span className={cn('text-[9px]', 'font-black', 'tabular-nums', 'shrink-0')} style={{ color: activeGlowColorHex }}>{prefetch.nextTrackProgress}%</span>
               </div>
             </motion.div>
           )}

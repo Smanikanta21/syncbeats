@@ -4,7 +4,7 @@ import { RoomRepository } from '../db/RoomRepository';
 import { eventBus, EVENTS } from '../events/EventBus';
 import { UserRepository } from '../auth/UserRepository';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition, RepeatMode
 } from '../types';
 
 /**
@@ -41,9 +41,9 @@ function sanitiseSpatialPosition(raw: unknown): SpatialPosition | null {
 }
 
 export class SocketHandler {
-  private nextDebounce = new Map<string, number>();
-  private endedDebounce = new Map<string, number>();
   private userRepo: UserRepository = new UserRepository();
+  /** Coalesces the write-behind queue save; a burst of reorders costs one UPDATE. */
+
 
   constructor(
     private io:          Server,
@@ -95,9 +95,6 @@ export class SocketHandler {
       this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
 
-    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
-      this.io.to(roomId).emit('room:queueChanged', { queue });
-    });
 
     eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
       this.io.to(payload.roomId).emit('playback:schedule', payload);
@@ -107,6 +104,7 @@ export class SocketHandler {
       this.io.to(payload.roomId).emit('playback:pause', payload);
     });
   }
+
 
   register(socket: Socket): void {
     console.log(`[WS] connected: ${socket.id}`);
@@ -145,6 +143,7 @@ export class SocketHandler {
               playbackState: dbRoom.playback_state,
               positionMs:    dbRoom.position_ms,
               createdAt:     dbRoom.created_at,
+              queue:         dbRoom.queue,
             });
           }
         }
@@ -323,6 +322,46 @@ export class SocketHandler {
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
+    });
+
+    // ── Queue ────────────────────────────────────────────────────────────
+    //
+    // next/prev are deliberately not debounced — hammering next should skip
+    // several tracks. Only `playback:ended` needs a guard, and that lives in
+    // RoomQueue.shouldAdvance() where the current track is known.
+
+    socket.on('playback:next', ({ roomId }: { roomId: string }) => {
+      this.roomManager.get(roomId)?.nextTrack(true);
+    });
+
+    socket.on('playback:prev', ({ roomId }: { roomId: string }) => {
+      this.roomManager.get(roomId)?.prevTrack(true);
+    });
+
+    socket.on('playback:jumpTo', ({ roomId, trackId }: { roomId: string; trackId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room || !trackId) return;
+      if (!room.setCurrentItem(trackId, true)) {
+        socket.emit('error', { message: 'That track is no longer in the queue' });
+      }
+    });
+
+    // Every device fires this at the end of a track; Room advances at most once.
+    socket.on('playback:ended', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
+      this.roomManager.get(roomId)?.handleTrackEnded(trackUrl);
+    });
+
+    socket.on('room:removeFromQueue', ({ roomId, itemId }: { roomId: string; itemId: string }) => {
+      this.roomManager.get(roomId)?.removeFromQueue(itemId);
+    });
+
+    socket.on('room:toggleShuffle', ({ roomId, shuffle }: { roomId: string; shuffle: boolean }) => {
+      this.roomManager.get(roomId)?.setShuffle(!!shuffle);
+    });
+
+    socket.on('room:toggleRepeat', ({ roomId, repeatMode }: { roomId: string; repeatMode: RepeatMode }) => {
+      if (!['off', 'all', 'track'].includes(repeatMode)) return;
+      this.roomManager.get(roomId)?.setRepeatMode(repeatMode);
     });
 
 

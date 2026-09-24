@@ -198,7 +198,7 @@ export function HowItWorksScroll() {
       )}
 
       {/* Sticky Fullscreen Viewport for both Mobile and Desktop */}
-      <div className="sticky top-0 h-screen w-full flex flex-col items-center justify-between py-6 md:py-10 px-4 sm:px-8 lg:px-16 overflow-hidden">
+      <div className="sticky top-0 h-dvh w-full flex flex-col items-center justify-between py-6 md:py-10 px-4 sm:px-8 lg:px-16 overflow-hidden">
         
         {/* Section Title Header */}
         <div className="text-center flex flex-col items-center max-w-3xl z-20 mt-2 md:mt-4 shrink-0">

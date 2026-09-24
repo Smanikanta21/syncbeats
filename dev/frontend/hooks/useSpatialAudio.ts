@@ -32,7 +32,6 @@ import {
   MIN_ELEVATION,
   MIN_RADIUS,
 } from '../lib/spatial/geometry';
-import { DEFAULT_MOTION, type MotionConfig } from '../lib/spatial/motion';
 import {
   buildSpatialLayout,
   seatKey,
@@ -85,8 +84,6 @@ interface UseSpatialAudioReturn {
   /** Pointer-up: clears the preview and commits to state */
   commitPosition: (key: string, local: SpatialPosition) => void;
   resetLayout: () => void;
-  motion: MotionConfig;
-  setMotion: (patch: Partial<MotionConfig>) => void;
   engine: SpatialAudioEngine;
   engineState: AudioContextState | 'uninitialised';
   resumeAudio: () => Promise<void>;
@@ -116,8 +113,14 @@ export function useSpatialAudio({
   const engine = SpatialAudioEngine.getInstance();
   const { subscribeToBeat } = useBeatEngine();
 
+  /**
+   * ponytail: a remote `spatial:update` re-renders the whole room page at the
+   * sender's drag rate (~20Hz), because `positions` has to live here — the panel
+   * is mounted at two call sites, so pushing the hook down would double the
+   * socket handlers and the default-position claims. Fix by hoisting the panel
+   * to one call site first, if remote drags ever feel janky.
+   */
   const [positions, setPositions] = useState<Record<string, SpatialPosition>>({});
-  const [motion, setMotionState] = useState<MotionConfig>({ ...DEFAULT_MOTION });
   const [engineState, setEngineState] = useState<AudioContextState | 'uninitialised'>('uninitialised');
 
   const initialisedRef = useRef(false);
@@ -180,24 +183,27 @@ export function useSpatialAudio({
   }, [engine, enabled]);
 
   useEffect(() => {
-    engine.setMotion(motion);
-  }, [engine, motion]);
-
-  useEffect(() => {
     engine.setRunning(isPlaying && enabled);
   }, [engine, isPlaying, enabled]);
 
-  // Beat-driven jumps. The engine ignores these outside 'beat' mode, and
-  // resolves the target from the synced clock so all devices land together.
-  useEffect(() => {
-    if (motion.mode !== 'beat') return;
-    return subscribeToBeat('bass', () => engine.onBeat());
-  }, [engine, motion.mode, subscribeToBeat]);
+  // Beat-driven jumps. The engine ignores these outside 'beat' mode, so there is
+  // nothing to gate on here — and gating would mean resubscribing on every mode
+  // change, which the panel now owns.
+  useEffect(() => subscribeToBeat('bass', () => engine.onBeat()), [engine, subscribeToBeat]);
 
   // ── Audio graph splice, once the context is unlocked ────────────────────────
 
   useEffect(() => {
-    if (initialisedRef.current || !enabled) return;
+    if (!enabled) {
+      // Unsplice rather than just bypassing. A ConvolverNode keeps convolving
+      // with its output at zero, so an "off" toggle that only muted the sends
+      // left the most expensive node in the graph running. `init` re-splices.
+      engine.dispose();
+      initialisedRef.current = false;
+      setEngineState('uninitialised');
+      return;
+    }
+    if (initialisedRef.current) return;
     if (!audioCtx || !eqOutputNode || !analyserNode) return;
 
     try {
@@ -390,8 +396,6 @@ export function useSpatialAudio({
     previewPosition,
     commitPosition,
     resetLayout,
-    motion,
-    setMotion,
     engine,
     engineState,
     resumeAudio,

@@ -15,6 +15,7 @@ import {
   GAIN_FLOOR,
   MAX_ELEVATION,
   MAX_RADIUS,
+  MIN_RADIUS,
   computeSpeakerGains,
   polarToCartesian,
   type Speaker,
@@ -66,6 +67,21 @@ for (const p of PLANES) {
   assert.ok(corner.radius <= MAX_RADIUS + 1e-9, `${p.id}: radius escaped`);
   assert.ok(Math.abs(corner.elevation) <= MAX_ELEVATION + 1e-9, `${p.id}: elevation escaped`);
 }
+
+// Dragging through the centre of a pad: `atan2` of a near-zero vector swings
+// through every bearing in two frames, which snapped the sound between
+// speakers. The bearing must hold and the radius must clamp up instead.
+const held = Math.PI / 3;
+const centreDrag = toPosition({ x: 1e-9, y: 0, z: -1e-9 }, held);
+assert.equal(centreDrag.angle, held, 'near-origin should keep the fallback angle');
+assert.ok(Math.abs(centreDrag.radius - MIN_RADIUS) < 1e-9, 'near-origin should clamp to MIN_RADIUS');
+
+// Exactly at the origin — the degenerate case the drag actually passes through.
+assert.equal(toPosition({ x: 0, y: 0, z: 0 }, held).angle, held, 'origin should keep the fallback angle');
+
+// Outside the dead zone the real bearing wins, fallback or no fallback.
+const real = toPosition(polarToCartesian({ angle: 0, radius: 2, elevation: 0 }), held);
+assert.ok(Math.abs(real.angle) < 1e-9, 'beyond MIN_RADIUS the measured angle should win');
 
 // ── Spread / divergence ─────────────────────────────────────────────────────
 

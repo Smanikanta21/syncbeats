@@ -52,6 +52,8 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
 
   const handleRef = useRef<HTMLDivElement>(null);
   const vecRef = useRef<Vec3>({ x: 0, y: 0, z: 0 });
+  /** Last committed bearing, held while the vector passes through the origin. */
+  const angleRef = useRef(0);
   const draggingRef = useRef<number | null>(null);
 
   const paint = useCallback(() => {
@@ -67,6 +69,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
   useEffect(() => {
     if (draggingRef.current !== null) return;
     vecRef.current = selected ? polarToCartesian(selected.local) : { x: 0, y: 0, z: 0 };
+    angleRef.current = selected?.local.angle ?? 0;
     paint();
   }, [selected, paint]);
 
@@ -74,9 +77,15 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
     const r = pad.getBoundingClientRect();
     const u = clamp(((clientX - r.left) / r.width) * 2 - 1, -1, 1);
     const w = clamp(((clientY - r.top) / r.height) * 2 - 1, -1, 1);
-    vecRef.current = plane.fromPad(u, w, vecRef.current);
+
+    const position = toPosition(plane.fromPad(u, w, vecRef.current), angleRef.current);
+    angleRef.current = position.angle;
+    // Re-seed from the *clamped* position so the handle shows what was actually
+    // emitted. Keeping the raw pad vector let the two drift apart at the pad's
+    // limits, and the handle then lied about where the speaker had ended up.
+    vecRef.current = polarToCartesian(position);
     paint();
-    return toPosition(vecRef.current);
+    return position;
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -220,7 +229,9 @@ export function SurroundScope({
 
     let raf = 0;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      // Paused freezes the source, so the scope is static — draw one final frame
+      // and stop rather than repainting an unchanging blob 60 times a second.
+      if (isPlaying) raf = requestAnimationFrame(draw);
 
       const css = canvas.clientWidth;
       if (css <= 0) return;
@@ -303,7 +314,7 @@ export function SurroundScope({
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [isPlaying]);
 
   return (
     <div>
