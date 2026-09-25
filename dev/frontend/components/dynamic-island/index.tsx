@@ -83,6 +83,7 @@ const EXTENDED_SYNC_HEIGHT = 62;
 // Secondary island — the detached circle iOS shows beside the pill when a
 // second activity is live. Ring geometry is derived so the size is one knob.
 const SECONDARY_SIZE = 40;
+const SECONDARY_GAP = 8;
 const SECONDARY_R = 17;
 const SECONDARY_C = 2 * Math.PI * SECONDARY_R;
 
@@ -1638,12 +1639,28 @@ export function DynamicIsland() {
   const isExpanded_room = islandState === "expanded";
   const isExtended_room = islandState === "extended";
 
+  // Secondary island = background tasks only. Uploads are deliberately excluded:
+  // upload.isUploading already drives isSyncingNow, which auto-extends the main
+  // island and shows "Uploading Song..." there. Prefetch is the only task that
+  // runs behind an unaffected island, so it's the only one that earns a circle.
+  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing;
+  const secondaryLabel = prefetch.nextTrackTitle
+    ? `Downloading next track: ${prefetch.nextTrackTitle} — ${prefetch.nextTrackProgress}%`
+    : `Downloading next track — ${prefetch.nextTrackProgress}%`;
+  // Width the circle needs beside the island. The extended island already runs
+  // to within 16px of both edges on a phone, so without reserving this the
+  // circle lands off-screen — and a fixed element doesn't scroll into view, it
+  // just silently disappears. Reserving alone isn't enough either: the island
+  // is centred, so freed width splits across both sides. The wrapper below also
+  // shifts left by half of this, which keeps the pair centred as a group.
+  const secondaryReserve = showSecondary ? SECONDARY_SIZE + SECONDARY_GAP : 0;
+
   // Pill dimensions
   const pillWidth = hasTrack ? 120 : 86;
   const pillHeight = COMPACT_HEIGHT;
   // Extended dimensions (iOS live-activity style)
   const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
-  const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32);
+  const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32 - secondaryReserve);
   // While syncing the extended pill carries a second row (sync label + bar), so
   // it needs the extra height or the bar clips against the bottom edge.
   const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
@@ -1677,15 +1694,6 @@ export function DynamicIsland() {
     : pillHeight;
   // Stay a true pill in every collapsed state — radius tracks the live height.
   const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : currentHeight / 2);
-
-  // Secondary island = background tasks only. Uploads are deliberately excluded:
-  // upload.isUploading already drives isSyncingNow, which auto-extends the main
-  // island and shows "Uploading Song..." there. Prefetch is the only task that
-  // runs behind an unaffected island, so it's the only one that earns a circle.
-  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing;
-  const secondaryLabel = prefetch.nextTrackTitle
-    ? `Downloading next track: ${prefetch.nextTrackTitle} — ${prefetch.nextTrackProgress}%`
-    : `Downloading next track — ${prefetch.nextTrackProgress}%`;
 
   const handlePointerDown_room = () => {
     resetInactivityTimer();
@@ -1757,8 +1765,14 @@ export function DynamicIsland() {
           top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}
       >
-        {/* relative: anchors the secondary circle to the island's right edge */}
-        <div className={cn('relative', 'flex', 'items-center')}>
+        {/* relative: anchors the secondary circle to the island's right edge.
+            x slides the pair left by half the circle's footprint so the two
+            stay centred as a group instead of the circle hanging off-screen. */}
+        <motion.div
+          className={cn('relative', 'flex', 'items-center')}
+          animate={{ x: -secondaryReserve / 2 }}
+          transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING}
+        >
         <motion.div
           ref={islandRef}
           onContextMenu={e => e.preventDefault()}
@@ -2088,23 +2102,37 @@ export function DynamicIsland() {
         </motion.div>
 
         {/* ── Secondary island: detached circle for background tasks ──
-            Absolutely placed off the island's right edge so the main island
-            never shifts when this appears, the way iOS pairs the two. */}
-        <div className={cn('absolute', 'left-full', 'top-0', 'h-full', 'flex', 'items-center', 'pl-2', 'pointer-events-none')}>
+            Absolutely placed off the island's right edge, so as the island
+            animates between pill and extended the circle tracks its edge. */}
+        <div
+          className={cn('absolute', 'left-full', 'top-0', 'h-full', 'flex', 'items-center', 'pointer-events-none')}
+          style={{ paddingLeft: SECONDARY_GAP }}
+        >
           <AnimatePresence>
             {showSecondary && (
               <motion.div
                 key="secondary-island"
                 initial={{ scale: 0.3, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.3, opacity: 0 }}
+                // Springs in, eases out fast — same asymmetry as the content
+                // morph. A spring on exit asymptotes and reads as a lag.
+                exit={{ scale: 0.3, opacity: 0, transition: { duration: 0.15, ease: EASE_IN } }}
                 transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING}
-                role="status"
-                aria-live="polite"
+                // Not role="status": that implies aria-live, and the content is
+                // a percentage that ticks 1→100, so it would announce ~100
+                // times per track. A labelled graphic is reachable without the
+                // spam; it's a passive background indicator, nothing to act on.
+                role="img"
                 aria-label={secondaryLabel}
                 title={secondaryLabel}
                 className={cn('relative', 'flex', 'items-center', 'justify-center', 'rounded-full', 'shrink-0')}
-                style={{ width: SECONDARY_SIZE, height: SECONDARY_SIZE, backgroundColor: "#000000" }}
+                style={{
+                  width: SECONDARY_SIZE,
+                  height: SECONDARY_SIZE,
+                  backgroundColor: "#000000",
+                  // Grow out of the island's edge rather than from thin air.
+                  transformOrigin: "left center",
+                }}
               >
                 <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className={cn('absolute', 'inset-0', 'w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
                   <circle cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
@@ -2123,7 +2151,7 @@ export function DynamicIsland() {
             )}
           </AnimatePresence>
         </div>
-        </div>
+        </motion.div>
       </div>
     </>
   );

@@ -41,6 +41,9 @@ export interface QueueItem {
   fileName:     string;
   addedBy:      string;
   createdAt:    number;
+  /** Set only when the track played through to the end. Drives the History section —
+   *  jumping past a track must not mark it listened. */
+  playedAt?:    number;
   durationSec?: number;
 }
 

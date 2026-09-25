@@ -215,6 +215,18 @@ export class RoomQueue {
     return item;
   }
 
+  /**
+   * Mark the current track as listened. Called only when a track plays through to the end —
+   * `history` is a record of what was heard, never of where the pointer has been, so jumping
+   * from track 36 to track 43 must leave 37–42 sitting in the queue untouched.
+   */
+  markCurrentPlayed(): void {
+    const cur = this.current();
+    if (!cur || cur.playedAt) return;
+    cur.playedAt = Date.now();
+    this.bump();
+  }
+
   next(): QueueItem | null {
     if (this.order.length === 0) return null;
     if (this.repeatMode === 'track' && this.currentId) return this.current();
@@ -225,6 +237,8 @@ export class RoomQueue {
     if (nextIdx >= this.order.length) {
       if (this.repeatMode !== 'all') return null;
       if (this.shuffle) this.reshuffleUpcoming(-1);
+      // New lap — clear history so the whole queue isn't stuck in the History section.
+      for (const it of this.items) delete it.playedAt;
       nextIdx = 0;
     }
 

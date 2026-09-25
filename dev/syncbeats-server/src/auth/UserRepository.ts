@@ -167,17 +167,29 @@ export class UserRepository {
   }
 
   async createGoogleUser(name: string, email: string, googleId: string): Promise<PublicUser> {
-    const user = await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        passwordHash: null,
-        authProvider: 'GOOGLE',
-        googleId,
-        emailVerifiedAt: new Date(),
-      },
-    }) as any;
-    return this.toPublicUser(user);
+    const cleanEmail = email.toLowerCase().trim();
+    try {
+      const user = await prisma.user.create({
+        data: {
+          name: name.trim(),
+          email: cleanEmail,
+          passwordHash: null,
+          authProvider: 'GOOGLE',
+          googleId,
+          emailVerifiedAt: new Date(),
+        },
+      }) as any;
+      return this.toPublicUser(user);
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        const user = await prisma.user.update({
+          where: { email: cleanEmail },
+          data: { googleId, authProvider: 'GOOGLE' },
+        }) as any;
+        return this.toPublicUser(user);
+      }
+      throw e;
+    }
   }
 
   async setLastLoginAt(userId: string, lastLoginAt: Date = new Date()): Promise<PublicUser | null> {

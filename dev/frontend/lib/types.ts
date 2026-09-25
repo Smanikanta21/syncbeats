@@ -41,6 +41,8 @@ export interface TrackQueueItem {
   fileName:   string;
   queueIndex: number;
   isCurrent:  boolean;
+  /** Set once the track played through to the end; drives the History section. */
+  playedAt?:  number;
   addedBy:    string;
   addedByName?: string;
   thumbnail?: string;

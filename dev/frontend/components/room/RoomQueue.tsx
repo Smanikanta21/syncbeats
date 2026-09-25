@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw, Infinity, Timer, Star, MoreHorizontal } from "lucide-react";
@@ -82,12 +82,19 @@ export function RoomQueue({
   }, []);
 
   const currentIndex = optimisticQueue.findIndex(q => q.isCurrent);
-  const splitIndex = currentIndex >= 0 ? currentIndex : 0;
-  const historyQueue = optimisticQueue.slice(0, splitIndex);
+  // History is what was actually played through, not what the pointer moved past. Jumping
+  // from track 5 to track 20 must leave 6–19 in the queue where they are.
+  const historyQueue = optimisticQueue.filter(q => q.playedAt && !q.isCurrent);
   // Current song is separate — not draggable
   const currentSong = currentIndex >= 0 ? optimisticQueue[currentIndex] : null;
-  // Only songs AFTER current are draggable
-  const draggableQueue = currentIndex >= 0 ? optimisticQueue.slice(currentIndex + 1) : optimisticQueue;
+  const draggableQueue = optimisticQueue.filter(q => !q.playedAt && !q.isCurrent);
+
+  // Row numbers are full-queue positions. History is no longer a prefix slice, so a
+  // section-local index would misnumber every row — look the real one up instead.
+  const positionById = useMemo(
+    () => new Map(optimisticQueue.map((q, i) => [q.id, i])),
+    [optimisticQueue],
+  );
 
   // Track which IDs are newly added for snap animation
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -132,18 +139,14 @@ export function RoomQueue({
     setActiveDragId(null);
     if (!over || active.id === over.id) return;
 
-    // Find indices within the draggable (post-current) portion
-    const oldDragIdx = draggableQueue.findIndex(q => q.id === active.id);
-    const newDragIdx = draggableQueue.findIndex(q => q.id === over.id);
+    // Resolve straight to full-queue indices — the draggable list is a filtered subset,
+    // not a contiguous tail, so an offset from currentIndex would land on the wrong row.
+    const oldFullIdx = optimisticQueue.findIndex(q => q.id === active.id);
+    const newFullIdx = optimisticQueue.findIndex(q => q.id === over.id);
 
-    if (oldDragIdx === -1 || newDragIdx === -1) return;
+    if (oldFullIdx === -1 || newFullIdx === -1) return;
 
-    // Map to full queue indices for the server
-    const offsetFromStart = (currentIndex >= 0 ? currentIndex + 1 : 0);
-    const oldFullIdx = offsetFromStart + oldDragIdx;
-    const newFullIdx = offsetFromStart + newDragIdx;
-
-    if (oldFullIdx !== -1 && newFullIdx !== -1) {
+    {
       const reordered = arrayMove(optimisticQueue, oldFullIdx, newFullIdx);
       setOptimisticQueue(reordered);
 
@@ -309,11 +312,11 @@ export function RoomQueue({
                     Clear
                   </button>
                 </div>
-                {historyQueue.map((item, idx) => (
+                {historyQueue.map((item) => (
                   <SortableTrackItem
                     key={item.id}
                     item={item}
-                    idx={idx}
+                    idx={positionById.get(item.id) ?? 0}
                     isCurrent={false}
                     isPlaying={false}
                     isHovered={hoveredId === item.id}
@@ -422,11 +425,11 @@ export function RoomQueue({
 
             {/* Draggable upcoming songs (after current) */}
             <SortableContext items={draggableQueue.map(q => q.id)} strategy={verticalListSortingStrategy}>
-              {draggableQueue.map((item, idx) => (
+              {draggableQueue.map((item) => (
                 <SortableTrackItem
                   key={item.id}
                   item={item}
-                  idx={splitIndex + 1 + idx}
+                  idx={positionById.get(item.id) ?? 0}
                   isCurrent={false}
                   isPlaying={false}
                   isHovered={hoveredId === item.id}
@@ -449,7 +452,7 @@ export function RoomQueue({
                 <div style={{ width: scrollRef.current?.clientWidth ?? '100%' }}>
                   <TrackItemRow
                     item={activeDragItem}
-                    idx={optimisticQueue.findIndex(q => q.id === activeDragId)}
+                    idx={positionById.get(activeDragId!) ?? 0}
                     isCurrent={false}
                     isPlaying={false}
                     isHovered={false}

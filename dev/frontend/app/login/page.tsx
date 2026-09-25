@@ -1,14 +1,29 @@
 "use client";
 
-import { useState, FormEvent, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Mail, Disc, User, Info, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { useState, FormEvent, useEffect, useCallback, ReactNode, InputHTMLAttributes } from "react";
+import { motion, AnimatePresence, MotionConfig, Variants } from "framer-motion";
+import { ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { authApi, roomsApi } from "../../lib/api";
 import { cn } from "@/lib/utils";
 import { logger } from "../../lib/logger";
+import { PhaseField } from "../../components/auth/PhaseField";
+
+/**
+ * The page composes itself once on load, the same way the traces behind it do:
+ * headline, then fields, then actions. Switching mode replays both.
+ */
+const container: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.055, delayChildren: 0.08 } },
+};
+
+const item: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+};
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -35,24 +50,23 @@ export default function AuthPage() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [showSignupPassword, setShowSignupPassword] = useState(false);
-  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
+  /** Bumped on every mode switch to re-scatter the traces behind the form. */
+  const [perturb, setPerturb] = useState(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    
+
     if (params.get('mode') === 'register') {
       setIsLogin(false);
     }
-    
+
     const cameFromGoogle = document.referrer.includes("accounts.google.");
     const hasGoogleOAuthParams =
       params.has("state") || params.has("code") || params.has("scope") || params.has("authuser") || params.has("prompt");
-    
+
     if (params.get('kicked') === 'true') {
       setError("You were logged out because this device was replaced in another session.");
     }
@@ -112,7 +126,7 @@ export default function AuthPage() {
     try {
       const params = new URLSearchParams(window.location.search);
       const returnTo = params.get('returnTo') || '/room/default';
-      
+
       if (isLogin) {
         const token = await login(email, password);
         if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
@@ -130,7 +144,7 @@ export default function AuthPage() {
       }
     } catch (err) {
       const message = (err as Error).message;
-      
+
       if (message.includes("GOOGLE_AUTH_SETUP_PASSWORD")) {
         const match = message.match(/\[DEV_OTP:(.+?)\]/);
         const devOtp = match ? match[1] : null;
@@ -171,26 +185,21 @@ export default function AuthPage() {
 
   const switchMode = (toLogin: boolean) => {
     setIsLogin(toLogin);
+    setPerturb((value) => value + 1);
     resetForm();
   };
 
-  // NOTE: `focus:ring-foreground/*` — not `accent-primary`, which was never defined
-  // as a theme token, so paired with focus:outline-none these inputs had no
-  // visible focus state at all.
-  const inputClass = "w-full bg-foreground/5 border border-foreground/5 focus:border-foreground/30 rounded-2xl pl-11 pr-4 py-3.5 text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40";
-  const inputClassSm = "w-full bg-foreground/5 border border-foreground/5 focus:border-foreground/30 rounded-xl pl-9 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/30 transition-all placeholder:text-foreground/40";
-
   // An email that already exists is good news on the login form and bad news on
-  // signup — hence the comparison against which form is asking.
-  const getEmailInputClass = (baseClass: string, isLoginField: boolean) => {
-    if (emailExists === null || !email.includes('@')) return baseClass;
-    return cn(
-      baseClass,
-      emailExists === isLoginField
-        ? 'border-emerald-500/50 focus:border-emerald-500/80 focus:ring-emerald-500/80'
-        : 'border-red-500/50 focus:border-red-500/80 focus:ring-red-500/80'
-    );
-  };
+  // signup — hence the comparison against which form is asking. The hint text
+  // carries the same meaning as the colour, so it isn't a colour-only signal.
+  const emailKnown = email.includes('@') ? emailExists : null;
+  const emailTone = emailKnown === null ? undefined : emailKnown === isLogin ? "ok" : "bad";
+  const emailHint =
+    emailKnown === null
+      ? ""
+      : isLogin
+        ? (emailKnown ? "Recognised." : "No account with this email yet.")
+        : (emailKnown ? "Already registered — sign in instead." : "Available.");
 
   // Handle Google OAuth 2.0 Popup & Redirect Flow
   const handleGoogleOAuth = useCallback(() => {
@@ -291,300 +300,303 @@ export default function AuthPage() {
   }, [googleLogin, router]);
 
   return (
-    <div className={cn('min-h-screen', 'flex', 'flex-col', 'items-center', 'justify-center', 'relative', 'px-4', 'sm:px-6', 'lg:px-8', 'overflow-hidden', 'z-0')}>
-      {/* Background ambient lighting removed (now in layout) */}
+    // reducedMotion="user" drops framer's transform animations for viewers who
+    // ask for less motion, without a conditional on every element.
+    <MotionConfig reducedMotion="user">
+      <div className="relative min-h-screen overflow-hidden">
+        <PhaseField perturb={perturb} />
+        {/* Pulls the page colour back over the middle so the traces read as
+            atmosphere behind the form rather than noise through it. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-0"
+          style={{ background: "radial-gradient(ellipse 58% 52% at 50% 42%, var(--background) 25%, transparent 100%)" }}
+        />
 
-      {/* Home link */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className={cn('absolute', 'top-8', 'left-8', 'z-50')}
-      >
-        <Link href="/" className={cn('flex', 'items-center', 'gap-2', 'group')}>
-          <div className={cn('w-8', 'h-8', 'rounded-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'transition-colors')}>
-            <Disc className={cn('w-4', 'h-4', 'text-foreground/80', 'animate-[spin_4s_linear_infinite]')} />
-          </div>
-          <span className={cn('text-sm', 'font-bold', 'tracking-widest', 'text-foreground/60', 'group-hover:text-foreground', 'transition-colors')}>HOME</span>
+        <Link
+          href="/"
+          className={cn(
+            'group absolute top-6 left-6 sm:top-8 sm:left-8 z-20 inline-flex items-center gap-2',
+            'text-sm text-foreground/40 hover:text-foreground transition-colors'
+          )}
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
+          Home
         </Link>
-      </motion.div>
 
-      {/* Sliding Auth Component */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className={cn(
-          'relative w-full max-w-5xl glass-panel rounded-[2.5rem] bg-transparent overflow-y-auto overflow-x-hidden md:overflow-hidden flex shadow-[0_20px_80px_rgba(0,0,0,0.5)] transition-all duration-500',
-          // Mobile stacks into one column, so signup (4 fields) needs more room.
-          // md: pins a single height for both modes — the taller signup min-height
-          // used to leak past md:h-* and jerk the card 200px taller on switch.
-          isLogin ? 'min-h-162.5' : 'min-h-212.5',
-          'sm:h-175 md:h-175 md:min-h-175'
-        )}
-      >
-
-
-        <div
-          className={`absolute top-0 left-0 w-full md:w-1/2 h-full z-30 flex flex-col justify-center p-6 sm:p-12 md:p-16 bg-transparent transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} overflow-y-auto`}
-        >
+        <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-24">
           <AnimatePresence mode="wait">
-            {/* ── LOGIN FORM ── */}
-            {isLogin ? (
+            <motion.div
+              key={isLogin ? "head-login" : "head-signup"}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <h1 className="text-[clamp(2.5rem,9vw,3.5rem)] font-light leading-[0.95] -tracking-[0.035em] text-foreground">
+                {isLogin ? "Sound, in step." : "Get in step."}
+              </h1>
+              <p className="mt-4 text-foreground/45">
+                {isLogin
+                  ? "Pick up where your session left off."
+                  : "Turn the devices you own into one speaker."}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {error && (
               <motion.div
-                key="login-form"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-                className={cn('w-full', 'max-w-sm', 'mx-auto')}
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="mt-8 flex items-start gap-2 border-l-2 border-red-500/60 pl-3 text-sm text-red-400"
               >
-                <div className={cn('mb-10', 'text-center', 'md:text-left')}>
-                  <h2 className={cn('text-4xl', 'font-black', 'mb-3', 'text-foreground')}>Welcome Back</h2>
-                  <p className={cn('text-foreground/50', 'font-medium')}>Log in to manage your synced sessions.</p>
-                </div>
-
-                {error && (
-                  <div className={cn('mb-6', 'flex', 'items-start', 'gap-2', 'text-sm', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}>
-                    <AlertCircle className={cn('w-4', 'h-4', 'shrink-0', 'mt-0.5')} />{error}
-                  </div>
-                )}
-
-                <form className="space-y-6" onSubmit={handleAuth}>
-                  <div className="space-y-2">
-                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Email Address</label>
-                    <motion.div
-                      key={`login-email-${shakeNonce}`}
-                      animate={shakeTargets.includes("login-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}><Mail className={cn('h-5', 'w-5', 'text-foreground/50')} /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClass, true)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
-                    </motion.div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className={cn('flex', 'items-center', 'justify-between', 'ml-1')}>
-                      <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'uppercase', 'tracking-wider')}>Password</label>
-                      <Link href="/forgot-password" className={cn('text-xs', 'font-medium', 'text-foreground/50', 'hover:text-foreground/80', 'transition-colors')}>Forgot?</Link>
-                    </div>
-                    <motion.div
-                      key={`login-password-${shakeNonce}`}
-                      animate={shakeTargets.includes("login-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-5', 'w-5', 'text-foreground/50')} /></div>
-                      <input type={showLoginPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClass} pr-12`} placeholder="••••••••" autoComplete="current-password" suppressHydrationWarning required />
-                      <button
-                        type="button"
-                        aria-label={showLoginPassword ? "Hide password" : "Show password"}
-                        onClick={() => setShowLoginPassword((value) => !value)}
-                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-4', 'text-foreground/50', 'hover:text-foreground')}
-                      >
-                        {showLoginPassword ? <EyeOff className={cn('h-5', 'w-5')} /> : <Eye className={cn('h-5', 'w-5')} />}
-                      </button>
-                    </motion.div>
-                  </div>
-
-                  <motion.button
-                    type="submit"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={loading}
-                    className={cn('w-full', 'h-14', 'mt-4', 'bg-foreground', 'text-background', 'font-bold', 'rounded-2xl', 'transition-colors', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-lg', 'disabled:opacity-60', 'disabled:cursor-wait')}
-                  >
-                    {loading ? "Signing in…" : <><span>Sign In</span><ArrowRight className={cn('w-5', 'h-5')} /></>}
-                  </motion.button>
-
-                  <GoogleButton onGoogleOAuth={handleGoogleOAuth} loading={loading} />
-                </form>
-
-                <p className={cn('mt-8', 'text-center', 'text-foreground/50', 'text-sm', 'font-medium', 'md:hidden')}>
-                  Don&apos;t have an account?{" "}
-                  <button onClick={() => switchMode(false)} className={cn('text-foreground/80', 'font-semibold', 'hover:text-foreground', 'transition-colors')}>Sign up</button>
-                </p>
-              </motion.div>
-            ) : (
-            /* ── SIGNUP FORM ── */
-              <motion.div
-                key="signup-form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-                className={cn('w-full', 'max-w-sm', 'mx-auto')}
-              >
-                <div className={cn('mb-8', 'text-center', 'md:text-left')}>
-                  <h2 className={cn('text-4xl', 'font-black', 'mb-2', 'text-foreground')}>Join SyncBeats</h2>
-                  <p className={cn('text-foreground/50', 'font-medium')}>Create an account to start syncing audio.</p>
-                </div>
-
-                {error && (
-                  <div className={cn('mb-5', 'flex', 'items-start', 'gap-2', 'text-sm', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}>
-                    <AlertCircle className={cn('w-4', 'h-4', 'shrink-0', 'mt-0.5')} />{error}
-                  </div>
-                )}
-
-                <form className="space-y-4" onSubmit={handleAuth}>
-                  <div className="space-y-1.5">
-                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Full Name</label>
-                    <motion.div
-                      key={`signup-name-${shakeNonce}`}
-                      animate={shakeTargets.includes("signup-name") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><User className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={inputClassSm} placeholder="Your Name" autoComplete="name" suppressHydrationWarning required />
-                    </motion.div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Email Address</label>
-                    <motion.div
-                      key={`signup-email-${shakeNonce}`}
-                      animate={shakeTargets.includes("signup-email") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Mail className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
-                      <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={getEmailInputClass(inputClassSm, false)} placeholder="name@email.com" autoComplete="email" suppressHydrationWarning required />
-                    </motion.div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Password</label>
-                    <motion.div
-                      key={`signup-password-${shakeNonce}`}
-                      animate={shakeTargets.includes("signup-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
-                      <input type={showSignupPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Min. 8 characters" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
-                      <button
-                        type="button"
-                        aria-label={showSignupPassword ? "Hide password" : "Show password"}
-                        onClick={() => setShowSignupPassword((value) => !value)}
-                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-3', 'text-foreground/50', 'hover:text-foreground')}
-                      >
-                        {showSignupPassword ? <EyeOff className={cn('h-4', 'w-4')} /> : <Eye className={cn('h-4', 'w-4')} />}
-                      </button>
-                    </motion.div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={cn('text-xs', 'font-semibold', 'text-foreground/60', 'ml-1', 'uppercase', 'tracking-wider')}>Confirm Password</label>
-                    <motion.div
-                      key={`signup-confirm-password-${shakeNonce}`}
-                      animate={shakeTargets.includes("signup-confirm-password") ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
-                      transition={{ duration: 0.35 }}
-                      className="relative"
-                    >
-                      <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-3', 'flex', 'items-center', 'pointer-events-none')}><Lock className={cn('h-4', 'w-4', 'text-foreground/50')} /></div>
-                      <input type={showSignupConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(e as any); }} className={`${inputClassSm} pr-10`} placeholder="Confirm password" autoComplete="new-password" suppressHydrationWarning required minLength={8} />
-                      <button
-                        type="button"
-                        aria-label={showSignupConfirmPassword ? "Hide password" : "Show password"}
-                        onClick={() => setShowSignupConfirmPassword((value) => !value)}
-                        className={cn('absolute', 'inset-y-0', 'right-0', 'pr-3', 'text-foreground/50', 'hover:text-foreground')}
-                      >
-                        {showSignupConfirmPassword ? <EyeOff className={cn('h-4', 'w-4')} /> : <Eye className={cn('h-4', 'w-4')} />}
-                      </button>
-                    </motion.div>
-                  </div>
-
-                  <motion.button
-                    type="submit"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={loading}
-                    className={cn('w-full', 'h-12', 'mt-4', 'bg-foreground', 'text-background', 'font-bold', 'rounded-xl', 'transition-colors', 'flex', 'items-center', 'justify-center', 'gap-2', 'shadow-lg', 'disabled:opacity-60', 'disabled:cursor-wait')}
-                  >
-                    {loading ? "Creating account…" : <><span>Create Account</span><ArrowRight className={cn('w-4', 'h-4')} /></>}
-                  </motion.button>
-
-                  <GoogleButton onGoogleOAuth={handleGoogleOAuth} loading={loading} />
-                </form>
-
-                <p className={cn('mt-8', 'text-center', 'text-foreground/50', 'text-sm', 'font-medium', 'md:hidden')}>
-                  Already have an account?{" "}
-                  <button type="button" onClick={() => switchMode(true)} className={cn('text-foreground/80', 'font-semibold', 'hover:text-foreground', 'transition-colors')}>Sign in</button>
-                </p>
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {error}
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* PANEL B — Branding */}
-        <div
-          className={`hidden md:flex absolute top-0 left-0 w-1/2 h-full z-20 flex-col items-center justify-center text-center p-12 overflow-hidden border-l border-r border-foreground/10 bg-background/5 backdrop-blur-xl transition-transform duration-700 ease-in-out ${isLogin ? 'translate-x-full' : 'translate-x-0'}`}
-        >
-          <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'opacity-30')}>
-            <div className={cn('absolute', 'w-200', 'h-200', 'border', 'border-foreground/5', 'rounded-full', 'animate-[spin_40s_linear_infinite]')} />
-            <div className={cn('absolute', 'w-150', 'h-150', 'border', 'border-foreground/10', 'rounded-full', 'animate-[spin_30s_linear_infinite_reverse]')} />
-            <div className={cn('absolute', 'w-100', 'h-100', 'bg-foreground/5', 'blur-[80px]', 'rounded-full', 'pointer-events-none')} />
-          </div>
 
           <AnimatePresence mode="wait">
-            {isLogin ? (
-              <motion.div key="branding-login" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className={cn('relative', 'z-10', 'flex', 'flex-col', 'items-center', 'max-w-sm')}>
-                <Disc className={cn('w-20', 'h-20', 'text-foreground/80', 'mb-8', 'animate-[spin_10s_linear_infinite]')} />
-                <h2 className={cn('text-4xl', 'font-black', 'mb-4', 'text-foreground')}>New Here?</h2>
-                <p className={cn('text-foreground/60', 'mb-10', 'text-lg', 'leading-relaxed')}>Sign up to host rooms, save your history, and turn your devices into the ultimate soundsystem.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(false)} className={cn('h-12', 'px-8', 'rounded-full', 'border', 'border-white/20', 'text-foreground', 'font-bold', 'hover:bg-foreground/10', 'transition-colors')}>
-                  Create an Account
-                </motion.button>
+            <motion.form
+              key={isLogin ? "form-login" : "form-signup"}
+              onSubmit={handleAuth}
+              variants={container}
+              initial="hidden"
+              animate="show"
+              exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
+              className="mt-10 space-y-5"
+            >
+              {!isLogin && (
+                <Field
+                  name="signup-name"
+                  label="Name"
+                  value={name}
+                  onChange={setName}
+                  shakeKey={`signup-name-${shakeNonce}`}
+                  shaking={shakeTargets.includes("signup-name")}
+                  placeholder="What should we call you?"
+                  autoComplete="name"
+                  required
+                />
+              )}
+
+              <Field
+                name={isLogin ? "login-email" : "signup-email"}
+                label="Email"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                shakeKey={`${isLogin ? "login" : "signup"}-email-${shakeNonce}`}
+                shaking={shakeTargets.includes(isLogin ? "login-email" : "signup-email")}
+                placeholder="name@email.com"
+                autoComplete="email"
+                tone={emailTone}
+                hint={emailHint}
+                required
+              />
+
+              <Field
+                name={isLogin ? "login-password" : "signup-password"}
+                label="Password"
+                secret
+                value={password}
+                onChange={setPassword}
+                shakeKey={`${isLogin ? "login" : "signup"}-password-${shakeNonce}`}
+                shaking={shakeTargets.includes(isLogin ? "login-password" : "signup-password")}
+                placeholder={isLogin ? "••••••••" : "At least 8 characters"}
+                autoComplete={isLogin ? "current-password" : "new-password"}
+                minLength={isLogin ? undefined : 8}
+                required
+                action={
+                  isLogin ? (
+                    <Link href="/forgot-password" className="text-xs text-foreground/40 transition-colors hover:text-foreground">
+                      Forgot?
+                    </Link>
+                  ) : undefined
+                }
+              />
+
+              {!isLogin && (
+                <Field
+                  name="signup-confirm-password"
+                  label="Confirm password"
+                  secret
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  shakeKey={`signup-confirm-password-${shakeNonce}`}
+                  shaking={shakeTargets.includes("signup-confirm-password")}
+                  placeholder="Type it again"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              )}
+
+              <motion.button
+                variants={item}
+                whileHover={{ y: -2 }}
+                whileTap={{ y: 0, scale: 0.99 }}
+                type="submit"
+                disabled={loading}
+                className={cn(
+                  'group mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-full',
+                  'bg-foreground text-background text-sm font-medium tracking-wide',
+                  'disabled:opacity-50 disabled:cursor-wait'
+                )}
+              >
+                {loading
+                  ? (isLogin ? "Signing in…" : "Creating account…")
+                  : (
+                    <>
+                      <span>{isLogin ? "Sign in" : "Create account"}</span>
+                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    </>
+                  )}
+              </motion.button>
+
+              <motion.div variants={item} className="flex items-center gap-4 pt-2">
+                <span className="h-px flex-1 bg-foreground/10" />
+                <span className="text-[11px] text-foreground/30">or</span>
+                <span className="h-px flex-1 bg-foreground/10" />
               </motion.div>
-            ) : (
-              <motion.div key="branding-signup" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.3 }} className={cn('relative', 'z-10', 'flex', 'flex-col', 'items-center', 'max-w-sm')}>
-                <Info className={cn('w-16', 'h-16', 'text-foreground/80', 'mb-8')} />
-                <h2 className={cn('text-4xl', 'font-black', 'mb-4', 'text-foreground')}>Welcome Back!</h2>
-                <p className={cn('text-foreground/60', 'mb-10', 'text-lg', 'leading-relaxed')}>Already a part of the platform? Log back in to access your synced sessions and continue the party.</p>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => switchMode(true)} className={cn('h-12', 'px-8', 'rounded-full', 'border', 'border-white/20', 'text-foreground', 'font-bold', 'hover:bg-foreground/10', 'transition-colors')}>
-                  Sign In Instead
-                </motion.button>
-              </motion.div>
-            )}
+
+              <motion.button
+                variants={item}
+                whileHover={{ y: -2 }}
+                whileTap={{ y: 0, scale: 0.99 }}
+                type="button"
+                disabled={loading}
+                onClick={handleGoogleOAuth}
+                className={cn(
+                  'flex h-14 w-full items-center justify-center gap-3 rounded-full',
+                  'border border-foreground/12 text-sm text-foreground/80',
+                  'hover:border-foreground/30 hover:text-foreground transition-colors',
+                  'disabled:opacity-50 disabled:cursor-wait'
+                )}
+              >
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                Continue with Google
+              </motion.button>
+            </motion.form>
           </AnimatePresence>
-        </div>
-      </motion.div>
-    </div>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.6 }}
+            className="mt-10 text-sm text-foreground/40"
+          >
+            {isLogin ? "New here? " : "Already have an account? "}
+            <button
+              type="button"
+              onClick={() => switchMode(!isLogin)}
+              className={cn(
+                'relative text-foreground/80 transition-colors hover:text-foreground',
+                'after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0',
+                'after:bg-foreground after:transition-transform after:duration-300 hover:after:scale-x-100'
+              )}
+            >
+              {isLogin ? "Create an account" : "Sign in"}
+            </button>
+          </motion.p>
+        </main>
+      </div>
+    </MotionConfig>
   );
 }
 
-function GoogleButton({
-  onGoogleOAuth,
-  loading
-}: {
-  onGoogleOAuth: () => void;
-  loading: boolean;
-}) {
-  return (
-    <div className={cn('flex', 'flex-col', 'items-center', 'gap-3', 'w-full', 'my-4', 'py-2')}>
-      {/* Divider */}
-      <div className={cn('flex', 'items-center', 'gap-3', 'w-full')}>
-        <div className={cn('flex-1', 'h-px', 'bg-foreground/10')} />
-        <span className={cn('text-[11px]', 'font-semibold', 'uppercase', 'tracking-widest', 'text-foreground/30')}>or</span>
-        <div className={cn('flex-1', 'h-px', 'bg-foreground/10')} />
-      </div>
+type FieldProps = {
+  name: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** Changes on every failed submit so the shake replays on a repeated error. */
+  shakeKey: string;
+  shaking: boolean;
+  secret?: boolean;
+  tone?: "ok" | "bad";
+  hint?: string;
+  action?: ReactNode;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, "name" | "value" | "onChange">;
 
-      {/* Primary OAuth Button */}
-      <button
-        type="button"
-        disabled={loading}
-        onClick={onGoogleOAuth}
-        className={cn('w-full', 'h-14', 'flex', 'items-center', 'justify-center', 'gap-3', 'rounded-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:bg-foreground/10', 'active:scale-[0.98]', 'text-foreground', 'text-sm', 'font-semibold', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait', 'shadow-sm', 'cursor-pointer')}
+function Field({
+  name, label, value, onChange, shakeKey, shaking,
+  secret, tone, hint, action, type = "text", ...rest
+}: FieldProps) {
+  const [revealed, setRevealed] = useState(false);
+
+  const rule = tone === "ok" ? "bg-emerald-500" : tone === "bad" ? "bg-red-500" : "bg-foreground";
+  const hairline =
+    tone === "ok" ? "border-emerald-500/50" : tone === "bad" ? "border-red-500/50" : "border-foreground/15";
+
+  return (
+    <motion.div variants={item}>
+      <motion.div
+        key={shakeKey}
+        animate={shaking ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
+        transition={{ duration: 0.35 }}
       >
-        <svg className={cn('w-5', 'h-5', 'shrink-0')} viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-        </svg>
-        Continue with Google
-      </button>
-    </div>
+        <div className="flex items-baseline justify-between">
+          <label htmlFor={name} className="text-xs text-foreground/45">{label}</label>
+          {action}
+        </div>
+
+        <div className="relative mt-1">
+          <input
+            id={name}
+            name={name}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            type={secret ? (revealed ? "text" : "password") : type}
+            className={cn(
+              'peer w-full rounded-none border-0 border-b bg-transparent px-0 py-2.5',
+              'text-foreground transition-colors placeholder:text-foreground/25 focus:outline-none',
+              secret && 'pr-9',
+              hairline
+            )}
+            suppressHydrationWarning
+            {...rest}
+          />
+          {/* The focus indicator: focus:outline-none is set, so this rule sweeping
+              in from the left is what tells you where the caret is. */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0',
+              'transition-transform duration-500 ease-out peer-focus:scale-x-100',
+              rule
+            )}
+          />
+          {secret && (
+            <button
+              type="button"
+              aria-label={revealed ? "Hide password" : "Show password"}
+              onClick={() => setRevealed((shown) => !shown)}
+              className="absolute inset-y-0 right-0 flex items-center text-foreground/35 transition-colors hover:text-foreground"
+            >
+              {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
+
+        {/* Rendered even when empty so the field below doesn't jump as the
+            email check resolves. */}
+        {hint !== undefined && (
+          <p className={cn(
+            'mt-1.5 h-3.5 text-[11px] leading-[0.875rem] transition-colors',
+            tone === "bad" ? 'text-red-400/80' : tone === "ok" ? 'text-emerald-400/80' : 'text-transparent'
+          )}>
+            {hint}
+          </p>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }

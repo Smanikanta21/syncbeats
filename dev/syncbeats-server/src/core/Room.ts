@@ -369,6 +369,8 @@ export class Room extends EventEmitter {
   /** Called for every device's `playback:ended`; only the first one through advances. */
   handleTrackEnded(trackUrl: string): QueueItem | null {
     if (!this.queue.shouldAdvance(trackUrl)) return null;
+    // Reaching the end is the only thing that counts as "listened" — see markCurrentPlayed().
+    this.queue.markCurrentPlayed();
     return this.nextTrack(true);
   }
 
