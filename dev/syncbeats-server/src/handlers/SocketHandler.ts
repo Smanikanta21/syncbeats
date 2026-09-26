@@ -257,6 +257,8 @@ export class SocketHandler {
         socket.emit('error', { message: "We couldn't get you into that room. Please try again." });
       }
     });
+
+    socket.on('room:leave', ({ roomId }: LeavePayload) => {
       const room = this.roomManager.get(roomId);
       if (room) {
         // We should NOT pause the room just because one person leaves.
