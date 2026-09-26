@@ -9,12 +9,12 @@
  * sensible default spots around them.
  */
 
-import { useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import { cartesianToPolar } from "../../../lib/spatial/geometry";
+import { cartesianToPolar, samePosition } from "../../../lib/spatial/geometry";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
 import { FLOOR_PLANE, polarToWorld, userHue, WORLD_SCALE } from "./world";
 
@@ -32,7 +32,7 @@ export interface SeatMarkerProps {
   seatKey: string;
 }
 
-export function SeatMarker({
+function SeatMarkerImpl({
   userId,
   displayName,
   initials,
@@ -195,3 +195,22 @@ export function SeatMarker({
     </group>
   );
 }
+
+/**
+ * One person dragging emits ~20 `spatial:update`s a second, and each one rebuilds
+ * the whole layout — so without this every seat in the room re-rendered to show
+ * one of them move. Compared by value; the drag itself never goes through React.
+ */
+export const SeatMarker = memo(
+  SeatMarkerImpl,
+  (a, b) =>
+    a.userId === b.userId &&
+    a.seatKey === b.seatKey &&
+    a.displayName === b.displayName &&
+    a.initials === b.initials &&
+    a.isMe === b.isMe &&
+    a.draggable === b.draggable &&
+    a.onPreview === b.onPreview &&
+    a.onCommit === b.onCommit &&
+    samePosition(a.position, b.position),
+);

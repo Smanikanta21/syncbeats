@@ -30,6 +30,7 @@ import { RoomRepository }      from './db/RoomRepository';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
 import { AuditLogger } from './services/AuditLogger';
+import { notFoundHandler, errorHandler } from './utils/errorHandler';
 
 // ─── Timestamp all console output in Indian Standard Time (IST / UTC+5:30) ────
 (['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
@@ -144,18 +145,11 @@ export class SyncBeatsServer {
     this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
-    // Mask 500 errors in production to avoid leaking internal details (e.g. Prisma errors)
-    this.app.use((req, res, next) => {
-      const originalJson = res.json;
-      res.json = function(body) {
-        if (res.statusCode >= 500 && body && body.error && process.env.NODE_ENV === 'production') {
-          console.error('[500 Error Masked]', body.error);
-          body.error = 'Internal Server Error';
-        }
-        return originalJson.call(this, body);
-      };
-      next();
-    });
+    // Internal details are kept off the wire by utils/errorHandler (it logs the raw
+    // error and sends a written message). The old blanket res.json masker that lived
+    // here rewrote *every* 5xx body to "Internal Server Error", including the messages
+    // routes had deliberately written for the user.
+
     // Global Request Audit Logging Middleware
     this.app.use((req, res, next) => {
       if (req.path.startsWith('/files') || req.path.startsWith('/health') || req.method === 'OPTIONS') {
@@ -353,6 +347,11 @@ fi
       });
     });
 
+    // Must stay last: unknown paths answer with JSON, and anything a handler threw
+    // (including async rejections, which Express 5 forwards here) becomes a written
+    // message instead of Express's default HTML error page.
+    this.app.use(notFoundHandler);
+    this.app.use(errorHandler);
   }
 
   private setupSocketIO(): void {

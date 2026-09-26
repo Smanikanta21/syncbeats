@@ -30,7 +30,7 @@ interface UseRoomReturn {
   snapshot:     RoomSnapshot | null;
   participants: Participant[];
   isConnected:  boolean;
-  joinStatus:   'joined' | 'pending' | 'denied' | 'connecting';
+  joinStatus:   'joined' | 'pending' | 'denied' | 'connecting' | 'not_found';
   pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
@@ -81,7 +81,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
   const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
-  const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
+  const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting' | 'not_found'>('connecting');
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean, userId?: string }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
@@ -669,6 +669,9 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleJoinDenied = () => setJoinStatus('denied');
     socket.on('room:joinDenied', handleJoinDenied);
 
+    const handleRoomNotFound = () => setJoinStatus('not_found');
+    socket.on('room:notFound', handleRoomNotFound);
+
     const handleHostJoinRequest = ({ socketId, userId, displayName, isNudge }: any) => {
       setPendingRequests(prev => {
         const existing = prev.find(r => (userId && r.userId === userId) || r.socketId === socketId);
@@ -744,6 +747,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:joinPendingApproval', handlePendingApproval);
       socket.off('room:joinApproved', handleJoinApproved);
       socket.off('room:joinDenied', handleJoinDenied);
+      socket.off('room:notFound', handleRoomNotFound);
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
       socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);

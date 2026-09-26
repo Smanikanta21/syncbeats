@@ -41,8 +41,8 @@ export interface QueueItem {
   fileName:     string;
   addedBy:      string;
   createdAt:    number;
-  /** Set only when the track played through to the end. Drives the History section —
-   *  jumping past a track must not mark it listened. */
+  /** Stamped when the pointer *leaves* this track. Drives the History section — tracks the
+   *  pointer skips over are never stamped, so jumping ahead doesn't fake a listen. */
   playedAt?:    number;
   durationSec?: number;
 }

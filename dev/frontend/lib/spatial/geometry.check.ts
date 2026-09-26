@@ -16,11 +16,16 @@ import {
   MAX_ELEVATION,
   MAX_RADIUS,
   MIN_RADIUS,
+  angleDelta,
   computeSpeakerGains,
+  distanceBetween,
   polarToCartesian,
+  relativePolar,
   type Speaker,
+  type SpatialPosition,
 } from './geometry.ts';
 import { PLANES, toPosition } from './panPlanes.ts';
+import { DEVICE_RADIUS, SEAT_ARC, SEAT_RADIUS, SEAT_SLOTS, resolveSeats, seatKey } from './seats.ts';
 
 const plane = (id: string) => {
   const p = PLANES.find(x => x.id === id);
@@ -120,5 +125,101 @@ for (const bad of [-1, 2, Number.NaN]) {
     assert.ok(Number.isFinite(g) && g >= 0 && g <= 1, `spread ${bad} produced ${g}`);
   }
 }
+
+// ── Seat placement ──────────────────────────────────────────────────────────
+// Every client builds the layout independently from the same participant list,
+// so any disagreement here means people see each other in different places.
+
+const crowd = ['zoe', 'al', 'mika', 'bo', 'ren', 'ivy'];
+const seatsOf = (ids: string[], stored: Record<string, SpatialPosition> = {}) =>
+  resolveSeats([...ids].sort(), stored);
+
+// Same set, different arrival order → identical placement.
+const a1 = seatsOf(crowd);
+const a2 = seatsOf([...crowd].reverse());
+for (const id of crowd) {
+  assert.deepEqual(a1.get(id)!.seat, a2.get(id)!.seat, `${id}: placement depends on order`);
+}
+
+// The whole point: no two seats closer than one slot. The old hash-derived
+// bearing was uniform over the full circle, so with three users two of them
+// routinely landed a couple of degrees apart and drew on top of each other.
+const placed = crowd.map(id => a1.get(id)!.seat);
+for (let i = 0; i < placed.length; i++) {
+  for (let j = i + 1; j < placed.length; j++) {
+    const gap = Math.abs(angleDelta(placed[i].angle, placed[j].angle));
+    assert.ok(
+      gap >= SEAT_ARC - 1e-9,
+      `seats ${i}/${j} only ${((gap * 180) / Math.PI).toFixed(1)}° apart`,
+    );
+  }
+}
+
+// Seat + its devices must stay inside the room.
+assert.ok(SEAT_RADIUS + DEVICE_RADIUS <= MAX_RADIUS, 'device cloud escapes MAX_RADIUS');
+
+// A hand-placed seat is returned untouched, and no default lands on top of it —
+// including when the stored user sorts *after* the ones taking defaults.
+const mine: SpatialPosition = { angle: 1.2, radius: 2.1, elevation: 0 };
+const withStored = seatsOf(crowd, { [seatKey('zoe')]: mine });
+assert.deepEqual(withStored.get('zoe')!.seat, mine, 'stored seat should not move');
+assert.equal(withStored.get('zoe')!.isDefault, false, 'stored seat should not be flagged default');
+for (const id of crowd) {
+  if (id === 'zoe') continue;
+  assert.ok(
+    distanceBetween(withStored.get(id)!.seat, mine) > 0.5,
+    `${id} defaulted on top of a hand-placed seat`,
+  );
+}
+
+// Alone in the room you are the listener, so you sit at the centre.
+assert.equal(seatsOf(['solo']).get('solo')!.seat.radius, 0, 'a lone user should be centred');
+
+// Past the slot count seats have to be reused — assert the ceiling is reached
+// rather than silently producing NaN or escaping the ring.
+const packed = seatsOf(Array.from({ length: SEAT_SLOTS + 3 }, (_, i) => `u${i}`));
+for (const { seat } of packed.values()) {
+  assert.ok(Number.isFinite(seat.angle) && seat.radius === SEAT_RADIUS, 'overflow seat is malformed');
+}
+
+// ── Reciprocity ─────────────────────────────────────────────────────────────
+// Every client draws the room from its own seat, so "put the phone to my right"
+// has to read back on the phone as "the Mac is to my left" — same distance,
+// opposite bearing, opposite height. It falls out of `relativePolar` being odd
+// in the difference vector, which is exactly the kind of thing a well-meaning
+// refactor breaks silently: the map still looks plausible, it just lies.
+
+const pairs: [SpatialPosition, SpatialPosition][] = [
+  // Straight across, level.
+  [{ angle: 0, radius: 2, elevation: 0 }, { angle: Math.PI, radius: 2, elevation: 0 }],
+  // Off-axis, one raised — covers the "and same, for up and down" case.
+  [{ angle: 0.7, radius: 2.4, elevation: 22 }, { angle: -2.1, radius: 1.1, elevation: -8 }],
+  // One of them at the room centre, the degenerate origin.
+  [{ angle: 0, radius: 0, elevation: 0 }, { angle: 1.9, radius: 3, elevation: 15 }],
+];
+
+for (const [a, b] of pairs) {
+  const there = relativePolar(b, a); // where B is, seen from A
+  const back = relativePolar(a, b); // where A is, seen from B
+
+  assert.ok(Math.abs(there.radius - back.radius) < 1e-9, 'reciprocity: distances disagree');
+  assert.ok(
+    Math.abs(Math.abs(angleDelta(there.angle, back.angle)) - Math.PI) < 1e-9,
+    'reciprocity: bearings are not opposite',
+  );
+  assert.ok(Math.abs(there.elevation + back.elevation) < 1e-9, 'reciprocity: heights do not mirror');
+}
+
+// Concretely: put B to A's right and A must land on B's left.
+const [me, them] = [
+  { angle: 0, radius: 1, elevation: 0 },
+  { angle: Math.PI / 2, radius: 1, elevation: 0 },
+];
+assert.ok(relativePolar(them, me).angle > 0, 'they should be on my right');
+assert.ok(relativePolar(me, them).angle < 0, 'I should be on their left');
+
+// Your own seat is always the centre of your own view.
+const seatOfMine: SpatialPosition = { angle: 2.2, radius: 1.7, elevation: 12 };
+assert.ok(relativePolar(seatOfMine, seatOfMine).radius < 1e-9, 'you should sit at your own origin');
 
 console.log('ok');

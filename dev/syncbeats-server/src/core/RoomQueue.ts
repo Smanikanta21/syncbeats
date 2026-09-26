@@ -209,6 +209,7 @@ export class RoomQueue {
   setCurrent(id: string): QueueItem | null {
     const item = this.byId(id);
     if (!item) return null;
+    this.markCurrentPlayed();
     this.currentId = id;
     this.lastAdvanceAt = Date.now();
     this.bump();
@@ -216,15 +217,14 @@ export class RoomQueue {
   }
 
   /**
-   * Mark the current track as listened. Called only when a track plays through to the end —
-   * `history` is a record of what was heard, never of where the pointer has been, so jumping
-   * from track 36 to track 43 must leave 37–42 sitting in the queue untouched.
+   * The track you are leaving goes to history — you heard it. Tracks the pointer *skips
+   * over* are never touched, which is the whole point: jumping from 36 to 43 must move
+   * only 36 to history and leave 37–42 sitting in the queue.
    */
-  markCurrentPlayed(): void {
+  private markCurrentPlayed(): void {
     const cur = this.current();
     if (!cur || cur.playedAt) return;
     cur.playedAt = Date.now();
-    this.bump();
   }
 
   next(): QueueItem | null {
@@ -233,6 +233,8 @@ export class RoomQueue {
 
     const idx = this.currentId ? this.order.indexOf(this.currentId) : -1;
     let nextIdx = idx + 1;
+
+    this.markCurrentPlayed();
 
     if (nextIdx >= this.order.length) {
       if (this.repeatMode !== 'all') return null;
@@ -360,6 +362,17 @@ export class RoomQueue {
     q.repeatMode = (['off', 'all', 'track'] as const).includes(data.repeatMode as RepeatMode)
       ? (data.repeatMode as RepeatMode)
       : 'off';
+
+    // Queues written before `playedAt` existed encoded history as position: everything
+    // ahead of the pointer had been played. Backfill once so a room that reloads after
+    // the upgrade doesn't come back with an empty History section.
+    if (q.currentId && q.items.every(i => !i.playedAt)) {
+      const cut = q.order.indexOf(q.currentId);
+      for (const id of q.order.slice(0, cut)) {
+        const item = q.byId(id);
+        if (item) item.playedAt = item.createdAt || Date.now();
+      }
+    }
     return q;
   }
 

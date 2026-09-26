@@ -6,6 +6,10 @@ import { UserRepository } from '../auth/UserRepository';
 import {
   JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition, RepeatMode
 } from '../types';
+import { roomCodeLookupError } from '../utils/errorHandler';
+
+/** What a client sees when it acts on a room the server no longer has. */
+const ROOM_GONE = 'This room is no longer active. Try rejoining from the hub.';
 
 /**
  * Bounds mirror `lib/spatial/geometry.ts` on the client. Enforced here as well
@@ -50,12 +54,6 @@ export class SocketHandler {
     private roomManager: RoomManager,
     private roomRepo:    RoomRepository,
   ) {
-    // Listen for play errors and forward to the requesting socket.
-    eventBus.on('ROOM_PLAY_ERROR', ({ requesterId, message }) => {
-      const socket = this.io.sockets.sockets.get(requesterId);
-      if (socket) socket.emit('error', { message });
-    });
-
     // Forward room state changes → socket.io rooms
     eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
@@ -126,6 +124,24 @@ export class SocketHandler {
     }, 1000));
   }
 
+  /**
+   * The room a user-triggered event is acting on, or null after telling them why not.
+   * These handlers used to `return` in silence, which left the UI waiting forever for
+   * a state change that was never coming.
+   */
+  private requireRoom(socket: Socket, roomId: unknown) {
+    if (typeof roomId !== 'string' || !roomId) {
+      socket.emit('error', { message: 'That action was missing a room code.' });
+      return null;
+    }
+    const room = this.roomManager.get(roomId);
+    if (!room) {
+      socket.emit('error', { message: ROOM_GONE });
+      return null;
+    }
+    return room;
+  }
+
   register(socket: Socket): void {
     console.log(`[WS] connected: ${socket.id}`);
 
@@ -133,6 +149,30 @@ export class SocketHandler {
 
     socket.on('room:join', async ({ roomId, displayName, userId, deviceId, isReady = false }: JoinPayload) => {
       try {
+        // The room code is checked against the DB on EVERY join, before getOrCreate.
+        // The old code only checked when the in-memory room looked untouched, so a
+        // REST call that had already conjured a ghost room for a made-up code let the
+        // join straight through — and recordParticipantJoin then upserted the fake
+        // room into the database for real.
+        const badCode = roomCodeLookupError(roomId);
+        if (badCode) {
+          socket.emit('room:notFound', { roomId, message: badCode });
+          return;
+        }
+
+        const dbRoom = await this.roomRepo.findById(roomId);
+        if (!dbRoom || dbRoom.ended_at) {
+          this.roomManager.remove(roomId);
+          socket.emit('room:notFound', {
+            roomId,
+            message: dbRoom
+              ? `Room ${roomId} has ended. Ask the host to start a new one.`
+              : `No room found with code ${roomId}. Check the code and try again.`,
+          });
+          console.warn(`[Room ${roomId}] Join rejected — ${dbRoom ? 'room has ended' : 'not found in DB'}`);
+          return;
+        }
+
         // Protect against JWT tokens being passed as userId accidentally
         if (userId && userId.includes('.') && userId.length > 50) {
           console.warn(`[Socket] Received JWT token instead of userId from ${socket.id}. Ignoring.`);
@@ -153,19 +193,17 @@ export class SocketHandler {
         // Disconnect from previous room if any to prevent ghosts
         this.roomManager.handleDisconnect(socket.id);
 
-        // Load from DB if fresh or if queue in memory is empty
-        if (!room.getTrackUrl() && room.getParticipantCount() === 0) {
-          const dbRoom = await this.roomRepo.findById(roomId);
-          if (dbRoom) {
-            room.initializeFromDatabase({
-              hostId:        dbRoom.host_id,
-              trackUrl:      dbRoom.track_url,
-              playbackState: dbRoom.playback_state,
-              positionMs:    dbRoom.position_ms,
-              createdAt:     dbRoom.created_at,
-              queue:         dbRoom.queue,
-            });
-          }
+        // Fresh instance (server restart, or first touch since eviction) — fill it
+        // from the row we just read.
+        if (!room.isHydrated) {
+          room.initializeFromDatabase({
+            hostId:        dbRoom.host_id,
+            trackUrl:      dbRoom.track_url,
+            playbackState: dbRoom.playback_state,
+            positionMs:    dbRoom.position_ms,
+            createdAt:     dbRoom.created_at,
+            queue:         dbRoom.queue,
+          });
         }
 
         // --- Private Mode Gate ---
@@ -215,11 +253,10 @@ export class SocketHandler {
         socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] join failed:`, err);
+        socket.emit('error', { message: "We couldn't get you into that room. Please try again." });
       }
     });
-
-    socket.on('room:leave', ({ roomId }: LeavePayload) => {
       const room = this.roomManager.get(roomId);
       if (room) {
         // We should NOT pause the room just because one person leaves.

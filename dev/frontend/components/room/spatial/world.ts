@@ -9,15 +9,13 @@
  */
 
 import * as THREE from "three";
-import { polarToCartesian, stringHash, type SpatialPosition } from "../../../lib/spatial/geometry";
+import { polarToCartesian, type SpatialPosition } from "../../../lib/spatial/geometry";
+
+/** Re-exported so every mesh here keeps importing its colour from one place. */
+export { userHue } from "../../../lib/spatial/geometry";
 
 /** One polar radius unit = this many three.js units. */
 export const WORLD_SCALE = 1.4;
-
-/** Stable hue per user, so colours survive reconnects and match across clients. */
-export function userHue(userId: string): number {
-  return stringHash(userId) % 360;
-}
 
 /**
  * Polar → world. Elevation becomes real height, so a device you raise visibly

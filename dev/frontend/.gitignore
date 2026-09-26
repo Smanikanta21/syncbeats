@@ -45,3 +45,10 @@ next-env.d.ts
 /public/workbox-*.js
 /public/workbox-*.js.map
 /public/swe-worker-*.js
+
+# Sentry Config File
+.env.sentry-build-plugin
+
+# Sentry auto-generated example/demo pages — not real app code
+/app/api/sentry-example-api/
+/app/sentry-example-page/

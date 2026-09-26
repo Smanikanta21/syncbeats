@@ -15,13 +15,13 @@
  *    cannot re-render the room.
  */
 
-import { useRef, useMemo, useCallback } from "react";
+import { memo, useRef, useMemo, useState, useCallback } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SpatialAudioEngine } from "../../../audio/SpatialAudioEngine";
-import { cartesianToPolar, GAIN_FLOOR } from "../../../lib/spatial/geometry";
+import { cartesianToPolar, GAIN_FLOOR, samePosition } from "../../../lib/spatial/geometry";
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
 import { FLOOR_PLANE, polarToWorld, userHue, WORLD_SCALE } from "./world";
 
@@ -40,7 +40,7 @@ export interface DeviceOrbProps {
   onCommit: (deviceId: string, pos: SpatialPosition) => void;
 }
 
-export function DeviceOrb({
+function DeviceOrbImpl({
   deviceId,
   userId,
   label,
@@ -55,6 +55,7 @@ export function DeviceOrb({
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const riserRef = useRef<THREE.Mesh>(null);
+  const [hovered, setHovered] = useState(false);
 
   const isDragging = useRef(false);
   const { camera, raycaster, gl, get } = useThree();
@@ -118,6 +119,9 @@ export function DeviceOrb({
   });
 
   // ── Drag ───────────────────────────────────────────────────────────────────
+  // Anyone can move any device. With two accounts in a room, gating on ownership
+  // meant neither person could say where the *other* one was sitting — the whole
+  // point of the map. `isOwnedByMe` now only affects how the orb looks.
 
   const setControlsEnabled = useCallback(
     (on: boolean) => {
@@ -129,7 +133,6 @@ export function DeviceOrb({
 
   const onPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      if (!isOwnedByMe) return;
       e.stopPropagation();
       isDragging.current = true;
       liveElevation.current = position.elevation;
@@ -137,7 +140,7 @@ export function DeviceOrb({
       (e.target as Element)?.setPointerCapture?.(e.pointerId);
       gl.domElement.style.cursor = "grabbing";
     },
-    [isOwnedByMe, position.elevation, setControlsEnabled, gl],
+    [position.elevation, setControlsEnabled, gl],
   );
 
   const onPointerMove = useCallback(
@@ -179,7 +182,7 @@ export function DeviceOrb({
       if (e.pointerId !== undefined) {
         (e.target as Element)?.releasePointerCapture?.(e.pointerId);
       }
-      gl.domElement.style.cursor = isOwnedByMe ? "grab" : "default";
+      gl.domElement.style.cursor = "grab";
 
       onCommit(
         deviceId,
@@ -190,7 +193,7 @@ export function DeviceOrb({
         ),
       );
     },
-    [deviceId, onCommit, gl, isOwnedByMe, setControlsEnabled],
+    [deviceId, onCommit, gl, setControlsEnabled],
   );
 
   const radius = isMe ? 0.2 : 0.15;
@@ -221,9 +224,11 @@ export function DeviceOrb({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onPointerOver={() => {
-          if (isOwnedByMe && !isDragging.current) gl.domElement.style.cursor = "grab";
+          setHovered(true);
+          if (!isDragging.current) gl.domElement.style.cursor = "grab";
         }}
         onPointerOut={() => {
+          setHovered(false);
           if (!isDragging.current) gl.domElement.style.cursor = "default";
         }}
       >
@@ -238,36 +243,58 @@ export function DeviceOrb({
         />
       </mesh>
 
-      <Html position={[0, radius + 0.13, 0]} center style={{ pointerEvents: "none", userSelect: "none" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
-          {isMe && (
+      {/* Other people's device names show on hover only. `<Html>` labels don't
+          depth-sort or occlude, so a room of four turned the stage into a wall of
+          overlapping text drawn over whatever was in front of it. Your own gear
+          stays labelled, and everyone else's orb is already colour-matched to
+          their seat avatar. */}
+      {(isOwnedByMe || hovered) && (
+        <Html position={[0, radius + 0.13, 0]} center style={{ pointerEvents: "none", userSelect: "none" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+            {isMe && (
+              <span
+                style={{
+                  fontSize: "8px",
+                  fontWeight: 900,
+                  letterSpacing: "0.14em",
+                  color: `hsl(${hue}, 85%, 72%)`,
+                  textTransform: "uppercase",
+                  textShadow: "0 0 6px rgba(0,0,0,0.9)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                This device
+              </span>
+            )}
             <span
               style={{
-                fontSize: "8px",
-                fontWeight: 900,
-                letterSpacing: "0.14em",
-                color: `hsl(${hue}, 85%, 72%)`,
-                textTransform: "uppercase",
-                textShadow: "0 0 6px rgba(0,0,0,0.9)",
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "white",
+                textShadow: "0 0 8px rgba(0,0,0,1)",
                 whiteSpace: "nowrap",
               }}
             >
-              This device
+              {label.length > 15 ? `${label.slice(0, 15)}…` : label}
             </span>
-          )}
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "white",
-              textShadow: "0 0 8px rgba(0,0,0,1)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {label.length > 15 ? `${label.slice(0, 15)}…` : label}
-          </span>
-        </div>
-      </Html>
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
+
+/** Same reason as {@link SeatMarker}'s: a remote drag must not reconcile the room. */
+export const DeviceOrb = memo(
+  DeviceOrbImpl,
+  (a, b) =>
+    a.deviceId === b.deviceId &&
+    a.userId === b.userId &&
+    a.label === b.label &&
+    a.isMe === b.isMe &&
+    a.isOwnedByMe === b.isOwnedByMe &&
+    a.isPlaying === b.isPlaying &&
+    a.onPreview === b.onPreview &&
+    a.onCommit === b.onCommit &&
+    samePosition(a.position, b.position),
+);

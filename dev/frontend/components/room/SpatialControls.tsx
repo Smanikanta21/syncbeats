@@ -33,6 +33,7 @@ import {
   MAX_ELEVATION,
   MIN_ELEVATION,
   clamp,
+  userHue,
   type SpatialPosition,
 } from "../../lib/spatial/geometry";
 import type { SpatialDevice } from "../../lib/spatial/layout";
@@ -84,10 +85,13 @@ function activePresetId(motion: MotionConfig): string | null {
 interface SpatialControlsProps {
   motion: MotionConfig;
   onMotionChange: (patch: Partial<MotionConfig>) => void;
-  /** Devices you're allowed to move — yours */
-  myDevices: SpatialDevice[];
-  /** Every speaker in the current field — what the scope and the pads draw */
+  /**
+   * Every speaker in the current field — what the scope, the list and the pads
+   * all work on. Anyone can place anything, so this is no longer just yours.
+   */
   fieldDevices: SpatialDevice[];
+  /** Shared frame the pan is computed in — the scope has to draw in it */
+  fieldOrigin: SpatialPosition;
   onQuickPlace: (deviceId: string, angle: number) => void;
   /** Mid-drag position updates from the pads */
   onPreviewPosition: (key: string, local: SpatialPosition) => void;
@@ -191,7 +195,7 @@ function DeviceLevels({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[10px] font-bold text-foreground/50">MY SPEAKERS</div>
+      <div className="text-[10px] font-bold text-foreground/50">SPEAKERS</div>
       {devices.map(d => (
         <div
           key={d.deviceId}
@@ -204,7 +208,15 @@ function DeviceLevels({
           )}
         >
           <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-[10px] font-semibold text-foreground/70">{d.label}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              {/* Same hue as the owner's orb and seat — the only attribution a
+                  room of four needs, and it costs no horizontal space. */}
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ background: `hsl(${userHue(d.userId)}, 70%, 62%)` }}
+              />
+              <span className="truncate text-[10px] font-semibold text-foreground/70">{d.label}</span>
+            </span>
             {d.isMe && (
               <span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-foreground">
                 here
@@ -245,19 +257,19 @@ function DeviceLevels({
 export function SpatialControls({
   motion,
   onMotionChange,
-  myDevices,
   fieldDevices,
+  fieldOrigin,
   onQuickPlace,
   onPreviewPosition,
   onCommitPosition,
   onReset,
   isPlaying,
 }: SpatialControlsProps) {
-  // Falls back to your first device, so the pads are usable without a tap.
+  // Falls back to the first speaker, so the pads are usable without a tap.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const selected =
-    myDevices.find(d => d.deviceId === selectedId) ?? myDevices[0] ?? null;
+    fieldDevices.find(d => d.deviceId === selectedId) ?? fieldDevices[0] ?? null;
 
   const presetId = activePresetId(motion);
   const isBeat = motion.mode === "beat";
@@ -324,11 +336,11 @@ export function SpatialControls({
         </Ends>
       </div>
 
-      {/* ── Your own speakers ───────────────────────────────────────────── */}
-      {myDevices.length > 0 && (
+      {/* ── Speakers in the room ────────────────────────────────────────── */}
+      {fieldDevices.length > 0 && (
         <div className="border-t border-foreground/10 pt-3">
           <DeviceLevels
-            devices={myDevices}
+            devices={fieldDevices}
             selectedId={selected?.deviceId ?? null}
             onSelect={setSelectedId}
             onPlace={onQuickPlace}
@@ -471,14 +483,14 @@ export function SpatialControls({
 
           {/* ── Live readouts ────────────────────────────────────────────── */}
           <div className="border-t border-foreground/10 pt-3">
-            <SurroundScope field={fieldDevices} isPlaying={isPlaying} />
+            <SurroundScope field={fieldDevices} fieldOrigin={fieldOrigin} isPlaying={isPlaying} />
           </div>
 
           <div className="border-t border-foreground/10 pt-3">
             <LivePanMeter isPlaying={isPlaying} />
           </div>
 
-          {myDevices.length > 0 && (
+          {fieldDevices.length > 0 && (
             <div className="border-t border-foreground/10 pt-3">
               <PanPads
                 field={fieldDevices}

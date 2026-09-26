@@ -99,6 +99,7 @@ export class Room extends EventEmitter {
     this.state    = PlaybackState.PAUSED;
     this.position     = data.positionMs;
     this.snapshotTime = Date.now();
+    this.isHydrated   = true;
   }
 
   // ── Playback (no host gate — any participant) ─────────────────────────
@@ -369,8 +370,6 @@ export class Room extends EventEmitter {
   /** Called for every device's `playback:ended`; only the first one through advances. */
   handleTrackEnded(trackUrl: string): QueueItem | null {
     if (!this.queue.shouldAdvance(trackUrl)) return null;
-    // Reaching the end is the only thing that counts as "listened" — see markCurrentPlayed().
-    this.queue.markCurrentPlayed();
     return this.nextTrack(true);
   }
 

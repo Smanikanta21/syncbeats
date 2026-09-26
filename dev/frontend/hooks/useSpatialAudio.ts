@@ -10,9 +10,10 @@
  *
  * Positions travel over the wire as **absolute** room coordinates, but every
  * caller here works in **local** coordinates relative to `layout.origin` — your
- * seat in My Space, the room centre in Room. The conversion lives here so the 3D
- * scene can treat the origin as the middle of the world and nothing else has to
- * think about it.
+ * own seat, in both modes, so each device sees the room from where it sits. The
+ * conversion lives here so the 3D scene can treat the origin as the middle of
+ * the world and nothing else has to think about it. The *pan* field is a
+ * separate, shared frame: `layout.fieldOrigin`.
  *
  * Deliberately owns no per-frame state: the 3D stage reads positions and gains
  * straight off the engine inside its own render loop, so orbiting never triggers
@@ -159,7 +160,7 @@ export function useSpatialAudio({
       position: preview && preview.key === d.deviceId ? preview.position : d.position,
     }));
 
-    engine.setField(speakers, l.origin);
+    engine.setField(speakers, l.fieldOrigin);
   }, [engine]);
 
   useEffect(() => {
@@ -284,7 +285,15 @@ export function useSpatialAudio({
     if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
   }, []);
 
-  /** Local (origin-relative) → absolute room coordinates. */
+  /**
+   * Local (view-relative) → absolute room coordinates.
+   *
+   * ponytail: the two `sanitise` calls clamp radius in different frames — the
+   * drag is bounded MAX_RADIUS from *you*, the result MAX_RADIUS from the room
+   * centre. From an off-centre seat those disagree, so hauling something to the
+   * far edge glides back to the boundary (the orb lerps, so it reads as a limit,
+   * not a glitch). Pass the origin into the drag clamp if that ever annoys.
+   */
   const toAbsolute = useCallback(
     (local: SpatialPosition) => sanitise(absolutePolar(sanitise(local), layoutRef.current.origin)),
     [],

@@ -215,6 +215,22 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  /* Set by CustomCursor once it has decided to take over (fine pointer, motion
+     allowed). Never applied from markup, so a visitor without JS keeps theirs.
+     Anything that declares its own cursor keeps it — a grab handle, a resize
+     edge, a caret and a slider all say something the dot can't — except
+     cursor-pointer, which says nothing the ring doesn't already show.
+     CustomCursor fades itself out over those, so only one pointer is ever up.
+     The name must not contain "cursor-" anywhere: the opt-out selectors below
+     and in CustomCursor match that as a *substring*, not a prefix, so a class
+     like `native-cursor-off` on <html> matches itself and every closest()
+     lookup walks up to it — which hid the cursor permanently. */
+  .native-pointer-off,
+  .native-pointer-off *:not([class*="cursor-"]):not(input):not(textarea):not([contenteditable="true"]),
+  .native-pointer-off [class*="cursor-pointer"] {
+    cursor: none !important;
+  }
+
   .no-touch-select {
     -webkit-user-select: none !important;
     -moz-user-select: none !important;
@@ -230,6 +246,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --z-9999: 9999;
 }
 
 @keyframes ambientBreathing {

@@ -58,7 +58,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     authLoading: authLoading,
   });
 
-  const connectionError = joinStatus === "denied" || isTimedOut;
+  const connectionError = joinStatus === "denied" || joinStatus === "not_found" || isTimedOut;
 
   // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
   useEffect(() => {
@@ -228,10 +228,16 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             </svg>
           </div>
           <h2 className="text-2xl font-black mb-2 tracking-tight">
-            {joinStatus === "denied" ? "Join Request Denied" : "Room Connection Timed Out"}
+            {joinStatus === "not_found"
+              ? "Room Not Found"
+              : joinStatus === "denied"
+              ? "Join Request Denied"
+              : "Room Connection Timed Out"}
           </h2>
           <p className="text-foreground/60 text-sm mb-7 max-w-sm font-medium leading-relaxed">
-            {joinStatus === "denied"
+            {joinStatus === "not_found"
+              ? "No room exists with that code. Double-check the code and try again."
+              : joinStatus === "denied"
               ? "The host declined your request to join this private room."
               : "Unable to establish a connection to this room. The server might be unreachable or your connection timed out."}
           </p>

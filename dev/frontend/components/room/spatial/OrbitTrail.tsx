@@ -17,7 +17,7 @@
  * eased.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { SpatialAudioEngine } from "../../../audio/SpatialAudioEngine";
@@ -30,13 +30,20 @@ const SOURCE_COLOR = "#a78bfa";
 interface OrbitTrailProps {
   isPlaying: boolean;
   mode: MotionMode;
-  /** Speaker angles, origin-relative — sizes the Ping-pong arc */
+  /** Speaker angles, field-relative — sizes the Ping-pong arc */
   speakerAngles: number[];
+  /**
+   * Where the field origin sits in the view, in world units. The sound orbits
+   * the field origin; the scene is drawn from your seat. In Room mode those are
+   * different points, so everything in here is offset by the gap rather than
+   * each piece converting frames on its own.
+   */
+  centre: [number, number, number];
   /** Latest bass intensity, written from outside the Canvas */
   beatRef?: React.RefObject<number>;
 }
 
-export function OrbitTrail({ isPlaying, mode, speakerAngles, beatRef }: OrbitTrailProps) {
+function OrbitTrailImpl({ isPlaying, mode, speakerAngles, centre, beatRef }: OrbitTrailProps) {
   const orbRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
   const pathRef = useRef<THREE.Mesh>(null);
@@ -140,7 +147,7 @@ export function OrbitTrail({ isPlaying, mode, speakerAngles, beatRef }: OrbitTra
   });
 
   return (
-    <group>
+    <group position={centre}>
       {/* Path the source travels — hidden in Beat mode, where it jumps */}
       {mode !== "beat" && (
         <mesh
@@ -176,3 +183,22 @@ export function OrbitTrail({ isPlaying, mode, speakerAngles, beatRef }: OrbitTra
     </group>
   );
 }
+
+/**
+ * `speakerAngles` is rebuilt from the layout on every `spatial:update`, so by
+ * reference it changes ~20×/s while anyone drags — which re-rendered the trail
+ * and re-ran the Ping-pong arc memo for values that were usually identical.
+ * Compared element-wise instead.
+ */
+export const OrbitTrail = memo(
+  OrbitTrailImpl,
+  (a, b) =>
+    a.isPlaying === b.isPlaying &&
+    a.mode === b.mode &&
+    a.beatRef === b.beatRef &&
+    a.centre[0] === b.centre[0] &&
+    a.centre[1] === b.centre[1] &&
+    a.centre[2] === b.centre[2] &&
+    a.speakerAngles.length === b.speakerAngles.length &&
+    a.speakerAngles.every((v, i) => v === b.speakerAngles[i]),
+);

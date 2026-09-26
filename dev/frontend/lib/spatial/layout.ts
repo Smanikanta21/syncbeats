@@ -2,48 +2,35 @@
  * layout.ts
  *
  * Groups participants into users + devices and decides where anything sits that
- * nobody has placed by hand yet.
+ * nobody has placed by hand yet. Placement itself lives in `seats.ts`.
  *
  * Defaults are derived from stable string hashes rather than array order, so
  * every client in the room computes the same fallback placement and nothing
  * jumps around as people join or leave. A user with two devices gets them put
  * on their left and right automatically — which is the setup that makes the
  * surround effect obvious the moment you press play.
+ *
+ * Everything is drawn from **your** seat outward, so two people in one room see
+ * each other reciprocally: put someone on your right and you land on their left.
+ * That is just `relativePolar` being odd in the difference vector — no extra
+ * bookkeeping. See {@link SpatialLayout.fieldOrigin} for the frame that must
+ * *not* be per-device.
  */
 
 import type { Participant } from '../types';
 import { getFriendlyDeviceName, initialsFor, parseParticipantNames } from '../deviceNaming';
-import {
-  absolutePolar,
-  relativePolar,
-  stringHash,
-  type SpatialPosition,
-} from './geometry';
+import { relativePolar, type SpatialPosition } from './geometry';
+import { ROOM_CENTRE, defaultDevicePosition, resolveSeats } from './seats';
 
-export const SEAT_PREFIX = 'seat:';
-export const seatKey = (userId: string) => `${SEAT_PREFIX}${userId}`;
-export const isSeatKey = (key: string) => key.startsWith(SEAT_PREFIX);
-export const userIdFromSeatKey = (key: string) => key.slice(SEAT_PREFIX.length);
-
-/** How far from the room centre other people sit. */
-const SEAT_RADIUS = 2.4;
-/** How far a device sits from its owner's seat. */
-const DEVICE_RADIUS = 1.0;
-
-/**
- * Left, right, front, back, then the diagonals. Two devices therefore land
- * either side of you — the classic stereo placement.
- */
-const DEVICE_SLOT_ANGLES = [
-  -Math.PI / 2,
-  Math.PI / 2,
-  0,
-  Math.PI,
-  -(3 * Math.PI) / 4,
-  (3 * Math.PI) / 4,
-  -Math.PI / 4,
-  Math.PI / 4,
-];
+export {
+  ROOM_CENTRE,
+  SEAT_PREFIX,
+  defaultDevicePosition,
+  defaultSeatPosition,
+  isSeatKey,
+  seatKey,
+  userIdFromSeatKey,
+} from './seats';
 
 export interface SpatialDevice {
   /** Socket id — the wire key for this device's position */
@@ -67,7 +54,7 @@ export interface SpatialUser {
   initials: string;
   isMe: boolean;
   seat: SpatialPosition;
-  /** Seat relative to the listening origin — in My Space yours is the centre */
+  /** Seat relative to the view origin — yours is always the centre */
   seatLocal: SpatialPosition;
   seatIsDefault: boolean;
   devices: SpatialDevice[];
@@ -77,29 +64,15 @@ export interface SpatialLayout {
   users: SpatialUser[];
   devices: SpatialDevice[];
   me: SpatialUser | null;
-  /** Origin of the surround field for the given mode, in absolute coordinates */
+  /** Where this device views the room from — your seat. Per-device by design. */
   origin: SpatialPosition;
-}
-
-export const ROOM_CENTRE: SpatialPosition = { angle: 0, radius: 0, elevation: 0 };
-
-/** Deterministic seat placement, identical on every client. */
-export function defaultSeatPosition(userId: string, userCount: number): SpatialPosition {
-  if (userCount <= 1) return { ...ROOM_CENTRE };
-  const angle = (stringHash(userId) / 0x100000000) * Math.PI * 2;
-  return { angle, radius: SEAT_RADIUS, elevation: 0 };
-}
-
-/** Deterministic device placement around its owner's seat. */
-export function defaultDevicePosition(
-  seat: SpatialPosition,
-  index: number,
-  deviceCount: number,
-): SpatialPosition {
-  // A lone device belongs in front of you, not off to one side.
-  const localAngle =
-    deviceCount <= 1 ? 0 : DEVICE_SLOT_ANGLES[index % DEVICE_SLOT_ANGLES.length];
-  return absolutePolar({ angle: localAngle, radius: DEVICE_RADIUS, elevation: 0 }, seat);
+  /**
+   * Frame the VBAP pan is computed in. Must be identical on every client:
+   * `setField` derives `ringAngles` from it and `ringAngles` decides where the
+   * travelling source is, so two clients with different field origins would
+   * sweep the sound across the room differently.
+   */
+  fieldOrigin: SpatialPosition;
 }
 
 /**
@@ -107,7 +80,7 @@ export function defaultDevicePosition(
  * server knows about.
  *
  * @param positions Server-known positions, keyed by socket id or `seat:<userId>`
- * @param mode      'solo' centres the field on your own seat; 'room' on the room
+ * @param mode      'solo' also narrows the pan field to your own devices
  */
 export function buildSpatialLayout(
   participants: Participant[],
@@ -127,24 +100,23 @@ export function buildSpatialLayout(
   const resolvedMyUserId =
     participants.find(p => p.socketId === mySocketId)?.userId ?? myUserId ?? mySocketId;
 
-  const userCount = byUser.size;
-
-  // Sorted so device slot assignment is stable across clients and reconnects.
+  // Sorted so seat and device slot assignment is stable across clients and reconnects.
   const sortedUserIds = Array.from(byUser.keys()).sort();
 
   // Seats resolve first: the listening origin depends on mine, and every
   // device's drawn position depends on that origin.
-  const seats = new Map<string, { seat: SpatialPosition; isDefault: boolean }>();
-  sortedUserIds.forEach(userId => {
-    const stored = positions[seatKey(userId)];
-    seats.set(userId, {
-      seat: stored ?? defaultSeatPosition(userId, userCount),
-      isDefault: !stored,
-    });
-  });
+  const seats = resolveSeats(sortedUserIds, positions);
 
   const mySeat = seats.get(resolvedMyUserId)?.seat;
-  const origin = mode === 'solo' ? (mySeat ?? ROOM_CENTRE) : ROOM_CENTRE;
+
+  // Both modes draw from where *you* are. The old god's-eye Room view made
+  // "left" mean left-of-the-room, so dragging someone's phone left said nothing
+  // about where it sat relative to your Mac — and disagreed with what you heard,
+  // since the HRTF was already computed from this device's own position.
+  const origin = mySeat ?? ROOM_CENTRE;
+
+  // ...but the pan has to stay in a frame everyone agrees on. See SpatialLayout.
+  const fieldOrigin = mode === 'solo' ? origin : ROOM_CENTRE;
 
   const users: SpatialUser[] = [];
   const devices: SpatialDevice[] = [];
@@ -188,5 +160,5 @@ export function buildSpatialLayout(
 
   const me = users.find(u => u.isMe) ?? null;
 
-  return { users, devices, me, origin };
+  return { users, devices, me, origin, fieldOrigin };
 }

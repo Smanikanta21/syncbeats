@@ -20,6 +20,7 @@ import { OrbitControls, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
 
 import type { SpatialPosition } from "../../../lib/spatial/geometry";
+import { relativePolar } from "../../../lib/spatial/geometry";
 import type { SpatialLayout } from "../../../lib/spatial/layout";
 import { seatKey } from "../../../lib/spatial/layout";
 import type { MotionMode } from "../../../lib/spatial/motion";
@@ -28,7 +29,7 @@ import { useDevicePerf } from "../../../hooks/useDevicePerf";
 import { DeviceOrb } from "./DeviceOrb";
 import { SeatMarker } from "./SeatMarker";
 import { OrbitTrail } from "./OrbitTrail";
-import { WORLD_SCALE } from "./world";
+import { polarToWorld, WORLD_SCALE } from "./world";
 
 /** Compass labels — the difference between "somewhere" and "on my left". */
 const BEARINGS: Array<{ label: string; x: number; z: number }> = [
@@ -74,7 +75,23 @@ function Scene({
     () => (mode === "solo" ? (layout.me ? [layout.me] : []) : layout.users),
     [mode, layout],
   );
-  const speakerAngles = useMemo(() => devices.map(d => d.local.angle), [devices]);
+  const speakerAngles = useMemo(
+    // Field frame, not view frame: this sizes the Ping-pong arc, and the arc is
+    // a property of where the speakers sit in the *pan* ring — which is shared.
+    () => devices.map(d => relativePolar(d.position, layout.fieldOrigin).angle),
+    [devices, layout.fieldOrigin],
+  );
+
+  /**
+   * The sound orbits the field origin, but the scene is drawn from your seat.
+   * In Room mode those are different points, so the whole orbit group is shifted
+   * to wherever the field origin lands in your view — otherwise the visible path
+   * drifts off the audible one by exactly your seat vector.
+   */
+  const orbitCentre = useMemo<[number, number, number]>(() => {
+    const v = polarToWorld(relativePolar(layout.fieldOrigin, layout.origin));
+    return [v.x, v.y, v.z];
+  }, [layout.fieldOrigin, layout.origin]);
 
   return (
     <>
@@ -96,7 +113,7 @@ function Scene({
         infiniteGrid
       />
 
-      {/* Listening origin — you, in My Space; the room centre otherwise */}
+      {/* View origin — always you. Every screen sees the room from its own seat. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
         <ringGeometry args={[0.04, 0.06, 24]} />
         <meshBasicMaterial color="#60a5fa" transparent opacity={0.5} depthWrite={false} side={THREE.DoubleSide} />
@@ -122,6 +139,7 @@ function Scene({
         isPlaying={isPlaying}
         mode={motionMode}
         speakerAngles={speakerAngles}
+        centre={orbitCentre}
         beatRef={beatRef}
       />
 
@@ -133,8 +151,10 @@ function Scene({
           initials={u.initials}
           position={u.seatLocal}
           isMe={u.isMe}
-          // In My Space you *are* the origin, so there is nothing to drag.
-          draggable={mode === "room" && u.isMe}
+          // You are the origin, so dragging yourself would just slide the whole
+          // room. You move *other* people instead — which is how you say "you're
+          // over there", and it reads back on their screen as "you're over here".
+          draggable={mode === "room" && !u.isMe}
           seatKey={seatKey(u.userId)}
           onPreview={onPreviewPosition}
           onCommit={onCommitPosition}

@@ -28,8 +28,9 @@ const CONVERGE_MS = 2400;
  */
 const PERTURB_FROM = 0.32;
 
-/** Where the traces settle, as a fraction of height — low, so the form stays clear. */
-const HORIZON = 0.72;
+/** Where the traces settle, as a fraction of height — below the auth panel, so
+ *  the convergence sweeps down past the card rather than behind its middle. */
+const HORIZON = 0.86;
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

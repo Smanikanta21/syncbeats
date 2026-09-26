@@ -25,6 +25,7 @@ import {
   angleDelta,
   clamp,
   polarToCartesian,
+  relativePolar,
   type SpatialPosition,
   type Vec3,
 } from "../../../lib/spatial/geometry";
@@ -207,20 +208,28 @@ const SCOPE_KERNEL = Math.PI / 2;
  * reaches out by a kernel-weighted blend of the surrounding speakers' live
  * levels. With one device it is a lobe pointing at it; with a Mac left and a
  * phone right it stretches between them as the source crosses over.
+ *
+ * Drawn in the **field** frame, not the per-device view frame — the gains and
+ * the source dot both come from the engine, which pans in the shared frame. Mix
+ * the two and the blob points somewhere the sound isn't.
  */
 export function SurroundScope({
   field,
+  fieldOrigin,
   isPlaying,
 }: {
   field: SpatialDevice[];
+  fieldOrigin: SpatialPosition;
   isPlaying: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fieldRef = useRef(field);
+  const originRef = useRef(fieldOrigin);
 
   useEffect(() => {
     fieldRef.current = field;
-  }, [field]);
+    originRef.current = fieldOrigin;
+  }, [field, fieldOrigin]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -262,7 +271,7 @@ export function SurroundScope({
 
       const engine = SpatialAudioEngine.getInstance();
       const speakers = fieldRef.current.map(d => ({
-        angle: d.local.angle,
+        angle: relativePolar(d.position, originRef.current).angle,
         gain: clamp(engine.getGain(d.deviceId), 0, 1),
       }));
 

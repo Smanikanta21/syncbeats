@@ -73,9 +73,6 @@ export class RoomManager {
     room.on('queueChanged', (queue) => eventBus.emit(EVENTS.QUEUE_CHANGED, { roomId: room.roomId, queue }));
     room.on('schedule', (payload) => eventBus.emit(EVENTS.PLAYBACK_SCHEDULE, { roomId: room.roomId, ...payload }));
     room.on('pause', (payload) => eventBus.emit(EVENTS.PLAYBACK_PAUSE, { roomId: room.roomId, ...payload }));
-    room.on('playError', ({ requesterId, message }) => {
-      eventBus.emit('ROOM_PLAY_ERROR', { roomId: room.roomId, requesterId, message });
-    });
     room.on('empty', () => {
       console.log(`[RoomManager] Room ${room.roomId} is now empty`);
     });

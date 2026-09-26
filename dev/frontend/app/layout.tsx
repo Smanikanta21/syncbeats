@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
 import { BeatProvider } from "../context/BeatContext";
 import { NavigationProgress } from "../components/NavigationProgress";
+import { CustomCursor } from "../components/CustomCursor";
 import "../lib/logger";
 
 const outfitFont = Outfit({
@@ -237,6 +238,9 @@ export default function RootLayout({
 
 
       <body className={cn('transition-colors', 'duration-300', 'bg-background', 'text-foreground')}>
+        {/* Replaces the native pointer everywhere, on fine-pointer devices that
+            allow motion. Mounted above the providers so it survives navigation. */}
+        <CustomCursor />
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
         <div className={cn('fixed', 'inset-0', 'pointer-events-none', 'z-0')}>
           

@@ -335,10 +335,14 @@ export class SpatialAudioEngine {
   }
 
   /**
-   * Replace the speaker set and the listening point.
+   * Replace the speaker set and the point the pan is measured from.
    *
-   * `origin` is your seat in My Space and the room centre in Room mode; speaker
-   * positions arrive as absolute room coordinates and are re-expressed around it.
+   * `origin` must be the **same on every client** — it is your seat in My Space,
+   * the room centre in Room mode. `ringAngles` below is derived from it and
+   * decides where the travelling source is, so clients that disagree here would
+   * sweep the sound across the room out of step. This is deliberately *not* the
+   * per-device view origin; what you hear is already egocentric via `myVec` in
+   * {@link applyAudio}. Speaker positions arrive as absolute room coordinates.
    */
   setField(speakers: Speaker[], origin: SpatialPosition = ORIGIN_POSITION): void {
     this.speakers = speakers;

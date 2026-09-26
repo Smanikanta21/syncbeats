@@ -19,8 +19,8 @@ interface SyncCtx {
   setPendingRequests: (v: JoinRequest[]) => void;
   hostId: string | null;
   setHostId: (v: string | null) => void;
-  joinStatus: 'joined' | 'pending' | 'denied' | 'connecting';
-  setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting') => void;
+  joinStatus: 'joined' | 'pending' | 'denied' | 'connecting' | 'not_found';
+  setJoinStatus: (v: 'joined' | 'pending' | 'denied' | 'connecting' | 'not_found') => void;
   isPrivate: boolean;
   setIsPrivate: (v: boolean) => void;
   deviceSyncProgress: Record<string, number>;
@@ -64,7 +64,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
-  const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting'>('connecting');
+  const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting' | 'not_found'>('connecting');
   const [isPrivate, setIsPrivate] = useState(false);
   const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({});
   const [play, setPlay] = useState<() => void>(() => () => {});

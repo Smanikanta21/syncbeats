@@ -45,6 +45,14 @@ export const GAIN_FLOOR = 0.15;
 export const clamp = (v: number, min: number, max: number) =>
   v < min ? min : v > max ? max : v;
 
+/**
+ * Field-wise equality. Positions are rebuilt as fresh objects on every layout
+ * pass, so `===` is always false — which is what made the scene reconcile every
+ * seat and orb while one person dragged. Used by the `memo` comparators.
+ */
+export const samePosition = (a: SpatialPosition, b: SpatialPosition) =>
+  a.angle === b.angle && a.radius === b.radius && a.elevation === b.elevation;
+
 /** Wrap any angle into [0, 2π). */
 export function normalizeAngle(angle: number): number {
   const twoPi = Math.PI * 2;
@@ -122,9 +130,10 @@ export const vecLength = (v: Vec3): number => Math.hypot(v.x, v.y, v.z);
 /**
  * Re-express `target` in a frame centred on `origin`.
  *
- * Device positions travel over the wire as absolute room coordinates, but the
- * surround field is built around a listening point — your seat in My Space, the
- * room centre in Room. This converts one to the other.
+ * Positions travel over the wire as absolute room coordinates; everything drawn
+ * or panned is measured from some origin. Note this is **odd** in the difference
+ * vector, which is what makes placement reciprocal: if B is to A's right at
+ * distance d, A comes back to B's left at the same d, with elevation mirrored.
  */
 export function relativePolar(target: SpatialPosition, origin: SpatialPosition): SpatialPosition {
   return vecToPolar(subVec(polarToCartesian(target), polarToCartesian(origin)));
@@ -143,6 +152,15 @@ export function stringHash(value: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+/**
+ * Stable hue per user, so colours survive reconnects and match across clients.
+ * Lives here rather than in the three.js `world.ts` so the 2D panel can tint a
+ * list row to match an orb without pulling three into its bundle.
+ */
+export function userHue(userId: string): number {
+  return stringHash(userId) % 360;
 }
 
 export const ORIGIN_POSITION: SpatialPosition = { angle: 0, radius: 0, elevation: 0 };

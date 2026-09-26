@@ -8,7 +8,9 @@
  *  - **My Space** — your own devices become the speakers, and *you* are the
  *    centre. Put the Mac on your left and the phone on your right and the sound
  *    genuinely travels between them.
- *  - **Room** — everyone's devices, grouped by person, around the room centre.
+ *  - **Room** — everyone's devices, grouped by person, drawn from *your* seat.
+ *    So placement is reciprocal: put someone's phone on your right and on their
+ *    screen your Mac shows up on their left, at the same distance.
  *
  * This component owns the bass `beatRef`: React context does not cross the R3F
  * reconciler, so the subscription has to live outside `<Canvas>` and be handed
@@ -75,7 +77,7 @@ const TABS: Array<{ id: SpatialMode; label: string; icon: typeof User; blurb: st
     id: "room",
     label: "Room",
     icon: Users,
-    blurb: "Everyone's devices, arranged around the room",
+    blurb: "Everyone's devices, placed around you — drag to say where they are",
   },
 ];
 
@@ -157,7 +159,6 @@ export function SpatialPanel({
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const myDevices = useMemo(() => layout.me?.devices ?? [], [layout]);
   /** The speakers actually making up the field — mirrors `applyField` in the hook. */
   const fieldDevices = useMemo(
     () => (mode === "solo" ? (layout.me?.devices ?? []) : layout.devices),
@@ -183,8 +184,8 @@ export function SpatialPanel({
     <SpatialControls
       motion={motion}
       onMotionChange={onMotionChange}
-      myDevices={myDevices}
       fieldDevices={fieldDevices}
+      fieldOrigin={layout.fieldOrigin}
       onQuickPlace={handleQuickPlace}
       onPreviewPosition={onPreviewPosition}
       onCommitPosition={onCommitPosition}

@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useCallback, ReactNode, InputHTMLAttributes } from "react";
 import { motion, AnimatePresence, MotionConfig, Variants } from "framer-motion";
-import { ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Mail, User, Lock, ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
@@ -303,42 +303,48 @@ export default function AuthPage() {
     // reducedMotion="user" drops framer's transform animations for viewers who
     // ask for less motion, without a conditional on every element.
     <MotionConfig reducedMotion="user">
-      <div className="relative min-h-screen overflow-hidden">
+      <div className={cn('relative', 'flex', 'min-h-dvh', 'w-full', 'items-center', 'justify-center', 'overflow-hidden', 'px-4', 'py-24', 'sm:px-6')}>
+        {/* The converging traces sit behind the panel and read through its
+            frosted glass, so the card is the focus and the field is weather. */}
         <PhaseField perturb={perturb} />
-        {/* Pulls the page colour back over the middle so the traces read as
-            atmosphere behind the form rather than noise through it. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-0 z-0"
-          style={{ background: "radial-gradient(ellipse 58% 52% at 50% 42%, var(--background) 25%, transparent 100%)" }}
-        />
 
-        <Link
-          href="/"
+        <div className={cn('absolute', 'top-4', 'left-4', 'sm:top-6', 'sm:left-6', 'z-50')}>
+          <Link
+            href="/"
+            className={cn(
+              'group flex items-center gap-2.5 px-4 py-2.5 rounded-full',
+              'bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15',
+              'text-foreground font-bold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:bg-foreground/10'
+            )}
+          >
+            <ArrowLeft className={cn('w-4', 'h-4', 'group-hover:-translate-x-1', 'transition-transform')} />
+            <span>Home</span>
+          </Link>
+        </div>
+
+        <motion.main
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           className={cn(
-            'group absolute top-6 left-6 sm:top-8 sm:left-8 z-20 inline-flex items-center gap-2',
-            'text-sm text-foreground/40 hover:text-foreground transition-colors'
+            'relative z-10 w-full max-w-lg glass-panel rounded-[2.5rem]',
+            'border border-foreground/15 p-6 sm:p-10 shadow-2xl'
           )}
         >
-          <ArrowLeft className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-1" />
-          Home
-        </Link>
-
-        <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-24">
           <AnimatePresence mode="wait">
             <motion.div
               key={isLogin ? "head-login" : "head-signup"}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             >
-              <h1 className="text-[clamp(2.5rem,9vw,3.5rem)] font-light leading-[0.95] -tracking-[0.035em] text-foreground">
+              <h1 className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'tracking-tight', 'text-foreground')}>
                 {isLogin ? "Sound, in step." : "Get in step."}
               </h1>
-              <p className="mt-4 text-foreground/45">
+              <p className={cn('mt-2', 'text-sm', 'sm:text-base', 'text-foreground/50', 'font-medium')}>
                 {isLogin
-                  ? "Pick up where your session left off."
+                  ? "Log in to pick up where your session left off."
                   : "Turn the devices you own into one speaker."}
               </p>
             </motion.div>
@@ -350,9 +356,9 @@ export default function AuthPage() {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="mt-8 flex items-start gap-2 border-l-2 border-red-500/60 pl-3 text-sm text-red-400"
+                className={cn('mt-6', 'flex', 'items-start', 'gap-2', 'text-sm', 'font-medium', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}
               >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <AlertCircle className={cn('mt-0.5', 'h-4', 'w-4', 'shrink-0')} />
                 {error}
               </motion.div>
             )}
@@ -366,17 +372,18 @@ export default function AuthPage() {
               initial="hidden"
               animate="show"
               exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
-              className="mt-10 space-y-5"
+              className={cn('mt-7', 'space-y-4')}
             >
               {!isLogin && (
                 <Field
                   name="signup-name"
-                  label="Name"
+                  label="Full Name"
+                  icon={User}
                   value={name}
                   onChange={setName}
                   shakeKey={`signup-name-${shakeNonce}`}
                   shaking={shakeTargets.includes("signup-name")}
-                  placeholder="What should we call you?"
+                  placeholder="Your name"
                   autoComplete="name"
                   required
                 />
@@ -384,7 +391,8 @@ export default function AuthPage() {
 
               <Field
                 name={isLogin ? "login-email" : "signup-email"}
-                label="Email"
+                label="Email Address"
+                icon={Mail}
                 type="email"
                 value={email}
                 onChange={setEmail}
@@ -400,18 +408,19 @@ export default function AuthPage() {
               <Field
                 name={isLogin ? "login-password" : "signup-password"}
                 label="Password"
+                icon={Lock}
                 secret
                 value={password}
                 onChange={setPassword}
                 shakeKey={`${isLogin ? "login" : "signup"}-password-${shakeNonce}`}
                 shaking={shakeTargets.includes(isLogin ? "login-password" : "signup-password")}
-                placeholder={isLogin ? "••••••••" : "At least 8 characters"}
+                placeholder={isLogin ? "••••••••" : "Min. 8 characters"}
                 autoComplete={isLogin ? "current-password" : "new-password"}
                 minLength={isLogin ? undefined : 8}
                 required
                 action={
                   isLogin ? (
-                    <Link href="/forgot-password" className="text-xs text-foreground/40 transition-colors hover:text-foreground">
+                    <Link href="/forgot-password" className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'hover:text-foreground', 'transition-colors')}>
                       Forgot?
                     </Link>
                   ) : undefined
@@ -421,13 +430,14 @@ export default function AuthPage() {
               {!isLogin && (
                 <Field
                   name="signup-confirm-password"
-                  label="Confirm password"
+                  label="Confirm Password"
+                  icon={Lock}
                   secret
                   value={confirmPassword}
                   onChange={setConfirmPassword}
                   shakeKey={`signup-confirm-password-${shakeNonce}`}
                   shaking={shakeTargets.includes("signup-confirm-password")}
-                  placeholder="Type it again"
+                  placeholder="Confirm password"
                   autoComplete="new-password"
                   minLength={8}
                   required
@@ -437,46 +447,46 @@ export default function AuthPage() {
               <motion.button
                 variants={item}
                 whileHover={{ y: -2 }}
-                whileTap={{ y: 0, scale: 0.99 }}
+                whileTap={{ y: 0, scale: 0.98 }}
                 type="submit"
                 disabled={loading}
                 className={cn(
-                  'group mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-full',
-                  'bg-foreground text-background text-sm font-medium tracking-wide',
-                  'disabled:opacity-50 disabled:cursor-wait'
+                  'group mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-2xl',
+                  'bg-foreground text-background font-bold shadow-lg',
+                  'disabled:opacity-60 disabled:cursor-wait'
                 )}
               >
                 {loading
                   ? (isLogin ? "Signing in…" : "Creating account…")
                   : (
                     <>
-                      <span>{isLogin ? "Sign in" : "Create account"}</span>
-                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                      <span>{isLogin ? "Sign In" : "Create Account"}</span>
+                      <ArrowRight className={cn('h-4', 'w-4', 'transition-transform', 'duration-300', 'group-hover:translate-x-1')} />
                     </>
                   )}
               </motion.button>
 
-              <motion.div variants={item} className="flex items-center gap-4 pt-2">
-                <span className="h-px flex-1 bg-foreground/10" />
-                <span className="text-[11px] text-foreground/30">or</span>
-                <span className="h-px flex-1 bg-foreground/10" />
+              <motion.div variants={item} className={cn('flex', 'items-center', 'gap-3', 'pt-2')}>
+                <span className={cn('h-px', 'flex-1', 'bg-foreground/10')} />
+                <span className={cn('text-[11px]', 'font-semibold', 'uppercase', 'tracking-widest', 'text-foreground/30')}>or</span>
+                <span className={cn('h-px', 'flex-1', 'bg-foreground/10')} />
               </motion.div>
 
               <motion.button
                 variants={item}
                 whileHover={{ y: -2 }}
-                whileTap={{ y: 0, scale: 0.99 }}
+                whileTap={{ y: 0, scale: 0.98 }}
                 type="button"
                 disabled={loading}
                 onClick={handleGoogleOAuth}
                 className={cn(
-                  'flex h-14 w-full items-center justify-center gap-3 rounded-full',
-                  'border border-foreground/12 text-sm text-foreground/80',
-                  'hover:border-foreground/30 hover:text-foreground transition-colors',
+                  'flex h-14 w-full items-center justify-center gap-3 rounded-2xl',
+                  'bg-foreground/5 border border-foreground/10 hover:bg-foreground/10',
+                  'text-foreground text-sm font-semibold transition-colors shadow-sm',
                   'disabled:opacity-50 disabled:cursor-wait'
                 )}
               >
-                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                <svg className={cn('h-5', 'w-5', 'shrink-0')} viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
@@ -491,22 +501,22 @@ export default function AuthPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6, duration: 0.6 }}
-            className="mt-10 text-sm text-foreground/40"
+            className={cn('mt-7', 'pt-6', 'border-t', 'border-foreground/10', 'text-center', 'text-sm', 'font-medium', 'text-foreground/50')}
           >
-            {isLogin ? "New here? " : "Already have an account? "}
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
             <button
               type="button"
               onClick={() => switchMode(!isLogin)}
               className={cn(
-                'relative text-foreground/80 transition-colors hover:text-foreground',
+                'relative font-bold text-foreground/90 transition-colors hover:text-foreground',
                 'after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0',
                 'after:bg-foreground after:transition-transform after:duration-300 hover:after:scale-x-100'
               )}
             >
-              {isLogin ? "Create an account" : "Sign in"}
+              {isLogin ? "Sign up" : "Sign in"}
             </button>
           </motion.p>
-        </main>
+        </motion.main>
       </div>
     </MotionConfig>
   );
@@ -517,6 +527,7 @@ type FieldProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  icon: LucideIcon;
   /** Changes on every failed submit so the shake replays on a repeated error. */
   shakeKey: string;
   shaking: boolean;
@@ -528,75 +539,75 @@ type FieldProps = {
 
 function Field({
   name, label, value, onChange, shakeKey, shaking,
-  secret, tone, hint, action, type = "text", ...rest
+  secret, tone, hint, action, icon: Icon, type = "text", ...rest
 }: FieldProps) {
   const [revealed, setRevealed] = useState(false);
 
-  const rule = tone === "ok" ? "bg-emerald-500" : tone === "bad" ? "bg-red-500" : "bg-foreground";
-  const hairline =
-    tone === "ok" ? "border-emerald-500/50" : tone === "bad" ? "border-red-500/50" : "border-foreground/15";
+  // Focus state and validity share one channel: the border plus the ring, the
+  // same way every other input in the app reads.
+  const edge =
+    tone === "ok"
+      ? 'border-emerald-500/50 focus:border-emerald-500/80 focus:ring-emerald-500/60'
+      : tone === "bad"
+        ? 'border-red-500/50 focus:border-red-500/80 focus:ring-red-500/60'
+        : 'border-foreground/10 focus:border-foreground/30 focus:ring-foreground/30';
 
   return (
-    <motion.div variants={item}>
+    <motion.div variants={item} className="space-y-1.5">
+      <div className={cn('flex', 'items-center', 'justify-between', 'ml-1')}>
+        <label htmlFor={name} className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
+          {label}
+        </label>
+        {action}
+      </div>
+
       <motion.div
         key={shakeKey}
         animate={shaking ? { x: [0, -8, 8, -6, 6, 0] } : { x: 0 }}
         transition={{ duration: 0.35 }}
+        className="relative"
       >
-        <div className="flex items-baseline justify-between">
-          <label htmlFor={name} className="text-xs text-foreground/45">{label}</label>
-          {action}
+        <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}>
+          <Icon className={cn('h-4.5', 'w-4.5', 'text-foreground/40')} />
         </div>
-
-        <div className="relative mt-1">
-          <input
-            id={name}
-            name={name}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            type={secret ? (revealed ? "text" : "password") : type}
-            className={cn(
-              'peer w-full rounded-none border-0 border-b bg-transparent px-0 py-2.5',
-              'text-foreground transition-colors placeholder:text-foreground/25 focus:outline-none',
-              secret && 'pr-9',
-              hairline
-            )}
-            suppressHydrationWarning
-            {...rest}
-          />
-          {/* The focus indicator: focus:outline-none is set, so this rule sweeping
-              in from the left is what tells you where the caret is. */}
-          <span
-            aria-hidden="true"
-            className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0',
-              'transition-transform duration-500 ease-out peer-focus:scale-x-100',
-              rule
-            )}
-          />
-          {secret && (
-            <button
-              type="button"
-              aria-label={revealed ? "Hide password" : "Show password"}
-              onClick={() => setRevealed((shown) => !shown)}
-              className="absolute inset-y-0 right-0 flex items-center text-foreground/35 transition-colors hover:text-foreground"
-            >
-              {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
+        <input
+          id={name}
+          name={name}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          type={secret ? (revealed ? "text" : "password") : type}
+          className={cn(
+            'w-full rounded-2xl border bg-foreground/5 pl-11 pr-4 py-3.5 text-foreground',
+            'placeholder:text-foreground/30 transition-all',
+            'focus:outline-none focus:ring-1 focus:bg-foreground/7',
+            secret && 'pr-12',
+            edge
           )}
-        </div>
-
-        {/* Rendered even when empty so the field below doesn't jump as the
-            email check resolves. */}
-        {hint !== undefined && (
-          <p className={cn(
-            'mt-1.5 h-3.5 text-[11px] leading-[0.875rem] transition-colors',
-            tone === "bad" ? 'text-red-400/80' : tone === "ok" ? 'text-emerald-400/80' : 'text-transparent'
-          )}>
-            {hint}
-          </p>
+          suppressHydrationWarning
+          {...rest}
+        />
+        {secret && (
+          <button
+            type="button"
+            aria-label={revealed ? "Hide password" : "Show password"}
+            onClick={() => setRevealed((shown) => !shown)}
+            className={cn('absolute', 'inset-y-0', 'right-0', 'pr-4', 'flex', 'items-center', 'text-foreground/40', 'hover:text-foreground', 'transition-colors')}
+          >
+            {revealed ? <EyeOff className={cn('h-4.5', 'w-4.5')} /> : <Eye className={cn('h-4.5', 'w-4.5')} />}
+          </button>
         )}
       </motion.div>
+
+      {/* Rendered even when empty so the field below doesn't jump as the
+          email check resolves. */}
+      {hint !== undefined && (
+        <p className={cn(
+          'ml-1 h-3.5 text-[11px] font-semibold leading-3.5 transition-colors',
+          tone === "bad" ? 'text-red-400/90' : tone === "ok" ? 'text-emerald-400/90' : 'text-transparent'
+        )}>
+          {hint}
+        </p>
+      )}
     </motion.div>
   );
 }

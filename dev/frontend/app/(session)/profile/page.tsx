@@ -3,16 +3,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Copy, Check, Download, Trash2, Activity, AlertTriangle, Loader2, ChevronRight, Link2
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
+import { useConnection } from "../../../context/ConnectionContext";
 import { devicesApi, roomsApi, spotifyApi, youtubeApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/settings";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import { GlobalLoadingScreen } from "../../../components/GlobalLoadingScreen";
 import { cn } from "../../../lib/utils";
+
+type TabId = 'settings' | 'devices' | 'integrations' | 'security' | 'data';
+
+const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
+  { id: 'settings',     label: 'Settings & audio', icon: Settings },
+  { id: 'devices',      label: 'Devices',          icon: MonitorSmartphone },
+  { id: 'integrations', label: 'Integrations',     icon: Link2 },
+  { id: 'security',     label: 'Security',         icon: KeyRound },
+  { id: 'data',         label: 'Data & privacy',   icon: Shield },
+];
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
@@ -34,6 +45,7 @@ function getPlatformLabel(userAgent: string | null): string {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
+  const { isOnline, isServerReachable, isSocketConnected } = useConnection();
   
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
@@ -46,8 +58,8 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
-  // Active production tab ('settings' | 'devices' | 'integrations' | 'security' | 'data')
-  const [activeTab, setActiveTab] = useState<'settings' | 'devices' | 'integrations' | 'security' | 'data'>('settings');
+  // Active tab
+  const [activeTab, setActiveTab] = useState<TabId>('settings');
 
   // Interaction state for settings panel color picker
   const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
@@ -70,6 +82,13 @@ export default function ProfilePage() {
   const displayName = profileName.trim() || user?.name || "—";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const accountId = user ? `#SB-${user.id.slice(0, 8).toUpperCase()}` : "—";
+  // Stable per-account hue: same user, same colour, every visit.
+  const identityHue = user ? [...user.id].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360 : 220;
+  // There's no delete-account endpoint on the server, so the danger zone mails
+  // the request instead of claiming to delete. Replace with an API call when one exists.
+  const deleteRequestHref = `mailto:support@syncbeats.in?subject=${encodeURIComponent("Account deletion request")}&body=${encodeURIComponent(
+    `Please delete my SyncBeats account and everything attached to it.\n\nEmail: ${user?.email ?? ""}\nAccount: ${accountId}`
+  )}`;
 
   useEffect(() => {
     if (user?.name && !isEditingProfile) {
@@ -228,7 +247,7 @@ export default function ProfilePage() {
               <Radio className="w-4 h-4 text-foreground/80 animate-pulse" />
             </div>
             <span className="font-black text-xs sm:text-sm tracking-widest uppercase text-foreground/90 hidden sm:inline">
-              Command Center
+              Your Account
             </span>
           </div>
 
@@ -245,19 +264,26 @@ export default function ProfilePage() {
         </header>
       </div>
 
-      {/* ── Main Production Command Center Grid (Dual Pane) ───────────────── */}
+      {/* ── Dual pane: identity + navigation on the left, active section right ── */}
       <main className={cn('w-full', 'max-w-350', 'mx-auto', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'pt-16', 'sm:pt-20')}>
-        
+
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
         <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative', 'overflow-hidden')}>
-          <div className={cn('absolute', 'top-0', 'right-0', 'w-64', 'h-64', 'bg-foreground/5', 'blur-3xl', 'rounded-full', 'pointer-events-none')} />
+          {/* Identity tint derived from the account id — personal to each user,
+              instead of an arbitrary brand gradient nothing else in the app uses. */}
+          <div
+            className="absolute -top-20 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none opacity-25"
+            style={{ background: `hsl(${identityHue} 80% 55%)` }}
+          />
 
-          {/* Avatar & Status Ring */}
+          {/* Avatar */}
           <div className={cn('relative', 'mb-4', 'mt-2')}>
-            <div className={cn('absolute', 'inset-0', 'bg-amber-500/20', 'blur-2xl', 'rounded-full', 'scale-125', 'animate-pulse')} />
-            <div className={cn('relative', 'w-28', 'h-28', 'sm:w-32', 'sm:h-32', 'rounded-full', 'p-1', 'bg-linear-to-tr', 'from-amber-400', 'via-orange-500', 'to-amber-500', 'shadow-2xl')}>
-              <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-[#0B0F17]', 'flex', 'items-center', 'justify-center', 'relative', 'overflow-hidden')}>
-                <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-widest')}>{initials}</span>
+            <div
+              className={cn('relative', 'w-24', 'h-24', 'sm:w-28', 'sm:h-28', 'rounded-full', 'p-[2px]', 'shadow-xl')}
+              style={{ background: `linear-gradient(140deg, hsl(${identityHue} 85% 62%), hsl(${(identityHue + 48) % 360} 80% 48%))` }}
+            >
+              <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-black', 'flex', 'items-center', 'justify-center')}>
+                <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-wide')}>{initials}</span>
               </div>
             </div>
           </div>
@@ -265,13 +291,13 @@ export default function ProfilePage() {
           {/* Display Name & Email */}
           <div className={cn('w-full', 'text-center', 'mb-5')}>
             {!isEditingProfile ? (
-              <div className={cn('flex', 'flex-col', 'items-center', 'group', 'cursor-pointer')} onClick={() => setIsEditingProfile(true)}>
+              <button type="button" className={cn('flex', 'flex-col', 'items-center', 'w-full', 'group')} onClick={() => setIsEditingProfile(true)}>
                 <h2 className={cn('text-2xl', 'sm:text-3xl', 'font-black', 'tracking-tight', 'text-foreground', 'flex', 'items-center', 'gap-2')}>
                   {displayName}
                   <Edit3 className={cn('w-4', 'h-4', 'text-foreground/30', 'group-hover:text-foreground/80', 'transition-colors')} />
                 </h2>
                 <p className={cn('text-foreground/60', 'font-medium', 'text-sm', 'mt-1', 'break-all')}>{user?.email}</p>
-              </div>
+              </button>
             ) : (
               <div className={cn('flex', 'flex-col', 'items-center', 'gap-3', 'w-full')}>
                 <input
@@ -317,52 +343,49 @@ export default function ProfilePage() {
             {emailNotice && <p className={cn('text-xs', 'text-emerald-400', 'mt-2')}>{emailNotice}</p>}
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className={cn('w-full', 'grid', 'grid-cols-1', 'gap-3', 'mb-5')}>
-            <div className={cn('bg-foreground/5', 'hover:bg-foreground/10', 'rounded-2xl', 'p-3.5', 'flex', 'flex-col', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'transition-all', 'hover:scale-[1.02]')}>
-              <MonitorSmartphone className="w-4 h-4 text-indigo-400 mb-1" />
-              <span className={cn('text-xl', 'font-black', 'text-foreground')}>{devices.length}</span>
-              <span className={cn('text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-0.5')}>Linked Devices</span>
+          {/* Two numbers worth showing. hostedSessionCount was already being
+              fetched here and never rendered. */}
+          <div className={cn('w-full', 'grid', 'grid-cols-2', 'gap-3', 'mb-5')}>
+            <div className={cn('rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-3', 'py-3.5', 'text-center')}>
+              <span className={cn('block', 'text-2xl', 'font-black', 'text-foreground', 'leading-none')}>{devices.length}</span>
+              <span className={cn('block', 'text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-1.5')}>Devices</span>
+            </div>
+            <div className={cn('rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-3', 'py-3.5', 'text-center')}>
+              <span className={cn('block', 'text-2xl', 'font-black', 'text-foreground', 'leading-none')}>{hostedSessionCount}</span>
+              <span className={cn('block', 'text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-1.5')}>Rooms Hosted</span>
             </div>
           </div>
 
           {/* Navigation Dock */}
-          <nav className={cn('w-full', 'flex', 'flex-col', 'gap-2')}>
-            {[
-              { id: 'settings', label: 'App Settings & Audio', icon: Settings },
-              { id: 'devices', label: `Linked Devices (${devices.length})`, icon: MonitorSmartphone },
-              { id: 'integrations', label: 'Third-Party Integrations', icon: Link2 },
-              { id: 'security', label: 'Security & Password', icon: KeyRound },
-              { id: 'data', label: 'Account Data & Safety', icon: Shield },
-            ].map((tab) => {
+          <nav className={cn('w-full', 'flex', 'flex-col', 'gap-1.5')}>
+            {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
 
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    'w-full flex items-center justify-between p-3.5 rounded-2xl transition-all group border text-left relative overflow-hidden',
-                    isActive
-                      ? 'bg-foreground/15 border-foreground/30 text-foreground font-extrabold shadow-md'
-                      : 'bg-foreground/5 border-transparent hover:bg-foreground/10 text-foreground/70 hover:text-foreground'
+                    'relative w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-colors group',
+                    isActive ? 'text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-foreground/5'
                   )}
                 >
-                  <div className="flex items-center gap-3 min-w-0 z-10">
-                    {isActive && (
-                      <div className="w-1.5 h-5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] shrink-0" />
-                    )}
-                    <div className={cn('p-2 rounded-xl border shrink-0', isActive ? 'bg-foreground/10 border-foreground/20 text-foreground' : 'bg-foreground/5 border-transparent text-foreground/60')}>
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span className="text-xs sm:text-sm font-bold truncate">{tab.label}</span>
-                  </div>
-
+                  {/* One indicator that slides between tabs, rather than a bar
+                      that blinks out here and in over there. */}
+                  {isActive && (
+                    <motion.span
+                      layoutId="profile-tab"
+                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                      className="absolute inset-0 rounded-2xl bg-foreground/10 border border-foreground/20"
+                    />
+                  )}
+                  <Icon className={cn('relative w-4 h-4 shrink-0', isActive ? 'text-foreground' : 'text-foreground/50')} />
+                  <span className={cn('relative text-sm truncate', isActive ? 'font-bold' : 'font-semibold')}>{tab.label}</span>
                   <ChevronRight
                     className={cn(
-                      'w-4 h-4 shrink-0 transition-transform z-10',
-                      isActive ? 'text-foreground/90' : 'text-foreground/30 group-hover:text-foreground/70 group-hover:translate-x-0.5'
+                      'relative w-4 h-4 shrink-0 ml-auto transition-transform',
+                      isActive ? 'text-foreground/70' : 'text-foreground/25 group-hover:translate-x-0.5'
                     )}
                   />
                 </button>
@@ -402,17 +425,17 @@ export default function ProfilePage() {
               >
                 <div className={cn('flex', 'items-center', 'justify-between', 'border-b', 'border-foreground/10', 'pb-4')}>
                   <div>
-                    <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Registered Multi-Devices</h2>
-                    <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Manage active devices synced to your SyncBeats audio room</p>
+                    <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Devices</h2>
+                    <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Everything signed in to your account. Each one can play in sync.</p>
                   </div>
-                  <span className={cn('px-3.5', 'py-1.5', 'rounded-full', 'bg-foreground/10', 'text-foreground', 'text-xs', 'font-black', 'uppercase', 'tracking-widest', 'border', 'border-foreground/10')}>
-                    {devices.length} Devices
+                  <span className={cn('px-3.5', 'py-1.5', 'rounded-full', 'bg-foreground/10', 'text-foreground', 'text-xs', 'font-black', 'uppercase', 'tracking-widest', 'border', 'border-foreground/10', 'shrink-0')}>
+                    {devices.length}
                   </span>
                 </div>
 
                 <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-4')}>
                   {devices.length === 0 ? (
-                    <p className={cn('col-span-2', 'text-foreground/40', 'text-sm', 'font-medium', 'text-center', 'py-16')}>No active devices registered yet.</p>
+                    <p className={cn('col-span-2', 'text-foreground/40', 'text-sm', 'font-medium', 'text-center', 'py-16')}>Nothing registered yet. Sign in on a phone or laptop and it&apos;ll appear here.</p>
                   ) : (
                     devices.map((savedDevice) => {
                       const isCurrent = device?.id === savedDevice.id;
@@ -420,31 +443,38 @@ export default function ProfilePage() {
                       const isEditingThis = editingDeviceId === savedDevice.id;
 
                       return (
-                        <div key={savedDevice.id} className={`p-5 rounded-3xl border transition-all ${isCurrent ? "bg-foreground/10 border-foreground/30 shadow-lg" : "bg-background/60 dark:bg-black/60 border-foreground/10 hover:border-foreground/20 backdrop-blur-xl"}`}>
+                        <div key={savedDevice.id} className={cn(
+                          'p-5 rounded-3xl border transition-colors',
+                          isCurrent
+                            ? 'bg-foreground/10 border-foreground/25'
+                            : 'bg-foreground/3 border-foreground/10 hover:border-foreground/25'
+                        )}>
                           {!isEditingThis ? (
                             <div className={cn('flex', 'items-center', 'justify-between', 'gap-4')}>
                               <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
-                                <div className={cn('w-12', 'h-12', 'rounded-2xl', 'bg-background/80', 'flex', 'items-center', 'justify-center', 'border', 'border-foreground/10', 'shrink-0', 'shadow-md')}>
+                                <div className={cn('shrink-0', 'text-foreground/70')}>
                                   <DeviceGlyph userAgent={savedDevice.user_agent} />
                                 </div>
                                 <div className={cn('min-w-0', 'flex', 'flex-col')}>
                                   <div className={cn('flex', 'items-center', 'gap-2')}>
-                                    <h4 className={cn('font-black', 'text-foreground', 'text-base', 'truncate')}>{savedDevice.name}</h4>
-                                    {isCurrent && <span className={cn('px-2.5', 'py-0.5', 'rounded-full', 'bg-emerald-500/20', 'text-emerald-400', 'text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'shrink-0')}>Current</span>}
+                                    <h4 className={cn('font-bold', 'text-foreground', 'text-base', 'truncate')}>{savedDevice.name}</h4>
+                                    {isCurrent && <span className={cn('px-2.5', 'py-0.5', 'rounded-full', 'bg-emerald-500/20', 'text-emerald-400', 'text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'shrink-0')}>This one</span>}
                                   </div>
                                   <div className={cn('flex', 'items-center', 'gap-2', 'mt-1')}>
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-red-400' : 'bg-green-400 animate-pulse'}`} />
-                                    <span className={cn('text-xs', 'text-foreground/60', 'truncate')}>{getPlatformLabel(savedDevice.user_agent)}</span>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-foreground/25' : 'bg-green-400 animate-pulse'}`} />
+                                    <span className={cn('text-xs', 'text-foreground/50', 'truncate')}>
+                                      {getPlatformLabel(savedDevice.user_agent)} · {isOffline ? 'Offline' : 'Online'}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
-                              
+
                               <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
-                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'text-xs', 'font-bold', 'transition-all')}>
+                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'text-xs', 'font-bold', 'transition-colors')}>
                                   Rename
                                 </button>
                                 {!isCurrent && (
-                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className={cn('px-3', 'py-2', 'rounded-xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'transition-all')}>
+                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className={cn('px-3', 'py-2', 'rounded-xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'transition-colors')}>
                                     Remove
                                   </button>
                                 )}
@@ -488,13 +518,13 @@ export default function ProfilePage() {
                 className="space-y-6 max-w-2xl"
               >
                 <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Third-Party Integrations</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Connect your external accounts to import playlists and seamlessly sync your library.</p>
+                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Integrations</h2>
+                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Connect an external account to import playlists into your queue.</p>
                 </div>
 
                 <div className="space-y-4">
                   {/* YouTube Integration */}
-                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-background/60', 'dark:bg-black/60', 'backdrop-blur-xl', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
+                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-foreground/3', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
                     <div className="flex items-center gap-4">
                       <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-[#FF0000]/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
@@ -527,7 +557,7 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Spotify Integration */}
-                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-background/60', 'dark:bg-black/60', 'backdrop-blur-xl', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
+                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-foreground/3', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
                     <div className="flex items-center gap-4">
                       <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-[#1DB954]/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.24 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15.001 10.681 18.72 12.96c.42.18.6.78.24 1.08zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" /></svg>
@@ -558,8 +588,8 @@ export default function ProfilePage() {
                 className={cn('space-y-6', 'max-w-2xl')}
               >
                 <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Password & Credentials</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Update account password and verification credentials</p>
+                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Security</h2>
+                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Change the password you use to sign in.</p>
                 </div>
 
                 <ForgotPasswordPanel onClose={() => setActiveTab('settings')} initialEmail={user?.email || ""} />
@@ -576,57 +606,54 @@ export default function ProfilePage() {
                 className="space-y-8"
               >
                 <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Account Data & Production Diagnostics</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Export personal data, verify system health, and manage production privacy settings</p>
+                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Data & privacy</h2>
+                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Take a copy of your data, check your connection, or close your account.</p>
                 </div>
 
                 {/* Data Export Card */}
                 <div className={cn('p-6', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
                   <div className={cn('flex', 'flex-col', 'gap-1')}>
-                    <h4 className={cn('font-bold', 'text-foreground', 'text-base')}>Export Account Data (GDPR Compliant)</h4>
-                    <p className={cn('text-xs', 'text-foreground/50')}>Download a full JSON archive of your user profile, settings, and device associations.</p>
+                    <h4 className={cn('font-bold', 'text-foreground', 'text-base')}>Export your data</h4>
+                    <p className={cn('text-xs', 'text-foreground/50')}>A JSON file with your profile, settings, and device list.</p>
                   </div>
                   <button
                     onClick={exportUserData}
                     className={cn('flex', 'items-center', 'gap-2', 'px-5', 'py-3', 'rounded-2xl', 'bg-foreground', 'text-background', 'font-bold', 'text-xs', 'hover:scale-95', 'transition-all', 'shrink-0', 'shadow-lg')}
                   >
                     <Download className={cn('w-4', 'h-4')} />
-                    <span>Download JSON Archive</span>
+                    <span>Download JSON</span>
                   </button>
                 </div>
 
-                {/* Production System Health */}
+                {/* Connection — read from ConnectionContext, so these reflect
+                    what's actually happening rather than hardcoded "Connected". */}
                 <div className="space-y-3">
-                  <h4 className={cn('font-bold', 'text-foreground', 'text-sm', 'uppercase', 'tracking-widest', 'text-foreground/70')}>System Health Diagnostics</h4>
+                  <h4 className={cn('font-bold', 'text-sm', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Connection</h4>
                   <div className={cn('grid', 'grid-cols-1', 'sm:grid-cols-3', 'gap-4')}>
-                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
-                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Web Audio Engine</span>
-                      <span className={cn('text-sm', 'font-bold', 'text-emerald-400', 'flex', 'items-center', 'gap-1.5')}>
-                        <CheckCircle2 className={cn('w-3.5', 'h-3.5')} /> Active & Unlocked
-                      </span>
-                    </div>
-
-                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
-                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Production Build</span>
-                      <span className={cn('text-sm', 'font-bold', 'text-foreground')}>SyncBeats v1.4.0</span>
-                    </div>
-
-                    <div className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
-                      <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Socket Connection</span>
-                      <span className={cn('text-sm', 'font-bold', 'text-emerald-400', 'flex', 'items-center', 'gap-1.5')}>
-                        <Activity className={cn('w-3.5', 'h-3.5', 'animate-pulse')} /> Connected
-                      </span>
-                    </div>
+                    {[
+                      { label: 'Network', ok: isOnline, good: 'Online', bad: 'Offline' },
+                      { label: 'Server', ok: isServerReachable, good: 'Reachable', bad: 'Unreachable' },
+                      { label: 'Realtime', ok: isSocketConnected, good: 'Connected', bad: 'Disconnected' },
+                    ].map(({ label, ok, good, bad }) => (
+                      <div key={label} className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
+                        <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>{label}</span>
+                        <span className={cn('text-sm', 'font-bold', 'flex', 'items-center', 'gap-1.5', ok ? 'text-emerald-400' : 'text-red-400')}>
+                          {ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                          {ok ? good : bad}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                  <p className={cn('text-[11px]', 'text-foreground/35')}>SyncBeats v1.4.0</p>
                 </div>
 
                 {/* Danger Zone */}
                 <div className={cn('pt-6', 'border-t', 'border-red-500/20', 'space-y-4')}>
                   <div className={cn('flex', 'flex-col', 'gap-1')}>
                     <h4 className={cn('font-black', 'text-red-400', 'text-base', 'flex', 'items-center', 'gap-2')}>
-                      <AlertTriangle className={cn('w-4', 'h-4')} /> Danger Zone
+                      <AlertTriangle className={cn('w-4', 'h-4')} /> Danger zone
                     </h4>
-                    <p className={cn('text-xs', 'text-foreground/50')}>Permanently delete your SyncBeats user account and clear all saved settings.</p>
+                    <p className={cn('text-xs', 'text-foreground/50')}>Request permanent deletion of your account, rooms, uploads and listening history.</p>
                   </div>
 
                   {!showDeleteModal ? (
@@ -639,14 +666,14 @@ export default function ProfilePage() {
                     </button>
                   ) : (
                     <div className={cn('p-4', 'rounded-2xl', 'bg-red-500/10', 'border', 'border-red-500/30', 'flex', 'flex-col', 'gap-3', 'max-w-md')}>
-                      <p className={cn('text-xs', 'text-red-300', 'font-semibold')}>Are you sure you want to delete your account? This action cannot be undone.</p>
+                      <p className={cn('text-xs', 'text-red-300', 'font-semibold')}>Deletion is handled by hand for now. This opens a pre-filled email to support — we wipe the account and everything attached to it, and it can&apos;t be undone.</p>
                       <div className={cn('flex', 'items-center', 'gap-2')}>
                         <button onClick={() => setShowDeleteModal(false)} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'font-semibold', 'text-xs')}>
                           Cancel
                         </button>
-                        <button onClick={handleLogout} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-red-500', 'text-white', 'font-bold', 'text-xs')}>
-                          Confirm Deletion
-                        </button>
+                        <a href={deleteRequestHref} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-red-500', 'text-white', 'font-bold', 'text-xs')}>
+                          Email the request
+                        </a>
                       </div>
                     </div>
                   )}
