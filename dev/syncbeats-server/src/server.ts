@@ -1,4 +1,6 @@
 // ─── SyncBeatsServer — Facade ─────────────────────────────────────────────
+import './instrument';
+import * as Sentry from '@sentry/node';
 import 'dotenv/config';
 import express    from 'express';
 import http       from 'http';
@@ -350,6 +352,7 @@ fi
     // Must stay last: unknown paths answer with JSON, and anything a handler threw
     // (including async rejections, which Express 5 forwards here) becomes a written
     // message instead of Express's default HTML error page.
+    Sentry.setupExpressErrorHandler(this.app);
     this.app.use(notFoundHandler);
     this.app.use(errorHandler);
   }

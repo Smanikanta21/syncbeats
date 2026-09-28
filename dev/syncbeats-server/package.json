@@ -26,6 +26,8 @@
     "@distube/ytdl-core": "^4.16.12",
     "@google-cloud/storage": "^7.19.0",
     "@prisma/client": "^6.4.0",
+    "@sentry/node": "^11.0.0",
+    "@sentry/profiling-node": "^11.0.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/pg": "^8.20.0",
     "bcryptjs": "^3.0.3",
