@@ -241,6 +241,10 @@ export class SyncBeatsServer {
     this.app.use('/feedback', createFeedbackRoutes());
     this.app.use('/telemetry', createTelemetryRoutes());
 
+    this.app.get('/debug-sentry', function mainHandler(req, res) {
+      throw new Error('My first Sentry error!');
+    });
+
     // ── CLI install route ──────────────────────────────────────────────────
     this.app.get('/cli', (_req, res) => {
       const installScript = `#!/bin/bash
