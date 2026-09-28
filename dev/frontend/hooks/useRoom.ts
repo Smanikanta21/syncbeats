@@ -31,6 +31,11 @@ interface UseRoomReturn {
   participants: Participant[];
   isConnected:  boolean;
   joinStatus:   'joined' | 'pending' | 'denied' | 'connecting' | 'not_found';
+  /** Server-sent failure, already written for a person. Clears itself. */
+  lastError:    string | null;
+  dismissError: () => void;
+  /** Why the join was refused, when the server said. */
+  notFoundReason: string | null;
   pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
@@ -82,6 +87,8 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting' | 'not_found'>('connecting');
+  const [lastError,    setLastError]    = useState<string | null>(null);
+  const [notFoundReason, setNotFoundReason] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean, userId?: string }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
@@ -669,7 +676,10 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleJoinDenied = () => setJoinStatus('denied');
     socket.on('room:joinDenied', handleJoinDenied);
 
-    const handleRoomNotFound = () => setJoinStatus('not_found');
+    const handleRoomNotFound = ({ message }: { message?: string } = {}) => {
+      setNotFoundReason(message?.trim() || null);
+      setJoinStatus('not_found');
+    };
     socket.on('room:notFound', handleRoomNotFound);
 
     const handleHostJoinRequest = ({ socketId, userId, displayName, isNudge }: any) => {
@@ -721,7 +731,12 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     };
     socket.on('room:eqUpdate', handleEqUpdate);
 
-    const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
+    // The server writes these for a person to read, so show them instead of
+    // logging them where nobody looks. Auto-clears so a stale banner doesn't
+    // outlive the problem.
+    const handleError = ({ message }: { message?: string }) => {
+      setLastError(message?.trim() || 'Something went wrong. Please try again.');
+    };
     socket.on('error', handleError);
 
     roomsApi.get(roomId).then(details => {
@@ -876,5 +891,15 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     socket.emit('room:reset', { roomId });
   }, [roomId, socket]);
 
-  return { snapshot, participants, isConnected, joinStatus, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
+  const dismissError = useCallback(() => setLastError(null), []);
+
+  // A banner that outlives the failure is worse than none — drop it after a
+  // read's worth of time, unless the user dismissed it first.
+  useEffect(() => {
+    if (!lastError) return;
+    const t = setTimeout(() => setLastError(null), 8000);
+    return () => clearTimeout(t);
+  }, [lastError]);
+
+  return { snapshot, participants, isConnected, joinStatus, lastError, dismissError, notFoundReason, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }

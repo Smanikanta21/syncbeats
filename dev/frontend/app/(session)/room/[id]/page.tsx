@@ -13,6 +13,7 @@ import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
+import { AppFeedback } from "../../../../components/feedback/AppFeedback";
 import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
 
@@ -31,6 +32,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const {
     isConnected,
     joinStatus,
+    lastError,
+    dismissError,
+    notFoundReason,
     isReconnecting,
     snapshot,
     participants,
@@ -219,6 +223,19 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
+      {/* Server-sent errors, shown where the user is already looking. Sits below
+          the reconnecting pill so the two never overlap. */}
+      {lastError && !connectionError && (
+        <div className="fixed top-safe-top left-0 right-0 z-9999 flex justify-center px-4 pt-16">
+          <AppFeedback
+            message={lastError}
+            severity="error"
+            onDismiss={dismissError}
+            className="max-w-md w-full pointer-events-auto"
+          />
+        </div>
+      )}
+
       {/* Denied / Connection Error state */}
       {connectionError && (
         <div className="fixed inset-0 bg-background/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center z-[99999]">
@@ -236,7 +253,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           </h2>
           <p className="text-foreground/60 text-sm mb-7 max-w-sm font-medium leading-relaxed">
             {joinStatus === "not_found"
-              ? "No room exists with that code. Double-check the code and try again."
+              ? notFoundReason ?? "No room exists with that code. Double-check the code and try again."
               : joinStatus === "denied"
               ? "The host declined your request to join this private room."
               : "Unable to establish a connection to this room. The server might be unreachable or your connection timed out."}

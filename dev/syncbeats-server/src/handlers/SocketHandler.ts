@@ -268,10 +268,10 @@ export class SocketHandler {
     });
 
     socket.on('room:togglePrivate', ({ roomId, isPrivate }: { roomId: string, isPrivate: boolean }) => {
-      const room = this.roomManager.get(roomId);
+      const room = this.requireRoom(socket, roomId);
       if (!room) return;
       if (room.snapshot().hostId !== socket.data.userId) {
-        socket.emit('error', { message: 'Only host can toggle private mode' });
+        socket.emit('error', { message: 'Only the room host can change privacy settings.' });
         return;
       }
       room.setIsPrivate(isPrivate);
@@ -343,43 +343,47 @@ export class SocketHandler {
     // ── Playback — any participant can control ────────────────────────────
 
     socket.on('playback:schedule', ({ roomId, trackUrl, positionMs, startTime, senderId, title, artist, thumbnail }: { roomId: string, trackUrl: string, positionMs: number, startTime: number, senderId?: string, title?: string, artist?: string, thumbnail?: string }) => {
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
       try {
-        const room = this.roomManager.get(roomId);
-        if (!room) return;
         room.syncSchedule(trackUrl, positionMs, startTime, senderId, title, artist, thumbnail);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] schedule failed:`, err);
+        socket.emit('error', { message: "We couldn't start that track on every device. Please try again." });
       }
     });
 
     socket.on('playback:play', ({ roomId }: { roomId: string }) => {
-      const room = this.roomManager.get(roomId);
+      const room = this.requireRoom(socket, roomId);
       if (!room) return;
       try {
         room.play(socket.id);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] play failed:`, err);
+        socket.emit('error', { message: "We couldn't start playback. Please try again." });
       }
     });
 
     socket.on('playback:pause', ({ roomId, positionMs, senderId }: { roomId: string; positionMs?: number, senderId?: string }) => {
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
       try {
-        const room = this.roomManager.get(roomId);
-        if (!room) return;
         const pos = positionMs !== undefined ? positionMs : room.computeCurrentPosition();
         room.syncPause(pos, senderId);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] pause failed:`, err);
+        socket.emit('error', { message: "We couldn't pause playback. Please try again." });
       }
     });
 
     socket.on('playback:seek', ({ roomId, position }: SeekPayload) => {
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
       try {
-        const room = this.roomManager.get(roomId);
-        if (!room) return;
         room.seek(socket.id, position);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] seek failed:`, err);
+        socket.emit('error', { message: "We couldn't move to that position. Please try again." });
       }
     });
 
@@ -390,18 +394,22 @@ export class SocketHandler {
     // RoomQueue.shouldAdvance() where the current track is known.
 
     socket.on('playback:next', ({ roomId }: { roomId: string }) => {
-      this.roomManager.get(roomId)?.nextTrack(true);
+      this.requireRoom(socket, roomId)?.nextTrack(true);
     });
 
     socket.on('playback:prev', ({ roomId }: { roomId: string }) => {
-      this.roomManager.get(roomId)?.prevTrack(true);
+      this.requireRoom(socket, roomId)?.prevTrack(true);
     });
 
     socket.on('playback:jumpTo', ({ roomId, trackId }: { roomId: string; trackId: string }) => {
-      const room = this.roomManager.get(roomId);
-      if (!room || !trackId) return;
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
+      if (!trackId) {
+        socket.emit('error', { message: 'That track is missing an id, so we couldn\'t play it.' });
+        return;
+      }
       if (!room.setCurrentItem(trackId, true)) {
-        socket.emit('error', { message: 'That track is no longer in the queue' });
+        socket.emit('error', { message: 'That track is no longer in the queue — someone may have removed it.' });
       }
     });
 
@@ -411,25 +419,29 @@ export class SocketHandler {
     });
 
     socket.on('room:removeFromQueue', ({ roomId, itemId }: { roomId: string; itemId: string }) => {
-      this.roomManager.get(roomId)?.removeFromQueue(itemId);
+      this.requireRoom(socket, roomId)?.removeFromQueue(itemId);
     });
 
     socket.on('room:toggleShuffle', ({ roomId, shuffle }: { roomId: string; shuffle: boolean }) => {
-      this.roomManager.get(roomId)?.setShuffle(!!shuffle);
+      this.requireRoom(socket, roomId)?.setShuffle(!!shuffle);
     });
 
     socket.on('room:toggleRepeat', ({ roomId, repeatMode }: { roomId: string; repeatMode: RepeatMode }) => {
-      if (!['off', 'all', 'track'].includes(repeatMode)) return;
-      this.roomManager.get(roomId)?.setRepeatMode(repeatMode);
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
+      if (!['off', 'all', 'track'].includes(repeatMode)) {
+        socket.emit('error', { message: `"${repeatMode}" isn't a repeat mode we recognise.` });
+        return;
+      }
+      room.setRepeatMode(repeatMode);
     });
 
 
     socket.on('room:reset', async ({ roomId }: { roomId: string }) => {
-      const room = this.roomManager.get(roomId);
-      if (room) {
-        room.resetRoom();
-        this.io.to(roomId).emit('room:reset', { roomId });
-      }
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
+      room.resetRoom();
+      this.io.to(roomId).emit('room:reset', { roomId });
     });
 
     // ── Global Account Sync ──────────────────────────────────────────────────
@@ -452,19 +464,20 @@ export class SocketHandler {
 
 
     socket.on('room:setParticipantVolume', ({ roomId, targetSocketId, volume }: SetParticipantVolumePayload) => {
+      const room = this.requireRoom(socket, roomId);
+      if (!room) return;
       try {
-        const room = this.roomManager.get(roomId);
-        if (!room) return;
         room.setParticipantVolume(targetSocketId?.trim() || socket.id, volume);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        console.error(`[Room ${roomId}] volume change failed:`, err);
+        socket.emit('error', { message: "We couldn't change that device's volume. Please try again." });
       }
     });
 
     // ── Client ready / buffering state ───────────────────────────────────
 
     socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string, isReady?: boolean }) => {
-      const room = this.roomManager.get(roomId);
+      const room = this.requireRoom(socket, roomId);
       if (!room) return;
 
       room.setParticipantReady(socket.id, isReady);
@@ -540,7 +553,7 @@ export class SocketHandler {
 
     // Chat & Reactions
     socket.on('room:chat', async ({ roomId, message }: { roomId: string, message: string }) => {
-      const room = this.roomManager.get(roomId);
+      const room = this.requireRoom(socket, roomId);
       if (!room) return;
       const text = message?.trim();
       if (!text) return;

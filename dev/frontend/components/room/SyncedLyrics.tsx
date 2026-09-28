@@ -21,6 +21,10 @@ interface LyricLine {
 }
 
 /* ─── LRC Parser ─────────────────────────────────────────────────────────── */
+// Sung words land around 4 characters per second. The old 0.12 (≈8/sec) was
+// speaking pace and made every estimate roughly half as long as the real vocal.
+const SECONDS_PER_CHAR = 0.25;
+
 function parseLrc(lrc: string): LyricLine[] {
   const lines: LyricLine[] = [];
   
@@ -51,22 +55,26 @@ function parseLrc(lrc: string): LyricLine[] {
     lines.unshift({ time: 0, text: "", endTime: 0, words: [], instrumental: true });
   }
 
-  // 3. Fallback for files with no explicit markers: guess where vocals end from
-  // text length and insert a synthetic gap.
+  // 3. Only for files that carry no explicit markers: guess where vocals end
+  // from text length and insert a synthetic gap. The guess is bad — chars/second
+  // says nothing about held notes — so never let it contradict a file that
+  // already marks its own breaks, and only trust it for long gaps. At 2.5s it
+  // was dropping dots into the middle of lines that were still being sung.
+  const hasExplicitMarkers = lines.some(l => l.instrumental && l.time > 1);
   const finalLines: LyricLine[] = [];
-  const GAP_THRESHOLD = 2.5; // seconds
+  const GAP_THRESHOLD = 5; // seconds
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     finalLines.push(line);
+    if (hasExplicitMarkers) continue;
 
     const nextLine = lines[i + 1];
-    // An explicit marker already covers this gap — don't second-guess it.
-    if (!nextLine || line.instrumental || nextLine.instrumental) continue;
+    if (!nextLine || line.instrumental) continue;
 
-    // Estimate active singing duration based on text length (~8 chars per second), cap at gap size
+    // Where the vocal probably ends, so a long instrumental tail gets its dots.
     const textLen = line.text.replace(/\s/g, "").length;
-    const estimatedVocalTime = Math.max(1.0, textLen * 0.12);
+    const estimatedVocalTime = Math.max(1.5, textLen * SECONDS_PER_CHAR);
     const activeDuration = Math.min(nextLine.time - line.time, estimatedVocalTime);
     const endOfVocal = line.time + activeDuration;
 
@@ -105,14 +113,20 @@ function parseLrc(lrc: string): LyricLine[] {
       }
       line.text = line.text.replace(/<\d{2}:\d{2}\.\d{2,3}>/g, "").trim();
     } else {
-      // Heuristic line-to-word distribution
+      // Spread the words over the line, capped by a realistic singing rate. The
+      // old 0.12s/char (8 chars/sec — speaking pace, not singing) finished a
+      // 4-second line in under 2, so the highlight raced seconds ahead of the
+      // singer. At 0.25 the cap only bites on short lines held over a long gap;
+      // normal phrases now fill their whole line.
+      // ponytail: fixed rate, real per-word timings only exist in Enhanced LRC.
       const rawWords = line.text.split(" ");
       const totalChars = line.text.replace(/\s/g, "").length;
       let currentTimeAcc = line.time;
-      const duration = line.endTime - line.time;
-      const estimatedVocalTime = Math.max(1.0, totalChars * 0.12);
-      const activeDuration = Math.min(duration, estimatedVocalTime); 
-      
+      const activeDuration = Math.min(
+        line.endTime - line.time,
+        Math.max(1.5, totalChars * SECONDS_PER_CHAR)
+      );
+
       line.words = rawWords.map((word) => {
         const wordChars = word.length;
         const wordDuration = (wordChars / totalChars) * activeDuration;
@@ -207,6 +221,27 @@ async function fetchLyrics(
   }
 }
 
+/* ─── Sub-frame playback clock ────────────────────────────────────────────────
+   `currentTime` is React state polled off the audio clock every 250ms, so using
+   it raw makes every line land up to a quarter second late. Interpolate with
+   wall time between updates and re-base whenever a real reading arrives, so the
+   error stays bounded by the audio clock rather than by the poll interval. */
+function interpolatedClock(
+  timeRef: React.MutableRefObject<number>,
+  dataRef?: React.MutableRefObject<{ isPlaying: boolean } | any>
+) {
+  let base = timeRef.current;
+  let baseWall = performance.now();
+  return () => {
+    if (timeRef.current !== base) {
+      base = timeRef.current;
+      baseWall = performance.now();
+    }
+    const isPlaying = dataRef?.current?.isPlaying ?? true;
+    return isPlaying ? base + (performance.now() - baseWall) / 1000 : base;
+  };
+}
+
 /* ─── SyncedLyrics Component ─────────────────────────────────────────────── */
 interface SyncedLyricsProps {
   title: string | null;
@@ -284,8 +319,9 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
   useEffect(() => {
     if (lines.length === 0) return;
 
+    const clock = interpolatedClock(timeRef, dataRef);
     const tick = () => {
-      const t = timeRef.current;
+      const t = clock();
       let idx = 0;
       for (let i = lines.length - 1; i >= 0; i--) {
         if (t >= lines[i].time) { idx = i; break; }
@@ -301,7 +337,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [lines]);
+  }, [lines, dataRef]);
 
   // Scroll after render, not inside the rAF tick: an instrumental line's dots
   // only mount once it's active, so its ref doesn't exist yet at tick time.
@@ -443,26 +479,12 @@ function ActiveLine({
   dataRef?: React.MutableRefObject<{ isPlaying: boolean } | any>;
 }) {
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const baseTimeRef = useRef(timeRef.current);
-  const lastFrameTimeRef = useRef(performance.now());
 
   useEffect(() => {
     let rafId: number;
+    const clock = interpolatedClock(timeRef, dataRef);
     const tick = () => {
-      const now = performance.now();
-      
-      // If the parent's coarse time changes, reset our interpolation base
-      // This prevents drift while allowing sub-frame 120fps smoothness
-      if (timeRef.current !== baseTimeRef.current) {
-        baseTimeRef.current = timeRef.current;
-        lastFrameTimeRef.current = now;
-      }
-      
-      const isPlaying = dataRef?.current?.isPlaying ?? true;
-      const delta = (now - lastFrameTimeRef.current) / 1000;
-      
-      // The exact high-resolution time at 120 FPS
-      const t = isPlaying ? baseTimeRef.current + delta : baseTimeRef.current;
+      const t = clock();
 
       for (let i = 0; i < line.words.length; i++) {
         const el = wordRefs.current[i];
@@ -506,7 +528,7 @@ function ActiveLine({
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [line, timeRef]);
+  }, [line, timeRef, dataRef]);
 
   return (
     <>
