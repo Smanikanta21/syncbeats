@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Icon Composer layer 1 of 2 — the rings, on transparent.
+    Drop this and layer-core.svg into Icon Composer as separate layers so the
+    Liquid Glass treatment gives them real parallax and specular depth.
+  -->
+  <g fill="none" stroke-linecap="round">
+    <circle cx="512" cy="512" r="372" stroke="#10B77F" stroke-width="72"
+            stroke-dasharray="1921.57 415.47" transform="rotate(-58 512 512)"/>
+    <circle cx="512" cy="512" r="256" stroke="#0DA2E7" stroke-width="72"
+            stroke-dasharray="1456.58 151.92" transform="rotate(-73 512 512)"/>
+    <circle cx="512" cy="512" r="140" stroke="#A955F7" stroke-width="72"/>
+  </g>
+</svg>
