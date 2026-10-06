@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    SyncBeats favicon — Convergence, reduced for small sizes.
+
+    Three rings turn to mush below about 32px, so the tab/bookmark mark keeps
+    only the outer wedge and the locked core. Strokes are roughly twice the
+    master's width so the form survives at 16px.
+  -->
+  <defs>
+    <linearGradient id="fav-bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0D12"/>
+      <stop offset="1" stop-color="#05060A"/>
+    </linearGradient>
+    <linearGradient id="fav-ring" x1="200" y1="180" x2="820" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B77F"/>
+      <stop offset="0.55" stop-color="#0DA2E7"/>
+      <stop offset="1" stop-color="#A955F7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="url(#fav-bg)"/>
+
+  <circle cx="512" cy="512" r="330" fill="none" stroke="url(#fav-ring)" stroke-width="150"
+          stroke-linecap="round" stroke-dasharray="1750.95 322.50"
+          transform="rotate(-62 512 512)"/>
+
+  <circle cx="512" cy="512" r="120" fill="#F5F7FA"/>
+</svg>
