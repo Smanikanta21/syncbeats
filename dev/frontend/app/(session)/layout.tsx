@@ -69,20 +69,6 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
     }
   }, [user, loading, serverError, router, pathname]);
 
-  if (serverError) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-background text-foreground">
-        <h1 className="text-2xl font-bold mb-4">Cannot connect to server</h1>
-        <p className="text-white/60 mb-8 max-w-md text-center">
-          The SyncBeats server is currently unreachable. Please check your connection or wait a moment for the server to wake up.
-        </p>
-        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-emerald-500 text-black font-semibold rounded-full hover:bg-emerald-400 transition-colors">
-          Retry Connection
-        </button>
-      </div>
-    );
-  }
-
   useEffect(() => {
     if (!device) return;
     setDeviceName(device.name || buildSuggestedName("Device"));
@@ -167,47 +153,69 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   // Instead of a full-screen blocking loader, we just render the layout shell
   // and delay the children rendering until the user is available.
 
+  // Kept below every hook on purpose. This used to return early, above the three
+  // device/verification effects — so the render that first saw `serverError`
+  // mounted fewer hooks than the previous one and React threw
+  // "rendered fewer hooks than expected" instead of showing this screen.
+  if (serverError) {
+    return (
+      <div className="flex h-dvh w-full flex-col items-center justify-center bg-background px-6 text-center text-foreground">
+        <p className="mb-3 font-mono text-data uppercase tracking-[0.22em] text-foreground/40">Offline</p>
+        <h1 className="mb-3 font-display text-display font-semibold">Cannot connect to server</h1>
+        <p className="mb-8 max-w-md text-lead text-foreground/55 text-pretty">
+          The SyncBeats server is currently unreachable. Please check your connection or wait a moment for the server to wake up.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-full bg-foreground px-6 py-3 font-semibold text-background shadow-lg transition-all hover:opacity-90 active:scale-95"
+        >
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
+
   return (
     <UploadProvider>
     <SyncProvider>
       {(loading || fetchingDevices) && <GlobalLoadingScreen />}
       {user && !loading && !isProfile && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
-        <div className={cn('fixed', 'top-24', 'left-1/2', 'z-60', 'w-[min(92vw,720px)]', '-translate-x-1/2', 'rounded-3xl', 'border', 'border-amber-400/30', 'bg-amber-500/10', 'px-4', 'py-3', 'backdrop-blur-xl')}>
-          <div className={cn('flex', 'flex-col', 'gap-2', 'sm:flex-row', 'sm:items-center', 'sm:justify-between')}>
-            <p className={cn('text-sm', 'text-amber-100')}>
+        <div className="fixed top-24 left-1/2 z-60 w-[min(92vw,720px)] -translate-x-1/2 rounded-3xl border border-warn-400/30 bg-warn-500/10 px-4 py-3 backdrop-blur-xl">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-warn-700 dark:text-warn-100">
               Your email is not verified yet. Please verify to secure your account and keep full access.
             </p>
             <button
               type="button"
               onClick={handleResendVerification}
               disabled={resendingVerification}
-              className={cn('h-9', 'rounded-lg', 'bg-amber-200', 'px-3', 'text-sm', 'font-semibold', 'text-background', 'hover:bg-amber-100', 'disabled:cursor-not-allowed', 'disabled:opacity-60')}
+              className="h-9 rounded-lg bg-warn-200 px-3 text-sm font-semibold text-background hover:bg-warn-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {resendingVerification ? "Sending..." : "Resend verification"}
             </button>
           </div>
-          {verificationMessage && <p className={cn('mt-2', 'text-xs', 'text-emerald-300')}>{verificationMessage}</p>}
-          {verificationError && <p className={cn('mt-2', 'text-xs', 'text-red-300')}>{verificationError}</p>}
+          {verificationMessage && <p className="mt-2 text-xs text-ok-700 dark:text-ok-300">{verificationMessage}</p>}
+          {verificationError && <p className="mt-2 text-xs text-bad-700 dark:text-bad-300">{verificationError}</p>}
         </div>
       )}
       {user && !loading && !fetchingDevices && needsDeviceRename && (
-        <div className={cn('fixed', 'inset-0', 'z-60', 'flex', 'items-center', 'justify-center', 'bg-background/70', 'backdrop-blur-xl', 'px-4')}>
-          <div className={cn('w-full', 'max-w-md', 'rounded-4xl', 'border', 'border-foreground/10', 'bg-background', 'p-6', 'shadow-[0_30px_120px_rgba(0,0,0,0.7)]')}>
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
+          <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">
-              <p className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-[0.3em]', 'text-foreground/50')}>Device setup</p>
-              <h2 className={cn('mt-2', 'text-2xl', 'font-black', 'text-foreground')}>Select your device</h2>
-              <p className={cn('mt-2', 'text-sm', 'text-foreground/50')}>This login is not registered in our device database yet. Pick the device type or enter a custom name.</p>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device setup</p>
+              <h2 className="mt-2 text-2xl font-black text-foreground">Select your device</h2>
+              <p className="mt-2 text-sm text-foreground/50">This login is not registered in our device database yet. Pick the device type or enter a custom name.</p>
             </div>
             {!showExistingFlow ? (
               <form className="space-y-4" onSubmit={handleRename}>
-                <div className={cn('grid', 'grid-cols-2', 'gap-2')}>
+                <div className="grid grid-cols-2 gap-2">
                   {quickDeviceOptions.map((option) => (
                     <button
                       key={option}
                       type="button"
                       onClick={() => setDeviceName(buildSuggestedName(option))}
-                      className={cn('h-10', 'rounded-xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-3', 'text-sm', 'font-semibold', 'text-foreground', 'transition-colors', 'hover:border-foreground/30', 'hover:bg-foreground/10')}
+                      className="h-10 rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                     >
                       {option}
                     </button>
@@ -217,15 +225,15 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                   autoFocus
                   value={deviceName}
                   onChange={(e) => { setDeviceName(e.target.value); setNameError(null); }}
-                  className={cn('w-full', 'rounded-2xl', 'border', nameError ? 'border-red-500/50 focus:border-red-500' : 'border-foreground/10 focus:border-foreground/30', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40')}
+                  className={cn('w-full', 'rounded-2xl', 'border', nameError ? 'border-bad-500/50 focus:border-bad-500' : 'border-foreground/10 focus:border-foreground/30', 'bg-foreground/5', 'px-4', 'py-3', 'text-foreground', 'outline-none', 'transition-colors', 'placeholder:text-foreground/40')}
                   placeholder="Abhinay's iPhone"
                 />
                 {nameError && (
-                  <p className="text-red-400 text-xs font-semibold px-1">{nameError}</p>
+                  <p className="text-bad-700 dark:text-bad-400 text-xs font-semibold px-1">{nameError}</p>
                 )}
                 <button
                   disabled={saving || !deviceName.trim()}
-                  className={cn('h-12', 'w-full', 'rounded-2xl', 'bg-foreground', 'font-bold', 'text-background', 'transition-opacity', 'disabled:cursor-not-allowed', 'disabled:opacity-60')}
+                  className="h-12 w-full rounded-2xl bg-foreground font-bold text-background transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : "Save and continue"}
                 </button>
@@ -233,7 +241,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
                   <button
                     type="button"
                     onClick={() => setShowExistingFlow(true)}
-                    className={cn('h-11', 'w-full', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'font-semibold', 'text-foreground', 'transition-colors', 'hover:border-foreground/30', 'hover:bg-foreground/10')}
+                    className="h-11 w-full rounded-2xl border border-foreground/10 bg-foreground/5 font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                   >
                     This device already exists?
                   </button>
@@ -241,25 +249,25 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
               </form>
             ) : (
               <div className="space-y-4">
-                <p className={cn('text-sm', 'text-foreground/60')}>Choose your existing device to replace this newly detected one.</p>
-                <div className={cn('max-h-64', 'space-y-2', 'overflow-auto', 'pr-1')}>
+                <p className="text-sm text-foreground/60">Choose your existing device to replace this newly detected one.</p>
+                <div className="max-h-64 space-y-2 overflow-auto pr-1">
                   {replacementCandidates.map((saved) => (
                     <button
                       key={saved.id}
                       type="button"
                       onClick={() => handleReplaceDevice(saved.id)}
                       disabled={!!replacingDeviceId}
-                      className={cn('w-full', 'rounded-xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-4', 'py-3', 'text-left', 'text-foreground', 'transition-colors', 'hover:border-foreground/30', 'hover:bg-foreground/10', 'disabled:opacity-60')}
+                      className="w-full rounded-xl border border-foreground/10 bg-foreground/5 px-4 py-3 text-left text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10 disabled:opacity-60"
                     >
                       <p className="font-semibold">{saved.name}</p>
-                      <p className={cn('text-xs', 'text-foreground/50', 'mt-1')}>Last seen {new Date(saved.last_seen_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-foreground/50 mt-1">Last seen {new Date(saved.last_seen_at).toLocaleDateString()}</p>
                     </button>
                   ))}
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowExistingFlow(false)}
-                  className={cn('h-11', 'w-full', 'rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'font-semibold', 'text-foreground', 'transition-colors', 'hover:border-foreground/30', 'hover:bg-foreground/10')}
+                  className="h-11 w-full rounded-2xl border border-foreground/10 bg-foreground/5 font-semibold text-foreground transition-colors hover:border-foreground/30 hover:bg-foreground/10"
                 >
                   Back
                 </button>
@@ -278,9 +286,9 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
           <button
             type="button"
             onClick={() => setShowFeedbackModal(true)}
-            className={cn('hidden', 'sm:flex', 'fixed', 'bottom-4', 'right-4', 'z-40', 'items-center', 'gap-2', 'rounded-full', 'border', 'border-foreground/10', 'bg-background/80', 'px-3.5', 'py-2', 'text-xs', 'font-bold', 'text-foreground/80', 'backdrop-blur-xl', 'shadow-lg', 'hover:border-foreground/30', 'hover:bg-background', 'hover:text-foreground', 'transition-all', 'active:scale-95')}
+            className="hidden sm:flex fixed bottom-4 right-4 z-40 items-center gap-2 rounded-full border border-foreground/10 bg-background/80 px-3.5 py-2 text-xs font-bold text-foreground/80 backdrop-blur-xl shadow-lg hover:border-foreground/30 hover:bg-background hover:text-foreground transition-all active:scale-95"
           >
-            <MessageSquare className={cn('w-3.5', 'h-3.5', 'text-amber-400', 'fill-amber-400')} />
+            <MessageSquare className="w-3.5 h-3.5 text-[var(--accent-color)] fill-[var(--accent-color)]" />
             <span>Rate Us</span>
           </button>
 

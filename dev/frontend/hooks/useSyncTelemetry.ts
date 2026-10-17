@@ -155,8 +155,7 @@ interface TelemetryBatch {
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const BATCH_INTERVAL_MS = 10_000; // Flush every 10 seconds
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? '';
-const ENDPOINT   = `${SERVER_URL}/telemetry/sync`;
+const ENDPOINT = '/api/telemetry/sync';
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
 

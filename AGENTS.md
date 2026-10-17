@@ -8,8 +8,10 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 - `dev/frontend/` — Next.js 16 (React 19, Tailwind 4) web client
 - `dev/syncbeats-server/` — Express 5 + Socket.IO 4 + Prisma 7 (PostgreSQL) backend
+- `dev/syncbeats-desktop/` — (Planned) Electron wrapper for Desktop (Windows/Mac) with Local Edge Node LAN server and multi-audio output routing.
 - `dev/db-visualizer/` — custom Next.js database-inspection app (its own Prisma client, not Prisma Studio)
-- `Syncbeats(apple)/` — Swift iOS app; `Syncbeats Android/` — Kotlin Android app
+- `Syncbeats(apple)/` — Native Swift macOS/iOS App. Features: **Hybrid Cloud/LAN Relay** (acts as a local edge node while maintaining global sync), **Proximity Scanner** (Bonjour/BLE for instant local pairing), **AVAudioEngine** playback (download-first for millisecond-perfect sample scheduling), **MusicKit Integration** (native Apple Music library queueing), and high-speed prefetching. Uses a minimalist, colorless native SwiftUI component design (no Hub, direct Room entry).
+- `Syncbeats Android/` — Kotlin Android app
 - `docs/SYSTEM_DESIGN_DIAGRAMS.md` — architecture diagrams
 
 ## Commands
@@ -92,6 +94,25 @@ Clients do **not** apply playback changes optimistically — commands round-trip
 
 **Audio serving**: uploaded files are served from `uploads/` by a hand-rolled `/files/:filename` route in `server.ts` that implements HTTP 206 byte-range streaming — `express.static` was insufficient (browsers need partial content for seeking, and multiple devices buffering at once stalled without it). Don't replace it with `express.static`.
 
+### Native Swift App (macOS/iOS)
+
+The native Apple ecosystem client (`Syncbeats(apple)/`) is an active work-in-progress, replacing the electron app strategy with native system capabilities. 
+
+Key architectural components include:
+- **No Hub UI (Edge Node Model)**: The app entirely skips the traditional "Room Hub" discovery process. Upon successful login (`AuthManager`), it queries `GET /rooms/mine` to fetch the user's permanent, unique 6-digit room, or gracefully calls `POST /rooms` to instantly create one. It immediately drops the user into their `RoomView` acting as a persistent Edge Node.
+- **MusicKit Integration (`MusicLibraryService`)**: Directly accesses the user's local Apple Music library via `MusicKit`. Imported tracks bypass file uploads—when clicked in the UI, they trigger a backend API request to `MusicBridge` (`/api/bridge/resolve`), which maps the Apple track to its YouTube/streaming equivalent, then natively calls the `enqueue-youtube` route.
+- **Socket.IO (`RoomManager`)**: Built on `socket.io-client-swift`. Manages room queue synchronization by interpreting the JSON payload from `room:snapshot` and `room:queueChanged`. Currently acts purely as a robust queueing remote control for other connected clients.
+- **AudioEngine (NOT STARTED)**: The most critical pending feature. Requires a native `AVAudioEngine` implementation for audio rendering, combined with a Swift translation of the frontend NTP Drift Correction algorithms to guarantee millisecond-perfect multi-device synced playback.
+
+### Desktop Electron App (Local Edge Node) - *Planned*
+
+The desktop application (`dev/syncbeats-desktop`) wraps the Next.js frontend using Electron to provide native capabilities:
+- **Local Edge Node Server:** Runs a lightweight, in-memory version of `syncbeats-server` locally (`localhost:4000`) for zero-latency LAN parties without requiring internet access.
+- **Hybrid Cloud Bridge:** Can relay cloud state from `syncbeats.in` to local LAN clients.
+- **Speaker Decks (Multi-Audio Routing):** Uses `navigator.mediaDevices.enumerateDevices()` and Web Audio API's `setSinkId()` to map individual audio channels to specific Bluetooth speakers (e.g., Sony, Marshall) bypassing browser permission prompts via Electron's `session.setPermissionRequestHandler`.
+- **Uncapped Framerate:** Disables Chromium's frame rate limit to run WebGL visualizers at native monitor refresh rates (e.g., 120FPS+).
+- **UI Architecture:** Skips marketing landing pages and jumps directly to a desktop-optimized Hub and Room UI while reusing core React components via a `window.isElectron` environment flag.
+
 ### Frontend structure
 
 - `app/(session)/` — authenticated routes: `hub/` (room list + QR scanner), `room/[id]/` (main playback UI), `profile/`
@@ -111,6 +132,9 @@ Clients do **not** apply playback changes optimistically — commands round-trip
 4. **CORS**: server allows `FRONTEND_URL` and any origin containing `syncbeats.app` (all origins in development). Configured in both the Express middleware and the Socket.IO server options in `server.ts` — keep them in sync.
 5. **New participants converge slowly**: clock offset needs several NTP bursts to stabilize; expect higher drift for the first ~5–10 seconds after join.
 6. **Root `.env` is the single config source** for backend, compose, and CI — the frontend only sees `NEXT_PUBLIC_*` vars at build time.
+7. **AVAudioEngine Format Crash**: Apple's Core Audio cannot natively read `.webm` (Opus) files. When downloading audio via `yt-dlp` for the Mac app, always strictly pass `-f 'bestaudio[ext=m4a]'` (format 140 AAC stream) to prevent `error 1685348671`.
+8. **Swift Download Latency Trap**: Never use `URLSession.shared.bytes(for:)` and iterate byte-by-byte via `for try await byte in asyncBytes` for large files. The massive context-switching overhead causes extreme delays (e.g., 30s for 3MB). Use `URLSession.shared.data(for:)` instead.
+9. **Readiness Gate on Pause/Resume**: The server's `allReady()` logic must be checked *first* when `play()` is called so same-track pause/resumes skip the 10-second readiness timeout. Additionally, socket reconnects (`addParticipant`) wipe the server's `isReady` flags; native clients must listen for `room:snapshot` and immediately re-declare `room:clientReady` if their file is already loaded.
 
 ## Active Tasks
 Please refer to [implementation_plan.md](./implementation_plan.md) for the active list of bugs and UI features being tracked.

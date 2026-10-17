@@ -108,24 +108,24 @@ export class Room extends EventEmitter {
 
   play(requesterId: string): void {
     if (this.timeline.isPlaying) return;
-    
-    if (!this.allReady()) {
-      this.pendingPlay = true;
-      if (this.readyTimeout) clearTimeout(this.readyTimeout);
-      this.readyTimeout = setTimeout(() => {
-        if (this.pendingPlay && !this.timeline.isPlaying) {
-          console.log(`[Room ${this.roomId}] Play readiness timeout expired (10s) — forcing playback for ready participants`);
-          this._startPlayback();
-        }
-      }, 10_000);
+
+    // If all participants are already ready (same track, resuming from pause),
+    // skip the readiness gate entirely and start playback immediately.
+    if (this.allReady()) {
+      if (this.readyTimeout) { clearTimeout(this.readyTimeout); this.readyTimeout = null; }
+      this._startPlayback();
       return;
     }
 
-    if (this.readyTimeout) {
-      clearTimeout(this.readyTimeout);
-      this.readyTimeout = null;
-    }
-    this._startPlayback();
+    // New track or first play — gate on readiness with a 10s timeout fallback.
+    this.pendingPlay = true;
+    if (this.readyTimeout) clearTimeout(this.readyTimeout);
+    this.readyTimeout = setTimeout(() => {
+      if (this.pendingPlay && !this.timeline.isPlaying) {
+        console.log(`[Room ${this.roomId}] Play readiness timeout expired (10s) — forcing playback for ready participants`);
+        this._startPlayback();
+      }
+    }, 10_000);
   }
 
   private _startPlayback(): void {
@@ -134,7 +134,7 @@ export class Room extends EventEmitter {
       clearTimeout(this.readyTimeout);
       this.readyTimeout = null;
     }
-    const scheduleDelay = 800;
+    const scheduleDelay = 150; // Reduced from 800ms for snappier play button response
     const atEpoch = Date.now() + scheduleDelay;
     
     this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;
@@ -267,7 +267,7 @@ export class Room extends EventEmitter {
     const positionSec = positionMs / 1000;
     
     if (this.timeline.isPlaying) {
-      const scheduleDelay = 500; // shorter delay for seek
+      const scheduleDelay = 150; // Reduced from 500ms for snappier seek response
       const atEpoch = Date.now() + scheduleDelay;
       this.timeline.startEpoch = atEpoch - positionMs;
       

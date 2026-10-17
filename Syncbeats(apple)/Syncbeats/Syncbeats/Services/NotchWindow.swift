@@ -27,18 +27,27 @@ private final class HoverView: NSView {
     var onHover: ((Bool) -> Void)?
     weak var controller: NotchController?
 
+    /// Set explicitly by the controller rather than derived from `isExpanded`:
+    /// deriving it meant the rect snapped to the new state while the island was
+    /// still springing, firing spurious enter/exit pairs at the edges.
+    var trackingSize = CGSize(width: 200, height: 40) {
+        didSet {
+            guard trackingSize != oldValue else { return }
+            updateTrackingAreas()
+        }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        
-        let isExp = controller?.isExpanded == true
-        let size = isExp ? controller?.expandedSize : controller?.hoverSize
-        let width = size?.width ?? 200
-        let height = size?.height ?? 40
-        let rect = NSRect(x: bounds.midX - width / 2, y: bounds.maxY - height, width: width, height: height)
-        
+
         addTrackingArea(NSTrackingArea(
-            rect: rect,
+            rect: NSRect(
+                x: bounds.midX - trackingSize.width / 2,
+                y: bounds.maxY - trackingSize.height,
+                width: trackingSize.width,
+                height: trackingSize.height
+            ),
             options: [.mouseEnteredAndExited, .activeAlways],
             owner: self
         ))
@@ -46,18 +55,16 @@ private final class HoverView: NSView {
 
     override func mouseEntered(with event: NSEvent) { onHover?(true) }
     override func mouseExited(with event: NSEvent) { onHover?(false) }
-    
+
+    /// The panel stays 900×400 so SwiftUI can animate freely; without this every
+    /// transparent pixel around the island would eat clicks meant for the menu bar.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let view = super.hitTest(point)
-        guard let controller = controller else { return view }
-        
-        let size = controller.isExpanded ? controller.expandedSize : controller.collapsedSize
+        guard let size = controller?.visualSize else { return view }
+
         let rect = NSRect(x: bounds.midX - size.width / 2, y: bounds.maxY - size.height, width: size.width, height: size.height)
-        
-        if !rect.contains(point) {
-            if view == self || view?.className.contains("NSHostingView") == true {
-                return nil
-            }
+        if !rect.contains(point), view == self || view?.className.contains("NSHostingView") == true {
+            return nil
         }
         return view
     }
@@ -78,10 +85,10 @@ final class NotchController: ObservableObject {
     // Note: If you change the expanded width in DynamicIslandView, you must match it here!
     let expandedSize = CGSize(width: 680, height: 196)
     private let idleLobe: CGFloat = 28
-    private let playingLobe: CGFloat = 86
+    private let playingLobe: CGFloat = 42
 
     private var panel: NSPanel?
-    private var collapseWork: DispatchWorkItem?
+    private var hoverWork: DispatchWorkItem?
     private var bag = Set<AnyCancellable>()
 
     private init() {}
@@ -115,9 +122,17 @@ final class NotchController: ObservableObject {
     
     var hoverSize: CGSize {
         let size = collapsedSize
-        return CGSize(width: size.width + 28, height: size.height + 4)
+        return CGSize(width: size.width + 24, height: size.height + 8)
     }
-    
+
+    /// What the island is drawing right now — the source of truth for click
+    /// passthrough, so hit testing and the visible shape can't disagree.
+    var visualSize: CGSize {
+        if isExpanded { return expandedSize }
+        if AudioEngine.shared.isDownloading { return CGSize(width: notchWidth + 160, height: barHeight + 20) }
+        return isHovered ? hoverSize : collapsedSize
+    }
+
     // The window frame is permanently large enough to hold the expanded island.
     // This allows SwiftUI to handle 100% of the animation perfectly, completely eliminating
     // any AppKit jitter, dropping, or tearing during resizing.
@@ -142,14 +157,14 @@ final class NotchController: ObservableObject {
 
     func attach() {
         if panel == nil { build() }
-        panel?.setFrame(frame(for: windowSize), display: false)
         reposition()
         panel?.orderFrontRegardless()
     }
 
     func detach() {
-        collapseWork?.cancel()
+        hoverWork?.cancel()
         isExpanded = false
+        isHovered = false
         panel?.orderOut(nil)
     }
 
@@ -180,12 +195,10 @@ final class NotchController: ObservableObject {
 
         let panel = NSPanel(
             contentRect: frame(for: windowSize),
-            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .hidden
         panel.contentView = hover
         panel.isFloatingPanel = true
         panel.level = .statusBar          // above .mainMenu, so it clears the menu bar
@@ -211,40 +224,68 @@ final class NotchController: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] _ in Task { @MainActor in self?.reposition() } }
             .store(in: &bag)
+            
+        AudioEngine.shared.$isDownloading
+            .removeDuplicates()
+            .sink { [weak self] _ in Task { @MainActor in self?.reposition() } }
+            .store(in: &bag)
     }
 
     private func reposition() {
-        (panel?.contentView as? HoverView)?.updateTrackingAreas()
+        panel?.setFrame(frame(for: windowSize), display: false)
+        syncTracking()
     }
 
+    /// Hover drives expansion, with asymmetric delays: a short intent gate so a
+    /// cursor sweeping past the notch doesn't open it, and a longer grace period on
+    /// the way out so clipping a corner doesn't slam it shut.
     func setHovered(_ value: Bool) {
         guard isHovered != value else { return }
         isHovered = value
-        
-        // Cancel any pending close
-        NSObject.cancelPreviousPerformRequests(withTarget: self)
-        
+
+        hoverWork?.cancel()
+
         if !isExpanded {
             reposition()
         }
-        
+
         if !value && isExpanded {
-            // Auto-close when mouse leaves (2ms)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.002) { [weak self] in
+            // Auto-close when mouse leaves
+            let work = DispatchWorkItem { [weak self] in
                 guard let self, !self.isHovered, self.isExpanded else { return }
                 self.setExpanded(false)
             }
+            hoverWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
         }
     }
 
-    func toggleExpanded() {
-        setExpanded(!isExpanded)
+    /// Tap to open immediately, skipping the intent gate.
+    func expandNow() {
+        hoverWork?.cancel()
+        setExpanded(true)
     }
 
     func setExpanded(_ value: Bool) {
         guard isExpanded != value else { return }
         isExpanded = value
-        reposition()
+
+        if value {
+            syncTracking()
+        } else {
+            // Shrink only once the spring has settled. Collapsing the rect out from
+            // under a cursor that's still over the visible island is what produced
+            // the exit/enter thrash and edge flicker.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) { [weak self] in
+                guard let self, !self.isExpanded else { return }
+                self.syncTracking()
+            }
+        }
+    }
+
+    private func syncTracking() {
+        guard let hover = panel?.contentView as? HoverView else { return }
+        hover.trackingSize = isExpanded ? expandedSize : hoverSize
     }
 
     /// Bring the room window forward — the island is a remote, not a replacement.

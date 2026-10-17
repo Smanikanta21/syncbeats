@@ -199,7 +199,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   };
 
   return (
-    <div className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'flex-col', 'items-center', 'p-4', 'sm:p-8', 'bg-black/90', 'backdrop-blur-md', 'overflow-y-auto')}>
+    <div className="fixed inset-0 z-9999 flex flex-col items-center p-4 sm:p-8 bg-black/90 backdrop-blur-md overflow-y-auto">
       <canvas ref={canvasRef} className="hidden" />
       
       {/* Header & Close button */}
@@ -207,7 +207,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         <h2 className="text-white font-bold tracking-widest uppercase text-lg">Join Room</h2>
         <button 
           onClick={onClose}
-          className={cn('p-2', 'rounded-full', 'bg-white/10', 'hover:bg-white/20', 'text-white', 'transition-colors')}
+          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
         >
           <X className="w-6 h-6" />
         </button>
@@ -217,7 +217,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         {/* Scanner */}
         {hasCameraError ? (
           <div className="text-center text-white/80 flex flex-col items-center px-6 py-10 bg-white/5 rounded-4xl border border-white/10">
-            <CameraOff className="w-12 h-12 mb-4 text-red-400" />
+            <CameraOff className="w-12 h-12 mb-4 text-bad-400" />
             <h2 className="text-xl font-bold mb-2">Camera Unavailable</h2>
             <p className="max-w-xs text-sm opacity-70">{cameraErrorText}</p>
           </div>
@@ -251,9 +251,9 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                     <motion.div
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      className="absolute inset-0 bg-emerald-500/20 rounded-3xl flex items-center justify-center backdrop-blur-sm"
+                      className="absolute inset-0 bg-ok-500/20 rounded-3xl flex items-center justify-center backdrop-blur-sm"
                     >
-                      <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.8)]">
+                      <div className="w-16 h-16 bg-ok-500 rounded-full flex items-center justify-center shadow-[0_0_40px_color-mix(in_srgb,var(--color-ok-500)_80%,transparent)]">
                         <ScanLine className="w-8 h-8 text-white" />
                       </div>
                     </motion.div>
@@ -264,7 +264,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="absolute -bottom-15 left-1/2 -translate-x-1/2 whitespace-nowrap bg-red-500/90 text-white px-4 py-2 rounded-full font-bold text-sm shadow-xl flex items-center gap-2"
+                      className="absolute -bottom-15 left-1/2 -translate-x-1/2 whitespace-nowrap bg-bad-500/90 text-white px-4 py-2 rounded-full font-bold text-sm shadow-xl flex items-center gap-2"
                     >
                       <AlertCircle className="w-4 h-4" />
                       {errorMessage}
@@ -295,7 +295,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               placeholder="------"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-center text-2xl font-black tracking-[0.2em] text-white placeholder:text-white/20 outline-none focus:border-emerald-400 focus:bg-white/10 transition-all uppercase"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-center text-2xl font-black tracking-[0.2em] text-white placeholder:text-white/20 outline-none focus:border-dye-400 focus:bg-white/10 transition-all uppercase"
             />
             
             {joinCode.length === 0 && (
@@ -315,7 +315,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   type="submit"
-                  className="absolute right-3 w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-400 transition-colors shadow-lg"
+                  className="absolute right-3 w-12 h-12 rounded-xl bg-dye-500 text-white flex items-center justify-center hover:bg-dye-400 transition-colors shadow-lg"
                 >
                   <ArrowRight className="w-6 h-6" />
                 </motion.button>
@@ -327,7 +327,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         {/* Recent Rooms */}
         <div className="flex flex-col gap-3 mt-4">
           <div className="flex items-center gap-2 text-white/80 font-semibold text-sm">
-            <Clock className="w-4 h-4 text-emerald-400" />
+            <Clock className="w-4 h-4 text-dye-400" />
             Recent Rooms
           </div>
           
@@ -349,8 +349,8 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                   }}
                   className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all text-left group"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
-                    <Music className="w-6 h-6 text-emerald-400" />
+                  <div className="w-12 h-12 rounded-xl bg-dye-500/10 flex items-center justify-center shrink-0 border border-dye-500/20 group-hover:bg-dye-500/20 transition-colors">
+                    <Music className="w-6 h-6 text-dye-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-base font-bold text-white truncate">Room {room.id}</div>
@@ -358,7 +358,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                       {room.participant_count || 0} participants • Room ID: {room.id}
                     </div>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-white/30 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                  <ArrowRight className="w-5 h-5 text-white/30 group-hover:text-dye-400 group-hover:translate-x-1 transition-all" />
                 </button>
               ))
             )}

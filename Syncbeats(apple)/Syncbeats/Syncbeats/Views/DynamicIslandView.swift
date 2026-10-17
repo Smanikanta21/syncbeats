@@ -4,90 +4,174 @@ import SwiftUI
 /// The notch island. Collapsed it hugs the camera housing — artwork in the left
 /// lobe, level meter in the right, nothing in the middle because those pixels
 /// don't exist. Hovering expands it into the full remote.
+///
+/// Motion notes, because this is easy to make janky again:
+///  - Both layouts are always mounted at their own **fixed** size and cross-faded.
+///    Nothing re-lays-out while the island moves; only the clip mask animates.
+///  - Exactly one `.animation(_:value:)` drives the whole thing. Two springs on the
+///    same frame fight each other and you see a double-step.
 struct DynamicIslandView: View {
     @EnvironmentObject private var room: RoomManager
     @EnvironmentObject private var notch: NotchController
+    @ObservedObject private var engine = AudioEngine.shared
+
+    /// Everything that should animate as one gesture, in one Equatable value.
+    private struct Phase: Equatable {
+        var step: Int          // 0 collapsed · 1 hovered · 2 expanded
+        var hasTrack: Bool     // flips the collapsed lobe width
+        var isDownloading: Bool
+    }
+
+    private var phase: Phase {
+        Phase(
+            step: notch.isExpanded ? 2 : (notch.isHovered ? 1 : 0),
+            hasTrack: room.currentTrack != nil,
+            isDownloading: engine.isDownloading && !notch.isExpanded
+        )
+    }
+
+    private var size: CGSize {
+        if notch.isExpanded { return notch.expandedSize }
+        if engine.isDownloading { return CGSize(width: notch.notchWidth + 160, height: notch.barHeight + 20) }
+        return notch.isHovered ? notch.hoverSize : notch.collapsedSize
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
             shape
                 .fill(.black)
+                .overlay(shape.stroke(.white.opacity(notch.isExpanded ? 0.12 : 0), lineWidth: 0.5))
                 .shadow(
                     color: .black.opacity(notch.isExpanded ? 0.5 : (notch.isHovered ? 0.3 : 0)),
                     radius: notch.isExpanded ? 20 : 8,
                     y: notch.isExpanded ? 10 : 4
                 )
-                .overlay(shape.stroke(.white.opacity(notch.isExpanded ? 0.12 : 0), lineWidth: 0.5))
 
-            if notch.isExpanded {
-                expanded
-                    .transition(.opacity.combined(with: .blurReplace))
-            } else {
+            // Fixed-size children, cross-faded. The animated clip does the reveal,
+            // so neither layout is re-measured mid-flight.
+            ZStack(alignment: .top) {
                 collapsed
-                    .transition(.opacity)
+                    .frame(
+                        width: (engine.isDownloading && !notch.isExpanded) ? notch.notchWidth + 160 : notch.collapsedSize.width,
+                        height: (engine.isDownloading && !notch.isExpanded) ? notch.barHeight + 20 : notch.barHeight,
+                        alignment: .top
+                    )
+                    .opacity(notch.isExpanded ? 0 : 1)
+                    .scaleEffect(notch.isHovered && !notch.isExpanded ? 1.08 : 1)
+
+                expanded
+                    .frame(width: notch.expandedSize.width, height: notch.expandedSize.height, alignment: .top)
+                    .opacity(notch.isExpanded ? 1 : 0)
+                    .allowsHitTesting(notch.isExpanded)
             }
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .compositingGroup()
+            .clipShape(shape)
         }
-        .frame(
-            width: notch.isExpanded ? notch.expandedSize.width : (notch.isHovered ? notch.hoverSize.width : notch.collapsedSize.width),
-            height: notch.isExpanded ? notch.expandedSize.height : (notch.isHovered ? notch.hoverSize.height : notch.collapsedSize.height),
-            alignment: .top
-        )
-        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.1), value: notch.isExpanded)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: notch.isHovered)
+        .frame(width: size.width, height: size.height, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
+        // The island shape is always black, so force dark for the whole subtree.
+        // That's what lets the shared `.primary`/`.secondary`/`.quaternary`
+        // components from RoomChrome resolve to white-on-black in here without
+        // needing an island-specific colour set.
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .animation(Design.layout, value: phase)
         .contentShape(shape)
-        .onTapGesture {
-            notch.toggleExpanded()
+        .onChange(of: notch.isHovered) { _, hovered in
+            if hovered && !notch.isExpanded {
+                Haptics.impact()
+            }
         }
-        .animation(.easeInOut(duration: 0.2), value: room.currentTrack?.id)
     }
 
     private var shape: some Shape {
-        // Increased from 16 to 28 (expanded) and 12 to 16 (hovered) to make the curve sweep further outward!
-        let topRadius: CGFloat = notch.hasNotch && notch.isExpanded ? 16 : (notch.hasNotch && notch.isHovered ? 8 : 0)
-        let bottomRadius: CGFloat = notch.isExpanded ? 32 : (notch.hasNotch ? 10 : 12)
-        
-        return NotchNookShape(
-            topRadius: topRadius,
-            bottomRadius: bottomRadius
-        )
+        let isDownloading = engine.isDownloading && !notch.isExpanded
+        let topRadius: CGFloat = notch.isExpanded ? 16 : (isDownloading ? 8 : (notch.isHovered ? 6 : 2))
+        let bottomRadius: CGFloat = notch.isExpanded ? 32 : (isDownloading ? 16 : (notch.hasNotch ? 8 : 8))
+
+        return NotchNookShape(topRadius: topRadius, bottomRadius: bottomRadius)
     }
 
     // MARK: - Collapsed
 
     private var collapsed: some View {
-        HStack(spacing: 0) {
-            let isIdle = room.currentTrack == nil
-            if !isIdle || !notch.hasNotch {
-                artwork(size: notch.barHeight - 9)
-                    .frame(maxWidth: .infinity)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                let isIdle = room.currentTrack == nil
+                if !isIdle || !notch.hasNotch {
+                    artwork(size: notch.barHeight - 9)
+                        .frame(maxWidth: .infinity)
 
-                // The camera housing lives here — leave it empty.
-                Spacer().frame(width: notch.notchWidth)
+                    // The camera housing lives here — leave it empty.
+                    Spacer().frame(width: notch.notchWidth)
 
-                Group {
-                    if !isIdle {
-                        LevelMeter(active: room.isPlaying)
-                    } else {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 5, height: 5)
+                    Group {
+                        if !isIdle {
+                            if notch.isHovered {
+                                Button(action: room.togglePlayPause) {
+                                    Image(systemName: room.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 16, height: 16)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                LevelMeter(active: room.isPlaying && !engine.isDownloading)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [
+                                                Color(white: 1.0),
+                                                Color(red: 1.0, green: 0.95, blue: 0.8), // warm white/yellow
+                                                Color(red: 1.0, green: 0.85, blue: 0.6)  // subtle orange
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .shadow(color: Color(red: 1.0, green: 0.9, blue: 0.7).opacity(0.8), radius: 2)
+                                    .shadow(color: Color(red: 1.0, green: 0.8, blue: 0.5).opacity(0.4), radius: 6)
+                            }
+                        } else {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Spacer().frame(width: notch.notchWidth)
                 }
-                .frame(maxWidth: .infinity)
-            } else {
-                Spacer().frame(width: notch.notchWidth)
+            }
+            .frame(height: notch.barHeight)
+            .padding(.horizontal, (room.currentTrack == nil && notch.hasNotch) ? 0 : 7)
+            
+            if engine.isDownloading {
+                ProgressView(value: engine.downloadProgress)
+                    .progressViewStyle(.linear)
+                    .tint(.white)
+                    .padding(.horizontal, 24)
+                    .frame(height: 20)
             }
         }
-        .frame(height: notch.barHeight)
-        .padding(.horizontal, (room.currentTrack == nil && notch.hasNotch) ? 0 : 7)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            Haptics.tap()
+            notch.expandNow()
+        }
     }
 
     // MARK: - Expanded
 
     private var expanded: some View {
-        VStack(spacing: 12) {
+        ZStack {
+            // Invisible background to catch clicks that should collapse the island
+            Color.white.opacity(0.001)
+                .onTapGesture { notch.setExpanded(false) }
+
+            VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 artwork(size: 58)
 
@@ -107,24 +191,48 @@ struct DynamicIslandView: View {
                         if room.clock.isSynced {
                             Text("·")
                             Text("±\(Int(room.clock.rttMs / 2))ms")
+                                .monospacedDigit()
                         }
                     }
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(statusColor)
+                    .foregroundStyle(.secondary)
                     .padding(.top, 2)
                 }
 
                 Spacer(minLength: 0)
 
-                Button(action: { notch.focusMainWindow() }) {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 11, weight: .semibold))
+                HStack(spacing: 8) {
+                    if !DeviceManager.shared.activeSecondaryDevices.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "speaker.wave.2.fill")
+                            Text("\(1 + DeviceManager.shared.activeSecondaryDevices.count)")
+                                .monospacedDigit()
+                        }
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.white.opacity(0.12), in: Capsule())
+                    }
+
+                    Button(action: { notch.focusMainWindow() }) {
+                        Image(systemName: "macwindow")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(IslandGlyphButton())
+                    .help("Open the room window")
                 }
-                .buttonStyle(IslandGlyphButton())
-                .help("Open the room window")
             }
 
-            Scrubber()
+            Scrubber(
+                progress: room.progress,
+                durationSec: room.durationSec,
+                // Collapsed the subtree stays mounted at opacity 0, and a paused
+                // room's position doesn't move — neither needs 30fps redraws.
+                isLive: notch.isExpanded && room.isPlaying,
+                compact: true,
+                onSeek: { room.seek(toSeconds: $0) }
+            )
 
             HStack(spacing: 18) {
                 Button(action: room.toggleShuffle) {
@@ -161,129 +269,22 @@ struct DynamicIslandView: View {
         // This controls the margins for all the content INSIDE the expanded island!
         .padding(.horizontal, 32)
         .padding(.top, notch.hasNotch ? notch.barHeight + 4 : 20)
-        .padding(.bottom, 20)
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
-    }
-
-    private var statusColor: Color {
-        switch room.connection {
-        case .connected:    return room.clock.isSynced ? .green : .yellow
-        case .connecting:   return .yellow
-        case .disconnected: return .orange
-        case .idle:         return .secondary
+            .padding(.bottom, 20)
         }
     }
 
-    @ViewBuilder
+
+
+    /// The island's lobes and expanded header are `ArtworkTile` at a tighter
+    /// corner than the stage uses — a 15pt tile at the stage's 0.06 scale would
+    /// read as a square.
     private func artwork(size: CGFloat) -> some View {
-        let radius = max(3, size * 0.22)
-        Group {
-            if let url = room.currentTrack?.artworkURL {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        artworkFallback
-                    }
-                }
-            } else {
-                artworkFallback
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-    }
-
-    private var artworkFallback: some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(.white.opacity(0.1))
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.45))
-            )
+        ArtworkTile(url: room.currentTrack?.artworkURL, size: size, cornerScale: 0.22)
+            .shadow(color: .black.opacity(size > 40 ? 0.35 : 0.15), radius: size > 40 ? 6 : 2, y: size > 40 ? 3 : 1)
     }
 }
 
 // MARK: - Pieces
-
-/// Progress bar that reads the derived timeline and commits a seek on release.
-private struct Scrubber: View {
-    @EnvironmentObject private var room: RoomManager
-    @State private var dragProgress: Double?
-
-    var body: some View {
-        // TimelineView redraws off the run loop, so no timer is needed to advance
-        // a position that is computed from the server clock.
-        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            let live = dragProgress ?? room.progress
-            VStack(spacing: 3) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.16))
-                        Capsule().fill(.white.opacity(0.85))
-                            .frame(width: max(0, geo.size.width * live))
-                    }
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                guard room.durationSec > 0 else { return }
-                                dragProgress = min(1, max(0, value.location.x / geo.size.width))
-                            }
-                            .onEnded { _ in
-                                if let p = dragProgress, room.durationSec > 0 {
-                                    room.seek(toSeconds: p * room.durationSec)
-                                }
-                                dragProgress = nil
-                            }
-                    )
-                }
-                .frame(height: 4)
-
-                HStack {
-                    Text(Self.clock(live * room.durationSec))
-                    Spacer()
-                    Text(room.durationSec > 0 ? Self.clock(room.durationSec) : "--:--")
-                }
-                .font(.system(size: 9, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.5))
-            }
-        }
-    }
-
-    static func clock(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
-        let total = Int(seconds)
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
-}
-
-/// Four bars driven off a TimelineView tick — no repeatForever animation to leak
-/// when the island collapses.
-private struct LevelMeter: View {
-    let active: Bool
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 2) {
-                ForEach(0..<4, id: \.self) { i in
-                    Capsule()
-                        .fill(.white.opacity(active ? 0.9 : 0.3))
-                        .frame(width: 2, height: 11)
-                        .scaleEffect(y: active ? height(t, i) : 0.28, anchor: .center)
-                }
-            }
-            .frame(width: 16, height: 11)
-        }
-    }
-
-    private func height(_ t: Double, _ index: Int) -> Double {
-        0.3 + 0.7 * abs(sin(t * (2.3 + Double(index) * 0.7)))
-    }
-}
 
 private struct IslandGlyphButton: ButtonStyle {
     var size: CGFloat = 12
@@ -292,7 +293,7 @@ private struct IslandGlyphButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: size, weight: .semibold))
-            .foregroundStyle(tinted ? Color.accentColor : Color.white.opacity(0.72))
+            .foregroundStyle(tinted ? Color.primary : Color.secondary)
             .opacity(configuration.isPressed ? 0.5 : 1)
             .contentShape(Rectangle())
     }

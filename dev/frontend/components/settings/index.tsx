@@ -203,7 +203,7 @@ function RoomPreview({
   };
 
   return (
-    <div ref={containerRef} className={cn('w-full', 'aspect-video', 'max-h-85', 'rounded-3xl', 'relative', 'overflow-hidden', 'bg-[#0A0D14]', 'border', 'border-white/8', 'shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]', 'flex', 'flex-col', 'justify-between', 'p-3', 'select-none', 'mb-6')}>
+    <div ref={containerRef} className="w-full aspect-video max-h-85 rounded-3xl relative overflow-hidden bg-[#0A0D14] border border-white/8 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)] flex flex-col justify-between p-3 select-none mb-6">
       
       {/* Glowing Ambient Background Blobs — animated by demo beat rAF loop */}
       {nodes.map((node, idx) => {
@@ -288,57 +288,57 @@ function RoomPreview({
       </div>
 
       {/* Grid Overlay Line */}
-      <div className={cn('absolute', 'inset-0', 'bg-[radial-gradient(ellipse_at_center,transparent_20%,#090c13_95%)]', 'pointer-events-none')} />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,#090c13_95%)] pointer-events-none" />
 
       {/* Room UI Mockup */}
-      <div className={cn('relative', 'z-10', 'w-full', 'h-full', 'flex', 'flex-col', 'justify-between', 'pointer-events-none', 'opacity-90')}>
+      <div className="relative z-10 w-full h-full flex flex-col justify-between pointer-events-none opacity-90">
         
         {/* Header Row */}
-        <div className={cn('flex', 'items-center', 'justify-between', 'w-full', 'h-4', 'px-1', 'shrink-0')}>
+        <div className="flex items-center justify-between w-full h-4 px-1 shrink-0">
           {/* Room Info */}
-          <div className={cn('flex', 'items-center', 'gap-1')}>
-            <div className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-500', 'animate-pulse')} />
-            <span className={cn('text-[6px]', 'font-black', 'text-white/50', 'tracking-wider')}>ROOM: 798591</span>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-ok-500 animate-pulse" />
+            <span className="text-[6px] font-black text-white/50 tracking-wider">ROOM: 798591</span>
           </div>
           {/* Mini Dynamic Island */}
-          <div className={cn('px-2', 'py-0.5', 'rounded-full', 'bg-black/85', 'border', 'border-white/10', 'flex', 'items-center', 'gap-1', 'scale-[0.85]', 'shrink-0')}>
-            <div className={cn('w-1', 'h-1', 'rounded-full', 'bg-emerald-500')} />
-            <div className={cn('w-2', 'h-1', 'flex', 'gap-[0.5px]', 'items-center')}>
-              <div className={cn('w-[0.5px]', 'h-0.5', 'bg-white/60', 'animate-pulse')} />
-              <div className={cn('w-[0.5px]', 'h-1', 'bg-white/80')} />
-              <div className={cn('w-[0.5px]', 'h-0.5', 'bg-white/60', 'animate-pulse')} />
+          <div className="px-2 py-0.5 rounded-full bg-black/85 border border-white/10 flex items-center gap-1 scale-[0.85] shrink-0">
+            <div className="w-1 h-1 rounded-full bg-ok-500" />
+            <div className="w-2 h-1 flex gap-[0.5px] items-center">
+              <div className="w-[0.5px] h-0.5 bg-white/60 animate-pulse" />
+              <div className="w-[0.5px] h-1 bg-white/80" />
+              <div className="w-[0.5px] h-0.5 bg-white/60 animate-pulse" />
             </div>
-            <span className={cn('text-[4px]', 'font-bold', 'text-white/90')}>Calling</span>
+            <span className="text-[4px] font-bold text-white/90">Calling</span>
           </div>
           {/* Controls Placeholder */}
-          <div className={cn('w-4', 'h-1.5', 'rounded', 'bg-white/10')} />
+          <div className="w-4 h-1.5 rounded bg-white/10" />
         </div>
 
         {/* Center Spatial Room Grid Visual Mockup (Clean wireframe without dark backdrop blur box) */}
-        <div className={cn('flex-1', 'w-full', 'flex', 'items-center', 'justify-center', 'relative', 'my-1')}>
-          <div className={cn('w-[85%]', 'h-full', 'border', 'border-white/10', 'rounded-2xl', 'relative', 'flex', 'items-center', 'justify-center')}>
-            <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'pointer-events-none')}>
-              <div className={cn('w-40', 'h-40', 'rounded-full', 'border', 'border-white/5', 'animate-ping', 'opacity-20')} />
-              <div className={cn('w-24', 'h-24', 'rounded-full', 'border', 'border-white/10')} />
+        <div className="flex-1 w-full flex items-center justify-center relative my-1">
+          <div className="w-[85%] h-full border border-white/10 rounded-2xl relative flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-40 h-40 rounded-full border border-white/5 animate-ping opacity-20" />
+              <div className="w-24 h-24 rounded-full border border-white/10" />
             </div>
           </div>
         </div>
 
         {/* Bottom Playbar Mockup */}
-        <div className={cn('w-full', 'h-6', 'rounded-xl', 'bg-black/80', 'border', 'border-white/10', 'px-2', 'flex', 'items-center', 'justify-between', 'shrink-0')}>
-          <div className={cn('flex', 'items-center', 'gap-1.5')}>
-            <div className={cn('w-3', 'h-3', 'rounded', 'bg-violet-500/40', 'border', 'border-violet-500/60')} />
-            <div className={cn('flex', 'flex-col')}>
-              <div className={cn('w-12', 'h-1', 'rounded', 'bg-white/40')} />
-              <div className={cn('w-8', 'h-1', 'rounded', 'bg-white/20', 'mt-0.5')} />
+        <div className="w-full h-6 rounded-xl bg-black/80 border border-white/10 px-2 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded bg-violet-500/40 border border-violet-500/60" />
+            <div className="flex flex-col">
+              <div className="w-12 h-1 rounded bg-white/40" />
+              <div className="w-8 h-1 rounded bg-white/20 mt-0.5" />
             </div>
           </div>
-          <div className={cn('flex', 'items-center', 'gap-1')}>
-            <div className={cn('w-2', 'h-2', 'rounded-full', 'bg-white/20')} />
-            <div className={cn('w-3', 'h-3', 'rounded-full', 'bg-white/80', 'flex', 'items-center', 'justify-center')}>
-              <div className={cn('w-1', 'h-1', 'bg-black', 'rounded-sm')} />
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-white/20" />
+            <div className="w-3 h-3 rounded-full bg-white/80 flex items-center justify-center">
+              <div className="w-1 h-1 bg-black rounded-sm" />
             </div>
-            <div className={cn('w-2', 'h-2', 'rounded-full', 'bg-white/20')} />
+            <div className="w-2 h-2 rounded-full bg-white/20" />
           </div>
         </div>
       </div>
@@ -548,12 +548,12 @@ export function SettingsPanel({
   const currentPalettes = PALETTES_BY_COUNT[activeLightCount] || PALETTES_BY_COUNT[3];
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'w-full', 'min-h-0', 'relative')}>
+    <div className="flex flex-col h-full w-full min-h-0 relative">
       {/* ── App Settings Header Bar with Floating Dialogue Box ── */}
-      <div className={cn('shrink-0', 'w-full', 'pb-3', 'mb-4', 'border-b', 'border-foreground/10', 'flex', 'items-center', 'justify-between', 'gap-3')}>
+      <div className="shrink-0 w-full pb-3 mb-4 border-b border-foreground/10 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
-          <h2 className={cn('text-lg', 'sm:text-2xl', 'font-black', 'text-foreground', 'truncate')}>{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+          <h2 className="text-lg sm:text-2xl font-black text-foreground truncate">{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
         </div>
 
         <div className="flex items-center gap-2">
@@ -567,7 +567,7 @@ export function SettingsPanel({
                 transition={{ duration: 0.25, ease: "easeOut" }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-foreground/10 dark:bg-white/10 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-2xl shrink-0"
               >
-                <span className="hidden md:inline-block text-[10px] font-black uppercase tracking-wider text-amber-400 animate-pulse mr-1">
+                <span className="hidden md:inline-block text-[10px] font-black uppercase tracking-wider text-warn-600 dark:text-warn-400 animate-pulse mr-1">
                   Unsaved Changes
                 </span>
 
@@ -585,7 +585,16 @@ export function SettingsPanel({
                 <button
                   onClick={handleSaveToCloud}
                   disabled={isSaving}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all active:scale-95 border border-emerald-400/30 flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 shrink-0"
+                  /* Primary action, so it wears the brand accent rather than
+                     ok-500. The green here conflated two different jobs: "this
+                     is the primary thing to click" and "status: good". The
+                     Check/"Saved!" state below already carries the success
+                     signal, which is what green was standing in for. */
+                  className="px-3 py-1.5 rounded-xl text-white font-black text-xs transition-all active:scale-95 border border-(--accent-border) flex items-center gap-1.5 shadow-lg shrink-0 hover:opacity-90"
+                  style={{
+                    background: "var(--accent-gradient)",
+                    boxShadow: "0 8px 24px var(--accent-glow)",
+                  }}
                 >
                   {isSaving ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -629,12 +638,12 @@ export function SettingsPanel({
             ? 'pb-2'
             : 'p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg'
         )}>
-          <div className={cn('flex', 'items-center', 'justify-between', 'mb-2')}>
+          <div className="flex items-center justify-between mb-2">
             {/* In the room modal the panel title already says "Room Visuals" — don't repeat it. */}
             {!onlyVisuals && (
-              <div className={cn('flex', 'items-center', 'gap-2')}>
-                <Palette className={cn('w-4', 'sm:w-5', 'h-4', 'sm:h-5', 'text-foreground/70')} />
-                <h3 className={cn('text-base', 'sm:text-lg', 'font-bold', 'text-foreground')}>Theme & Gradient Editor</h3>
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 sm:w-5 h-4 sm:h-5 text-foreground/70" />
+                <h3 className="text-base sm:text-lg font-bold text-foreground">Theme & Gradient Editor</h3>
               </div>
             )}
             <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
@@ -642,7 +651,7 @@ export function SettingsPanel({
             </span>
           </div>
 
-          <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
+          <p className="text-xs text-foreground/60 mb-4">
             Select a pro palette preset or customize gradient color stops to dynamically style your room's ambient lighting and visualizer background.
           </p>
 
@@ -685,7 +694,7 @@ export function SettingsPanel({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-foreground flex items-center gap-1.5">
-                  <Sun className="w-3.5 h-3.5 text-amber-400" /> Ambient Light Brightness
+                  <Sun className="w-3.5 h-3.5 text-[var(--accent-color)]" /> Ambient Light Brightness
                 </span>
                 <span className="font-mono text-[10px] text-foreground/50">{settings.ambientBrightness || 100}%</span>
               </div>
@@ -696,9 +705,9 @@ export function SettingsPanel({
                 value={settings.ambientBrightness || 100}
                 onChange={(e) => updateSettings({ ambientBrightness: Number(e.target.value) })}
                 style={{
-                  background: `linear-gradient(to right, #34d399 0%, #34d399 ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) 100%)`
+                  background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) ${((settings.ambientBrightness || 100) - 20) / 1.8}%, rgba(255, 255, 255, 0.15) 100%)`
                 }}
-                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]"
+                className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent-color)] [&::-webkit-slider-thumb]:shadow-[0_0_10px_var(--accent-glow)]"
               />
             </div>
 
@@ -757,7 +766,7 @@ export function SettingsPanel({
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 mb-5">
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Sparkles className="w-4 h-4 text-[var(--accent-color)]" />
                 <span className="text-xs font-bold text-foreground">Auto Liquid Motion Drift</span>
               </div>
               <span className="text-[10px] text-foreground/50 mt-0.5 max-w-70">
@@ -769,7 +778,7 @@ export function SettingsPanel({
               onClick={() => updateSettings({ liquidMotion: !(settings.liquidMotion ?? true) })}
               className={cn(
                 "relative w-12 h-6 rounded-full transition-colors duration-200 border border-foreground/10 cursor-pointer p-0.5 shrink-0",
-                (settings.liquidMotion ?? true) ? "bg-amber-500 border-amber-400" : "bg-foreground/10"
+                (settings.liquidMotion ?? true) ? "bg-warn-500 border-warn-400" : "bg-foreground/10"
               )}
             >
               <div
@@ -980,7 +989,7 @@ export function SettingsPanel({
                                 gradientSettings: { presetName: "Custom", nodes: updated },
                               });
                             }}
-                            className="p-1 rounded-lg text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="p-1 rounded-lg text-foreground/40 hover:text-bad-700 dark:text-bad-400 hover:bg-bad-500/10 transition-colors"
                             title={`Delete ${bandName} Color`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1051,7 +1060,7 @@ export function SettingsPanel({
               )}
             </div>
           </div>
-          <div className={cn('mt-6')}>
+          <div className="mt-6">
             <button 
               onClick={() => updateSettings({
                 gradientSettings: {
@@ -1066,9 +1075,9 @@ export function SettingsPanel({
                 ambientBrightness: 100,
                 ambientContrast: 100
               })}
-              className={cn('w-full', 'py-2.5', 'rounded-xl', 'bg-foreground/5', 'text-foreground/70', 'text-sm', 'font-bold', 'flex', 'items-center', 'justify-center', 'gap-2', 'hover:bg-foreground/10', 'transition', 'border', 'border-foreground/10')}
+              className="w-full py-2.5 rounded-xl bg-foreground/5 text-foreground/70 text-sm font-bold flex items-center justify-center gap-2 hover:bg-foreground/10 transition border border-foreground/10"
             >
-              <RefreshCw className={cn('w-4', 'h-4')} /> Reset Default Theme
+              <RefreshCw className="w-4 h-4" /> Reset Default Theme
             </button>
           </div>
         </section>
@@ -1076,32 +1085,32 @@ export function SettingsPanel({
 
         {!onlyVisuals && (
           /* Sync Settings */
-          <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
-            <div className={cn('flex', 'items-center', 'gap-2', 'mb-4')}>
-              <Zap className={cn('w-5', 'h-5', 'text-foreground/70')} />
-              <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Synchronization</h3>
+          <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-5 h-5 text-foreground/70" />
+              <h3 className="text-lg font-bold text-foreground">Synchronization</h3>
             </div>
             
             <div className="space-y-6">
               <div>
-                <div className={cn('flex', 'justify-between', 'mb-1')}>
-                  <label className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Audio Latency Offset (ms)</label>
-                  <span className={cn('text-xs', 'font-medium')}>{settings.audioLatencyOffsetMs} ms</span>
+                <div className="flex justify-between mb-1">
+                  <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Audio Latency Offset (ms)</label>
+                  <span className="text-xs font-medium">{settings.audioLatencyOffsetMs} ms</span>
                 </div>
                 <input 
                   type="range" min="-500" max="500" step="10" 
                   value={settings.audioLatencyOffsetMs} 
                   onChange={(e) => updateSettings({ audioLatencyOffsetMs: Number(e.target.value) })}
-                  className={cn('w-full', 'accent-white')}
+                  className="w-full accent-white"
                 />
-                <p className={cn('text-[10px]', 'text-foreground/40', 'mt-1')}>
+                <p className="text-[10px] text-foreground/40 mt-1">
                   Adjust this if your Bluetooth headphones or speakers are out of sync. Negative values play audio earlier.
                 </p>
               </div>
 
               <div>
-                <label className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'block', 'mb-2')}>Sync Aggressiveness</label>
-                <div className={cn('flex', 'gap-2')}>
+                <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 block mb-2">Sync Aggressiveness</label>
+                <div className="flex gap-2">
                   <button 
                     onClick={() => updateSettings({ syncAggressiveness: 'high' })}
                     className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${settings.syncAggressiveness === 'high' ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground/70 hover:bg-foreground/20'}`}
@@ -1115,7 +1124,7 @@ export function SettingsPanel({
                     Battery Saver
                   </button>
                 </div>
-                <p className={cn('text-[10px]', 'text-foreground/40', 'mt-2')}>
+                <p className="text-[10px] text-foreground/40 mt-2">
                   High Accuracy pings the server more frequently to keep playback perfectly aligned. Battery Saver relaxes the sync interval.
                 </p>
               </div>
@@ -1126,20 +1135,20 @@ export function SettingsPanel({
         {!onlyVisuals && (
           <>
             {/* Screen Awake Feature */}
-            <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
-              <div className={cn('flex', 'items-center', 'justify-between', 'mb-3')}>
-                <div className={cn('flex', 'items-center', 'gap-2')}>
-                  <Sun className={cn('w-5', 'h-5', 'text-amber-400')} />
-                  <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Screen & Display</h3>
+            <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sun className="w-5 h-5 text-warn-800 dark:text-warn-400" />
+                  <h3 className="text-lg font-bold text-foreground">Screen & Display</h3>
                 </div>
                 {settings.keepScreenAwake && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="px-2.5 py-0.5 rounded-full bg-warn-500/15 border border-warn-500/30 text-warn-600 dark:text-warn-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-warn-400 animate-pulse" />
                     Awake Active
                   </span>
                 )}
               </div>
-              <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
+              <p className="text-xs text-foreground/60 mb-4">
                 Keep your device screen awake during room listening sessions to prevent browser audio throttling and tab sleep.
               </p>
 
@@ -1153,7 +1162,7 @@ export function SettingsPanel({
                   onClick={() => updateSettings({ keepScreenAwake: !settings.keepScreenAwake })}
                   className={cn(
                     "relative w-12 h-6 rounded-full transition-colors duration-200 border border-foreground/10 cursor-pointer p-0.5",
-                    settings.keepScreenAwake ? "bg-amber-500 border-amber-400" : "bg-foreground/10"
+                    settings.keepScreenAwake ? "bg-warn-500 border-warn-400" : "bg-foreground/10"
                   )}
                 >
                   <div
@@ -1167,25 +1176,25 @@ export function SettingsPanel({
             </section>
 
             {/* Dynamic Island Customizer Section */}
-            <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
-              <div className={cn('flex', 'items-center', 'gap-2', 'mb-3')}>
-                <Radio className={cn('w-5', 'h-5', 'text-purple-400')} />
-                <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Dynamic Island Customizer</h3>
+            <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <Radio className="w-5 h-5 text-purple-400" />
+                <h3 className="text-lg font-bold text-foreground">Dynamic Island Customizer</h3>
               </div>
-              <p className={cn('text-xs', 'text-foreground/60', 'mb-4')}>
+              <p className="text-xs text-foreground/60 mb-4">
                 Customize the glow theme, artwork display, and auto-shrink behavior of your Dynamic Island player.
               </p>
 
               <div className="space-y-4">
                 {/* Glow Accent Theme */}
                 <div>
-                  <label className={cn('text-[10px]', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/40', 'block', 'mb-2')}>Glow Accent Theme</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Glow Accent Theme</label>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
                     {[
                       { id: "violet", label: "Violet", color: "bg-purple-500" },
                       { id: "cyan", label: "Cyan", color: "bg-cyan-500" },
-                      { id: "emerald", label: "Emerald", color: "bg-emerald-500" },
-                      { id: "amber", label: "Amber", color: "bg-amber-500" },
+                      { id: "emerald", label: "Emerald", color: "bg-[#10b981]" },
+                      { id: "amber", label: "Amber", color: "bg-[#f59e0b]" },
                       { id: "dark", label: "Dark", color: "bg-zinc-700" },
                       { id: "none", label: "None", color: "bg-black border border-white/20" },
                     ].map((theme) => (
@@ -1211,7 +1220,7 @@ export function SettingsPanel({
 
                 {/* Auto-Shrink Delay */}
                 <div>
-                  <label className={cn('text-[10px]', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/40', 'block', 'mb-2')}>Auto-Shrink Delay</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Auto-Shrink Delay</label>
                   <div className="grid grid-cols-4 gap-1.5">
                     {[
                       { sec: 3, label: "3s Fast" },

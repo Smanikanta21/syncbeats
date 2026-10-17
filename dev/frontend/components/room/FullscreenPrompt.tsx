@@ -161,8 +161,8 @@ export function FullscreenPrompt() {
 
             {promptState === "asking" && (
               <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mb-5 border border-yellow-500/30">
-                  <AlertTriangle className="w-8 h-8 text-yellow-400" />
+                <div className="w-16 h-16 rounded-full bg-warn-500/20 flex items-center justify-center mb-5 border border-warn-500/30">
+                  <AlertTriangle className="w-8 h-8 text-warn-700 dark:text-warn-400" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground mb-3">Escape Full Screen?</h3>
                 <p className="text-sm text-foreground/60 mb-8 leading-relaxed">
@@ -187,8 +187,8 @@ export function FullscreenPrompt() {
 
             {promptState === "locked" && (
               <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-5 border border-red-500/30">
-                  <Lock className="w-8 h-8 text-red-400" />
+                <div className="w-16 h-16 rounded-full bg-bad-500/20 flex items-center justify-center mb-5 border border-bad-500/30">
+                  <Lock className="w-8 h-8 text-bad-700 dark:text-bad-400" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground mb-3">Session Locked</h3>
                 <p className="text-sm text-foreground/60 mb-8 leading-relaxed">

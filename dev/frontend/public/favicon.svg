@@ -1,0 +1,24 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    SyncBeats favicon — Phase Lock, reduced for small sizes.
+
+    The master mark uses five bars; below ~32px they collapse into a smear, so
+    the tab mark keeps four chunkier bars and a thicker beam. Three bars was
+    tried and rejected: at full size it reads as a dumbbell.
+
+    The beam sits BEHIND the bars on purpose. Drawn in front it reads as a
+    barbell or a strikethrough; behind, it shows only through the gaps and
+    reads as one shared timeline — which is the product.
+  -->
+  <defs><linearGradient id="bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#141922"/><stop offset="1" stop-color="#05070B"/>
+  </linearGradient><linearGradient id="g" x1="150" y1="150" x2="880" y2="900" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#45F0AE"/><stop offset=".5" stop-color="#10B981"/><stop offset="1" stop-color="#0E9BD8"/>
+  </linearGradient></defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="96" y="458" width="898" height="108" rx="54" fill="#F7FAFC"/>
+  <rect x="128" y="392" width="132" height="240" rx="66" fill="url(#g)"/>
+  <rect x="362" y="230" width="132" height="564" rx="66" fill="url(#g)"/>
+  <rect x="596" y="164" width="132" height="696" rx="66" fill="url(#g)"/>
+  <rect x="830" y="372" width="132" height="280" rx="66" fill="url(#g)"/>
+</svg>

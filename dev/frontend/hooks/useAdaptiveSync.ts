@@ -84,7 +84,7 @@ const EWMA_ALPHA = 0.35;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function classifyQuality(medianRtt: number, jitter: number): NetworkQuality {
+export function classifyQuality(medianRtt: number, jitter: number): NetworkQuality {
   if (medianRtt < 30  && jitter < 5)  return 'excellent';
   if (medianRtt < 80  && jitter < 15) return 'good';
   if (medianRtt < 200 && jitter < 40) return 'fair';

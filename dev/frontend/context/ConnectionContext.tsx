@@ -86,7 +86,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      const res = await fetch(`${serverUrl}/health`, {
+      const res = await fetch("/api/health", {
         method: "GET",
         signal: controller.signal,
         cache: "no-store",

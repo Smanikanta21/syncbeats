@@ -1,0 +1,49 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "extended-gray:0.07000,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": "system-dark"
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "bars.svg",
+          "name": "Beats"
+        }
+      ],
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.45
+      },
+      "specular": "inside"
+    },
+    {
+      "layers": [
+        {
+          "image-name": "beam.svg",
+          "name": "Sync beam"
+        }
+      ],
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "specular": "inside"
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

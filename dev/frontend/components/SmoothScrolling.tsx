@@ -4,8 +4,6 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
-import gsap from "gsap";
-import ScrollTrigger from "gsap/ScrollTrigger";
 
 export default function SmoothScrolling({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -22,54 +20,22 @@ export default function SmoothScrolling({ children }: { children: React.ReactNod
       return;
     }
 
-    if (typeof window !== "undefined") {
-      gsap.registerPlugin(ScrollTrigger);
-    }
+    const lenis = new Lenis({
+      autoRaf: true,
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: "vertical",
+      gestureOrientation: "vertical",
+      wheelMultiplier: 1,
+      touchMultiplier: 2,
+      smoothWheel: true,
+      autoResize: true,
+    });
 
-    let lenis: Lenis;
-    let tick: (time: number) => void;
-    let timer: NodeJS.Timeout;
-
-    const initTimer = setTimeout(() => {
-      // Initialize Lenis for smooth scrolling
-      lenis = new Lenis({
-        duration: 1.2,
-        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-        orientation: "vertical",
-        gestureOrientation: "vertical",
-        wheelMultiplier: 1,
-        touchMultiplier: 2,
-        smoothWheel: true,
-        autoResize: true,
-      });
-
-      lenisRef.current = lenis;
-
-      // Synchronize Lenis scrolling with GSAP's ScrollTrigger plugin
-      lenis.on("scroll", ScrollTrigger.update);
-
-      // RequestAnimationFrame tick for smooth rendering
-      tick = (time: number) => {
-        lenis.raf(time * 1000);
-      };
-
-      gsap.ticker.add(tick);
-      gsap.ticker.lagSmoothing(0);
-
-      // Refresh ScrollTrigger and Lenis dimensions after DOM updates
-      timer = setTimeout(() => {
-        lenis.resize();
-        ScrollTrigger.refresh();
-      }, 400);
-    }, 100);
+    lenisRef.current = lenis;
 
     return () => {
-      clearTimeout(initTimer);
-      if (timer) clearTimeout(timer);
-      if (tick) gsap.ticker.remove(tick);
-      if (lenis) {
-        lenis.destroy();
-      }
+      lenis.destroy();
       lenisRef.current = null;
     };
   }, [pathname]);

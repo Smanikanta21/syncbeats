@@ -5,6 +5,7 @@ import { Disc } from "lucide-react";
 export const metadata: Metadata = {
   title: "Privacy Policy — SyncBeats",
   description: "Learn how SyncBeats collects, uses, and protects your data.",
+  alternates: { canonical: "/privacy-policy" },
   robots: { index: true, follow: true },
 };
 
@@ -23,8 +24,8 @@ export default function PrivacyPolicy() {
 
       {/* Background Gradients */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -left-[10%] w-[500px] h-[500px] bg-red-500/5 blur-[120px] rounded-full mix-blend-screen" />
-        <div className="absolute top-[40%] -right-[10%] w-[400px] h-[400px] bg-blue-500/5 blur-[100px] rounded-full mix-blend-screen" />
+        <div className="absolute -top-[10%] -left-[10%] w-[500px] h-[500px] bg-dye-500/5 blur-[120px] rounded-full mix-blend-screen" />
+        <div className="absolute top-[40%] -right-[10%] w-[400px] h-[400px] bg-field-500/5 blur-[100px] rounded-full mix-blend-screen" />
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-24 relative z-10">

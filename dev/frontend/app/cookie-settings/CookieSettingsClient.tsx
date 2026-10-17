@@ -69,7 +69,7 @@ export default function CookieSettingsClient() {
 
       {/* Background Gradients */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[10%] -left-[10%] w-[500px] h-[500px] bg-red-500/5 blur-[120px] rounded-full mix-blend-screen" />
+        <div className="absolute top-[10%] -left-[10%] w-[500px] h-[500px] bg-[var(--accent-color)]/5 blur-[120px] rounded-full mix-blend-screen" />
         <div className="absolute bottom-[10%] -right-[10%] w-[400px] h-[400px] bg-blue-500/5 blur-[100px] rounded-full mix-blend-screen" />
       </div>
 
@@ -101,10 +101,10 @@ export default function CookieSettingsClient() {
             <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-colors hover:bg-foreground/2">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h3 className="text-xl font-bold flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-emerald-500" /> Essential Cookies</h3>
+                  <h3 className="text-xl font-bold flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ok-500" /> Essential Cookies</h3>
                   <p className="text-sm text-foreground/50 font-medium mt-1">Required for the service to function</p>
                 </div>
-                <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full text-xs font-bold tracking-widest">
+                <div className="px-3 py-1 bg-ok-500/10 border border-ok-500/20 text-ok-500 rounded-full text-xs font-bold tracking-widest">
                   ALWAYS ON
                 </div>
               </div>
@@ -175,12 +175,12 @@ export default function CookieSettingsClient() {
                 <div className="space-y-4 mb-8 relative z-10 font-medium">
                   <div className="flex justify-between items-center">
                     <span className="text-foreground/80">Essential</span>
-                    <span className="flex items-center gap-1 text-emerald-500 font-bold"><CheckCircle2 className="w-4 h-4" /> On</span>
+                    <span className="flex items-center gap-1 text-ok-500 font-bold"><CheckCircle2 className="w-4 h-4" /> On</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-foreground/80">Analytics</span>
                     {analyticsEnabled ? 
-                      <span className="flex items-center gap-1 text-emerald-500 font-bold"><CheckCircle2 className="w-4 h-4" /> On</span> :
+                      <span className="flex items-center gap-1 text-ok-500 font-bold"><CheckCircle2 className="w-4 h-4" /> On</span> :
                       <span className="flex items-center gap-1 text-foreground/40 font-bold"><XCircle className="w-4 h-4" /> Off</span>
                     }
                   </div>
@@ -203,7 +203,7 @@ export default function CookieSettingsClient() {
                 </div>
 
                 {saved && (
-                  <div className="absolute inset-0 z-20 bg-emerald-500 flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
+                  <div className="absolute inset-0 z-20 bg-ok-500 flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
                     <CheckCircle2 className="w-12 h-12 mb-2" />
                     <span className="font-bold tracking-widest uppercase">Saved</span>
                   </div>

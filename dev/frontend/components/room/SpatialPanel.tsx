@@ -262,7 +262,7 @@ export function SpatialPanel({
     <div className="flex w-full min-w-0 flex-1 flex-col min-h-0">
       <div className="mb-2 flex shrink-0 items-center justify-between gap-3 lg:mb-4">
         <div className="min-w-0">
-          <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+          <h2 className="micro-label">
             Spatial Audio
           </h2>
           <p className="mt-0.5 truncate text-[10px] text-foreground/40 lg:text-xs">

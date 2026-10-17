@@ -1,10 +1,14 @@
-// lib/api.ts — Typed fetch wrapper for all SyncBeats API calls
 import type { RoomSnapshot } from './types';
+import { toast } from 'sonner';
+
+export function getRestUrl(): string {
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  return getServerUrl();
+}
 
 export function getServerUrl(): string {
-  if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
-    return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
-  }
   if (typeof window !== 'undefined' && window.location.hostname) {
     if (window.location.hostname.includes('dev.syncbeats.in')) {
       return 'https://dev-api.syncbeats.in';
@@ -12,7 +16,19 @@ export function getServerUrl(): string {
     if (window.location.hostname.includes('syncbeats.in')) {
       return 'https://api.syncbeats.in';
     }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
+    if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
+      return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
+    }
     return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
+  if (process.env.INTERNAL_BACKEND_URL) {
+    return process.env.INTERNAL_BACKEND_URL.trim().replace(/\/+$/, '');
+  }
+  if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
+    return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
   }
   return 'https://api.syncbeats.in';
 }
@@ -98,10 +114,13 @@ async function request<T>(
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const base = getServerUrl();
+  const base = getRestUrl();
+  const url = base === '/api'
+    ? (path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : '/' + path}`)
+    : `${base}${path}`;
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
+    res = await fetch(url, {
       cache: 'no-store',
       ...options,
       headers,
@@ -129,7 +148,7 @@ async function request<T>(
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent("toast", { detail: { message: `API Error: ${errorMsg}`, type: "error" } }));
+        toast.error(`API Error: ${errorMsg}`);
       }
     }
     throw new ApiError(errorMsg, res.status);

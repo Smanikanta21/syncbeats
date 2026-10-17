@@ -21,7 +21,7 @@ export function HoverExpandPill({
   label,
   onClick,
   active = false,
-  activeColor = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_12px_rgba(52,211,153,0.15)]",
+  activeColor = "bg-[var(--accent-color)]/15 text-[var(--accent-color)] border-[var(--accent-color)]/30 shadow-[0_0_12px_var(--accent-glow)]",
   title,
   delayMs = 700,
   groupId = "global-pill-group",

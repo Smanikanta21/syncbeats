@@ -70,7 +70,7 @@ export function ThemeToggle({ size = "sm", className }: ThemeToggleProps) {
           {resolvedTheme === "dark" ? (
             <Moon className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-foreground")} />
           ) : (
-            <Sun className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-amber-400")} />
+            <Sun className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-foreground")} />
           )}
         </motion.div>
       </AnimatePresence>

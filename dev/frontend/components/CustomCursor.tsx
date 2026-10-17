@@ -123,7 +123,7 @@ export function CustomCursor() {
           opacity: visible ? (hovering ? 0.85 : 0.45) : 0,
         }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        className="pointer-events-none fixed top-0 left-0 z-[99999] rounded-full border-2"
+        className="pointer-events-none fixed top-0 left-0 z-99999 rounded-full border-2"
       />
       {/* Sharp center dot */}
       <motion.span
@@ -142,7 +142,7 @@ export function CustomCursor() {
           opacity: visible ? 1 : 0,
         }}
         transition={{ type: "spring", stiffness: 700, damping: 32 }}
-        className="pointer-events-none fixed top-0 left-0 z-[99999] rounded-full"
+        className="pointer-events-none fixed top-0 left-0 z-99999 rounded-full"
       />
     </>
   );

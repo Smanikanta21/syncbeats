@@ -45,6 +45,7 @@ final class APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Endpoint.deviceId, forHTTPHeaderField: "X-Device-Id")
+        request.setValue("SyncBeats-Native-Mac", forHTTPHeaderField: "User-Agent")
         request.httpBody = body
 
         if requiresAuth, let token = Endpoint.token {

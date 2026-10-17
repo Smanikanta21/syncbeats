@@ -497,12 +497,12 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
   };
 
   return (
-    <div className={cn('flex-1', 'flex', 'flex-col', 'w-full', 'h-full', 'min-h-0', 'bg-zinc-950', 'text-foreground', 'overflow-hidden')}>
+    <div className="flex-1 flex flex-col w-full h-full min-h-0 bg-zinc-950 text-foreground overflow-hidden">
       
       {/* Top Controls Header */}
-      <div className={cn('py-4', 'px-6', 'bg-zinc-950', 'border-b', 'border-zinc-800/80', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4', 'shrink-0')}>
+      <div className="py-4 px-6 bg-zinc-950 border-b border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
-          <div className={cn('flex', 'items-center', 'gap-3')}>
+          <div className="flex items-center gap-3">
             {onOpenSidebar && (
               <button
                 type="button"
@@ -513,20 +513,20 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
               </button>
             )}
-            <h1 className={cn('text-xl', 'sm:text-2xl', 'font-black', 'tracking-tight', 'text-white')}>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
               Email Studio & Broadcast Engine
             </h1>
-            <span className={cn('px-2.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-zinc-300', 'bg-zinc-800', 'border', 'border-zinc-700', 'rounded-lg')}>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-zinc-300 bg-zinc-800 border border-zinc-700 rounded-lg">
               HTML/CSS IDE
             </span>
           </div>
-          <p className={cn('text-xs', 'text-zinc-400', 'mt-1')}>
+          <p className="text-xs text-zinc-400 mt-1">
             Design, format, preview, and broadcast custom responsive emails across recipient clusters.
           </p>
         </div>
 
         {/* View Mode Toggle Tabs */}
-        <div className={cn('flex', 'items-center', 'bg-zinc-900', 'border', 'border-zinc-800', 'rounded-xl', 'p-1', 'self-start', 'sm:self-auto')}>
+        <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 self-start sm:self-auto">
           <button
             onClick={() => setViewTab("code")}
             className={cn('px-3', 'py-1.5', 'rounded-lg', 'text-xs', 'font-bold', 'transition-all', viewTab === "code" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white")}
@@ -549,15 +549,15 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
       </div>
 
       {/* Toolbar Options: Presets, Variables & Recipients */}
-      <div className={cn('p-4', 'bg-zinc-950/60', 'border-b', 'border-zinc-800/80', 'flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-4', 'text-xs', 'shrink-0')}>
+      <div className="p-4 bg-zinc-950/60 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-4 text-xs shrink-0">
         {/* Template Selector & Sender Badge */}
-        <div className={cn('flex', 'flex-wrap', 'items-center', 'gap-3')}>
-          <div className={cn('flex', 'items-center', 'gap-2')}>
-            <span className={cn('text-zinc-400', 'font-bold')}>Template:</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-400 font-bold">Template:</span>
             <select
               value={selectedPresetId}
               onChange={(e) => handleSelectPreset(e.target.value)}
-              className={cn('bg-zinc-900', 'border', 'border-zinc-800', 'text-white', 'rounded-xl', 'px-3', 'py-1.5', 'font-semibold', 'focus:outline-none', 'focus:border-zinc-500')}
+              className="bg-zinc-900 border border-zinc-800 text-white rounded-xl px-3 py-1.5 font-semibold focus:outline-none focus:border-zinc-500"
             >
               {TEMPLATE_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -567,20 +567,20 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
             </select>
           </div>
 
-          <div className={cn('flex', 'items-center', 'gap-2', 'px-3', 'py-1.5', 'bg-zinc-900', 'border', 'border-zinc-800', 'rounded-xl', 'text-zinc-300', 'font-mono')}>
-            <span className={cn('text-zinc-500', 'font-bold')}>Sender:</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-300 font-mono">
+            <span className="text-zinc-500 font-bold">Sender:</span>
             <span>{senderEmail}</span>
           </div>
         </div>
 
         {/* Variable Substitution Chips */}
-        <div className={cn('flex', 'items-center', 'gap-2')}>
-          <span className={cn('text-zinc-400', 'font-bold')}>Variables:</span>
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-400 font-bold">Variables:</span>
           {["name", "email", "created_at"].map((varName) => (
             <button
               key={varName}
               onClick={() => insertVariable(varName)}
-              className={cn('px-2.5', 'py-1', 'bg-zinc-900', 'hover:bg-zinc-800', 'border', 'border-zinc-800', 'rounded-lg', 'text-white', 'font-mono', 'font-bold', 'transition-colors')}
+              className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-white font-mono font-bold transition-colors"
             >
               {`{{${varName}}}`}
             </button>
@@ -588,12 +588,12 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
         </div>
 
         {/* Target Audience Selector */}
-        <div className={cn('flex', 'flex-wrap', 'items-center', 'gap-2')}>
-          <span className={cn('text-zinc-400', 'font-bold')}>Recipients:</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-zinc-400 font-bold">Recipients:</span>
           <select
             value={recipientMode}
             onChange={(e: any) => setRecipientMode(e.target.value)}
-            className={cn('bg-zinc-900', 'border', 'border-zinc-800', 'text-white', 'rounded-xl', 'px-3', 'py-1.5', 'font-semibold', 'focus:outline-none')}
+            className="bg-zinc-900 border border-zinc-800 text-white rounded-xl px-3 py-1.5 font-semibold focus:outline-none"
           >
             <option value="test">Send Test Email Only</option>
             <option value="active">Active Users (Last 7 days)</option>
@@ -607,7 +607,7 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
               value={testEmail}
               onChange={(e) => setTestEmail(e.target.value)}
               placeholder="admin@domain.com"
-              className={cn('bg-zinc-900', 'border', 'border-zinc-800', 'text-white', 'rounded-xl', 'px-3', 'py-1.5', 'font-mono', 'text-xs', 'focus:outline-none')}
+              className="bg-zinc-900 border border-zinc-800 text-white rounded-xl px-3 py-1.5 font-mono text-xs focus:outline-none"
             />
           )}
 
@@ -617,26 +617,26 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
               value={customEmailsInput}
               onChange={(e) => setCustomEmailsInput(e.target.value)}
               placeholder="user1@domain.com, user2@domain.com"
-              className={cn('bg-zinc-900', 'border', 'border-zinc-800', 'text-white', 'rounded-xl', 'px-3', 'py-1.5', 'font-mono', 'text-xs', 'focus:outline-none', 'w-56')}
+              className="bg-zinc-900 border border-zinc-800 text-white rounded-xl px-3 py-1.5 font-mono text-xs focus:outline-none w-56"
             />
           )}
         </div>
       </div>
 
       {/* Subject Line Input Bar */}
-      <div className={cn('p-4', 'bg-zinc-950', 'border-b', 'border-zinc-800', 'shrink-0')}>
-        <label className={cn('block', 'text-[11px]', 'font-bold', 'text-zinc-400', 'uppercase', 'tracking-wider', 'mb-1')}>Subject Line</label>
+      <div className="p-4 bg-zinc-950 border-b border-zinc-800 shrink-0">
+        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Subject Line</label>
         <input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Email Subject Line"
-          className={cn('w-full', 'bg-zinc-900', 'border', 'border-zinc-800', 'text-white', 'rounded-xl', 'px-4', 'py-2.5', 'text-sm', 'font-semibold', 'focus:outline-none', 'focus:border-zinc-600', 'transition-all')}
+          className="w-full bg-zinc-900 border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:border-zinc-600 transition-all"
         />
       </div>
 
       {/* Main Studio Editor & Live Sandboxed HTML Preview Grid */}
-      <div className={cn('flex-1', 'h-full', 'min-h-0', 'grid', 'grid-cols-1', 'md:grid-cols-2', 'divide-y', 'md:divide-y-0', 'md:divide-x', 'divide-zinc-800', 'overflow-hidden')}>
+      <div className="flex-1 h-full min-h-0 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-zinc-800 overflow-hidden">
         
         {/* HTML/CSS Code Editor with Syntax Highlighting & Line Numbers */}
         {(viewTab === "code" || viewTab === "split") && (
@@ -648,9 +648,9 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
         {/* Sandboxed Live HTML Rendering Engine with Native Smooth Scroll */}
         {(viewTab === "preview" || viewTab === "split") && (
           <div className={cn('flex', 'flex-col', 'h-full', 'min-h-0', 'bg-zinc-950', viewTab === "preview" ? "col-span-2" : "")}>
-            <div className={cn('p-3', 'bg-zinc-900/90', 'border-b', 'border-zinc-800', 'text-xs', 'font-mono', 'text-zinc-400', 'flex', 'items-center', 'justify-between', 'shrink-0')}>
+            <div className="p-3 bg-zinc-900/90 border-b border-zinc-800 text-xs font-mono text-zinc-400 flex items-center justify-between shrink-0">
               <span>Sandboxed Email Render Preview</span>
-              <span className={cn('text-[10px]', 'text-emerald-400', 'font-bold')}>Live High-Fidelity Engine</span>
+              <span className="text-[10px] text-emerald-400 font-bold">Live High-Fidelity Engine</span>
             </div>
             <ShadowHtmlPreview html={htmlCode} />
           </div>
@@ -659,8 +659,8 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
       </div>
 
       {/* Footer Dispatch Bar */}
-      <div className={cn('p-4', 'border-t', 'border-zinc-800', 'bg-zinc-950', 'flex', 'items-center', 'justify-between', 'shrink-0')}>
-        <div className={cn('text-xs', 'text-zinc-400')}>
+      <div className="p-4 border-t border-zinc-800 bg-zinc-950 flex items-center justify-between shrink-0">
+        <div className="text-xs text-zinc-400">
           {sendResult && (
             <span className={`font-bold ${sendResult.failCount === 0 ? "text-emerald-400" : "text-amber-400"}`}>
               Dispatch complete: {sendResult.sentCount} sent, {sendResult.failCount} failed.
@@ -671,11 +671,11 @@ export default function EmailDesignerView({ users, onOpenSidebar }: EmailDesigne
         <button
           onClick={handleSend}
           disabled={sending}
-          className={cn('px-8', 'py-3', 'bg-white', 'hover:bg-zinc-200', 'text-black', 'rounded-xl', 'text-xs', 'font-extrabold', 'disabled:opacity-50', 'transition-all', 'flex', 'items-center', 'gap-2', 'cursor-pointer', 'shadow-xl')}
+          className="px-8 py-3 bg-white hover:bg-zinc-200 text-black rounded-xl text-xs font-extrabold disabled:opacity-50 transition-all flex items-center gap-2 cursor-pointer shadow-xl"
         >
           {sending ? (
             <>
-              <svg className={cn('animate-spin', 'h-4', 'w-4', 'text-black')} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>

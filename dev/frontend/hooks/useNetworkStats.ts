@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getSocket } from "../lib/socket";
+import { classifyQuality } from "./useAdaptiveSync";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -38,14 +39,7 @@ const MAX_HISTORY        = 240;    // keep 240 samples (supports 1 min of 250ms 
 const STORAGE_KEY        = "syncbeats:netStats";
 const RTT_TIMEOUT_MS     = 2000;   // discard pings slower than 2s
 
-// ── Quality thresholds ──────────────────────────────────────────────────────
 
-function rateQuality(latency: number, jitter: number): NetworkStats["quality"] {
-  if (latency < 30 && jitter < 10)  return "excellent";
-  if (latency < 80 && jitter < 25)  return "good";
-  if (latency < 150 && jitter < 50) return "fair";
-  return "poor";
-}
 
 // ── Color helpers (exported for components) ─────────────────────────────────
 
@@ -134,7 +128,7 @@ export function useNetworkStats(enabled: boolean = true, fastPing: boolean = fal
     const avgRtt = sumRtt / recentCount;
     const avgLatency = sumLat / recentCount;
     const avgJitter = sumJit / recentCount;
-    const quality = rateQuality(avgLatency, avgJitter);
+    const quality = classifyQuality(avgRtt, avgJitter);
 
     // Shallow-copy history ONLY here (once per ping, not twice)
     // so React can diff and downstream sparklines get fresh data.

@@ -52,8 +52,8 @@ function VerifyEmailSentContent() {
           </Link>
         </div>
 
-        {message && <p className="mt-4 text-sm text-emerald-300">{message}</p>}
-        {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+        {message && <p className="mt-4 text-sm text-ok-600 dark:text-ok-300">{message}</p>}
+        {error && <p className="mt-4 text-sm text-bad-600 dark:text-bad-400">{error}</p>}
       </div>
     </main>
   );

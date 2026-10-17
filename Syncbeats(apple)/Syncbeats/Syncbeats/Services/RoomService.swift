@@ -44,4 +44,23 @@ struct RoomService {
             throw error
         }
     }
+    
+    /// Fetches all rooms associated with the current user.
+    func getMyRooms() async throws -> [RoomRecord] {
+        let mine: MineRoomsResponse = try await APIClient.shared.request(
+            path: "/rooms/mine",
+            requiresAuth: true
+        )
+        return mine.rooms
+    }
+    
+    /// Explicitly creates a new room.
+    func createRoom() async throws -> String {
+        let created: CreateRoomResponse = try await APIClient.shared.request(
+            path: "/rooms",
+            method: "POST",
+            requiresAuth: true
+        )
+        return created.roomId
+    }
 }

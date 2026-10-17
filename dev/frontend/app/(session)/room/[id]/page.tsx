@@ -13,6 +13,8 @@ import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
+import { FluidField } from "../../../../components/fluid/FluidField";
+import { getTrackThumbnailUrl } from "../../../../lib/colorExtractor";
 import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
 
@@ -25,6 +27,12 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const roomId = resolvedParams.id;
 
   const [isTimedOut, setIsTimedOut] = useState(false);
+
+  // True once the fluid solver is actually running, which stands down
+  // SpatialBeatNodes' gradient layer so the two ambient systems never stack.
+  // When the fluid can't run (no WebGL2, low tier, reduced motion), this stays
+  // false and SpatialBeatNodes remains the ambient background as before.
+  const [fluidActive, setFluidActive] = useState(false);
 
 
 
@@ -202,13 +210,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     <main
       role="main"
       aria-label="SyncBeats Room"
-      className={cn("fixed", "inset-0", "w-full", "h-dvh", "overflow-hidden", "z-0", "bg-background", "transition-colors", "duration-1000", "ease-in-out")}
+      className="fixed inset-0 w-full h-dvh overflow-hidden z-0 bg-background transition-colors duration-1000 ease-in-out"
     >
 
 
       {/* Subtle reconnecting banner — shown when socket drops while already in room */}
       {isReconnecting && !isConnected && (
-        <div className="fixed top-safe-top left-0 right-0 z-9999 flex justify-center pt-16 pointer-events-none">
+        <div className="fixed top-0 left-0 right-0 z-9999 flex justify-center pt-16 pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-background/80 backdrop-blur-xl border border-foreground/10 shadow-lg text-sm font-medium text-foreground/70">
             <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -222,19 +230,19 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* Denied / Connection Error state */}
       {connectionError && (
         <div className="fixed inset-0 bg-background/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center z-[99999]">
-          <div className="w-20 h-20 rounded-3xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-5 shadow-2xl">
-            <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-20 h-20 rounded-3xl bg-bad-500/10 border border-bad-500/20 flex items-center justify-center mb-5 shadow-2xl">
+            <svg className="w-10 h-10 text-bad-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-black mb-2 tracking-tight">
+          <h2 className="font-display text-display font-semibold mb-3">
             {joinStatus === "not_found"
               ? "Room Not Found"
               : joinStatus === "denied"
               ? "Join Request Denied"
               : "Room Connection Timed Out"}
           </h2>
-          <p className="text-foreground/60 text-sm mb-7 max-w-sm font-medium leading-relaxed">
+          <p className="text-lead text-foreground/55 mb-7 max-w-md text-pretty">
             {joinStatus === "not_found"
               ? "No room exists with that code. Double-check the code and try again."
               : joinStatus === "denied"
@@ -272,14 +280,31 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             "justify-center", "z-[99999]", "cursor-pointer",
           )}
         >
-          <div className={cn("bg-foreground/10", "backdrop-blur-md", "p-6", "rounded-2xl", "text-center")}>
-            <p className={cn("font-bold", "text-foreground", "tracking-wider")}>Tap anywhere to enable audio</p>
+          <div className="bg-foreground/10 backdrop-blur-md p-6 rounded-2xl text-center">
+            <p className="font-bold text-foreground tracking-wider">Tap anywhere to enable audio</p>
           </div>
         </div>
       )}
 
+      {/* Ambient background.
+          FluidField is the real one: a GPU fluid solver whose forces come from
+          the beat, so the background is displaced by the music rather than
+          decorated with it. It reports back whether it actually came up —
+          SpatialBeatNodes keeps its own gradient layer as the fallback for
+          devices that can't run a solver, and keeps its buffering aura either
+          way. */}
+      <FluidField
+        isPlaying={isPlaying || audio.isPlaying}
+        startEpoch={snapshot?.startEpoch ?? null}
+        clockOffset={clockOffset}
+        coverUrl={getTrackThumbnailUrl(
+          snapshot?.queue?.find((q) => q.isCurrent) ?? { trackUrl: snapshot?.trackUrl ?? undefined },
+        )}
+        onActiveChange={setFluidActive}
+      />
+
       {/* Spatial Beat Nodes (Visual representation of beat pulses mapped behind room elements) */}
-      <SpatialBeatNodes />
+      <SpatialBeatNodes suppressGradient={fluidActive} />
 
       {/* Main room UI — mounted once we have a snapshot, kept alive through reconnects */}
       {(isConnected || snapshot) && (
@@ -343,24 +368,28 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           {pendingRequests.map(req => (
             <div key={req.socketId} className="bg-background/90 backdrop-blur-xl border border-foreground/10 p-4 rounded-2xl shadow-2xl flex flex-col gap-3 animate-in slide-in-from-right-8">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                  style={{ background: "var(--accent-gradient)" }}
+                >
                   {req.displayName?.charAt(0).toUpperCase() || '?'}
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-foreground">{req.displayName}</h4>
-                  <p className="text-[10px] text-foreground/50">Wants to join the room</p>
+                  <p className="micro-label">Wants to join</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button 
+                <button
                   onClick={() => denyJoin(req.socketId)}
-                  className="flex-1 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 font-bold text-xs hover:bg-red-500/20 transition-colors"
+                  className="flex-1 px-3 py-1.5 rounded-xl bg-bad-500/10 text-bad-500 font-bold text-xs hover:bg-bad-500/20 transition-colors"
                 >
                   Deny
                 </button>
-                <button 
+                <button
                   onClick={() => approveJoin(req.socketId, req.displayName)}
-                  className="flex-1 px-3 py-1.5 rounded-xl bg-blue-500 text-white font-bold text-xs hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20"
+                  className="flex-1 px-3 py-1.5 rounded-xl text-white font-bold text-xs transition-opacity hover:opacity-90 shadow-lg"
+                  style={{ background: "var(--accent-gradient)", boxShadow: "0 8px 24px var(--accent-glow)" }}
                 >
                   Approve
                 </button>

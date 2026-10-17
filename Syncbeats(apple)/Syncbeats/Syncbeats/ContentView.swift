@@ -32,8 +32,10 @@ struct ContentView: View {
         .onChange(of: auth.isAuthenticated) { _, signedIn in
             if signedIn {
                 Task { await resolveRoom() }
+                ProximityScanner.shared.startBroadcasting()
             } else {
                 roomId = nil
+                ProximityScanner.shared.stopBroadcasting()
             }
         }
         .onChange(of: roomId) { _, newValue in

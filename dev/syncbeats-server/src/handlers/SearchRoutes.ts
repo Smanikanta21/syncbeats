@@ -271,6 +271,23 @@ export function extractYoutubeIdOrSongId(input: string): string {
   return cleaned.trim();
 }
 
+export function findYtDlpPath(): string {
+  const path = require('path');
+  const fs = require('fs');
+  const paths = [
+    path.resolve(__dirname, '../../yt-dlp'),
+    path.resolve(__dirname, '../../bin/yt-dlp'),
+    path.resolve(process.cwd(), 'yt-dlp'),
+    path.resolve(process.cwd(), 'dev/syncbeats-server/yt-dlp'),
+    path.resolve(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp'),
+    'yt-dlp'
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return 'yt-dlp';
+}
+
 export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath: string): Promise<string | null> {
   const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
   const { spawn } = require('child_process');
@@ -283,6 +300,7 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
         '--js-runtimes', 'node',
         '-g',
         '--no-warnings',
+        // m4a/AAC, not Opus: AVAudioEngine (Swift app) and Safari can't decode Opus-in-webm.
         '-f', 'bestaudio[ext=m4a]/bestaudio/best',
         ...extraArgs,
         watchUrl
@@ -383,19 +401,7 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     console.warn('[Search] DB lookup failed, falling back to direct stream:', dbErr);
   }
 
-  const ytDlpPath = (() => {
-    const paths = [
-      path.resolve(__dirname, '../../yt-dlp'),
-      path.resolve(__dirname, '../../bin/yt-dlp'),
-      path.resolve(process.cwd(), 'yt-dlp'),
-      path.resolve(process.cwd(), 'dev/syncbeats-server/yt-dlp'),
-      'yt-dlp'
-    ];
-    for (const p of paths) {
-      if (fs.existsSync && fs.existsSync(p)) return p;
-    }
-    return 'yt-dlp';
-  })();
+  const ytDlpPath = findYtDlpPath();
 
   // ── Server-disk cache: tmp/<videoId>.m4a ─────────────────────────────────
   // Matches main branch: downloads AAC m4a audio natively via yt-dlp
@@ -412,75 +418,79 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
     return res.sendFile(outputFile);
   }
 
-  // ── Cache MISS — download via parallel multi-source check (yt-dlp + RapidAPI) ──────
-  const watchUrl = `https://www.youtube.com/watch?v=${targetYoutubeId}`;
-  console.log(`[Search] Parallel fetching audio for: ${watchUrl}`);
-
-  let isHandled = false;
-  const sendSuccess = (sourceName: string) => {
-    if (isHandled) return;
-    isHandled = true;
-    console.log(`[Search] Fastest source won: ${sourceName} for ${targetYoutubeId}`);
-    if (!res.headersSent) res.sendFile(outputFile);
-  };
-
-  // Promise 1: yt-dlp execution
-  const ytDlpPromise = new Promise<boolean>((resolve) => {
-    const ytDlpArgs = [
-      '-f', 'bestaudio',
-      '--concurrent-fragments', '4',
-      '--http-chunk-size', '10M',
-      '-o', outputFile,
-      watchUrl
-    ];
-    const ytDlp = spawn(ytDlpPath, ytDlpArgs);
-    ytDlp.on('close', (code: number) => {
-      if (code === 0 && fs.existsSync(outputFile)) {
-        sendSuccess('yt-dlp');
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
-    ytDlp.on('error', () => resolve(false));
-  });
-
-  // Promise 2: RapidAPI execution (runs concurrently in parallel)
-  const rapidPromise = (async () => {
-    // Slight 250ms offset to prioritize local yt-dlp if it's already cached or instantaneous
-    await new Promise(r => setTimeout(r, 250));
-    if (isHandled) return false;
-    const rapidOutputFile = path.resolve(tmpDir, `${targetYoutubeId}_rapid.m4a`);
-    const success = await fetchViaRapidAPI(targetYoutubeId, rapidOutputFile);
-    if (success && fs.existsSync(rapidOutputFile) && !isHandled) {
-      try {
-        fs.renameSync(rapidOutputFile, outputFile);
-      } catch (e) {
-        // If rename fails because outputFile was created by yt-dlp, keep existing
-      }
-      sendSuccess('RapidAPI');
-      return true;
+  // ── In-flight deduplication ──────────────────────────────────────────────
+  let inflight = inflightStreams.get(targetYoutubeId);
+  if (inflight) {
+    console.log(`[Search] Piggybacking on inflight download for ${targetYoutubeId}`);
+    const success = await inflight;
+    if (success && fs.existsSync(outputFile)) {
+      return res.sendFile(outputFile);
+    } else {
+      return res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
     }
-    return false;
+  }
+
+  // ── Cache MISS — proxy the direct stream ──────────────────────────────────
+  console.log(`[Search] Resolving direct audio stream for: https://www.youtube.com/watch?v=${targetYoutubeId}`);
+
+  const downloadPromise = (async () => {
+    let directUrl: string | null = null;
+
+    // yt-dlp first: unmetered and higher quality than RapidAPI's 128kbps MP3 re-encode.
+    directUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
+
+    if (!directUrl) {
+      // RapidAPI only as last resort — the per-key quota is the scarce resource.
+      directUrl = await getRapidApiUrl(targetYoutubeId);
+    }
+
+    if (!directUrl) return false;
+
+    try {
+      const audioRes = await fetch(directUrl);
+      if (!audioRes.ok || !audioRes.body) return false;
+
+      // Pass headers for real-time progress bar in clients
+      const contentLength = audioRes.headers.get('content-length');
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      res.setHeader('Content-Type', audioRes.headers.get('content-type') || 'audio/mp4');
+
+      const { Readable } = require('stream');
+      const readable = Readable.fromWeb(audioRes.body as any);
+
+      // Write to cache
+      const diskStream = fs.createWriteStream(outputFile);
+      readable.pipe(diskStream);
+      
+      // Pipe to the *first* client instantly!
+      readable.pipe(res);
+
+      return new Promise<boolean>((resolve) => {
+        diskStream.on('finish', () => resolve(true));
+        diskStream.on('error', () => resolve(false));
+      });
+    } catch (err) {
+      console.error(`[Search] Stream proxy error:`, err);
+      return false;
+    }
   })();
 
-  const results = await Promise.allSettled([ytDlpPromise, rapidPromise]);
-  if (!isHandled) {
-    isHandled = true;
-    if (fs.existsSync(outputFile)) {
-      res.sendFile(outputFile);
-    } else {
-      res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
-    }
+  inflightStreams.set(targetYoutubeId, downloadPromise);
+  const success = await downloadPromise;
+  inflightStreams.delete(targetYoutubeId);
+
+  if (!success && !res.headersSent) {
+    res.status(502).json({ error: 'Failed to stream audio from source' });
   }
 }
 
+const inflightStreams = new Map<string, Promise<boolean>>();
+
 const exhaustedRapidKeys = new Set<string>();
 
-async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<boolean> {
-  const fs = require('fs');
+async function getRapidApiUrl(videoId: string): Promise<string | null> {
   const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
-  if (!keysStr) return false;
+  if (!keysStr) return null;
 
   const keys = keysStr.split(',').map(k => k.trim()).filter(Boolean);
   let activeKeys = keys.filter(k => !exhaustedRapidKeys.has(k));
@@ -493,8 +503,7 @@ async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<bo
 
   for (const key of shuffledKeys) {
     try {
-      let downloadLink = '';
-      for (let poll = 0; poll < 5; poll++) {
+      for (let poll = 0; poll < 3; poll++) {
         const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
           method: 'GET',
           headers: {
@@ -512,30 +521,17 @@ async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<bo
 
         const data = (await apiRes.json()) as { link?: string; status?: string };
         if (data.link) {
-          downloadLink = data.link;
-          break;
+          console.log(`[Proxy] RapidAPI link resolved using key ${key.slice(0, 5)}...`);
+          return data.link;
         } else if (data.status === 'processing') {
-          console.log(`[Proxy] RapidAPI processing ${videoId}... retry ${poll + 1}/5`);
           await new Promise(r => setTimeout(r, 1200));
         } else {
           break;
         }
       }
-
-      if (downloadLink) {
-        console.log(`[Proxy] RapidAPI link resolved using key ${key.slice(0, 5)}...`);
-        const audioRes = await fetch(downloadLink);
-        if (audioRes.ok) {
-          const arrayBuf = await audioRes.arrayBuffer();
-          fs.writeFileSync(outputFile, Buffer.from(arrayBuf));
-          return true;
-        }
-      }
     } catch (err) {
-      console.warn(`[Proxy] RapidAPI key evaluation error:`, err);
+      console.warn(`[Proxy] RapidAPI key evaluation error:`, (err as Error).message);
     }
   }
-  return false;
+  return null;
 }
-
-

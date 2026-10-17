@@ -80,7 +80,7 @@ export function AddToPlaylistModal({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--accent-color)] bg-[var(--accent-color)]/10 px-2 py-0.5 rounded-full border border-[var(--accent-color)]/20">
                 Add to YouTube Playlist
               </span>
               <h3 className="text-sm font-bold text-white truncate mt-1">
@@ -95,7 +95,7 @@ export function AddToPlaylistModal({
           </div>
 
           {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2 rounded-lg">
+            <div className="text-xs text-bad-400 bg-bad-500/10 border border-bad-500/20 p-2 rounded-lg">
               {error}
             </div>
           )}
@@ -131,7 +131,7 @@ export function AddToPlaylistModal({
                     {addingToId === playlist.id ? (
                       <Loader2 className="w-4 h-4 text-white animate-spin" />
                     ) : addedToId === playlist.id ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      <CheckCircle2 className="w-4 h-4 text-ok-400" />
                     ) : (
                       <Plus className="w-4 h-4 text-white" />
                     )}

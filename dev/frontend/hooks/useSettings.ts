@@ -62,7 +62,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoShrinkDelaySec: 6,
     showAlbumArt: true,
   },
-  dynamicBackgroundColors: false,
+  // On by default now that something consumes it: FluidField reads the current
+  // track's cover through extractTwoColorsFromImage and dyes the fluid with it.
+  // This flag existed and did nothing before that.
+  dynamicBackgroundColors: true,
   gradientSettings: {
     presetName: "Cyber Neon",
     nodes: [

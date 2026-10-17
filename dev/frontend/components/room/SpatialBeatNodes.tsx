@@ -124,7 +124,13 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
   );
 }
 
-export function SpatialBeatNodes() {
+/**
+ * `suppressGradient` hides only the beat-driven gradient layer, which is what
+ * FluidField replaces when the fluid solver is actually running — two ambient
+ * systems stacked read as mud. The buffering aura below is a loading signal,
+ * not ambience, so it is never suppressed.
+ */
+export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradient?: boolean }) {
   const { settings } = useSettings();
   const { blurClass } = useDevicePerf();
   const { isRoomPlaying } = useSyncInfo();
@@ -193,6 +199,12 @@ export function SpatialBeatNodes() {
       </div>
 
       {/* 2. Main Spatial Ambient Gradient Visualizer (Smooth 1.2s transition when ready) */}
+      {/* Skipped entirely — not just faded — when the fluid owns the background.
+          Each BeatNode runs its own rAF physics loop, so leaving six of them
+          animating transforms on invisible elements would cost exactly what
+          this is supposed to save. `canRun` resolves within a frame or two of
+          mount, long before audio starts, so there is nothing to cross-fade. */}
+      {!suppressGradient && (
       <div
         className={cn(
           "fixed inset-0 overflow-hidden pointer-events-none -z-10 transition-opacity duration-1200 ease-in-out",
@@ -219,6 +231,7 @@ export function SpatialBeatNodes() {
         );
       })}
       </div>
+      )}
     </>
   );
 }

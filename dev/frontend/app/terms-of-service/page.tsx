@@ -5,6 +5,7 @@ import { Disc } from "lucide-react";
 export const metadata: Metadata = {
   title: "Terms of Service — SyncBeats",
   description: "Read SyncBeats' Terms of Service. By using our service, you agree to these terms.",
+  alternates: { canonical: "/terms-of-service" },
   robots: { index: true, follow: true },
 };
 
@@ -23,7 +24,7 @@ export default function TermsOfService() {
 
       {/* Background Gradients */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] bg-red-500/5 blur-[120px] rounded-full mix-blend-screen" />
+        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] bg-dye-500/5 blur-[120px] rounded-full mix-blend-screen" />
         <div className="absolute top-[40%] -left-[10%] w-[400px] h-[400px] bg-blue-500/5 blur-[100px] rounded-full mix-blend-screen" />
       </div>
 
@@ -57,10 +58,10 @@ export default function TermsOfService() {
                 SyncBeats grants you a limited, non-exclusive, revocable license to access and use the Service for personal, non-commercial purposes, subject to these Terms. You agree not to:
               </p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-foreground/70 font-medium">
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500/50 shrink-0" /> Reproduce, copy, or sell the Service</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500/50 shrink-0" /> Attempt unauthorized access</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500/50 shrink-0" /> Upload copyrighted material you don't own</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500/50 shrink-0" /> Reverse engineer source code</li>
+                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Reproduce, copy, or sell the Service</li>
+                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Attempt unauthorized access</li>
+                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Upload copyrighted material you don't own</li>
+                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Reverse engineer source code</li>
               </ul>
             </div>
           </section>
@@ -86,7 +87,7 @@ export default function TermsOfService() {
               <p className="text-foreground/70 leading-relaxed font-medium">
                 By uploading audio files to SyncBeats, you represent that you own or have rights to the content. You grant us a license to store and transmit it.
               </p>
-              <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 font-medium text-sm">
+              <div className="p-4 rounded-xl bg-warn-500/10 border border-warn-500/20 text-warn-600 dark:text-warn-400 font-medium text-sm">
                 <strong>You are solely responsible for uploaded content.</strong> We do not monitor user content. Do not upload copyrighted material unless you have permission.
               </div>
             </div>

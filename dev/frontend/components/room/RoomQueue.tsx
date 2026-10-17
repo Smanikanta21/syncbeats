@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw, Infinity, Timer, Star, MoreHorizontal } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
+import { ytId } from "../../lib/youtube";
 import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
 import { ConfirmModal } from "../ConfirmModal";
 import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
@@ -58,9 +59,8 @@ function cleanTitle(t: string) {
 }
 
 function ytThumb(trackUrl: string | null | undefined) {
-  if (!trackUrl) return null;
-  const m = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  return m ? `https://i.ytimg.com/vi/${m[1]}/mqdefault.jpg` : null;
+  const id = ytId(trackUrl);
+  return id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : null;
 }
 
 export function RoomQueue({
@@ -248,7 +248,7 @@ export function RoomQueue({
   const activeDragItem = activeDragId ? draggableQueue.find(q => q.id === activeDragId) : null;
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'overflow-hidden')}>
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Header Section */}
       <div className="flex items-center justify-end px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
         <div className="flex items-center gap-0.5 shrink-0">
@@ -258,8 +258,8 @@ export function RoomQueue({
               disabled={isClearing}
               onClick={handleClearQueue}
               className={cn(
-                "p-1.5 rounded-md text-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors",
-                isClearing && "opacity-50 cursor-not-allowed text-red-400"
+                "p-1.5 rounded-md text-foreground/40 hover:text-bad-700 dark:text-bad-400 hover:bg-bad-500/10 transition-colors",
+                isClearing && "opacity-50 cursor-not-allowed text-bad-700 dark:text-bad-400"
               )}
               title="Clear upcoming queue"
             >
@@ -275,14 +275,14 @@ export function RoomQueue({
       </div>
 
       {optimisticQueue.length === 0 ? (
-        <div className={cn('flex-1', 'flex', 'flex-col', 'items-center', 'justify-center', 'gap-3', 'opacity-40', 'select-none', 'px-6')}>
-          <Music2 className={cn('w-10', 'h-10')} />
-          <p className={cn('text-sm', 'font-semibold', 'text-center')}>Queue is empty</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40 select-none px-6">
+          <Music2 className="w-10 h-10" />
+          <p className="text-sm font-semibold text-center">Queue is empty</p>
           <button
             onClick={onAddSong}
-            className={cn('mt-2', 'flex', 'items-center', 'gap-2', 'px-4', 'py-2', 'rounded-xl', 'bg-foreground/20', 'text-foreground', 'dark:text-foreground', 'text-xs', 'font-bold', 'hover:bg-foreground/20', 'transition-colors')}
+            className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-foreground/20 text-foreground dark:text-foreground text-xs font-bold hover:bg-foreground/20 transition-colors"
           >
-            <Plus className={cn('w-3.5', 'h-3.5')} />
+            <Plus className="w-3.5 h-3.5" />
             Add a song
           </button>
         </div>
@@ -296,13 +296,13 @@ export function RoomQueue({
         >
           <div
             ref={scrollRef}
-            className={cn('flex-1', 'overflow-y-auto', 'space-y-1.5', 'pr-0.5', 'min-h-0')}
+            className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 min-h-0"
             data-lenis-prevent="true"
             style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
           >
             {/* History Section */}
             {historyQueue.length > 0 && (
-              <div className={cn('space-y-1.5', 'mb-6', 'pb-4', 'border-b', 'border-foreground/[0.06]')}>
+              <div className="space-y-1.5 mb-6 pb-4 border-b border-foreground/[0.06]">
                 <div className="flex items-center justify-between px-2 mb-3 mt-1">
                   <h3 className="font-bold text-foreground text-sm">History</h3>
                   <button 
@@ -348,10 +348,10 @@ export function RoomQueue({
                   </div>
                   {/* Info */}
                   <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <div className="font-bold text-foreground text-base tracking-tight truncate leading-snug">
+                    <div className="font-semibold text-foreground text-base tracking-tight truncate leading-snug">
                       {cleanTitle(currentSong.title)}
                     </div>
-                    <div className="text-foreground/60 text-xs truncate uppercase tracking-widest font-medium mt-0.5">
+                    <div className="text-foreground/60 text-xs truncate font-medium mt-0.5">
                       {currentSong.artist || "Unknown Artist"}
                     </div>
                   </div>
@@ -402,7 +402,7 @@ export function RoomQueue({
                     title="Reset Room"
                     className={cn(
                       "flex-1 h-9 rounded-full flex items-center justify-center transition-all",
-                      isResetting ? "bg-amber-500/20 text-amber-500 opacity-50 cursor-not-allowed" : "bg-foreground/10 text-foreground/80 hover:bg-amber-500/15 hover:text-amber-400"
+                      isResetting ? "bg-warn-500/20 text-warn-600 opacity-50 cursor-not-allowed" : "bg-foreground/10 text-foreground/80 hover:bg-warn-500/15 hover:text-warn-600"
                     )}
                   >
                     <motion.div
@@ -418,7 +418,7 @@ export function RoomQueue({
 
             {/* Continue Playing Header */}
             {draggableQueue.length > 0 && (
-              <div className={cn('font-bold', 'text-foreground/80', 'text-sm', 'mt-2', 'mb-3', 'pl-2')}>
+              <div className="font-bold text-foreground/80 text-sm mt-2 mb-3 pl-2">
                 Continue Playing
               </div>
             )}

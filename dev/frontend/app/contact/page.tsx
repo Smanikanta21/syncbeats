@@ -6,7 +6,7 @@ import { ArrowLeft, Mail } from "lucide-react";
 import { InstagramIcon } from "../../components/InstagramFollowButton";
 import { Footer } from "../../components/Footer";
 import { ThemeToggle } from "../../components/ThemeToggle";
-import { MouseGradient } from "../../components/MouseGradient";
+import { AmbientField } from "../../components/landing/AmbientField";
 
 const GithubIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,7 +25,7 @@ const LinkedinIcon = ({ className }: { className?: string }) => (
 export default function ContactPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col relative overflow-hidden">
-      <MouseGradient />
+      <AmbientField />
       {/* Dynamic Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-foreground/5 blur-[120px] rounded-full" />

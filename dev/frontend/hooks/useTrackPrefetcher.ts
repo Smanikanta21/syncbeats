@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { getServerUrl } from "../lib/api";
+import { getRestUrl } from "../lib/api";
+import { ytId } from "../lib/youtube";
 import type { TrackQueueItem } from "../lib/types";
 
 const SPEED_STORAGE_KEY = "sb_dl_speed_bps";
@@ -28,13 +29,7 @@ function saveSpeedEstimate(bps: number) {
 
 // ── Extract videoId from ws-p2p URL ───────────────────────────────────────────
 export function extractVideoId(trackUrl: string): string | null {
-  if (!trackUrl) return null;
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) return ytMatch[1];
-  const paramMatch = trackUrl.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/);
-  if (paramMatch) return paramMatch[1];
-  const idMatch = trackUrl.match(/([a-zA-Z0-9_-]{11})/);
-  return idMatch ? idMatch[1] : null;
+  return ytId(trackUrl);
 }
 
 // ── State exposed to callers ──────────────────────────────────────────────────
@@ -93,7 +88,7 @@ export function useTrackPrefetcher({
       try {
         setNextTrackTitle(`Resolving: ${track.title}`);
         setIsPrefetching(true);
-        const res = await fetch(`${getServerUrl()}/rooms/${roomId}/resolve-lazy`, {
+        const res = await fetch(`${getRestUrl()}/rooms/${roomId}/resolve-lazy`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -126,11 +121,8 @@ export function useTrackPrefetcher({
 
     const videoId = extractVideoId(resolvedUrl);
     if (!videoId) {
-       // If it's still 'youtube:XYZ' instead of 'ws-p2p:yt:'
-       let parsedId = null;
-       const m = resolvedUrl.match(/^youtube:([a-zA-Z0-9_-]{11})/);
-       if (m) parsedId = m[1];
-       else return;
+       const parsedId = ytId(resolvedUrl);
+       if (!parsedId) return;
        
        resolvedUrl = `ws-p2p:yt:${parsedId}_audio`;
     }
@@ -158,7 +150,7 @@ export function useTrackPrefetcher({
     setNextTrackProgress(1);
 
     const authToken = typeof window !== "undefined" ? (localStorage.getItem("token") || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-    const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+    const proxyUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
     const startedAt = Date.now();
 
     try {

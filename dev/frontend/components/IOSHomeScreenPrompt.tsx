@@ -56,13 +56,13 @@ export function IOSHomeScreenPrompt() {
           <div className="glass-panel p-5 rounded-3xl border border-foreground/15 shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl relative overflow-hidden flex flex-col gap-4">
             
             {/* Subtle Top Ambient Glow */}
-            <div className="absolute -top-10 -right-10 w-36 h-36 bg-linear-to-br from-emerald-500/20 to-cyan-500/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-10 -right-10 w-36 h-36 bg-linear-to-br from-dye-500/20 to-field-500/20 rounded-full blur-2xl pointer-events-none" />
 
             {/* Header */}
             <div className="flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-foreground/10 flex items-center justify-center border border-foreground/10 shrink-0">
-                  <Image src="/syncbeats-icon.svg" alt="SyncBeats" width={24} height={24} />
+                  <Image src="/favicon.svg" alt="SyncBeats" width={24} height={24} />
                 </div>
                 <div>
                   <h4 className="text-sm font-black tracking-tight text-foreground">Install SyncBeats PWA</h4>
@@ -89,7 +89,7 @@ export function IOSHomeScreenPrompt() {
               </div>
 
               <div className="bg-foreground/5 border border-foreground/10 rounded-2xl p-3 flex flex-col items-center text-center gap-1.5">
-                <div className="w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-full bg-[var(--accent-color)]/10 text-[var(--accent-color)] flex items-center justify-center">
                   <PlusSquare className="w-4 h-4" />
                 </div>
                 <span className="text-foreground/80">2. Select <strong className="text-foreground">Add to Home Screen</strong></span>
@@ -97,7 +97,7 @@ export function IOSHomeScreenPrompt() {
             </div>
 
             {/* Pointer Indicator Arrow */}
-            <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400 pt-1 z-10">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent-color)] pt-1 z-10">
               <Smartphone className="w-3.5 h-3.5" />
               <span>Enjoy 120Hz Fullscreen Experience</span>
             </div>

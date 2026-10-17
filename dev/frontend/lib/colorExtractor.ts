@@ -3,6 +3,8 @@
  * Extracts 2 vibrant primary/secondary colors from any track's cover art (Spotify/YouTube/local) using HTML5 Canvas.
  */
 
+import { ytId } from './youtube';
+
 export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: string; coverUrl?: string } | null | undefined): string | null {
   if (!item) return null;
   if (item.thumbnail) return item.thumbnail;
@@ -14,14 +16,9 @@ export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: stri
   const customThumbMatch = url.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
 
-  const ytProtoMatch = url.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  if (ytProtoMatch) {
-    return `https://i.ytimg.com/vi/${ytProtoMatch[1]}/hqdefault.jpg`;
-  }
-
-  const ytStandardMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (ytStandardMatch) {
-    return `https://i.ytimg.com/vi/${ytStandardMatch[1]}/hqdefault.jpg`;
+  const id = ytId(url);
+  if (id) {
+    return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
   }
 
   return null;
@@ -30,25 +27,26 @@ export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: stri
 const ytTitleCache = new Map<string, string>();
 const pendingFetches = new Set<string>();
 
-export function getYoutubeTrackTitle(ytId: string): string | null {
-  if (!ytId || !/^[a-zA-Z0-9_-]{11}$/.test(ytId)) return null;
-  if (ytTitleCache.has(ytId)) return ytTitleCache.get(ytId)!;
+export function getYoutubeTrackTitle(rawYtId: string): string | null {
+  const validId = ytId(rawYtId);
+  if (!validId) return null;
+  if (ytTitleCache.has(validId)) return ytTitleCache.get(validId)!;
 
-  if (typeof window !== "undefined" && !pendingFetches.has(ytId)) {
-    pendingFetches.add(ytId);
-    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+  if (typeof window !== "undefined" && !pendingFetches.has(validId)) {
+    pendingFetches.add(validId);
+    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${validId}&format=json`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.title) {
           const cleanTitle = data.title.replace(/\0/g, '').trim();
-          ytTitleCache.set(ytId, cleanTitle);
+          ytTitleCache.set(validId, cleanTitle);
           if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("syncbeats:title-resolved", { detail: { ytId, title: cleanTitle } }));
+            window.dispatchEvent(new CustomEvent("syncbeats:title-resolved", { detail: { ytId: validId, title: cleanTitle } }));
           }
         }
       })
       .catch(() => {})
-      .finally(() => pendingFetches.delete(ytId));
+      .finally(() => pendingFetches.delete(validId));
   }
   return null;
 }

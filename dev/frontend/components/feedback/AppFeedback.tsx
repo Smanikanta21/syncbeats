@@ -50,20 +50,20 @@ export function AppFeedback({
 
   const styleMap = {
     error: {
-      container: "border-red-500/30 bg-red-500/10 text-red-200",
-      icon: <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />,
+      container: "border-bad-500/30 bg-bad-500/10 text-bad-200",
+      icon: <AlertCircle className="w-4 h-4 text-bad-700 dark:text-bad-400 shrink-0" />,
     },
     warning: {
-      container: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-      icon: <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />,
+      container: "border-warn-500/30 bg-warn-500/10 text-warn-200",
+      icon: <AlertTriangle className="w-4 h-4 text-warn-800 dark:text-warn-400 shrink-0" />,
     },
     info: {
       container: "border-blue-500/30 bg-blue-500/10 text-blue-200",
       icon: <Info className="w-4 h-4 text-blue-400 shrink-0" />,
     },
     success: {
-      container: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-      icon: <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />,
+      container: "border-ok-500/30 bg-ok-500/10 text-ok-200",
+      icon: <CheckCircle className="w-4 h-4 text-ok-700 dark:text-ok-400 shrink-0" />,
     },
   };
 

@@ -7,8 +7,9 @@ import {
   createContext, useContext, useState, useCallback, useEffect,
   type ReactNode
 } from "react";
-import { roomsApi, getServerUrl, getAuthToken } from "../lib/api";
+import { roomsApi, getRestUrl, getAuthToken } from "../lib/api";
 import { getSocket } from "../lib/socket";
+import { ytId } from "../lib/youtube";
 
 interface UploadResult {
   trackUrl: string;
@@ -105,7 +106,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setUploadProgress(5);
     getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
     try {
-      const baseUrl = getServerUrl();
+      const baseUrl = getRestUrl();
       const authToken = getAuthToken();
       const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
       
@@ -191,8 +192,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         // Tracks are stored by videoId (e.g. 'h_VCgsWLmY4') for youtube: scheme,
         // or by full trackUrl for ws-p2p: and magnet: schemes.
         const { getCachedYouTubeTrack, getTrack } = await import('../lib/idb');
-        const videoIdMatch = trackUrl.match(/(?:youtube:|ws-p2p:yt:)([a-zA-Z0-9_-]{11})/);
-        const videoId = videoIdMatch?.[1] ?? null;
+        const videoId = ytId(trackUrl);
 
         const file: Blob | null = videoId
           ? (await getCachedYouTubeTrack(videoId)) ?? (await getTrack(trackUrl))

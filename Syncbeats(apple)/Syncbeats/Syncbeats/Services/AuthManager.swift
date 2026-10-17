@@ -1,5 +1,26 @@
 import Foundation
 import Combine
+import AuthenticationServices
+
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
+
+class ASWebAuthPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = ASWebAuthPresentationContextProvider()
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        #if os(macOS)
+        return NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #else
+        return UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        #endif
+    }
+}
 
 @MainActor
 final class AuthManager: ObservableObject {
@@ -84,6 +105,42 @@ final class AuthManager: ObservableObject {
         NotchController.shared.detach()
         #endif
     }
+    
+    func authenticateWithWeb() async {
+        // We open the web app to do the heavy OAuth lifting, and let it pass the JWT back.
+        guard let url = URL(string: "https://syncbeats.in/login?returnTo=syncbeats://auth") else { return }
+        
+        await perform {
+            let callbackURL: URL = try await withCheckedThrowingContinuation { continuation in
+                let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "syncbeats") { callbackURL, error in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    if let callbackURL = callbackURL {
+                        continuation.resume(returning: callbackURL)
+                    } else {
+                        continuation.resume(throwing: APIError.unknown)
+                    }
+                }
+                session.presentationContextProvider = ASWebAuthPresentationContextProvider.shared
+                session.prefersEphemeralWebBrowserSession = false
+                session.start()
+            }
+            
+            guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                  let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {
+                throw APIError.unknown
+            }
+            
+            UserDefaults.standard.set(token, forKey: self.tokenKey)
+            
+            let user: User = try await APIClient.shared.request(path: "/auth/me", requiresAuth: true)
+            self.currentUser = user
+            self.isAuthenticated = true
+            self.authError = nil
+        }
+    }
 
     private func apply(_ response: AuthResponse) {
         UserDefaults.standard.set(response.token, forKey: tokenKey)
@@ -103,6 +160,17 @@ final class AuthManager: ObservableObject {
         } catch {
             authError = error.localizedDescription
             return false
+        }
+    }
+    
+    func checkEmail(email: String) async -> Bool? {
+        struct CheckEmailResponse: Decodable { let exists: Bool }
+        do {
+            let body = try JSONEncoder().encode(["email": email])
+            let res: CheckEmailResponse = try await APIClient.shared.request(path: "/auth/check-email", method: "POST", body: body)
+            return res.exists
+        } catch {
+            return nil
         }
     }
 }

@@ -395,7 +395,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
                 style={{ transformOrigin: "left center" }}
                 transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
                 className={cn(
-                  "text-foreground text-xl md:text-2xl font-black leading-snug text-left transition-none select-none tracking-tight max-w-[72%]",
+                  "text-foreground font-display text-xl md:text-2xl font-extrabold leading-snug text-left transition-none select-none tracking-tight max-w-[72%]",
                 )}
               >
                 {isActive ? (

@@ -19,7 +19,7 @@ enum Endpoint {
     private static let transportKey = "sb_transport"
     private static let lanHostKey   = "sb_lan_host"
 
-    static let cloudURL = URL(string: "https://dev-api.syncbeats.app")!
+    static let cloudURL = URL(string: "http://10.7.3.75:4000")!
 
     #if DEBUG
     private static let defaultTransport = Transport.lan
@@ -38,7 +38,7 @@ enum Endpoint {
 
     /// host:port of the edge node. Typed in by hand until Bonjour discovery lands.
     static var lanHost: String {
-        get { UserDefaults.standard.string(forKey: lanHostKey) ?? "127.0.0.1:4000" }
+        get { UserDefaults.standard.string(forKey: lanHostKey) ?? "Abhinays-MacBook-Pro.local:4000" }
         set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespaces), forKey: lanHostKey) }
     }
 

@@ -11,12 +11,12 @@ import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 import { toast } from 'sonner';
 import { getYoutubeTrackTitle } from '../lib/colorExtractor';
+import { ytId } from '../lib/youtube';
 
 function isSameTrack(u1?: string | null, u2?: string | null) {
   if (u1 === u2) return true;
   if (!u1 || !u2) return false;
-  const ext = (u: string) => u.match(/(?:youtube:|ws-p2p:yt:|videoId=)([a-zA-Z0-9_-]{11})/)?.[1] || u;
-  return ext(u1) === ext(u2);
+  return (ytId(u1) || u1) === (ytId(u2) || u2);
 }
 
 interface UseRoomOptions {
@@ -131,18 +131,10 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
     if (trackUrl) {
-      const extractId = (url: string): string | null => {
-        if (!url) return null;
-        const m = url.match(/[?&]videoId=([a-zA-Z0-9_-]{11})/) || url.match(/youtube:([a-zA-Z0-9_-]{11})/) || url.match(/^youtube_([a-zA-Z0-9_-]{11})\.yt$/) || url.match(/vi\/([a-zA-Z0-9_-]{11})/);
-        if (m) return m[1];
-        if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) return url;
-        return null;
-      };
-
-      const playingId = extractId(trackUrl);
+      const playingId = ytId(trackUrl);
       const match = queue.find((item) => {
         if (item.trackUrl === trackUrl) return true;
-        const itemId = extractId(item.trackUrl);
+        const itemId = ytId(item.trackUrl);
         return playingId !== null && itemId !== null && playingId === itemId;
       });
 
@@ -166,11 +158,11 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
     const fileName = clean.split('/').pop() ?? '';
     const rawId = fileName.split('?')[0].replace(/\.[^.]+$/, '');
-    const isYouTubeId = /^[a-zA-Z0-9_-]{11}$/.test(rawId);
-    if (isYouTubeId) {
-      const fetchedTitle = getYoutubeTrackTitle(rawId);
+    const id = ytId(rawId);
+    if (id) {
+      const fetchedTitle = getYoutubeTrackTitle(id);
       if (fetchedTitle) return fetchedTitle;
-      return rawId;
+      return id;
     }
     const formatted = rawId.replace(/^\d+_/, '').replace(/_/g, ' ');
     if (formatted && !formatted.startsWith('youtube:')) return formatted;
@@ -709,7 +701,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
     const handleDevicePing = ({ message }: { message: string, from: string }) => {
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent("toast", { detail: { message, type: "info" } }));
+        toast.info(message);
       }
     };
     socket.on('device:ping', handleDevicePing);

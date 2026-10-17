@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   output: process.env.VERCEL ? undefined : "standalone",
   turbopack: {},
-  allowedDevOrigins: ['10.7.3.75', '10.7.13.253', '172.20.10.8', '10.6.1.21', '10.7.13.253'],
+  allowedDevOrigins: ['localhost', '127.0.0.1', '10.7.17.157', '10.7.3.75', '10.7.13.253', '172.20.10.8', '10.6.1.21'],
   images: {
     remotePatterns: [
       {
@@ -34,7 +34,11 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    const backendUrl = process.env.INTERNAL_BACKEND_URL || process.env.NEXT_PUBLIC_SERVER_URL || 'https://api.syncbeats.in';
+    const backendUrl =
+      process.env.INTERNAL_BACKEND_URL ||
+      (process.env.NODE_ENV === 'development'
+        ? 'http://127.0.0.1:4000'
+        : (process.env.NEXT_PUBLIC_SERVER_URL || 'https://api.syncbeats.in'));
     return [
       {
         source: '/api/:path*',

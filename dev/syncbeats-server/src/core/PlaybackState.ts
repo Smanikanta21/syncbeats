@@ -1,4 +1,4 @@
-// ─── Step 1: Pure types & enums ───────────────────────────────────────────
+// ─── Pure types & enums ───────────────────────────────────────────
 
 export enum PlaybackState {
   IDLE     = 'IDLE',

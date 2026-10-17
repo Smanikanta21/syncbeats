@@ -1,8 +1,6 @@
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
 import { fetchEntirePlaylist, SpotifyTrackMetadata } from '../utils/spotifyPlaylistFetcher';
-// @ts-ignore
-const fetch = require('isomorphic-unfetch');
 
 // ── Spotify app client-credentials token cache (scoped to this service) ──────
 let _appToken: string | null = null;

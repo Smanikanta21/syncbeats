@@ -1,6 +1,8 @@
 // handlers/RoomRoutes.ts — /rooms REST endpoints (auth-protected)
 
-import { Router, Request, Response, NextFunction } from 'express';
+import express, { Router, Request, Response, NextFunction } from 'express';
+import fs              from 'fs';
+import path            from 'path';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomQueue }      from '../core/RoomQueue';
 import { RoomRepository, RoomRow } from '../db/RoomRepository';
@@ -10,9 +12,9 @@ import prisma             from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
-import { streamYoutubeAudio } from './SearchRoutes';
+import { streamYoutubeAudio, resolveYoutubeAudioDirectUrl, findYtDlpPath } from './SearchRoutes';
 import { searchLimiter, enqueueLimiter, ytProxyLimiter } from '../middleware/rateLimiter';
-import { AuditLogger } from '../services/AuditLogger';
+
 import { QueueTrackInput } from '../types';
 import { fail, sendError, roomCodeError, roomCodeLookupError } from '../utils/errorHandler';
 
@@ -67,6 +69,7 @@ async function loadRoom(req: Request, res: Response, next: NextFunction): Promis
 
   try {
     const row = await repo.findById(roomId);
+    
     if (!row) {
       fail(res, 404, `No room found with code ${roomId}. Check the code and try again.`);
       return;
@@ -297,7 +300,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       if (existingRoom) {
         roomManager.getOrCreate(existingRoom.id);
         console.log(`[Rooms] Reusing existing default room ${existingRoom.id} for user ${hostUserId}`);
-        void AuditLogger.info('ROOM_DEFAULT', `Room #${existingRoom.id} active for user ${req.user?.email || hostUserId}`, req.ip);
         res.json({ roomId: existingRoom.id, createdAt: existingRoom.created_at, isNew: false });
         return;
       }
@@ -311,7 +313,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         dbRoom = await repo.create(roomId, hostUserId);
         roomManager.getOrCreate(roomId);
         console.log(`[Rooms] Created default room ${roomId} for user ${hostUserId}`);
-        void AuditLogger.info('ROOM_CREATE', `Created new room #${roomId} for user ${req.user?.email || hostUserId}`, req.ip);
         res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at, isNew: true });
       } catch (createErr) {
         // Concurrent device may have just created a room — retry the lookup
@@ -325,7 +326,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         }
       }
     } catch (err) {
-      void AuditLogger.error('ROOM_CREATE_ERROR', `Failed to create room: ${(err as Error)?.message}`, req.ip);
       sendError(res, err, "We couldn't open a room for you just now. Please try again in a moment.");
     }
   });
@@ -362,11 +362,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const dbRoom = await repo.create(roomId, hostUserId);
       roomManager.getOrCreate(roomId);
       console.log(`[Rooms] Created room ${roomId} by user ${hostUserId}`);
-      void AuditLogger.info('ROOM_CREATE', `Created room #${roomId} by user ${req.user?.email || hostUserId}`, req.ip);
       res.status(201).json({ roomId: dbRoom.id, createdAt: dbRoom.created_at });
     } catch (err) {
-      void AuditLogger.error('ROOM_CREATE_ERROR', `Failed to create room: ${(err as Error)?.message}`, req.ip);
-      // Lost the race between the free-code check and the insert.
       if ((err as any)?.code === 'P2002') {
         fail(res, 409, 'That room code was just taken. Please try again.');
         return;
@@ -701,6 +698,87 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     liveRoom(roomManager, req).resetRoom();
     io.to(roomId).emit('room:reset', { roomId });
     res.json({ ok: true, message: 'Room has been reset successfully.' });
+  });
+
+  // POST /rooms/:roomId/seed?videoId=xxx — a client that already has the audio
+  // donates it to this node's cache, so everyone else gets a cache HIT from
+  // yt-proxy without touching the internet. The offline-LAN case: the edge node
+  // was never online for this track, but somebody's phone downloaded it earlier.
+  router.post(
+    '/:roomId/seed',
+    optionalAuth,
+    ytProxyLimiter,
+    loadRoom,
+    express.raw({ type: ['audio/mp4', 'audio/mpeg', 'application/octet-stream'], limit: '60mb' }),
+    (req: Request, res: Response) => {
+      const videoId = req.query['videoId'];
+      if (typeof videoId !== 'string' || !YOUTUBE_ID_RE.test(videoId)) {
+        fail(res, 400, "That doesn't look like a YouTube video ID.");
+        return;
+      }
+      const body = req.body;
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        fail(res, 400, 'Seed request had no audio body.');
+        return;
+      }
+
+      // Same cache location streamYoutubeAudio reads from.
+      const tmpDir = path.resolve(process.cwd(), 'tmp');
+      const target = path.resolve(tmpDir, `${videoId}.m4a`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      if (fs.existsSync(target)) {
+        res.status(204).end();   // already have it — don't make the peer re-upload
+        return;
+      }
+
+      // Write to a scratch name then rename. The cache-HIT check in
+      // streamYoutubeAudio is a bare existsSync, so a partially-written file
+      // would be served as if it were complete — rename is atomic, so readers
+      // only ever see the finished thing.
+      const scratch = `${target}.${process.pid}.${Date.now()}.part`;
+      try {
+        fs.writeFileSync(scratch, body);
+        fs.renameSync(scratch, target);
+      } catch (err) {
+        try { fs.unlinkSync(scratch); } catch { /* scratch may not exist */ }
+        sendError(res, err, "We couldn't save that track to the local cache.", 500);
+        return;
+      }
+
+      console.log(`[Seed] Cached ${videoId}.m4a (${body.length} bytes) from a peer`);
+      res.status(201).json({ ok: true, videoId, bytes: body.length });
+    }
+  );
+
+  // GET /rooms/:roomId/yt-resolve — hands the native app a direct CDN URL instead of
+  // proxying bytes. yt-dlp resolution is unmetered (no RapidAPI quota), the server never
+  // touches or stores the audio, and the device pulls straight from the CDN.
+  // Used by the app's download feature; web clients still use yt-proxy.
+  router.get('/:roomId/yt-resolve', optionalAuth, ytProxyLimiter, loadRoom, async (req: Request, res: Response) => {
+    const { videoId } = req.query;
+    if (!videoId || typeof videoId !== 'string') {
+      fail(res, 400, 'Missing the YouTube video ID.');
+      return;
+    }
+
+    const cleanId = videoId.replace(/^(?:youtube:)?/, '');
+    if (!YOUTUBE_ID_RE.test(cleanId)) {
+      fail(res, 400, "That doesn't look like a YouTube video ID.");
+      return;
+    }
+
+    try {
+      const url = await resolveYoutubeAudioDirectUrl(cleanId, findYtDlpPath());
+      if (!url) {
+        fail(res, 502, "We couldn't get that song. It may be age-restricted or unavailable.");
+        return;
+      }
+      // 302, not a proxy: URLSession/OkHttp follow it and stream from the CDN directly.
+      res.redirect(302, url);
+    } catch (err) {
+      sendError(res, err, "We couldn't get that song. It may be age-restricted or unavailable.", 502);
+    }
   });
 
   // GET /rooms/:roomId/yt-proxy — CRITICAL: optionalAuth (supports ?token= query or guest streaming) + rate limited + videoId validation

@@ -3,24 +3,49 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @layer base {
+  /* ── "Constructive" ───────────────────────────────────────────────────────
+     The palette is two inks in water. `--dye` (magenta) and `--field` (cyan)
+     are the brand; they read as chop when apart and brighten where they
+     overlay, which is what constructive interference actually does and what
+     the product actually does to a room full of phones.
+
+     Surfaces are water depth, not grey. Both themes carry real chroma in the
+     neutrals (light leans cool-blue, dark is visibly blue rather than a tinted
+     near-black) so the inks sit in the same world as the ground they're on.
+
+     Semantic ok/warn/bad live deliberately OUTSIDE the brand hues — see the
+     hue-separation note in @theme below. */
   :root {
-    --background: #ffffff;
-    --foreground: #09090b;
-    --glass-border: rgba(0, 0, 0, 0.06);
-    --glass-border-hover: rgba(0, 0, 0, 0.12);
-    --glass-bg: #f4f4f5;
-    --glass-bg-hover: #e4e4e7;
-    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+    --background: #e8edef;   /* paper — cool, deliberately not cream */
+    --foreground: #061018;   /* ink */
+    --surface: #ffffff;
+    --edge: #c9d4d8;
+    --glass-border: rgba(6, 16, 24, 0.08);
+    --glass-border-hover: rgba(6, 16, 24, 0.16);
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-hover: rgba(255, 255, 255, 0.92);
+    --glass-shadow: 0 4px 24px rgba(6, 16, 24, 0.06);
+
+    /* Live accent. startAccentVars() overwrites these on <html> as the walk
+       drifts between the two inks; these values are the first-paint / SSR state
+       and the floor if JS never runs. Read in DynamicAuroraButton and across
+       the landing page. Must stay in step with ACCENT_STAGES in lib/accent.ts. */
+    --accent-color: oklch(67% 0.26 338);
+    --accent-glow: oklch(67% 0.26 338 / 0.35);
+    --accent-border: oklch(67% 0.26 338 / 0.4);
+    --accent-gradient: linear-gradient(135deg, oklch(67% 0.26 338) 0%, oklch(71% 0.131 215) 100%);
   }
 
   [data-theme="dark"] {
-    --background: #050507;
-    --foreground: #fafafa;
-    --glass-border: rgba(255, 255, 255, 0.10);
-    --glass-border-hover: rgba(255, 255, 255, 0.22);
-    --glass-bg: rgba(18, 18, 22, 0.65);
-    --glass-bg-hover: rgba(30, 30, 36, 0.80);
-    --glass-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.6);
+    --background: #04131c;   /* depth */
+    --foreground: #e6f0f4;
+    --surface: #0b1f2b;
+    --edge: #16323f;
+    --glass-border: rgba(230, 240, 244, 0.10);
+    --glass-border-hover: rgba(230, 240, 244, 0.22);
+    --glass-bg: rgba(11, 31, 43, 0.65);
+    --glass-bg-hover: rgba(22, 50, 63, 0.80);
+    --glass-shadow: 0 12px 40px -10px rgba(2, 8, 12, 0.7);
   }
 
   html,
@@ -31,9 +56,34 @@
     padding: 0;
     background: var(--background);
     color: var(--foreground);
-    font-family: var(--font-sans), 'Outfit', system-ui, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     overflow-x: clip;
+  }
+
+  /* The display face carries h1 and h2 ONLY.
+     Syne is a genuine display face: it has no opsz axis and it widens as it
+     bolds, so at 13-14px and weight 700-800 — which is what the room's dense
+     panel titles are — it renders as a shrunken billboard, far heavier and
+     wider than the layout budgeted for. Bricolage got away with the blanket
+     h1-h4 rule because its opsz axis quietly compensated at small sizes; Syne
+     has nothing to compensate with.
+
+     So h3/h4 stay on the text face. The practical rule: if it is set at the
+     `title` step or larger, it can wear Syne. Below that, it is UI, not a
+     headline, and it uses `font-sans` like everything else around it.
+     Anything that genuinely wants the display face at a small size can ask for
+     it with `font-display` explicitly. */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.008em;
+  }
+
+  h3,
+  h4 {
+    font-family: var(--font-sans);
+    letter-spacing: -0.004em;
   }
 
   html.lenis,
@@ -191,6 +241,76 @@
     animation: lyricDot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  /* Room range sliders — the two seek bars (desktop + mobile) and the
+     per-participant volume slider, which all carried the same recipe inline.
+     The fill stop tracks `--pct`, which each slider sets from its own value;
+     everything else is tokens, so the room picks up the accent instead of a
+     hardcoded #34d399. The unfilled half was rgba(255,255,255,0.15) — a white
+     track on a white background, i.e. invisible in light theme. */
+  .sb-range {
+    appearance: none;
+    -webkit-appearance: none;
+    background: linear-gradient(
+      to right,
+      var(--accent-color) 0%,
+      var(--accent-color) var(--pct, 0%),
+      color-mix(in srgb, var(--foreground) 18%, transparent) var(--pct, 0%),
+      color-mix(in srgb, var(--foreground) 18%, transparent) 100%
+    );
+  }
+
+  .sb-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: var(--thumb, 0.875rem);
+    width: var(--thumb, 0.875rem);
+    border-radius: 9999px;
+    background: var(--accent-color);
+    box-shadow: 0 0 10px var(--accent-glow);
+    cursor: pointer;
+  }
+
+  .sb-range::-moz-range-thumb {
+    height: var(--thumb, 0.875rem);
+    width: var(--thumb, 0.875rem);
+    border: 0;
+    border-radius: 9999px;
+    background: var(--accent-color);
+    box-shadow: 0 0 10px var(--accent-glow);
+    cursor: pointer;
+  }
+
+  /* The app's small panel label. Previously `font-mono` + `uppercase` +
+     `tracking-[0.18em]`, which was also spelled inline in ~10 more places on
+     landing and login — one all-caps tracked-out monospace recipe standing in
+     for every small label in the product, whether or not it was data.
+
+     That recipe is gone. Hierarchy is now carried by weight and opacity, the
+     text face is the text face, and the label reads as a sentence because it is
+     one. Mono is reserved for digits that change — see `.tabular` below.
+
+     Dropping uppercase + 0.18em tracking makes every label measurably NARROWER,
+     so nothing can overflow; the size bump from 0.6875 to 0.75rem offsets the
+     loss of cap-height presence. */
+  .micro-label {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
+  }
+
+  /* For digits that change in place — clock offset in ms, room code, timecode,
+     participant counts. Without tabular figures a counter ticking 1→2 shifts
+     every glyph after it, which reads as the layout twitching. This is the only
+     role monospace still has. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
   input[type="range"].volume-slider {
     height: 40px;
     -webkit-appearance: none;
@@ -244,8 +364,133 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-edge: var(--edge);
+
+  /* ── Semantic + brand scales ───────────────────────────────────────────────
+     Registered as full scales on purpose: every call site in the app spells
+     state as `bg-ok-500/10`, `text-bad-400`, `border-warn-500/30`, so the shade
+     and opacity modifiers have to keep working. Defining the family is what
+     lets ~215 raw `emerald`/`red`/`amber` classes become a family rename
+     instead of 80 hand-written mappings.
+
+     HUE SEPARATION IS LOAD-BEARING. In OKLCH:
+       bad 23°   warn 76°   ok 158°   field 215°   dye 338°
+     Every brand↔semantic gap is ≥45°. The first draft of this palette used
+     #FF2E88 for the dye (hue 2°) and #1FD6C1 for the field (hue 182°), which
+     put the brand magenta 21° from error-red and the brand cyan 24° from
+     ok-green — i.e. a destructive button and the brand accent would have been
+     the same colour at a glance. If you retune a hue, re-check all six gaps.
+
+     ok/warn/bad anchor on Radix's step-9 values (contrast already validated on
+     both light and dark grounds) rather than invented numbers. Chroma peaks at
+     500 and tapers both ways; `warn` carries its own lightness ladder because
+     amber cannot go dark without turning brown. */
+
+  /* ok — anchor #30A46C */
+  --color-ok-100: oklch(93.0% 0.045 158);
+  --color-ok-200: oklch(87.0% 0.074 158);
+  --color-ok-300: oklch(80.0% 0.104 158);
+  --color-ok-400: oklch(71.1% 0.125 158);
+  --color-ok-500: oklch(64.1% 0.133 158);
+  --color-ok-600: oklch(56.6% 0.128 158);
+  --color-ok-700: oklch(49.1% 0.117 158);
+  --color-ok-800: oklch(42.1% 0.101 158);
+  --color-ok-900: oklch(36.1% 0.085 158);
+  --color-ok-950: oklch(26.1% 0.064 158);
+
+  /* warn — anchor #FFB224. Own ladder: amber darkens into brown, not shade. */
+  --color-warn-100: oklch(96.0% 0.056 76);
+  --color-warn-200: oklch(92.0% 0.092 76);
+  --color-warn-300: oklch(87.0% 0.128 76);
+  --color-warn-400: oklch(84.0% 0.154 76);
+  --color-warn-500: oklch(81.7% 0.164 76);
+  --color-warn-600: oklch(73.0% 0.157 76);
+  --color-warn-700: oklch(62.0% 0.144 76);
+  --color-warn-800: oklch(52.0% 0.125 76);
+  --color-warn-900: oklch(44.0% 0.105 76);
+  --color-warn-950: oklch(31.0% 0.079 76);
+
+  /* bad — anchor #E5484D */
+  --color-bad-100: oklch(93.0% 0.066 23);
+  --color-bad-200: oklch(87.0% 0.108 23);
+  --color-bad-300: oklch(80.0% 0.151 23);
+  --color-bad-400: oklch(69.6% 0.181 23);
+  --color-bad-500: oklch(62.6% 0.193 23);
+  --color-bad-600: oklch(55.1% 0.185 23);
+  --color-bad-700: oklch(47.6% 0.170 23);
+  --color-bad-800: oklch(40.6% 0.147 23);
+  --color-bad-900: oklch(34.6% 0.124 23);
+  --color-bad-950: oklch(24.6% 0.093 23);
+
+  /* dye — brand ink A, magenta */
+  --color-dye-100: oklch(93.0% 0.088 338);
+  --color-dye-200: oklch(87.0% 0.146 338);
+  --color-dye-300: oklch(80.0% 0.203 338);
+  --color-dye-400: oklch(74.0% 0.244 338);
+  --color-dye-500: oklch(67.0% 0.260 338);
+  --color-dye-600: oklch(59.5% 0.250 338);
+  --color-dye-700: oklch(52.0% 0.229 338);
+  --color-dye-800: oklch(45.0% 0.198 338);
+  --color-dye-900: oklch(39.0% 0.166 338);
+  --color-dye-950: oklch(29.0% 0.125 338);
+
+  /* field — brand ink B, cyan */
+  --color-field-100: oklch(93.0% 0.045 215);
+  --color-field-200: oklch(87.0% 0.073 215);
+  --color-field-300: oklch(81.5% 0.102 215);
+  --color-field-400: oklch(77.0% 0.123 215);
+  --color-field-500: oklch(71.0% 0.131 215);
+  --color-field-600: oklch(63.5% 0.126 215);
+  --color-field-700: oklch(56.0% 0.115 215);
+  --color-field-800: oklch(49.0% 0.100 215);
+  --color-field-900: oklch(43.0% 0.084 215);
+  --color-field-950: oklch(33.0% 0.063 215);
+
+  /* Narrow-phone breakpoint. `xs:` was already being used in the room
+     (RoomDashboard's PRIVATE/PUBLIC label, AudioEQ's preset name) but was never
+     defined — and with no tailwind.config there was nothing else to define it,
+     so every `xs:` variant silently generated nothing and the label it gates
+     stayed permanently hidden. */
+  --breakpoint-xs: 25rem;
+
+  /* Role -> face. The only place this mapping lives; layout.tsx publishes the
+     faces under their own names so the two layers can't collide.
+     Each var() carries its own fallback on purpose: a bare var() that resolves
+     to nothing invalidates the whole font-family declaration, so a trailing
+     `system-ui, sans-serif` in the list would never be reached.
+
+     Display is Syne, picked because it WIDENS as it bolds — so a heading
+     animating wght 400->800 reads as amplitude swelling rather than just
+     getting heavier. That gesture is the landing hero (see Hero.tsx), which is
+     why the face is chosen for a behaviour and not a vibe. */
+  --font-sans: var(--font-instrument, ui-sans-serif), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains, ui-monospace), monospace;
+  --font-display: var(--font-syne, var(--font-instrument, ui-sans-serif)), system-ui, sans-serif;
+
+  /* Type scale — perfect fourth (1.333), fluid between mobile and desktop.
+     Tracking is looser than the Bricolage-era values at every step (hero was
+     -0.03, display -0.022, title -0.012): Syne is already tightly set and its
+     glyphs widen with weight, so the old negatives crushed the counters on any
+     heading above 600. */
+  --text-hero: clamp(2.75rem, 8.5vw, 7rem);
+  --text-hero--line-height: 0.94;
+  --text-hero--letter-spacing: -0.015em;
+
+  --text-display: clamp(2rem, 4.6vw, 3.75rem);
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.01em;
+
+  --text-title: clamp(1.35rem, 2vw, 1.777rem);
+  --text-title--line-height: 1.18;
+  --text-title--letter-spacing: -0.005em;
+
+  --text-lead: clamp(1.0625rem, 1.35vw, 1.333rem);
+  --text-lead--line-height: 1.55;
+
+  --text-data: 0.8125rem;
+  --text-data--line-height: 1.2;
+
   --z-9999: 9999;
 }
 

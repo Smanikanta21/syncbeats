@@ -33,7 +33,7 @@ syncbeats_hld_architecture.svg
 context.md
 NATIVE_CLIENTS_ARCHITECTURE.md
 .git_backup
-dev/syncbeats-server/scripts/sendUpdateEmail.ts
+dev/syncbeats-server/scripts/
 dev/db-visualizer/data/
 
 # Next.js
@@ -84,3 +84,11 @@ pages/
 AGENTS.md
 AGENTS.md
 implementation_plan.md
+
+# Local agent/editor tooling
+.claude/
+.agents/
+skills-lock.json
+
+# /brag render scratch (probe frames, scene html, share copy)
+brag-output*/

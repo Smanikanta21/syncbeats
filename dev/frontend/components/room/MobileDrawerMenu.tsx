@@ -66,7 +66,7 @@ export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab }: Mo
                     className={cn(
                       "flex items-center gap-4 px-4 py-4 rounded-2xl transition-all",
                       isActive 
-                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]" 
+                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] border border-[var(--accent-color)]/20 shadow-[0_0_15px_var(--accent-glow)]"
                         : "bg-white/5 text-white/70 hover:bg-white/10 border border-transparent"
                     )}
                   >

@@ -2,15 +2,17 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TrackQueueItem } from "../lib/types";
+import { ytId } from "../lib/youtube";
 import { Play, Disc, Trash2, GripVertical, Loader2, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 
 const globalSortableYtCache = new Map<string, string>();
 
 function isRawYouTubeId(str: string): boolean {
-  if (!/^[a-zA-Z0-9_-]{11}$/.test(str)) return false;
+  const id = ytId(str);
+  if (!id) return false;
   // If it's pure letters (e.g. Mockingbird, Bloodstream, Unstoppable), it's a song title word, NOT a YouTube ID
-  if (/^[a-zA-Z]{11}$/.test(str)) return false;
+  if (/^[a-zA-Z]{11}$/.test(id)) return false;
   return true;
 }
 
@@ -55,8 +57,8 @@ function ytThumb(trackUrl: string | null | undefined) {
   if (thumbMatch) return decodeURIComponent(thumbMatch[1]);
 
   // Otherwise, extract YouTube ID
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  return ytMatch ? `https://i.ytimg.com/vi/${ytMatch[1]}/mqdefault.jpg` : null;
+  const id = ytId(trackUrl);
+  return id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : null;
 }
 
 export interface TrackItemRowProps {
@@ -217,7 +219,7 @@ export function TrackItemRow({
             e.stopPropagation(); 
             onAddTrack(item); 
           }}
-          className="shrink-0 p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors ml-2"
+          className="shrink-0 p-1.5 rounded-lg bg-ok-500/10 text-ok-500 hover:bg-ok-500/20 transition-colors ml-2"
         >
           <Plus className="w-4 h-4 fill-current stroke-current" strokeWidth={2.5} />
         </motion.button>
@@ -235,7 +237,7 @@ export function TrackItemRow({
             setIsDeleting(true);
             onRemoveTrack?.(item.id); 
           }}
-          className="shrink-0 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+          className="shrink-0 p-1.5 rounded-lg bg-bad-500/10 text-bad-500 hover:bg-bad-500/20 transition-colors disabled:opacity-50"
         >
           {isDeleting ? (
             <Loader2 className="w-3 h-3 animate-spin" />

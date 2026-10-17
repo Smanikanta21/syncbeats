@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SocketIO
+import MusicKit
 
 // Socket.IO hands back JSON numbers as NSNumber; `as? Double` on an integer
 // payload is not reliable across bridges, so funnel every numeric read here.
@@ -70,9 +71,17 @@ struct QueueItem: Identifiable, Equatable {
     }
 
     var artworkURL: URL? {
-        guard let thumbnail, !thumbnail.isEmpty else { return nil }
-        if thumbnail.hasPrefix("http") { return URL(string: thumbnail) }
-        return URL(string: Endpoint.baseURL.absoluteString + thumbnail)
+        if let thumbnail, !thumbnail.isEmpty {
+            if thumbnail.hasPrefix("http") { return URL(string: thumbnail) }
+            return URL(string: Endpoint.baseURL.absoluteString + thumbnail)
+        }
+        // Fallback: Extract from trackUrl (e.g. youtube:xyz?thumb=...)
+        if let url = URL(string: trackUrl.replacingOccurrences(of: "youtube:", with: "youtube://")),
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let thumb = components.queryItems?.first(where: { $0.name == "thumb" })?.value {
+            return URL(string: thumb)
+        }
+        return nil
     }
 }
 
@@ -107,11 +116,13 @@ final class RoomManager: ObservableObject {
     @Published private(set) var isPrivate = false
     @Published var lastError: String?
     @Published var isEnqueueing = false
+    @Published var isSearchingArtwork = false
+    @Published var currentAnimatedArtworkURL: URL?
 
     let clock = SyncClock()
 
-    private var startEpoch: Double?
-    private var pauseOffset: Double = 0
+    @Published private(set) var startEpoch: Double?
+    @Published private(set) var pauseOffset: Double = 0
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
@@ -133,9 +144,10 @@ final class RoomManager: ObservableObject {
         guard isPlaying, let startEpoch else { return pauseOffset }
         return max(0, (clock.serverNow - startEpoch) / 1000)
     }
-
-    var durationSec: Double { currentTrack?.durationSec ?? 0 }
-
+    var durationSec: Double {
+        if let duration = currentTrack?.durationSec, duration > 0 { return duration }
+        return AudioEngine.shared.currentDuration
+    }
     var progress: Double {
         guard durationSec > 0 else { return 0 }
         return min(1, positionSec / durationSec)
@@ -183,18 +195,39 @@ final class RoomManager: ObservableObject {
             Task { @MainActor in self?.lastError = "Connection error: \(data.first ?? "unknown")" }
         }
 
-        // room:snapshot and room:stateChanged carry the same payload — the full room.
-        for event in ["room:snapshot", "room:stateChanged"] {
-            socket.on(event) { [weak self] data, _ in
-                guard let dict = data.first as? [String: Any] else { return }
-                Task { @MainActor in self?.apply(snapshot: dict) }
+        // room:snapshot fires on join/reconnect — always re-declare ready so the
+        // server's isReady flag is correct even after a socket reconnect.
+        socket.on("room:snapshot") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any] else { return }
+            Task { @MainActor in
+                self?.apply(snapshot: dict)
+                // Re-assert readiness immediately if we already have the file loaded.
+                if let track = self?.currentTrack, AudioEngine.shared.hasAudioFileLoaded {
+                    print("RoomManager: Re-asserting clientReady after room:snapshot (reconnect/join)")
+                    self?.emitClientReady(trackUrl: track.trackUrl)
+                }
             }
+        }
+
+        // room:stateChanged is high-frequency — just apply the state, no readiness re-emit.
+        socket.on("room:stateChanged") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any] else { return }
+            Task { @MainActor in self?.apply(snapshot: dict) }
         }
 
         socket.on("room:queueChanged") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any],
                   let raw = dict["queue"] as? [[String: Any]] else { return }
             Task { @MainActor in self?.apply(queue: raw) }
+        }
+
+        socket.on("room:queueSynced") { [weak self] data, _ in
+            if let raw = data.first as? [[String: Any]] {
+                Task { @MainActor in self?.apply(queue: raw) }
+            } else if let dict = data.first as? [String: Any],
+                      let raw = dict["queue"] as? [[String: Any]] {
+                Task { @MainActor in self?.apply(queue: raw) }
+            }
         }
 
         socket.on("sync:pong") { [weak self] data, _ in
@@ -239,24 +272,33 @@ final class RoomManager: ObservableObject {
         connection = .connected
         lastError = nil
 
-        // isReady: true — the Mac has no audio engine yet, so it must not hold the
-        // server's readiness gate closed for the devices that do.
+        // isReady: false — the Mac has an audio engine and needs to buffer
+        // before playing, so it holds the readiness gate.
         socket?.emit("room:join", [
             "roomId": roomId,
             "displayName": AuthManager.shared.currentUser?.name ?? Endpoint.deviceName,
             "userId": AuthManager.shared.currentUser?.id ?? "",
             "deviceId": Endpoint.deviceId,
-            "isReady": true,
+            "isReady": false,
         ] as [String: Any])
 
         socket?.emit("room:updateDevice", [
             "roomId": roomId,
             "deviceName": Endpoint.deviceName,
-            "deviceType": "desktop",
+            "deviceType": "native-mac",
         ] as [String: Any])
 
         burstPing(count: 7, spacingMs: 120)
         startResyncLoop()
+    }
+
+    func emitClientReady(trackUrl: String) {
+        emit("room:clientReady", ["trackUrl": trackUrl, "isReady": true])
+    }
+
+    func emitPlaybackEnded(trackUrl: String) {
+        guard !roomId.isEmpty else { return }
+        emit("playback:ended", ["roomId": roomId, "trackUrl": trackUrl])
     }
 
     // MARK: - Clock sync
@@ -296,9 +338,20 @@ final class RoomManager: ObservableObject {
         if let raw = snapshot["queue"] as? [[String: Any]] {
             apply(queue: raw)
         }
-        isPlaying = (snapshot["isPlaying"] as? Bool) ?? false
-        startEpoch = sbNum(snapshot["startEpoch"])
-        pauseOffset = sbNum(snapshot["pauseOffset"]) ?? 0
+        let newIsPlaying = (snapshot["isPlaying"] as? Bool) ?? false
+        let newStartEpoch = sbNum(snapshot["startEpoch"])
+        let newPauseOffset = sbNum(snapshot["pauseOffset"]) ?? 0
+        
+        if (newIsPlaying != isPlaying || newStartEpoch != startEpoch || newPauseOffset != pauseOffset), let lastTime = lastPlaybackCommandTime {
+            let latencyMs = Date().timeIntervalSince(lastTime) * 1000
+            print("RoomManager: Playback command roundtrip latency: \(String(format: "%.0f", latencyMs))ms")
+            lastPlaybackCommandTime = nil
+        }
+        
+        isPlaying = newIsPlaying
+        startEpoch = newStartEpoch
+        pauseOffset = newPauseOffset
+        
         shuffle = (snapshot["shuffle"] as? Bool) ?? false
         isPrivate = (snapshot["isPrivate"] as? Bool) ?? false
         if let raw = snapshot["repeatMode"] as? String, let mode = RepeatMode(rawValue: raw) {
@@ -308,9 +361,57 @@ final class RoomManager: ObservableObject {
 
     private func apply(queue raw: [[String: Any]]) {
         queue = raw.compactMap(QueueItem.init(dict:))
-        currentTrack = queue.first(where: \.isCurrent) ?? queue.first
+        let newTrack = queue.first(where: \.isCurrent) ?? queue.first
+        
+        if currentTrack?.id != newTrack?.id {
+            currentTrack = newTrack
+            if let t = newTrack {
+                Task { await fetchAnimatedArtwork(for: t) }
+            } else {
+                currentAnimatedArtworkURL = nil
+            }
+        }
+    }
+    
+    private func fetchAnimatedArtwork(for track: QueueItem) async {
+        isSearchingArtwork = true
+        defer { isSearchingArtwork = false }
+        
+        // 1. Search MusicKit for the track
+        let term = "\(track.title) \(track.artist)"
+        do {
+            guard MusicAuthorization.currentStatus == .authorized else { return }
+            var request = MusicCatalogSearchRequest(term: term, types: [Song.self])
+            request.limit = 1
+            let response = try await request.response()
+            guard let song = response.songs.first, let albumUrl = song.url else { return }
+            
+            // 2. Scrape Apple Music webpage
+            let (data, _) = try await URLSession.shared.data(from: albumUrl)
+            guard let html = String(data: data, encoding: .utf8) else { return }
+            
+            if let range = html.range(of: "<amp-ambient-video") {
+                let substring = html[range.upperBound...]
+                if let srcRange = substring.range(of: "src=\"") {
+                    let urlStart = srcRange.upperBound
+                    let remaining = substring[urlStart...]
+                    if let endQuote = remaining.range(of: "\"") {
+                        let videoUrlStr = String(remaining[..<endQuote.lowerBound])
+                        if let vUrl = URL(string: videoUrlStr) {
+                            await MainActor.run {
+                                self.currentAnimatedArtworkURL = vUrl
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("Artwork fetch failed: \(error)")
+        }
     }
 
+    private var lastPlaybackCommandTime: Date?
+    
     // MARK: - Playback commands
     //
     // Nothing is applied optimistically — every command round-trips through the
@@ -323,6 +424,11 @@ final class RoomManager: ObservableObject {
         }
         var body = payload
         body["roomId"] = roomId
+        
+        if event.starts(with: "playback:") {
+            lastPlaybackCommandTime = Date()
+        }
+        
         socket?.emit(event, body)
     }
 
@@ -337,6 +443,33 @@ final class RoomManager: ObservableObject {
 
     func jump(to item: QueueItem) { emit("playback:jumpTo", ["trackId": item.id]) }
     func remove(_ item: QueueItem) { emit("room:removeFromQueue", ["itemId": item.id]) }
+
+    func reorder(itemId: String, newIndex: Int) async {
+        guard let currentIdx = queue.firstIndex(where: { $0.id == itemId }) else { return }
+        var updated = queue
+        let item = updated.remove(at: currentIdx)
+        let targetIdx = max(0, min(newIndex, updated.count))
+        updated.insert(item, at: targetIdx)
+        self.queue = updated
+
+        struct ReorderResponse: Decodable { let ok: Bool? }
+        do {
+            let _: ReorderResponse = try await APIClient.shared.request(
+                path: "/rooms/\(roomId)/queue/reorder",
+                method: "PUT",
+                json: ["itemId": itemId, "newIndex": targetIdx],
+                requiresAuth: true
+            )
+        } catch {
+            print("RoomManager: Reorder request failed: \(error)")
+        }
+    }
+
+    func moveAfter(itemId: String, targetId: String) async {
+        guard itemId != targetId,
+              let targetIdx = queue.firstIndex(where: { $0.id == targetId }) else { return }
+        await reorder(itemId: itemId, newIndex: targetIdx + 1)
+    }
     func toggleShuffle() { emit("room:toggleShuffle", ["shuffle": !shuffle]) }
     func cycleRepeat() { emit("room:toggleRepeat", ["repeatMode": repeatMode.next.rawValue]) }
     func togglePrivate() { emit("room:togglePrivate", ["isPrivate": !isPrivate]) }
@@ -346,11 +479,34 @@ final class RoomManager: ObservableObject {
 
     // MARK: - Apple Music → queue
 
+    /// The queue entry for this song, if it's already in there.
+    ///
+    /// ponytail: matched on title alone, case- and whitespace-insensitive. The
+    /// enqueue call only forwards the title (the artist on the queue item comes back
+    /// from YouTube metadata and rarely matches Apple's), so artist can't be part of
+    /// the key. Two different songs sharing a title collide — add artist here if that
+    /// ever bites.
+    func queued(title: String) -> QueueItem? {
+        let needle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return queue.first { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(needle) == .orderedSame }
+    }
+
+    func isQueued(title: String) -> Bool { queued(title: title) != nil }
+
     /// Apple Music tracks can't be uploaded, so MusicBridge maps them to a YouTube
     /// equivalent and the normal enqueue route takes it from there.
-    func enqueueFromAppleMusic(title: String, artist: String) async {
+    func enqueueFromAppleMusic(title: String, artist: String, playNow: Bool = false) async {
         struct Resolved: Decodable { let youtubeId: String }
-        struct Ack: Decodable { let ok: Bool? }
+        struct DecodedItem: Decodable { let id: String }
+        struct Ack: Decodable { let item: DecodedItem? }
+
+        // Already queued → jump to it instead of stacking a second copy. This is also
+        // what stops a double-click (play-now) from adding the song twice: the
+        // single-tap handler fires first and the second tap lands here.
+        if let existing = queued(title: title) {
+            if playNow { jump(to: existing) }
+            return
+        }
 
         isEnqueueing = true
         defer { isEnqueueing = false }
@@ -362,7 +518,7 @@ final class RoomManager: ObservableObject {
                 json: ["title": title, "artist": artist],
                 requiresAuth: true
             )
-            let _: Ack = try await APIClient.shared.request(
+            let ack: Ack = try await APIClient.shared.request(
                 path: "/rooms/\(roomId)/enqueue-youtube",
                 method: "POST",
                 json: [
@@ -371,8 +527,35 @@ final class RoomManager: ObservableObject {
                 ],
                 requiresAuth: true
             )
+            if playNow, let trackId = ack.item?.id {
+                self.emit("playback:jumpTo", ["trackId": trackId])
+            }
         } catch {
             lastError = "Couldn't add “\(title)”: \(error.localizedDescription)"
+        }
+    }
+
+    /// Enqueues a track from a raw search query or YouTube link
+    func enqueueSearch(query: String) async {
+        if query.contains("youtube.com") || query.contains("youtu.be") {
+            struct DecodedItem: Decodable { let id: String }
+            struct Ack: Decodable { let item: DecodedItem? }
+            
+            isEnqueueing = true
+            defer { isEnqueueing = false }
+            do {
+                let ack: Ack = try await APIClient.shared.request(
+                    path: "/rooms/\(roomId)/enqueue-youtube",
+                    method: "POST",
+                    json: ["youtubeUrl": query],
+                    requiresAuth: true
+                )
+                if let trackId = ack.item?.id { self.emit("playback:jumpTo", ["trackId": trackId]) }
+            } catch {
+                lastError = "Couldn't add link: \(error.localizedDescription)"
+            }
+        } else {
+            await enqueueFromAppleMusic(title: query, artist: "", playNow: true)
         }
     }
 }

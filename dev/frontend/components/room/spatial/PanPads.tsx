@@ -173,7 +173,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
             <div
               key={d.deviceId}
               title={d.label}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/70"
+              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-field-400/70"
               style={{ left: pct(u), top: pct(w) }}
             />
           );

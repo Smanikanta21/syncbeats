@@ -26,8 +26,8 @@ const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
 ];
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
-  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className={cn('w-5', 'h-5', 'text-foreground/80')} />;
-  return <Laptop className={cn('w-5', 'h-5', 'text-foreground/80')} />;
+  if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-5 h-5 text-foreground/80" />;
+  return <Laptop className="w-5 h-5 text-foreground/80" />;
 }
 
 function getPlatformLabel(userAgent: string | null): string {
@@ -76,7 +76,10 @@ export default function ProfilePage() {
 
   // Verification & Export state
   const [resendingEmail, setResendingEmail] = useState(false);
-  const [emailNotice, setEmailNotice] = useState<string | null>(null);
+  // `ok` carries whether the notice is a success or a failure. It used to be a
+  // bare string rendered in green unconditionally, so a failed resend reported
+  // its error message in the success colour.
+  const [emailNotice, setEmailNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const displayName = profileName.trim() || user?.name || "—";
@@ -130,9 +133,9 @@ export default function ProfilePage() {
     setEmailNotice(null);
     try {
       await resendVerification(user.email);
-      setEmailNotice("Verification email enqueued. Please check your inbox.");
+      setEmailNotice({ text: "Verification email sent. Check your inbox.", ok: true });
     } catch (e: any) {
-      setEmailNotice(e.message || "Failed to resend verification email.");
+      setEmailNotice({ text: e.message || "Couldn't resend the verification email.", ok: false });
     } finally {
       setResendingEmail(false);
     }
@@ -229,7 +232,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className={cn('min-h-screen', 'w-full', 'bg-transparent', 'text-foreground', 'select-none', 'p-4', 'sm:p-6', 'md:p-10', 'relative')}>
+    <div className="min-h-screen w-full bg-transparent text-foreground select-none p-4 sm:p-6 md:p-10 relative">
       
       {/* ── Top Header Navigation Bar (Fixed Capsule) ───────────────── */}
       <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
@@ -255,9 +258,9 @@ export default function ProfilePage() {
             <ThemeToggle size="sm" />
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs sm:text-sm transition-all border border-red-500/20 active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 font-bold text-xs sm:text-sm transition-all border border-bad-500/20 active:scale-95"
             >
-              <LogOut className="w-4 h-4 text-red-400" />
+              <LogOut className="w-4 h-4 text-bad-700 dark:text-bad-400" />
               <span className="hidden sm:inline">Log Out</span>
             </button>
           </div>
@@ -265,10 +268,10 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Dual pane: identity + navigation on the left, active section right ── */}
-      <main className={cn('w-full', 'max-w-350', 'mx-auto', 'grid', 'grid-cols-1', 'lg:grid-cols-12', 'gap-8', 'z-10', 'pt-16', 'sm:pt-20')}>
+      <main className="w-full max-w-350 mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 z-10 pt-16 sm:pt-20">
 
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
-        <aside className={cn('lg:col-span-4', 'w-full', 'lg:sticky', 'lg:top-24', 'self-start', 'z-30', 'rounded-[2.5rem]', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-8', 'flex', 'flex-col', 'items-center', 'shadow-2xl', 'relative', 'overflow-hidden')}>
+        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start z-30 rounded-[2.5rem] bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15 p-6 sm:p-8 flex flex-col items-center shadow-2xl relative overflow-hidden">
           {/* Identity tint derived from the account id — personal to each user,
               instead of an arbitrary brand gradient nothing else in the app uses. */}
           <div
@@ -277,43 +280,43 @@ export default function ProfilePage() {
           />
 
           {/* Avatar */}
-          <div className={cn('relative', 'mb-4', 'mt-2')}>
+          <div className="relative mb-4 mt-2">
             <div
-              className={cn('relative', 'w-24', 'h-24', 'sm:w-28', 'sm:h-28', 'rounded-full', 'p-[2px]', 'shadow-xl')}
+              className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full p-[2px] shadow-xl"
               style={{ background: `linear-gradient(140deg, hsl(${identityHue} 85% 62%), hsl(${(identityHue + 48) % 360} 80% 48%))` }}
             >
-              <div className={cn('w-full', 'h-full', 'rounded-full', 'bg-background', 'dark:bg-black', 'flex', 'items-center', 'justify-center')}>
-                <span className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'text-foreground', 'tracking-wide')}>{initials}</span>
+              <div className="w-full h-full rounded-full bg-background dark:bg-black flex items-center justify-center">
+                <span className="text-3xl sm:text-4xl font-black text-foreground tracking-wide">{initials}</span>
               </div>
             </div>
           </div>
 
           {/* Display Name & Email */}
-          <div className={cn('w-full', 'text-center', 'mb-5')}>
+          <div className="w-full text-center mb-5">
             {!isEditingProfile ? (
-              <button type="button" className={cn('flex', 'flex-col', 'items-center', 'w-full', 'group')} onClick={() => setIsEditingProfile(true)}>
-                <h2 className={cn('text-2xl', 'sm:text-3xl', 'font-black', 'tracking-tight', 'text-foreground', 'flex', 'items-center', 'gap-2')}>
+              <button type="button" className="flex flex-col items-center w-full group" onClick={() => setIsEditingProfile(true)}>
+                <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
                   {displayName}
-                  <Edit3 className={cn('w-4', 'h-4', 'text-foreground/30', 'group-hover:text-foreground/80', 'transition-colors')} />
+                  <Edit3 className="w-4 h-4 text-foreground/30 group-hover:text-foreground/80 transition-colors" />
                 </h2>
-                <p className={cn('text-foreground/60', 'font-medium', 'text-sm', 'mt-1', 'break-all')}>{user?.email}</p>
+                <p className="text-foreground/60 font-medium text-sm mt-1 break-all">{user?.email}</p>
               </button>
             ) : (
-              <div className={cn('flex', 'flex-col', 'items-center', 'gap-3', 'w-full')}>
+              <div className="flex flex-col items-center gap-3 w-full">
                 <input
                   autoFocus
                   type="text"
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && saveEditProfile()}
-                  className={cn('w-full', 'text-center', 'rounded-2xl', 'border', 'border-foreground/20', 'bg-background/90', 'px-4', 'py-2.5', 'text-xl', 'font-black', 'tracking-tight', 'text-foreground', 'outline-none', 'focus:border-foreground/40')}
+                  className="w-full text-center rounded-2xl border border-foreground/20 bg-background/90 px-4 py-2.5 text-xl font-black tracking-tight text-foreground outline-none focus:border-foreground/40"
                   placeholder="Your name"
                 />
-                <div className={cn('flex', 'items-center', 'gap-2', 'w-full', 'justify-center')}>
-                  <button onClick={() => { setIsEditingProfile(false); setProfileName(user?.name ?? ""); }} className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'font-semibold', 'text-xs')}>
+                <div className="flex items-center gap-2 w-full justify-center">
+                  <button onClick={() => { setIsEditingProfile(false); setProfileName(user?.name ?? ""); }} className="flex-1 py-2 rounded-xl bg-foreground/10 text-foreground font-semibold text-xs">
                     Cancel
                   </button>
-                  <button onClick={saveEditProfile} disabled={isSavingProfile} className={cn('flex-1', 'py-2', 'rounded-xl', 'bg-foreground', 'text-background', 'font-bold', 'text-xs', 'hover:scale-95', 'transition-all')}>
+                  <button onClick={saveEditProfile} disabled={isSavingProfile} className="flex-1 py-2 rounded-xl bg-foreground text-background font-bold text-xs hover:scale-95 transition-all">
                     {isSavingProfile ? "Saving..." : "Save"}
                   </button>
                 </div>
@@ -321,43 +324,55 @@ export default function ProfilePage() {
             )}
 
             {/* Account Status Pills */}
-            <div className={cn('flex', 'items-center', 'justify-center', 'gap-2', 'mt-3.5', 'flex-wrap')}>
+            <div className="flex items-center justify-center gap-2 mt-3.5 flex-wrap">
               {emailVerified ? (
-                <span className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-emerald-500/30', 'bg-emerald-500/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-emerald-400')}>
-                  <CheckCircle2 className={cn('w-3.5', 'h-3.5')} /> Verified
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ok-500/30 bg-ok-500/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-ok-700 dark:text-ok-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
                 </span>
               ) : (
-                <button onClick={handleResendEmail} disabled={resendingEmail} className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-amber-500/30', 'bg-amber-500/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-amber-400', 'hover:bg-amber-500/20', 'transition-colors')}>
-                  <AlertTriangle className={cn('w-3.5', 'h-3.5')} /> Unverified (Resend)
+                <button onClick={handleResendEmail} disabled={resendingEmail} className="inline-flex items-center gap-1.5 rounded-full border border-warn-500/30 bg-warn-500/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-warn-700 dark:text-warn-400 hover:bg-warn-500/20 transition-colors">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Unverified (Resend)
                 </button>
               )}
 
               <button
                 onClick={copyAccountId}
-                className={cn('inline-flex', 'items-center', 'gap-1.5', 'rounded-full', 'border', 'border-foreground/15', 'bg-foreground/5', 'hover:bg-foreground/10', 'px-3.5', 'py-1', 'text-[10px]', 'font-bold', 'uppercase', 'tracking-[0.15em]', 'text-foreground/70', 'transition-all', 'active:scale-95')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/15 bg-foreground/5 hover:bg-foreground/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-foreground/70 transition-all active:scale-95"
               >
-                {copiedId ? <Check className={cn('w-3', 'h-3', 'text-emerald-400')} /> : <Copy className={cn('w-3', 'h-3')} />}
+                {copiedId ? <Check className="w-3 h-3 text-ok-700 dark:text-ok-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedId ? "Copied ID" : accountId}</span>
               </button>
             </div>
-            {emailNotice && <p className={cn('text-xs', 'text-emerald-400', 'mt-2')}>{emailNotice}</p>}
+            {emailNotice && (
+              <p
+                role="status"
+                className={cn(
+                  'text-xs', 'mt-2',
+                  emailNotice.ok
+                    ? 'text-ok-600 dark:text-ok-400'
+                    : 'text-bad-600 dark:text-bad-400',
+                )}
+              >
+                {emailNotice.text}
+              </p>
+            )}
           </div>
 
           {/* Two numbers worth showing. hostedSessionCount was already being
               fetched here and never rendered. */}
-          <div className={cn('w-full', 'grid', 'grid-cols-2', 'gap-3', 'mb-5')}>
-            <div className={cn('rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-3', 'py-3.5', 'text-center')}>
-              <span className={cn('block', 'text-2xl', 'font-black', 'text-foreground', 'leading-none')}>{devices.length}</span>
-              <span className={cn('block', 'text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-1.5')}>Devices</span>
+          <div className="w-full grid grid-cols-2 gap-3 mb-5">
+            <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
+              <span className="block text-2xl font-black text-foreground leading-none">{devices.length}</span>
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-foreground/50 mt-1.5">Devices</span>
             </div>
-            <div className={cn('rounded-2xl', 'border', 'border-foreground/10', 'bg-foreground/5', 'px-3', 'py-3.5', 'text-center')}>
-              <span className={cn('block', 'text-2xl', 'font-black', 'text-foreground', 'leading-none')}>{hostedSessionCount}</span>
-              <span className={cn('block', 'text-[9px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'mt-1.5')}>Rooms Hosted</span>
+            <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
+              <span className="block text-2xl font-black text-foreground leading-none">{hostedSessionCount}</span>
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-foreground/50 mt-1.5">Rooms Hosted</span>
             </div>
           </div>
 
           {/* Navigation Dock */}
-          <nav className={cn('w-full', 'flex', 'flex-col', 'gap-1.5')}>
+          <nav className="w-full flex flex-col gap-1.5">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -395,7 +410,7 @@ export default function ProfilePage() {
         </aside>
 
         {/* ── Right Pane: Active Production Section (8 Cols) ─────────────── */}
-        <section className={cn('lg:col-span-8', 'w-full', 'rounded-[2.5rem]', 'bg-background/80', 'dark:bg-black/80', 'backdrop-blur-3xl', 'border', 'border-foreground/15', 'p-6', 'sm:p-10', 'shadow-2xl', 'min-h-162.5', 'relative', 'overflow-hidden', 'flex', 'flex-col')}>
+        <section className="lg:col-span-8 w-full rounded-[2.5rem] bg-background/80 dark:bg-black/80 backdrop-blur-3xl border border-foreground/15 p-6 sm:p-10 shadow-2xl min-h-162.5 relative overflow-hidden flex flex-col">
           <AnimatePresence mode="wait">
             
             {/* 1. App Settings & Audio Tab */}
@@ -405,7 +420,7 @@ export default function ProfilePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className={cn('w-full', 'flex', 'flex-col', 'min-h-150')}
+                className="w-full flex flex-col min-h-150"
               >
                 <SettingsPanel
                   isEmbedded={true}
@@ -423,19 +438,19 @@ export default function ProfilePage() {
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-6"
               >
-                <div className={cn('flex', 'items-center', 'justify-between', 'border-b', 'border-foreground/10', 'pb-4')}>
+                <div className="flex items-center justify-between border-b border-foreground/10 pb-4">
                   <div>
-                    <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Devices</h2>
-                    <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Everything signed in to your account. Each one can play in sync.</p>
+                    <h2 className="text-2xl font-black tracking-tight text-foreground">Devices</h2>
+                    <p className="text-xs sm:text-sm text-foreground/50 mt-1">Everything signed in to your account. Each one can play in sync.</p>
                   </div>
-                  <span className={cn('px-3.5', 'py-1.5', 'rounded-full', 'bg-foreground/10', 'text-foreground', 'text-xs', 'font-black', 'uppercase', 'tracking-widest', 'border', 'border-foreground/10', 'shrink-0')}>
+                  <span className="px-3.5 py-1.5 rounded-full bg-foreground/10 text-foreground text-xs font-black uppercase tracking-widest border border-foreground/10 shrink-0">
                     {devices.length}
                   </span>
                 </div>
 
-                <div className={cn('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-4')}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {devices.length === 0 ? (
-                    <p className={cn('col-span-2', 'text-foreground/40', 'text-sm', 'font-medium', 'text-center', 'py-16')}>Nothing registered yet. Sign in on a phone or laptop and it&apos;ll appear here.</p>
+                    <p className="col-span-2 text-foreground/40 text-sm font-medium text-center py-16">Nothing registered yet. Sign in on a phone or laptop and it&apos;ll appear here.</p>
                   ) : (
                     devices.map((savedDevice) => {
                       const isCurrent = device?.id === savedDevice.id;
@@ -450,51 +465,51 @@ export default function ProfilePage() {
                             : 'bg-foreground/3 border-foreground/10 hover:border-foreground/25'
                         )}>
                           {!isEditingThis ? (
-                            <div className={cn('flex', 'items-center', 'justify-between', 'gap-4')}>
-                              <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
-                                <div className={cn('shrink-0', 'text-foreground/70')}>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="shrink-0 text-foreground/70">
                                   <DeviceGlyph userAgent={savedDevice.user_agent} />
                                 </div>
-                                <div className={cn('min-w-0', 'flex', 'flex-col')}>
-                                  <div className={cn('flex', 'items-center', 'gap-2')}>
-                                    <h4 className={cn('font-bold', 'text-foreground', 'text-base', 'truncate')}>{savedDevice.name}</h4>
-                                    {isCurrent && <span className={cn('px-2.5', 'py-0.5', 'rounded-full', 'bg-emerald-500/20', 'text-emerald-400', 'text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'shrink-0')}>This one</span>}
+                                <div className="min-w-0 flex flex-col">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
+                                    {isCurrent && <span className="px-2.5 py-0.5 rounded-full bg-ok-500/20 text-ok-700 dark:text-ok-400 text-[9px] font-black uppercase tracking-widest shrink-0">This one</span>}
                                   </div>
-                                  <div className={cn('flex', 'items-center', 'gap-2', 'mt-1')}>
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-foreground/25' : 'bg-green-400 animate-pulse'}`} />
-                                    <span className={cn('text-xs', 'text-foreground/50', 'truncate')}>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-foreground/25' : 'bg-ok-400 animate-pulse'}`} />
+                                    <span className="text-xs text-foreground/50 truncate">
                                       {getPlatformLabel(savedDevice.user_agent)} · {isOffline ? 'Offline' : 'Online'}
                                     </span>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
-                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'text-xs', 'font-bold', 'transition-colors')}>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="px-3.5 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground text-xs font-bold transition-colors">
                                   Rename
                                 </button>
                                 {!isCurrent && (
-                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className={cn('px-3', 'py-2', 'rounded-xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'transition-colors')}>
+                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className="px-3 py-2 rounded-xl bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 text-xs font-bold transition-colors">
                                     Remove
                                   </button>
                                 )}
                               </div>
                             </div>
                           ) : (
-                            <form onSubmit={handleDeviceRename} className={cn('flex', 'flex-col', 'gap-3')}>
-                              <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Rename Device</label>
+                            <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
                               <input
                                 autoFocus
                                 value={editingDeviceName}
                                 onChange={(e) => setEditingDeviceName(e.target.value)}
-                                className={cn('w-full', 'rounded-2xl', 'border', 'border-foreground/20', 'bg-background', 'px-4', 'py-2.5', 'text-sm', 'font-bold', 'text-foreground', 'outline-none')}
+                                className="w-full rounded-2xl border border-foreground/20 bg-background px-4 py-2.5 text-sm font-bold text-foreground outline-none"
                                 placeholder="Device Name"
                               />
-                              <div className={cn('flex', 'items-center', 'gap-2', 'justify-end', 'mt-1')}>
-                                <button type="button" onClick={() => setEditingDeviceId(null)} className={cn('px-4', 'py-2', 'rounded-xl', 'text-xs', 'font-semibold', 'text-foreground/70', 'hover:bg-foreground/10')}>
+                              <div className="flex items-center gap-2 justify-end mt-1">
+                                <button type="button" onClick={() => setEditingDeviceId(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-foreground/70 hover:bg-foreground/10">
                                   Cancel
                                 </button>
-                                <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className={cn('px-5', 'py-2', 'rounded-xl', 'text-xs', 'font-bold', 'bg-foreground', 'text-background')}>
+                                <button type="submit" disabled={savingDeviceRename || !editingDeviceName.trim()} className="px-5 py-2 rounded-xl text-xs font-bold bg-foreground text-background">
                                   {savingDeviceRename ? "Saving..." : "Save"}
                                 </button>
                               </div>
@@ -517,16 +532,16 @@ export default function ProfilePage() {
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-6 max-w-2xl"
               >
-                <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Integrations</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Connect an external account to import playlists into your queue.</p>
+                <div className="border-b border-foreground/10 pb-4">
+                  <h2 className="text-2xl font-black tracking-tight text-foreground">Integrations</h2>
+                  <p className="text-xs sm:text-sm text-foreground/50 mt-1">Connect an external account to import playlists into your queue.</p>
                 </div>
 
                 <div className="space-y-4">
                   {/* YouTube Integration */}
-                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-foreground/3', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
+                  <div className="p-5 rounded-3xl border border-foreground/10 bg-foreground/3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                      <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-[#FF0000]/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
+                      <div className="w-12 h-12 rounded-full bg-[#FF0000]/10 flex items-center justify-center shrink-0">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                       </div>
                       <div>
@@ -542,14 +557,14 @@ export default function ProfilePage() {
                           await youtubeApi.disconnect();
                           setYoutubeConnected(false);
                         }}
-                        className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground/5', 'hover:bg-red-500/10', 'text-foreground/70', 'hover:text-red-400', 'text-xs', 'font-bold', 'transition-all')}
+                        className="px-4 py-2 rounded-xl bg-foreground/5 hover:bg-bad-500/10 text-foreground/70 hover:text-bad-700 dark:text-bad-400 text-xs font-bold transition-all"
                       >
                         Disconnect
                       </button>
                     ) : (
                       <a
                         href={youtubeApi.getConnectUrl()}
-                        className={cn('px-4', 'py-2', 'rounded-xl', 'bg-[#FF0000]', 'hover:bg-[#ff3333]', 'text-white', 'text-xs', 'font-bold', 'transition-all')}
+                        className="px-4 py-2 rounded-xl bg-[#FF0000] hover:bg-[#ff3333] text-white text-xs font-bold transition-all"
                       >
                         Connect Account
                       </a>
@@ -557,9 +572,9 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Spotify Integration */}
-                  <div className={cn('p-5', 'rounded-3xl', 'border', 'border-foreground/10', 'bg-foreground/3', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
+                  <div className="p-5 rounded-3xl border border-foreground/10 bg-foreground/3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                      <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-[#1DB954]/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
+                      <div className="w-12 h-12 rounded-full bg-[#1DB954]/10 flex items-center justify-center shrink-0">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.24 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15.001 10.681 18.72 12.96c.42.18.6.78.24 1.08zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" /></svg>
                       </div>
                       <div>
@@ -569,7 +584,7 @@ export default function ProfilePage() {
                     </div>
                     <button
                       disabled
-                      className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground/5', 'text-foreground/40', 'text-xs', 'font-bold', 'cursor-not-allowed')}
+                      className="px-4 py-2 rounded-xl bg-foreground/5 text-foreground/40 text-xs font-bold cursor-not-allowed"
                     >
                       Coming Soon
                     </button>
@@ -585,11 +600,11 @@ export default function ProfilePage() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className={cn('space-y-6', 'max-w-2xl')}
+                className="space-y-6 max-w-2xl"
               >
-                <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Security</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Change the password you use to sign in.</p>
+                <div className="border-b border-foreground/10 pb-4">
+                  <h2 className="text-2xl font-black tracking-tight text-foreground">Security</h2>
+                  <p className="text-xs sm:text-sm text-foreground/50 mt-1">Change the password you use to sign in.</p>
                 </div>
 
                 <ForgotPasswordPanel onClose={() => setActiveTab('settings')} initialEmail={user?.email || ""} />
@@ -605,22 +620,22 @@ export default function ProfilePage() {
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-8"
               >
-                <div className={cn('border-b', 'border-foreground/10', 'pb-4')}>
-                  <h2 className={cn('text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>Data & privacy</h2>
-                  <p className={cn('text-xs', 'sm:text-sm', 'text-foreground/50', 'mt-1')}>Take a copy of your data, check your connection, or close your account.</p>
+                <div className="border-b border-foreground/10 pb-4">
+                  <h2 className="text-2xl font-black tracking-tight text-foreground">Data & privacy</h2>
+                  <p className="text-xs sm:text-sm text-foreground/50 mt-1">Take a copy of your data, check your connection, or close your account.</p>
                 </div>
 
                 {/* Data Export Card */}
-                <div className={cn('p-6', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4')}>
-                  <div className={cn('flex', 'flex-col', 'gap-1')}>
-                    <h4 className={cn('font-bold', 'text-foreground', 'text-base')}>Export your data</h4>
-                    <p className={cn('text-xs', 'text-foreground/50')}>A JSON file with your profile, settings, and device list.</p>
+                <div className="p-6 rounded-3xl bg-foreground/5 border border-foreground/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <h4 className="font-bold text-foreground text-base">Export your data</h4>
+                    <p className="text-xs text-foreground/50">A JSON file with your profile, settings, and device list.</p>
                   </div>
                   <button
                     onClick={exportUserData}
-                    className={cn('flex', 'items-center', 'gap-2', 'px-5', 'py-3', 'rounded-2xl', 'bg-foreground', 'text-background', 'font-bold', 'text-xs', 'hover:scale-95', 'transition-all', 'shrink-0', 'shadow-lg')}
+                    className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-foreground text-background font-bold text-xs hover:scale-95 transition-all shrink-0 shadow-lg"
                   >
-                    <Download className={cn('w-4', 'h-4')} />
+                    <Download className="w-4 h-4" />
                     <span>Download JSON</span>
                   </button>
                 </div>
@@ -628,50 +643,50 @@ export default function ProfilePage() {
                 {/* Connection — read from ConnectionContext, so these reflect
                     what's actually happening rather than hardcoded "Connected". */}
                 <div className="space-y-3">
-                  <h4 className={cn('font-bold', 'text-sm', 'uppercase', 'tracking-widest', 'text-foreground/50')}>Connection</h4>
-                  <div className={cn('grid', 'grid-cols-1', 'sm:grid-cols-3', 'gap-4')}>
+                  <h4 className="font-bold text-sm uppercase tracking-widest text-foreground/50">Connection</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {[
                       { label: 'Network', ok: isOnline, good: 'Online', bad: 'Offline' },
                       { label: 'Server', ok: isServerReachable, good: 'Reachable', bad: 'Unreachable' },
                       { label: 'Realtime', ok: isSocketConnected, good: 'Connected', bad: 'Disconnected' },
                     ].map(({ label, ok, good, bad }) => (
-                      <div key={label} className={cn('p-4', 'rounded-2xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'flex-col', 'gap-1')}>
-                        <span className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>{label}</span>
-                        <span className={cn('text-sm', 'font-bold', 'flex', 'items-center', 'gap-1.5', ok ? 'text-emerald-400' : 'text-red-400')}>
+                      <div key={label} className="p-4 rounded-2xl bg-foreground/5 border border-foreground/10 flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">{label}</span>
+                        <span className={cn('text-sm', 'font-bold', 'flex', 'items-center', 'gap-1.5', ok ? 'text-ok-700 dark:text-ok-400' : 'text-bad-700 dark:text-bad-400')}>
                           {ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
                           {ok ? good : bad}
                         </span>
                       </div>
                     ))}
                   </div>
-                  <p className={cn('text-[11px]', 'text-foreground/35')}>SyncBeats v1.4.0</p>
+                  <p className="text-[11px] text-foreground/35">SyncBeats v1.4.0</p>
                 </div>
 
                 {/* Danger Zone */}
-                <div className={cn('pt-6', 'border-t', 'border-red-500/20', 'space-y-4')}>
-                  <div className={cn('flex', 'flex-col', 'gap-1')}>
-                    <h4 className={cn('font-black', 'text-red-400', 'text-base', 'flex', 'items-center', 'gap-2')}>
-                      <AlertTriangle className={cn('w-4', 'h-4')} /> Danger zone
+                <div className="pt-6 border-t border-bad-500/20 space-y-4">
+                  <div className="flex flex-col gap-1">
+                    <h4 className="font-black text-bad-700 dark:text-bad-400 text-base flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" /> Danger zone
                     </h4>
-                    <p className={cn('text-xs', 'text-foreground/50')}>Request permanent deletion of your account, rooms, uploads and listening history.</p>
+                    <p className="text-xs text-foreground/50">Request permanent deletion of your account, rooms, uploads and listening history.</p>
                   </div>
 
                   {!showDeleteModal ? (
                     <button
                       onClick={() => setShowDeleteModal(true)}
-                      className={cn('px-5', 'py-3', 'rounded-2xl', 'bg-red-500/10', 'hover:bg-red-500/20', 'text-red-400', 'border', 'border-red-500/30', 'font-bold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-2')}
+                      className="px-5 py-3 rounded-2xl bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 border border-bad-500/30 font-bold text-xs transition-all active:scale-95 flex items-center gap-2"
                     >
-                      <Trash2 className={cn('w-4', 'h-4')} />
+                      <Trash2 className="w-4 h-4" />
                       <span>Delete Account</span>
                     </button>
                   ) : (
-                    <div className={cn('p-4', 'rounded-2xl', 'bg-red-500/10', 'border', 'border-red-500/30', 'flex', 'flex-col', 'gap-3', 'max-w-md')}>
-                      <p className={cn('text-xs', 'text-red-300', 'font-semibold')}>Deletion is handled by hand for now. This opens a pre-filled email to support — we wipe the account and everything attached to it, and it can&apos;t be undone.</p>
-                      <div className={cn('flex', 'items-center', 'gap-2')}>
-                        <button onClick={() => setShowDeleteModal(false)} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'font-semibold', 'text-xs')}>
+                    <div className="p-4 rounded-2xl bg-bad-500/10 border border-bad-500/30 flex flex-col gap-3 max-w-md">
+                      <p className="text-xs text-bad-700 dark:text-bad-300 font-semibold">Deletion is handled by hand for now. This opens a pre-filled email to support — we wipe the account and everything attached to it, and it can&apos;t be undone.</p>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 rounded-xl bg-foreground/10 text-foreground font-semibold text-xs">
                           Cancel
                         </button>
-                        <a href={deleteRequestHref} className={cn('px-4', 'py-2', 'rounded-xl', 'bg-red-500', 'text-white', 'font-bold', 'text-xs')}>
+                        <a href={deleteRequestHref} className="px-4 py-2 rounded-xl bg-bad-500 text-white font-bold text-xs">
                           Email the request
                         </a>
                       </div>

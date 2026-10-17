@@ -46,7 +46,7 @@ export function InstagramFollowButton({
         )}
         aria-label="Follow SyncBeats on Instagram"
       >
-        <InstagramIcon className={cn('w-4', 'h-4', 'shrink-0')} />
+        <InstagramIcon className="w-4 h-4 shrink-0" />
         <span>Follow @syncbeats.in</span>
       </a>
     );
@@ -63,7 +63,7 @@ export function InstagramFollowButton({
           className
         )}
       >
-        <InstagramIcon className={cn('w-4', 'h-4', 'shrink-0')} />
+        <InstagramIcon className="w-4 h-4 shrink-0" />
         <span>{showHandle ? "Follow @syncbeats.in" : "Follow on Instagram"}</span>
       </a>
     );
@@ -80,7 +80,7 @@ export function InstagramFollowButton({
           className
         )}
       >
-        <InstagramIcon className={cn('w-4', 'h-4', 'shrink-0', 'text-white')} />
+        <InstagramIcon className="w-4 h-4 shrink-0 text-white" />
         <span>{showHandle ? "@syncbeats.in" : "Follow Us"}</span>
       </a>
     );
@@ -117,7 +117,7 @@ export function InstagramFollowButton({
       </div>
 
       {/* Label with Hover Gradient Text */}
-      <span className="relative z-10 font-black tracking-widest uppercase transition-all duration-300 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-pink-400 group-hover:via-rose-400 group-hover:to-amber-300">
+      <span className="relative z-10 font-black tracking-widest uppercase transition-all duration-300 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-pink-400 group-hover:via-[#fd1d1d] group-hover:to-[#fcb045]">
         {showHandle ? "Follow @syncbeats.in" : "Follow on Instagram"}
       </span>
     </motion.a>

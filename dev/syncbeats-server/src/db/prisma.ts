@@ -77,15 +77,6 @@ void (async () => {
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "admin_audit_logs" (
-        "id" TEXT NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
-        "action" TEXT NOT NULL,
-        "details" TEXT,
-        "ip" TEXT,
-        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
   } catch (err: any) {
     // Ignore schema auto-creation notice
   }

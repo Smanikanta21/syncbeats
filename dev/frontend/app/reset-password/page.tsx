@@ -64,7 +64,7 @@ function ResetPasswordContent() {
         </p>
 
         {done ? (
-          <div className="mt-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300 flex items-center gap-2">
+          <div className="mt-6 rounded-xl border border-ok-500/30 bg-ok-500/10 p-4 text-sm text-ok-600 dark:text-ok-300 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" /> Password updated successfully.
           </div>
         ) : (
@@ -116,7 +116,7 @@ function ResetPasswordContent() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-300 flex items-center gap-2">
+              <p className="text-sm text-bad-600 dark:text-bad-300 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4" />
                 {error}
               </p>

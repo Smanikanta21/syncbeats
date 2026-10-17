@@ -48,7 +48,11 @@ function NavigationProgressContent() {
             scaleX: { duration: 0.4, ease: "easeOut" },
             opacity: { duration: 0.2 },
           }}
-          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] pointer-events-none"
+          // The bar sweeps dye -> field, so a navigation reads as the two inks
+          // crossing. Was emerald -> teal -> cyan with a hardcoded emerald glow
+          // (rgba(52,211,153,.8)) that the colour sweep could not reach, which
+          // left the glow a full palette behind the gradient above it.
+          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-dye-500 via-dye-400 to-field-500 shadow-[0_0_12px_var(--accent-glow)] pointer-events-none"
         />
       )}
     </AnimatePresence>

@@ -453,10 +453,10 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
      Render
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   return (
-    <div className={cn('w-full', 'h-full', 'flex', 'flex-col', 'relative', 'select-none')}>
+    <div className="w-full h-full flex flex-col relative select-none">
 
       {/* Floating Tab switcher on the right */}
-      <div className={cn('absolute', '-top-2', 'right-1', 'flex', 'items-center', 'gap-1', 'bg-foreground/8', 'rounded-full', 'p-1', 'border', 'border-foreground/10', 'z-50', 'shadow-md')}>
+      <div className="absolute -top-2 right-1 flex items-center gap-1 bg-foreground/8 rounded-full p-1 border border-foreground/10 z-50 shadow-md">
         <button
           onClick={() => setActiveTab('lyrics')}
           className={cn(
@@ -467,7 +467,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
           )}
           title="Lyrics"
         >
-          <Mic2 className={cn('w-4', 'h-4')} />
+          <Mic2 className="w-4 h-4" />
         </button>
         <button
           onClick={() => setActiveTab('eq')}
@@ -479,23 +479,23 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
           )}
           title="EQ"
         >
-          <SlidersHorizontal className={cn('w-4', 'h-4')} />
+          <SlidersHorizontal className="w-4 h-4" />
         </button>
       </div>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className={cn('flex', 'items-center', 'justify-end', 'mb-1.5', 'shrink-0', 'gap-1.5', 'relative', 'z-40', 'pr-24')}>
+      <div className="flex items-center justify-end mb-1.5 shrink-0 gap-1.5 relative z-40 pr-24">
 
         {activeTab === 'eq' && (
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'min-w-0', 'flex-1')}>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
             {/* Custom Compact Glassmorphic Preset Dropdown */}
-            <div ref={dropdownRef} className={cn('relative', 'shrink-0', 'z-50')}>
+            <div ref={dropdownRef} className="relative shrink-0 z-50">
             <button
               type="button"
               onClick={() => setIsPresetOpen(!isPresetOpen)}
-              className={cn('bg-foreground/10', 'border', 'border-foreground/15', 'text-foreground/90', 'text-[10px]', 'sm:text-xs', 'font-bold', 'uppercase', 'tracking-wider', 'px-2.5', 'h-6', 'rounded-full', 'outline-none', 'cursor-pointer', 'hover:bg-foreground/20', 'active:scale-95', 'transition-all', 'flex', 'items-center', 'gap-1', 'shadow-sm')}
+              className="bg-foreground/10 border border-foreground/15 text-foreground/90 text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/20 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
             >
-              <span className={cn('truncate', 'max-w-21.25', 'xs:max-w-none')}>{currentPreset}</span>
+              <span className="truncate max-w-21.25 xs:max-w-none">{currentPreset}</span>
               <ChevronDown className={cn("w-3 h-3 text-foreground/50 transition-transform duration-200", isPresetOpen && "rotate-180")} />
             </button>
 
@@ -506,7 +506,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.95 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className={cn('absolute', 'left-0', 'top-full', 'mt-1.5', 'w-40', 'bg-zinc-900/95', 'backdrop-blur-2xl', 'border', 'border-white/15', 'rounded-xl', 'shadow-2xl', 'p-1', 'z-100', 'max-h-56', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-0.5')}
+                  className="absolute left-0 top-full mt-1.5 w-40 bg-zinc-900/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl p-1 z-100 max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
                 >
                   {Object.keys(PRESETS).map(p => {
                     const isSelected = currentPreset === p;
@@ -521,12 +521,12 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
                         className={cn(
                           "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wider uppercase transition-all flex items-center justify-between cursor-pointer",
                           isSelected
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            ? "bg-field-500/20 text-field-400 border border-field-500/30"
                             : "text-white/80 hover:bg-white/10 hover:text-white border border-transparent"
                         )}
                       >
                         <span className="truncate">{p}</span>
-                        {isSelected && <Check className={cn('w-3', 'h-3', 'text-emerald-400', 'shrink-0', 'ml-1')} />}
+                        {isSelected && <Check className="w-3 h-3 text-field-400 shrink-0 ml-1" />}
                       </button>
                     );
                   })}
@@ -537,14 +537,14 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
 
           {activeTab === 'eq' && isModified && (
             <button onClick={resetFlat} title="Reset to Flat"
-              className={cn('w-6', 'h-6', 'rounded-full', 'bg-foreground/8', 'border', 'border-foreground/10', 'hover:bg-foreground/20', 'text-foreground/50', 'hover:text-foreground', 'transition-all', 'flex', 'items-center', 'justify-center', 'cursor-pointer', 'shrink-0')}>
-              <RotateCcw className={cn('w-3', 'h-3')} />
+              className="w-6 h-6 rounded-full bg-foreground/8 border border-foreground/10 hover:bg-foreground/20 text-foreground/50 hover:text-foreground transition-all flex items-center justify-center cursor-pointer shrink-0">
+              <RotateCcw className="w-3 h-3" />
             </button>
           )}
         </div>
         )}
 
-        <div className={cn('flex', 'items-center', 'gap-1', 'shrink-0')}>
+        <div className="flex items-center gap-1 shrink-0">
           <HoverExpandPill
             icon={Lightbulb}
             label="Ambient"
@@ -573,7 +573,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className={cn('flex-1', 'min-h-0', 'flex', 'flex-col', 'w-full', 'h-full')}
+            className="flex-1 min-h-0 flex flex-col w-full h-full"
           >
             <SyncedLyrics
               title={trackTitle ?? null}
@@ -590,21 +590,21 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className={cn('flex-1', 'min-h-0', 'flex', 'flex-col', 'w-full', 'h-full')}
+            className="flex-1 min-h-0 flex flex-col w-full h-full"
           >
-      <div className={cn('flex-1', 'min-h-0', 'relative', 'rounded-2xl', 'overflow-hidden', 'bg-foreground/5', 'dark:bg-black/30', 'border', 'border-foreground/10', 'dark:border-white/5')}>
+      <div className="flex-1 min-h-0 relative rounded-2xl overflow-hidden bg-foreground/5 dark:bg-black/30 border border-foreground/10 dark:border-white/5">
 
         {/* Canvas: center-aligned frequency bars */}
         <canvas
           ref={setCanvasNode}
-          className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'pointer-events-none')}
+          className="absolute inset-0 w-full h-full pointer-events-none"
           style={{ zIndex: 0 }}
         />
 
         {/* SVG: EQ curve + handles */}
         <svg
           ref={setSvgNode}
-          className={cn('absolute', 'inset-0', 'w-full', 'h-full')}
+          className="absolute inset-0 w-full h-full"
           style={{ cursor: dragging !== null ? "grabbing" : "default", touchAction: "none", zIndex: 1 }}
           onPointerMove={onMove}
           onPointerUp={onUp}

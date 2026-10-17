@@ -23,10 +23,24 @@ interface DevicesPaneProps {
   onVolumeChange?: (socketId: string, volume: number) => void;
 }
 
+/**
+ * Latency readout colour. This is a genuine state signal — good / marginal /
+ * bad round-trip — so it reads the semantic tokens rather than the brand inks.
+ *
+ * Previously returned raw Tailwind v3 hexes (#22c55e, #eab308, #ef4444), which
+ * the token sweep could not reach because they are string literals behind a
+ * function. That left them a palette behind the card they sit in, whose border,
+ * fill and status dot are all ok/warn/bad now — two greens disagreeing side by
+ * side. The steps are the dark end of each scale because this renders as 12px
+ * text on a background that is paper in the light theme: warn-500 is L81.7%
+ * (~1.3:1) and even warn-700 only reaches ~3.1:1, so amber needs 800 to clear
+ * 4.5:1. The sim's own dark theme keeps these readable too — they sit near 5:1
+ * against the depth ground.
+ */
 function latencyColor(ms: number): string {
-  if (ms < 50) return "#22c55e";
-  if (ms < 120) return "#eab308";
-  return "#ef4444";
+  if (ms < 50) return "var(--color-ok-700)";
+  if (ms < 120) return "var(--color-warn-800)";
+  return "var(--color-bad-700)";
 }
 
 function formatLastSeen(dateStr?: string | null): string {
@@ -74,42 +88,42 @@ function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Dev
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 0.65, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className={cn('group', 'rounded-xl', 'border', 'border-foreground/5', 'bg-foreground/2', 'px-3', 'py-2.5', 'flex', 'items-center', 'justify-between', 'gap-3', 'transition-opacity', 'duration-200')}
+      className="group rounded-xl border border-foreground/5 bg-foreground/2 px-3 py-2.5 flex items-center justify-between gap-3 transition-opacity duration-200"
     >
-      <div className={cn('flex', 'items-center', 'gap-3', 'min-w-0')}>
-        <div className={cn('relative', 'w-8', 'h-8', 'rounded-lg', 'flex', 'items-center', 'justify-center', 'shrink-0', 'bg-foreground/5', 'text-foreground/40')}>
-          <DevIcon className={cn('w-4', 'h-4')} />
-          <div className={cn('absolute', '-bottom-0.5', '-right-0.5', 'w-2', 'h-2', 'bg-foreground/20', 'rounded-full', 'border', 'border-background')} />
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-foreground/5 text-foreground/40">
+          <DevIcon className="w-4 h-4" />
+          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-foreground/20 rounded-full border border-background" />
         </div>
 
-        <div className={cn('flex-1', 'min-w-0')}>
+        <div className="flex-1 min-w-0">
           {isEditing ? (
-            <div className={cn('flex', 'items-center', 'gap-1.5', 'mr-2')}>
+            <div className="flex items-center gap-1.5 mr-2">
               <input
                 autoFocus
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSave()}
-                className={cn('w-full', 'bg-background', 'text-xs', 'font-bold', 'text-foreground', 'rounded-md', 'px-2', 'py-1', 'border', 'border-foreground/20', 'outline-none')}
+                className="w-full bg-background text-xs font-bold text-foreground rounded-md px-2 py-1 border border-foreground/20 outline-none"
                 disabled={saving}
               />
-              <button onClick={handleSave} disabled={saving} className={cn('text-[10px]', 'font-bold', 'bg-emerald-500/20', 'text-emerald-400', 'px-2', 'py-1', 'rounded-md')}>
+              <button onClick={handleSave} disabled={saving} className="text-[10px] font-bold bg-ok-500/20 text-ok-700 dark:text-ok-400 px-2 py-1 rounded-md">
                 {saving ? '...' : 'Save'}
               </button>
             </div>
           ) : (
-            <div className={cn('flex', 'items-center', 'gap-2')}>
-              <span className={cn('text-xs', 'font-bold', 'text-foreground/60', 'truncate')}>{displayName}</span>
-              <button onClick={() => setIsEditing(true)} className={cn('opacity-0', 'group-hover:opacity-100', 'focus-visible:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}>Edit</button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-foreground/60 truncate">{displayName}</span>
+              <button onClick={() => setIsEditing(true)} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity">Edit</button>
             </div>
           )}
-          {!isEditing && <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/35', 'block', 'mt-0.5')}>{lastSeenStr}</span>}
+          {!isEditing && <span className="text-[10px] font-semibold text-foreground/35 block mt-0.5">{lastSeenStr}</span>}
         </div>
       </div>
 
       {!isEditing && (
-        <div className={cn('flex', 'items-center', 'gap-1.5', 'px-2', 'py-0.5', 'rounded-md', 'bg-foreground/5', 'border', 'border-foreground/10', 'shrink-0')}>
-          <span className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-wider', 'text-foreground/40')}>Offline</span>
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-foreground/5 border border-foreground/10 shrink-0">
+          <span className="text-[9px] font-black uppercase tracking-wider text-foreground/40">Offline</span>
         </div>
       )}
     </motion.div>
@@ -232,11 +246,11 @@ function ParticipantRow({
       className={cn(
         "group rounded-xl border transition-all duration-300 overflow-hidden",
         isBufferingActive
-          ? "border-red-500/40 bg-red-500/10 animate-[pulse_2s_infinite] shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+          ? "border-bad-500/40 bg-bad-500/10 animate-[pulse_2s_infinite] shadow-[0_0_15px_color-mix(in_srgb,var(--color-bad-500)_20%,transparent)]"
           : isSyncingActive
-            ? "border-amber-500/30 bg-amber-500/[0.07] shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+            ? "border-warn-500/30 bg-warn-500/[0.07] shadow-[0_0_15px_color-mix(in_srgb,var(--color-warn-500)_15%,transparent)]"
             : isMe
-              ? "border-emerald-500/30 bg-emerald-500/[0.07] shadow-[0_0_15px_rgba(16,185,129,0.12)]"
+              ? "border-ok-500/30 bg-ok-500/[0.07] shadow-[0_0_15px_color-mix(in_srgb,var(--color-ok-500)_12%,transparent)]"
               : "border-foreground/[0.07] bg-foreground/3 hover:bg-foreground/5"
       )}
       onMouseEnter={handleMouseEnter}
@@ -248,7 +262,7 @@ function ParticipantRow({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        className={cn('w-full', 'flex', 'items-center', 'gap-3', 'px-3', 'py-2.5', 'text-left', 'cursor-pointer')}
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left cursor-pointer"
         onClick={() => {
            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
            setExpanded(v => !v);
@@ -266,50 +280,50 @@ function ParticipantRow({
         <div className={cn(
           "relative w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all",
           isBufferingActive
-            ? "bg-red-500/20 text-red-400 border border-red-500/30 shadow-[0_0_10px_rgba(239,68,68,0.3)] animate-pulse"
+            ? "bg-bad-500/20 text-bad-700 dark:text-bad-400 border border-bad-500/30 shadow-[0_0_10px_color-mix(in_srgb,var(--color-bad-500)_30%,transparent)] animate-pulse"
             : isSyncingActive
-              ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]"
-              : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+              ? "bg-warn-500/20 text-warn-800 dark:text-warn-400 border border-warn-500/30 shadow-[0_0_10px_color-mix(in_srgb,var(--color-warn-500)_20%,transparent)]"
+              : "bg-ok-500/20 text-ok-700 dark:text-ok-400 border border-ok-500/30 shadow-[0_0_10px_color-mix(in_srgb,var(--color-ok-500)_20%,transparent)]"
         )}>
-          <DevIcon className={cn('w-4', 'h-4')} />
+          <DevIcon className="w-4 h-4" />
           {/* Status indicator dot */}
           <div className={cn(
             "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background",
             isBufferingActive
-              ? "bg-red-400 shadow-[0_0_4px_#f87171] animate-ping"
+              ? "bg-bad-400 shadow-[0_0_4px_var(--color-bad-400)] animate-ping"
               : isSyncingActive
-                ? "bg-amber-400 shadow-[0_0_4px_#fbbf24] animate-pulse"
-                : "bg-emerald-400 shadow-[0_0_4px_#4ade80]"
+                ? "bg-warn-400 shadow-[0_0_4px_var(--color-warn-400)] animate-pulse"
+                : "bg-ok-400 shadow-[0_0_4px_var(--color-ok-400)]"
           )} />
         </div>
 
         {/* Info - Device Name ONLY as primary title */}
-        <div className={cn('flex-1', 'min-w-0')}>
+        <div className="flex-1 min-w-0">
           {isEditing ? (
-            <div className={cn('flex', 'items-center', 'gap-1.5', 'mr-2')} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-1.5 mr-2" onClick={e => e.stopPropagation()}>
               <input
                 autoFocus
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
                 onClick={e => e.stopPropagation()}
                 onKeyDown={e => e.key === 'Enter' && handleSave(e)}
-                className={cn('w-full', 'bg-background', 'text-xs', 'font-bold', 'text-foreground', 'rounded-md', 'px-2', 'py-1', 'border', 'border-foreground/20', 'outline-none')}
+                className="w-full bg-background text-xs font-bold text-foreground rounded-md px-2 py-1 border border-foreground/20 outline-none"
                 disabled={saving}
               />
-              <button onClick={handleSave} disabled={saving} className={cn('text-[10px]', 'font-bold', 'bg-emerald-500/20', 'text-emerald-400', 'px-2', 'py-1', 'rounded-md')}>
+              <button onClick={handleSave} disabled={saving} className="text-[10px] font-bold bg-ok-500/20 text-ok-700 dark:text-ok-400 px-2 py-1 rounded-md">
                 {saving ? '...' : 'Save'}
               </button>
             </div>
           ) : (
-            <div className={cn('flex', 'items-center', 'gap-2')}>
-              <span className={cn('text-xs', 'font-bold', 'text-foreground/90', 'truncate')}>{deviceName}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-foreground/90 truncate">{deviceName}</span>
               {isMe && dbId && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsEditing(true);
                   }}
-                  className={cn('opacity-0', 'group-hover:opacity-100', 'focus-visible:opacity-100', 'text-[10px]', 'font-bold', 'text-foreground/40', 'hover:text-foreground', 'transition-opacity')}
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity"
                 >
                   Edit
                 </button>
@@ -319,11 +333,11 @@ function ParticipantRow({
         </div>
 
         {/* Status */}
-        <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
+        <div className="flex items-center gap-2 shrink-0">
           {isSyncingActive && (
-            <div className={cn('flex', 'items-center', 'gap-1')}>
-              <Loader2 className={cn('w-3', 'h-3', 'text-amber-500', 'animate-spin')} />
-              <span className={cn('text-[10px]', 'font-black', 'text-amber-500')}>{syncProgress}%</span>
+            <div className="flex items-center gap-1">
+              <Loader2 className="w-3 h-3 text-warn-700 animate-spin" />
+              <span className="text-[10px] font-black text-warn-700">{syncProgress}%</span>
             </div>
           )}
 
@@ -343,11 +357,11 @@ function ParticipantRow({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className={cn('px-3', 'pb-3', 'space-y-2.5')}>
+            <div className="px-3 pb-3 space-y-2.5">
               {/* Volume slider */}
               {canAdjustVol && (
-                <div className={cn('flex', 'items-center', 'gap-2')}>
-                  <Volume2 className={cn('w-3.5', 'h-3.5', 'text-foreground/40', 'shrink-0')} />
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-3.5 h-3.5 text-foreground/40 shrink-0" />
                   <input
                     type="range"
                     min={0} max={100} step={1}
@@ -359,27 +373,28 @@ function ParticipantRow({
                       onVolumeChange?.(p.socketId, v);
                     }}
                     style={{
-                      background: `linear-gradient(to right, #34d399 0%, #34d399 ${localVol}%, rgba(255,255,255,0.15) ${localVol}%, rgba(255,255,255,0.15) 100%)`,
+                      ['--pct' as string]: `${localVol}%`,
+                      ['--thumb' as string]: '0.75rem',
                     }}
-                    className={cn('flex-1', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3', '[&::-webkit-slider-thumb]:h-3', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(52,211,153,0.9)]')}
+                    className="sb-range flex-1 h-1.5 rounded-full outline-none cursor-pointer"
                   />
-                  <span className={cn('text-[10px]', 'font-black', 'text-foreground/40', 'w-7', 'text-right')}>{localVol}%</span>
+                  <span className="text-[10px] font-black text-foreground/40 w-7 text-right">{localVol}%</span>
                 </div>
               )}
 
               {/* Stats grid */}
-              <div className={cn('grid', 'grid-cols-2', 'gap-1.5')}>
-                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5')}>
-                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Latency</div>
-                  <div className={cn('text-xs', 'font-black')} style={{ color: latencyColor(lat) }}>{lat}ms</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Latency</div>
+                  <div className="text-xs font-black" style={{ color: latencyColor(lat) }}>{lat}ms</div>
                 </div>
-                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5')}>
-                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Jitter</div>
-                  <div className={cn('text-xs', 'font-black', 'text-foreground/70')}>{Math.round(p.jitter ?? 0)}ms</div>
+                <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5">
+                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Jitter</div>
+                  <div className="text-xs font-black text-foreground/70">{Math.round(p.jitter ?? 0)}ms</div>
                 </div>
-                <div className={cn('rounded-xl', 'bg-foreground/4', 'px-2.5', 'py-1.5', 'col-span-2')}>
-                  <div className={cn('text-[9px]', 'uppercase', 'tracking-widest', 'text-foreground/30', 'font-bold', 'mb-0.5')}>Status</div>
-                  <div className={cn('text-[11px]', 'font-semibold', 'text-foreground/70')}>
+                <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5 col-span-2">
+                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Status</div>
+                  <div className="text-[11px] font-semibold text-foreground/70">
                     {statusText}
                   </div>
                 </div>
@@ -392,9 +407,9 @@ function ParticipantRow({
                     e.stopPropagation();
                     document.dispatchEvent(new CustomEvent("island:expand-sync"));
                   }}
-                  className={cn('w-full', 'mt-2', 'py-1.5', 'px-3', 'rounded-xl', 'bg-emerald-500/10', 'hover:bg-emerald-500/20', 'text-emerald-400', 'border', 'border-emerald-500/25', 'text-[11px]', 'font-bold', 'transition-all', 'flex', 'items-center', 'justify-center', 'gap-1.5', 'cursor-pointer', 'active:scale-98', 'shadow-xs')}
+                  className="w-full mt-2 py-1.5 px-3 rounded-xl bg-ok-500/10 hover:bg-ok-500/20 text-ok-700 dark:text-ok-400 border border-ok-500/25 text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98 shadow-xs"
                 >
-                  <Activity className={cn('w-3.5', 'h-3.5', 'text-emerald-400')} />
+                  <Activity className="w-3.5 h-3.5 text-ok-700 dark:text-ok-400" />
                   <span>Compare & Calibrate Sync</span>
                 </button>
               )}
@@ -537,13 +552,13 @@ export function DevicesPane({
   }, [userGroups]);
 
   return (
-    <div className={cn('h-full', 'flex', 'flex-col', 'min-h-0')}>
+    <div className="h-full flex flex-col min-h-0">
       {/* Header */}
-      <div className={cn('flex', 'flex-col', 'gap-2', 'px-1', 'pb-3', 'shrink-0')}>
-        <div className={cn('flex', 'items-center', 'justify-between')}>
-          <div className={cn('flex', 'items-center', 'gap-2')}>
-            <Activity className={cn('w-4', 'h-4', 'text-foreground/60')} />
-            <span className={cn('text-xs', 'font-black', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
+      <div className="flex flex-col gap-2 px-1 pb-3 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-foreground/60" />
+            <span className="micro-label">
               Account Devices
             </span>
           </div>
@@ -557,15 +572,15 @@ export function DevicesPane({
           />
         </div>
         
-        <div className={cn('flex', 'items-center', 'gap-1.5', 'text-[10px]', 'font-mono', 'font-bold', 'animate-pulse', 'text-emerald-400')}>
-          {/* <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400')} /> */}
+        <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold animate-pulse text-ok-700 dark:text-ok-400">
+          {/* <span className="w-1.5 h-1.5 rounded-full bg-ok-400" /> */}
           <span>{participants.length} online</span>
         </div>
       </div>
 
       {/* Scrollable list segregated by User */}
       <div
-        className={cn('flex-1', 'overflow-y-auto', 'space-y-4', 'pr-1', 'min-h-0')}
+        className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0"
         style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
       >
         <AnimatePresence>
@@ -607,32 +622,38 @@ export function DevicesPane({
             return (
               <div key={group.key} className="space-y-1.5">
                 {/* User Header */}
-                <div className={cn('flex', 'items-center', 'justify-between', 'px-1', 'text-xs', 'gap-2', 'min-w-0')}>
-                  <div className={cn('flex', 'items-center', 'gap-1.5', 'min-w-0', 'flex-1', 'overflow-hidden')}>
+                <div className="flex items-center justify-between px-1 text-xs gap-2 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
                     <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 ${
                       group.isMe ? "bg-foreground/20 text-foreground" : "bg-foreground/10 text-foreground/70"
                     }`}>
                       {initials}
                     </div>
-                    <span className={cn('font-bold', 'text-foreground/90', 'truncate', 'whitespace-nowrap')}>{group.userName}</span>
+                    <span className="font-bold text-foreground/90 truncate whitespace-nowrap">{group.userName}</span>
                     {group.isHost && (
-                      <span className={cn('bg-amber-500/20', 'text-amber-500', 'border', 'border-amber-500/30', 'text-[8px]', 'font-black', 'uppercase', 'tracking-wider', 'px-1.5', 'py-0.2', 'rounded-md', 'shrink-0', 'whitespace-nowrap')}>
+                      /* Role, not a caution — so the live accent rather than
+                         `warn`. It was amber only because a Host badge looks
+                         like a crown, which is not what warn means. */
+                      <span
+                        className="border border-(--accent-border) text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md shrink-0 whitespace-nowrap"
+                        style={{ background: "var(--accent-glow)", color: "var(--accent-color)" }}
+                      >
                         Host
                       </span>
                     )}
                     {group.isMe && (
-                      <span className={cn('text-[9px]', 'font-black', 'tracking-widest', 'text-foreground/40', 'uppercase', 'shrink-0', 'whitespace-nowrap')}>
+                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase shrink-0 whitespace-nowrap">
                         (You)
                       </span>
                     )}
                   </div>
-                  <span className={cn('text-[10px]', 'font-semibold', 'text-foreground/40', 'shrink-0', 'whitespace-nowrap', 'ml-1')}>
+                  <span className="text-[10px] font-semibold text-foreground/40 shrink-0 whitespace-nowrap ml-1">
                     {groupTotal} {groupTotal === 1 ? "device" : "devices"}
                   </span>
                 </div>
 
                 {/* Devices belonging to this User */}
-                <div className={cn('space-y-1.5', 'pl-2', 'border-l', 'border-foreground/10')}>
+                <div className="space-y-1.5 pl-2 border-l border-foreground/10">
                   {/* Active devices in room */}
                   {group.activeParticipants.map((p, idx) => {
                     const isMe = p.socketId === mySocketId;
@@ -667,7 +688,7 @@ export function DevicesPane({
         </AnimatePresence>
 
         {totalDeviceCount === 0 && (
-          <div className={cn('text-center', 'text-foreground/20', 'text-xs', 'py-8')}>
+          <div className="text-center text-foreground/20 text-xs py-8">
             No devices found
           </div>
         )}

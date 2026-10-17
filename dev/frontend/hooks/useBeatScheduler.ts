@@ -26,10 +26,9 @@ export function useBeatScheduler(trackUrl?: string | null) {
     
     let isMounted = true;
     
-    const serverUrl = getServerUrl();
     const token = getAuthToken();
 
-    fetch(`${serverUrl}/spotify/audio-analysis?trackUrl=${encodeURIComponent(trackUrl)}`, {
+    fetch(`/api/spotify/audio-analysis?trackUrl=${encodeURIComponent(trackUrl)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((res) => {

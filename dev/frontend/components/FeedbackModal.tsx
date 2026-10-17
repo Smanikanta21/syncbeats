@@ -70,7 +70,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
 
           {isSuccess ? (
             <div className="py-8 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+              <div className="w-14 h-14 rounded-full bg-ok-500/20 text-ok-700 dark:text-ok-400 flex items-center justify-center border border-ok-500/30">
                 <Check className="w-7 h-7" />
               </div>
               <h3 className="text-xl font-bold text-foreground">Thank you for rating!</h3>
@@ -80,7 +80,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
             <div className="space-y-5">
               {/* Header */}
               <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--accent-color)]">
                   <Sparkles className="w-4 h-4" /> Rate your experience
                 </div>
                 <h2 className="text-2xl font-black text-foreground mt-1">How are we doing?</h2>
@@ -107,7 +107,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
                         className={cn(
                           "w-8 h-8 transition-colors",
                           active
-                            ? "text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]"
+                            ? "text-[var(--accent-color)] fill-[var(--accent-color)] drop-shadow-[0_0_8px_var(--accent-glow)]"
                             : "text-foreground/20 fill-transparent"
                         )}
                       />

@@ -427,8 +427,7 @@ export class SyncController {
       const hwLat = Math.round(((audio.outputLatency || 0) + (audio.manualLatency || 0)) * 1000);
       const msg = `pos=${(actual * 1000).toFixed(0)}ms | expected=${(expected * 1000).toFixed(0)}ms | drift=${drift > 0 ? '+' : ''}${driftMs.toFixed(1)}ms | hw=${hwLat}ms | epoch=${this._intent.startEpoch} | clockOffset=${Math.round(this._clockOffsetRef?.current ?? 0)}ms | rate=${this._currentRate}`;
       
-      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000';
-      fetch(`${serverUrl}/telemetry/log`, {
+      fetch('/api/telemetry/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

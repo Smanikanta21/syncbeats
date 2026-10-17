@@ -19,16 +19,7 @@ import { runCelestialTransition } from "../components/ThemeToggle";
 function ThemeSync() {
   const { setTheme } = useTheme();
   React.useEffect(() => {
-    // 1. Listen to storage events (fallback)
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === "theme" && e.newValue) {
-        document.documentElement.setAttribute("data-theme", e.newValue);
-        setTimeout(() => setTheme(e.newValue!), 0);
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-
-    // 2. Listen to BroadcastChannel for instant multi-tab sync with animation
+    // Listen to BroadcastChannel for instant multi-tab sync with animation
     const channel = new BroadcastChannel("theme-sync");
     channel.onmessage = (e) => {
       if (e.data && e.data.theme) {
@@ -50,7 +41,6 @@ function ThemeSync() {
     };
 
     return () => {
-      window.removeEventListener("storage", handleStorage);
       channel.close();
     };
   }, [setTheme]);

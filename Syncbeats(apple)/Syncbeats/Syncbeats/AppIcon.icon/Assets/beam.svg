@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g" x1="150" y1="150" x2="880" y2="900" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#45F0AE"/><stop offset=".5" stop-color="#10B981"/><stop offset="1" stop-color="#0E9BD8"/>
+  </linearGradient></defs>
+  <g transform="translate(512 512) scale(0.92) translate(-512 -512)"><rect x="96" y="470" width="832" height="84" rx="42" fill="#F7FAFC"/></g>
+</svg>

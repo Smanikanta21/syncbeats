@@ -104,35 +104,35 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
   };
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-full', 'w-full')}>
-      <div className={cn('flex', 'items-center', 'justify-between', 'px-2', 'pb-2', 'shrink-0')}>
-        <h2 className={cn('text-2xl', 'font-black', 'text-foreground')}>Change Password</h2>
-        <button onClick={onClose} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/10', 'text-foreground/50', 'hover:text-foreground', 'transition-colors')}>
-          <X className={cn('w-5', 'h-5')} />
+    <div className="flex flex-col h-full w-full">
+      <div className="flex items-center justify-between px-2 pb-2 shrink-0">
+        <h2 className="text-2xl font-black text-foreground">Change Password</h2>
+        <button onClick={onClose} className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors">
+          <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className={cn('flex-1', 'overflow-y-auto', 'space-y-6', 'pr-2', 'custom-scrollbar', 'pb-10', 'mt-4')} data-lenis-prevent="true">
-        <section className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'shadow-lg')}>
-          <div className={cn('flex', 'items-center', 'gap-2', 'mb-4')}>
-            <KeyRound className={cn('w-5', 'h-5', 'text-foreground/70')} />
-            <h3 className={cn('text-lg', 'font-bold', 'text-foreground')}>Set a Password</h3>
+      <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar pb-10 mt-4" data-lenis-prevent="true">
+        <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <KeyRound className="w-5 h-5 text-foreground/70" />
+            <h3 className="text-lg font-bold text-foreground">Set a Password</h3>
           </div>
-          <p className={cn('text-xs', 'text-foreground/60', 'mb-6')}>
+          <p className="text-xs text-foreground/60 mb-6">
             {!otpSent
               ? "Verify your account email address to set or update your password."
               : "Enter the verification code sent to your email to unlock password creation."}
           </p>
 
           {done ? (
-            <div className={cn('rounded-xl', 'border', 'border-emerald-500/20', 'bg-emerald-500/10', 'p-4', 'text-xs', 'font-semibold', 'text-emerald-400', 'flex', 'flex-col', 'gap-2', 'items-center', 'text-center')}>
-              <CheckCircle2 className={cn('w-8', 'h-8', 'text-emerald-400')} />
+            <div className="rounded-xl border border-ok-500/20 bg-ok-500/10 p-4 text-xs font-semibold text-ok-700 dark:text-ok-400 flex flex-col gap-2 items-center text-center">
+              <CheckCircle2 className="w-8 h-8 text-ok-700 dark:text-ok-400" />
               <span>Password updated successfully!</span>
             </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div>
-                <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/45', 'block', 'mb-1.5')}>Email Address</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Email Address</label>
                 <input
                   type="email"
                   required
@@ -140,19 +140,19 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="name@email.com"
-                  className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3', 'text-sm', 'text-foreground', 'outline-none', 'focus:border-foreground/30', 'transition-all', 'placeholder:text-foreground/30', 'disabled:opacity-60')}
+                  className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-foreground/30 transition-all placeholder:text-foreground/30 disabled:opacity-60"
                 />
               </div>
 
               {otpSent && (
                 <>
                   {devOtp && (
-                    <div className={cn('rounded-xl', 'border', 'border-emerald-500/20', 'bg-emerald-500/10', 'px-4', 'py-3', 'text-xs', 'text-emerald-400', 'flex', 'items-center', 'justify-between', 'gap-2', 'flex-wrap')}>
-                      <span className={cn('font-semibold', 'tracking-[0.1em]')}>DEV OTP: {devOtp}</span>
+                    <div className="rounded-xl border border-ok-500/20 bg-ok-500/10 px-4 py-3 text-xs text-ok-700 dark:text-ok-400 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-semibold tracking-[0.1em]">DEV OTP: {devOtp}</span>
                       <button 
                         type="button" 
                         onClick={copyDevOtp} 
-                        className={cn('rounded-lg', 'border', 'border-emerald-400/30', 'px-3', 'py-1.5', 'text-[10px]', 'font-bold', 'uppercase', 'text-emerald-300', 'hover:bg-emerald-500/20', 'transition', 'shrink-0')}
+                        className="rounded-lg border border-ok-400/30 px-3 py-1.5 text-[10px] font-bold uppercase text-ok-700 dark:text-ok-300 hover:bg-ok-500/20 transition shrink-0"
                       >
                         {copied ? "Copied" : "Copy"}
                       </button>
@@ -160,7 +160,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                   )}
 
                   <div>
-                    <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/45', 'block', 'mb-1.5')}>Verification Code</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Verification Code</label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="tel"
@@ -175,23 +175,23 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                         placeholder="Enter 6-digit OTP"
                         className={cn(
                           "flex-1 bg-foreground/5 border rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-foreground/30 transition-all placeholder:text-foreground/30 w-full min-w-0",
-                          otpError ? "border-red-500/50" : "border-foreground/10"
+                          otpError ? "border-bad-500/50" : "border-foreground/10"
                         )}
                       />
                       <button
                         type="button"
                         onClick={verifyOtp}
                         disabled={verifyingOtp || otp.trim().length !== 6}
-                        className={cn('rounded-xl', 'border', 'border-foreground/15', 'px-4', 'py-3', 'text-xs', 'font-bold', 'text-foreground', 'hover:bg-foreground/10', 'transition', 'disabled:opacity-50', 'w-full', 'sm:w-auto', 'shrink-0', 'flex', 'items-center', 'justify-center')}
+                        className="rounded-xl border border-foreground/15 px-4 py-3 text-xs font-bold text-foreground hover:bg-foreground/10 transition disabled:opacity-50 w-full sm:w-auto shrink-0 flex items-center justify-center"
                       >
                         {verifyingOtp ? "Checking..." : otpVerified ? "Verified" : "Verify Code"}
                       </button>
                     </div>
-                    {otpError && <p className={cn('text-xs', 'text-red-400', 'mt-1')}>{otpError}</p>}
+                    {otpError && <p className="text-xs text-bad-700 dark:text-bad-400 mt-1">{otpError}</p>}
                   </div>
 
                   <div>
-                    <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/45', 'block', 'mb-1.5')}>New Password</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">New Password</label>
                     <input
                       type="password"
                       required
@@ -200,12 +200,12 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="New password (min 8 characters)"
-                      className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3', 'text-sm', 'text-foreground', 'outline-none', 'focus:border-foreground/30', 'transition-all', 'placeholder:text-foreground/30', 'disabled:opacity-50')}
+                      className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-foreground/30 transition-all placeholder:text-foreground/30 disabled:opacity-50"
                     />
                   </div>
 
                   <div>
-                    <label className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/45', 'block', 'mb-1.5')}>Confirm Password</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Confirm Password</label>
                     <input
                       type="password"
                       required
@@ -214,19 +214,19 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                       value={confirmPassword}
                       onChange={(event) => setConfirmPassword(event.target.value)}
                       placeholder="Confirm new password"
-                      className={cn('w-full', 'bg-foreground/5', 'border', 'border-foreground/10', 'rounded-xl', 'px-4', 'py-3', 'text-sm', 'text-foreground', 'outline-none', 'focus:border-foreground/30', 'transition-all', 'placeholder:text-foreground/30', 'disabled:opacity-50')}
+                      className="w-full bg-foreground/5 border border-foreground/10 rounded-xl px-4 py-3 text-sm text-foreground outline-none focus:border-foreground/30 transition-all placeholder:text-foreground/30 disabled:opacity-50"
                     />
                   </div>
                 </>
               )}
 
-              {message && <p className={cn('text-xs', 'text-green-400')}>{message}</p>}
-              {error && <p className={cn('text-xs', 'text-red-400')}>{error}</p>}
+              {message && <p className="text-xs text-ok-700 dark:text-ok-400">{message}</p>}
+              {error && <p className="text-xs text-bad-700 dark:text-bad-400">{error}</p>}
 
               <button
                 type="submit"
                 disabled={loading || (otpSent && !otpVerified)}
-                className={cn('w-full', 'rounded-xl', 'bg-foreground', 'px-4', 'py-3', 'text-sm', 'font-bold', 'text-background', 'hover:opacity-95', 'transition', 'disabled:opacity-50')}
+                className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-bold text-background hover:opacity-95 transition disabled:opacity-50"
               >
                 {loading ? "Processing..." : otpSent ? "Change Password" : "Send Verification OTP"}
               </button>
@@ -251,7 +251,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                       setLoading(false);
                     }
                   }}
-                  className={cn('w-full', 'rounded-xl', 'border', 'border-foreground/10', 'px-4', 'py-3', 'text-sm', 'font-semibold', 'text-foreground', 'hover:bg-foreground/5', 'transition', 'disabled:opacity-50')}
+                  className="w-full rounded-xl border border-foreground/10 px-4 py-3 text-sm font-semibold text-foreground hover:bg-foreground/5 transition disabled:opacity-50"
                 >
                   Resend OTP
                 </button>

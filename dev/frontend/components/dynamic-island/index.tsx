@@ -17,6 +17,7 @@ import { useUpload } from "../../context/UploadContext";
 import { JoinRequest } from "../../lib/types";
 import { getSocket } from "../../lib/socket";
 import { roomsApi, usersApi } from "../../lib/api";
+import { ytId } from "../../lib/youtube";
 import { formatTime } from "../../hooks/useAudioPlayer";
 import { ThemeToggle } from "../ThemeToggle";
 import { useSyncInfo } from "../../context/SyncContext";
@@ -132,17 +133,18 @@ function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | n
   fileName = fileName.replace(/_/g, ' ').trim();
 
   // If the result is a raw 11-char YouTube ID (e.g., "LPnDCTqW7zw")
-  if (/^[a-zA-Z0-9_-]{11}$/.test(fileName) && !/^[a-zA-Z]{11}$/.test(fileName)) {
-    const ytId = fileName;
-    if (globalYtTitleCache.has(ytId)) {
-      return globalYtTitleCache.get(ytId)!;
+  const extractedYtId = ytId(fileName);
+  if (extractedYtId && !/^[a-zA-Z]{11}$/.test(extractedYtId)) {
+    const id = extractedYtId;
+    if (globalYtTitleCache.has(id)) {
+      return globalYtTitleCache.get(id)!;
     }
     if (typeof window !== "undefined") {
-      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`)
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data && data.title) {
-            globalYtTitleCache.set(ytId, data.title);
+            globalYtTitleCache.set(id, data.title);
           }
         })
         .catch(() => {});
@@ -158,9 +160,9 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
   const customThumbMatch = trackUrl.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
   
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) {
-    return `https://i.ytimg.com/vi/${ytMatch[1]}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
+  const id = ytId(trackUrl);
+  if (id) {
+    return `https://i.ytimg.com/vi/${id}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
   }
   return null;
 }
@@ -202,13 +204,13 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
   // ~15px left under the title, and leading-none keeps the 9px text at 9px
   // (arbitrary text-[9px] otherwise inherits leading-normal and clips).
   return (
-    <div className={cn('flex', 'items-center', 'gap-1.5', 'w-full', 'mt-1', 'shrink-0')}>
-      <span ref={curRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/50', 'shrink-0')}>00:00</span>
-      <div className={cn('flex-1', 'min-w-0', 'h-0.75', 'bg-white/15', 'rounded-full', 'overflow-hidden')}>
-        <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
+    <div className="flex items-center gap-1.5 w-full mt-1 shrink-0">
+      <span ref={curRef} className="text-[9px] font-bold leading-none tabular-nums text-white/50 shrink-0">00:00</span>
+      <div className="flex-1 min-w-0 h-0.75 bg-white/15 rounded-full overflow-hidden">
+        <div ref={barRef} className="h-full bg-white/80 rounded-full"
           style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
       </div>
-      <span ref={durRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/40', 'shrink-0')}>00:00</span>
+      <span ref={durRef} className="text-[9px] font-bold leading-none tabular-nums text-white/40 shrink-0">00:00</span>
     </div>
   );
 };
@@ -279,22 +281,22 @@ const SyncProgressBar = ({
       onClick={canSkip ? e => { e.stopPropagation(); onSkip!(); } : undefined}
       title={canSkip ? "Track is stuck. Tap to skip." : undefined}
     >
-      <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
+      <div className="flex items-center justify-between gap-2">
         <span
-          className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'flex', 'items-center', 'gap-1', 'min-w-0')}
+          className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 min-w-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.45)" }}
         >
-          {isStuck && <AlertTriangle className={cn('w-3', 'h-3', 'shrink-0', 'animate-bounce')} />}
+          {isStuck && <AlertTriangle className="w-3 h-3 shrink-0 animate-bounce" />}
           <span className="truncate">{label}</span>
         </span>
         <span
-          className={cn('text-[10px]', 'font-black', 'tabular-nums', 'shrink-0')}
+          className="text-[10px] font-black tabular-nums shrink-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.6)" }}
         >
           {progress}%
         </span>
       </div>
-      <div className={cn('w-full', 'h-1', 'rounded-full', 'bg-white/15', 'overflow-hidden')}>
+      <div className="w-full h-1 rounded-full bg-white/15 overflow-hidden">
         <div
           className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out', isStuck && 'animate-pulse')}
           style={{ width: `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
@@ -340,21 +342,21 @@ const RealtimeProgressBar = ({
   }, [isPlaying, duration, audio, isVisible]);
 
   return (
-    <div className={cn('flex', 'items-center', 'gap-3', 'w-full', 'mt-2')}>
-      <span ref={leftTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-right', 'select-none', 'pointer-events-none')}>0:00</span>
-      <div className={cn('relative', 'flex-1', 'h-8', 'flex', 'items-center', 'cursor-pointer', 'group')}
+    <div className="flex items-center gap-3 w-full mt-2">
+      <span ref={leftTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
+      <div className="relative flex-1 h-8 flex items-center cursor-pointer group"
         onClick={e => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
           const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(p * duration);
         }}>
-        <div className={cn('absolute', 'w-full', 'h-1.5', 'rounded-full', 'bg-white/10', 'overflow-hidden')}>
-          <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')} style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
+        <div className="absolute w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div ref={barRef} className="h-full bg-white/80 rounded-full" style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
         </div>
-        <div ref={handleRef} className={cn('absolute', 'w-3', 'h-3', 'rounded-full', 'bg-white', 'shadow-lg', 'opacity-0', 'group-hover:opacity-100', 'transition-opacity')} style={{ left: "-6px" }} />
+        <div ref={handleRef} className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: "-6px" }} />
       </div>
-      <span ref={rightTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-left', 'select-none', 'pointer-events-none')}>-0:00</span>
+      <span ref={rightTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
     </div>
   );
 };
@@ -389,19 +391,19 @@ const PlayerTab = ({
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
-    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'justify-evenly', 'px-5', 'sm:px-8', 'py-8', 'sm:py-10', 'gap-6')}>
+    <div className="relative w-full flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10 gap-6">
       {/* Track header */}
-      <div className={cn('flex', 'items-start', 'gap-3', 'sm:gap-4', 'w-full')}>
+      <div className="flex items-start gap-3 sm:gap-4 w-full">
         <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
           thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-white/10 border-white/10"
         }`}>
           {thumbnailUrl
-            ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
-            : <span className={cn('text-xl', 'font-black', 'text-white/80', 'select-none')}>{trackInitials}</span>}
+            ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
+            : <span className="text-xl font-black text-white/80 select-none">{trackInitials}</span>}
         </div>
 
-        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pt-1')}>
-          <div className={cn('font-bold', 'text-white', 'text-[18px]', 'truncate', 'leading-tight', 'tracking-tight')}>
+        <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
+          <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
           <div
@@ -411,7 +413,7 @@ const PlayerTab = ({
             onClick={e => { if (error) { e.stopPropagation(); setShowErrorDetails(p => !p); } }}
           >
             {error ? (
-              <span className={cn('flex', 'items-center', 'gap-1')}><AlertCircle className={cn('w-3.5', 'h-3.5')} /> Failed • Tap for info</span>
+              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed • Tap for info</span>
             ) : isReady && !isRoomReady ? "Syncing to peers…"
               : isReady ? "Ready to play"
               : `Buffering… ${downloadProgress}%`}
@@ -420,25 +422,25 @@ const PlayerTab = ({
           <AnimatePresence>
             {error && showErrorDetails && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                <div className={cn('bg-[#FF0000]/10', 'border', 'border-[#FF0000]/20', 'rounded-lg', 'p-2.5', 'text-[11px]', 'text-[#FF0000]/90', 'mt-2')}>
-                  <p className={cn('font-bold', 'mb-1')}>Track Transfer Failed</p>
+                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] text-[#FF0000]/90 mt-2">
+                  <p className="font-bold mb-1">Track Transfer Failed</p>
                   <p className="opacity-80">{error}</p>
                 </div>
               </motion.div>
             )}
             {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-2">
-                <div className={cn('flex', 'items-center', 'gap-2', 'flex-wrap', 'max-h-12', 'overflow-y-auto', 'custom-scrollbar', 'pr-1')} data-lenis-prevent="true">
+                <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1" data-lenis-prevent="true">
                   {loadingParticipants.map((p: any) => {
                     const progress = deviceSyncProgress[p.socketId] || 0;
                     return (
-                      <div key={p.socketId} className={cn('flex', 'items-center', 'gap-2', 'bg-white/10', 'rounded-full', 'pl-2.5', 'pr-3', 'py-1.5')}>
-                        <Loader2 className={cn('w-3', 'h-3', 'text-white/50', 'animate-spin', 'shrink-0')} />
-                        <span className={cn('text-[10px]', 'font-bold', 'text-white/70', 'uppercase', 'tracking-widest', 'whitespace-nowrap')}>{p.displayName}</span>
-                        <div className={cn('w-12', 'h-1', 'bg-black/40', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
-                          <div className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out')} style={{ width: `${progress}%`, backgroundColor: accent }} />
+                      <div key={p.socketId} className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5">
+                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
+                        <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">{p.displayName}</span>
+                        <div className="w-12 h-1 bg-black/40 rounded-full overflow-hidden shrink-0">
+                          <div className="h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${progress}%`, backgroundColor: accent }} />
                         </div>
-                        <span className={cn('text-[9px]', 'font-black', 'text-white/40', 'tabular-nums')}>{progress}%</span>
+                        <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
                       </div>
                     );
                   })}
@@ -448,12 +450,12 @@ const PlayerTab = ({
           </AnimatePresence>
         </div>
 
-        <div className={cn('flex', 'items-center', 'gap-4', 'shrink-0', 'pr-1', 'pt-1')}>
-          {error ? <AlertCircle className={cn('w-5', 'h-5', 'text-[#FF0000]/80')} />
+        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
+          {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
             : !isReady || !isRoomReady ? (
-                <div className={cn('w-6', 'h-1', 'bg-white/10', 'rounded-full', 'overflow-hidden', 'flex', 'items-center', 'shrink-0')}>
+                <div className="w-6 h-1 bg-white/10 rounded-full overflow-hidden flex items-center shrink-0">
                   <motion.div
-                    className={cn('h-full', 'bg-white/40', 'rounded-full', 'w-1/3')}
+                    className="h-full bg-white/40 rounded-full w-1/3"
                     initial={{ x: "-100%" }}
                     animate={{ x: "300%" }}
                     transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut", repeatType: "mirror" }}
@@ -464,9 +466,9 @@ const PlayerTab = ({
 
           {isRoom && (
             <button type="button" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
-              className={cn('p-1.5', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'bg-white/5', 'hover:bg-white/20', 'group')}
+              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-white/20 group"
               aria-label="Your profile" title="Your Profile">
-              <User className={cn('w-4', 'h-4', 'text-white/80', 'group-hover:text-white', 'transition-colors')} />
+              <User className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
             </button>
           )}
         </div>
@@ -475,38 +477,38 @@ const PlayerTab = ({
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
       {/* Controls */}
-      <div className={cn('flex', 'items-center', 'justify-between', 'w-full', 'gap-2')}>
-        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
-          <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <Activity className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
+      <div className="flex items-center justify-between w-full gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
           {isRoom && isHost && isPrivate && (
-            <button type="button" aria-label={`Join requests${pendingRequestsCount > 0 ? ` (${pendingRequestsCount} pending)` : ""}`} onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'relative')}>
-              <Users className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
+            <button type="button" aria-label={`Join requests${pendingRequestsCount > 0 ? ` (${pendingRequestsCount} pending)` : ""}`} onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
               {pendingRequestsCount > 0 && (
-                <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-3', 'bg-red-500', 'rounded-full', 'border-2', 'border-background', 'animate-pulse')} />
+                <div className="absolute top-0 right-0 w-3 h-3 bg-bad-500 rounded-full border-2 border-background animate-pulse" />
               )}
             </button>
           )}
         </div>
 
-        <div className={cn('flex', 'items-center', 'justify-center', 'gap-6', 'sm:gap-10')}>
-          <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <SkipBack className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
+        <div className="flex items-center justify-center gap-6 sm:gap-10">
+          <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipBack className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
           </button>
-          <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             {effectivePlaying
-              ? <Pause className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'text-white')} fill="currentColor" />
-              : <Play className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'ml-1', 'text-white')} fill="currentColor" />}
+              ? <Pause className="w-9 h-9 sm:w-10 sm:h-10 text-white" fill="currentColor" />
+              : <Play className="w-9 h-9 sm:w-10 sm:h-10 ml-1 text-white" fill="currentColor" />}
           </button>
-          <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <SkipForward className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
+          <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipForward className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
           </button>
         </div>
 
-        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
-          <button type="button" aria-label="Search tracks" onClick={e => { e.stopPropagation(); onTabChange("search"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <Search className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button type="button" aria-label="Search tracks" onClick={e => { e.stopPropagation(); onTabChange("search"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <Search className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
         </div>
       </div>
@@ -524,46 +526,46 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
   const accent = useIslandAccent();
 
   return (
-    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'px-5', 'sm:px-6', 'pt-4', 'pb-5')}>
+    <div className="relative w-full flex flex-col px-5 sm:px-6 pt-4 pb-5">
       {/* Header */}
-      <div className={cn('flex', 'items-center', 'gap-3', 'mb-6', 'shrink-0')}>
-        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors', 'pointer-events-auto')}>
-          <ChevronLeft className={cn('w-6', 'h-6')} />
+      <div className="flex items-center gap-3 mb-6 shrink-0">
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors pointer-events-auto">
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h3 className={cn('text-white', 'font-bold', 'tracking-widest', 'uppercase')}>Network Health</h3>
+        <h3 className="text-white font-bold tracking-widest uppercase">Network Health</h3>
       </div>
-      <div className={cn('flex-1', 'flex', 'flex-col', 'gap-4')}>
-        <div className={cn('flex', 'justify-between', 'items-end')}>
-          <div className={cn('flex', 'flex-col')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Latency</span>
-            <span className={cn('text-white', 'font-black', 'text-3xl')} style={{ color: qualityColor(netStats.quality) }}>
-              {Math.round(netStats.latency || 0)}<span className={cn('text-lg', 'text-white/50', 'ml-1')}>ms</span>
+      <div className="flex-1 flex flex-col gap-4">
+        <div className="flex justify-between items-end">
+          <div className="flex flex-col">
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Latency</span>
+            <span className="text-white font-black text-3xl" style={{ color: qualityColor(netStats.quality) }}>
+              {Math.round(netStats.latency || 0)}<span className="text-lg text-white/50 ml-1">ms</span>
             </span>
           </div>
-          <div className={cn('flex', 'flex-col', 'items-end', 'gap-0.5')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Jitter</span>
-            <span className={cn('text-white', 'font-bold', 'text-xl')}>{Math.round(netStats.jitter || 0)}ms</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Jitter</span>
+            <span className="text-white font-bold text-xl">{Math.round(netStats.jitter || 0)}ms</span>
           </div>
         </div>
-        <div className={cn('w-full', 'h-24', 'bg-white/5', 'rounded-xl', 'border', 'border-white/10', 'p-2', 'flex', 'items-end', 'gap-0.5')}>
+        <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-0.5">
           {history.slice(-40).map((s: any, i: number) => {
             const hPct = Math.max(5, (s.latency / maxLat) * 100);
-            return <div key={i} className={cn('flex-1', 'bg-white/40', 'rounded-sm', 'transition-all', 'duration-300')} style={{ height: `${hPct}%` }} />;
+            return <div key={i} className="flex-1 bg-white/40 rounded-sm transition-all duration-300" style={{ height: `${hPct}%` }} />;
           })}
         </div>
-        <div className={cn('flex', 'flex-col', 'gap-2')}>
-          <div className={cn('flex', 'justify-between', 'items-center')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Sync Correction</span>
-            <span className={cn('text-white', 'font-bold', 'text-sm', 'tabular-nums')}>{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Sync Correction</span>
+            <span className="text-white font-bold text-sm tabular-nums">{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
           <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
             aria-label="Manual sync correction in seconds"
             onChange={e => audio.setManualLatency(Number(e.target.value))}
-            className={cn('w-full', 'h-2', 'rounded-full', 'appearance-none', 'outline-none', 'bg-white/20', 'cursor-pointer', 'pointer-events-auto')}
+            className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer pointer-events-auto"
             style={{ background: `linear-gradient(to right, ${accent} 0 ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}% 100%)` }} />
-          <div className={cn('flex', 'items-center', 'justify-between', 'mt-1')}>
-            <p className={cn('text-[10px]', 'text-white/40')}>Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
-            <button type="button" onClick={() => audio.setManualLatency(0)} className={cn('px-2', 'py-1', 'rounded', 'bg-white/10', 'hover:bg-white/20', 'text-[10px]', 'font-bold', 'text-white', 'transition-colors', 'pointer-events-auto')}>Auto Sync</button>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[10px] text-white/40">Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
+            <button type="button" onClick={() => audio.setManualLatency(0)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors pointer-events-auto">Auto Sync</button>
           </div>
         </div>
       </div>
@@ -615,16 +617,16 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
   };
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
-      <div className={cn('flex', 'items-center', 'gap-2', 'mb-3', 'shrink-0')}>
-        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
-          <ChevronLeft className={cn('w-4', 'h-4', 'text-white/70')} />
+    <div className="flex flex-col h-auto text-white pt-3 pb-3 px-5">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-1.5 hover:bg-white/10 rounded-full transition-colors -ml-1 pointer-events-auto">
+          <ChevronLeft className="w-4 h-4 text-white/70" />
         </button>
-        <span className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/60')}>Invite Friends</span>
+        <span className="text-xs font-bold uppercase tracking-widest text-white/60">Invite Friends</span>
       </div>
-      <div className={cn('flex', 'flex-col')}>
-        <div className={cn('relative', 'mb-3', 'shrink-0')}>
-          <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-3.5', 'h-3.5', 'text-white/40')} />
+      <div className="flex flex-col">
+        <div className="relative mb-3 shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
           <input
             name="syncbeats-island-search-input"
             type="search"
@@ -648,46 +650,46 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
             data-lpignore="true"
             data-form-type="other"
             aria-autocomplete="none"
-            className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
+            className="w-full bg-white/5 border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
           />
         </div>
-        <div className={cn('max-h-65', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
+        <div className="max-h-65 overflow-y-auto custom-scrollbar flex flex-col gap-2 pointer-events-auto">
           {loading ? (
-            <div className={cn('flex', 'justify-center', 'py-3')}><Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white/40')} /></div>
+            <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-white/40" /></div>
           ) : results.length > 0 ? (
             results.map((u: any) => (
-              <div key={u.id} className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
-                <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                  <span className={cn('font-bold', 'text-xs', 'truncate')}>{u.name}</span>
-                  <span className={cn('text-[11px]', 'text-white/40', 'truncate')}>{u.email}</span>
+              <div key={u.id} className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-bold text-xs truncate">{u.name}</span>
+                  <span className="text-[11px] text-white/40 truncate">{u.email}</span>
                 </div>
                 <button
                   onClick={() => handleInvite(u)}
                   disabled={inviting === u.id}
-                  className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50')}
+                  className="px-3.5 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50"
                 >
-                  {inviting === u.id ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : "Invite"}
+                  {inviting === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Invite"}
                 </button>
               </div>
             ))
           ) : query.includes("@") ? (
-            <div className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
-              <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                <span className={cn('text-[10px]', 'text-white/40', 'mb-0.5')}>Invite via email</span>
-                <span className={cn('font-bold', 'text-xs', 'truncate')}>{query}</span>
+            <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] text-white/40 mb-0.5">Invite via email</span>
+                <span className="font-bold text-xs truncate">{query}</span>
               </div>
               <button
                 onClick={() => handleInvite(undefined, query)}
                 disabled={inviting === query}
-                className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50', 'flex', 'items-center', 'gap-1')}
+                className="px-3.5 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
               >
-                {inviting === query ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : <><Send className={cn('w-3', 'h-3')}/> Send</>}
+                {inviting === query ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Send className="w-3 h-3"/> Send</>}
               </button>
             </div>
           ) : query.length > 0 ? (
-            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>No users found. Type a full email to invite via email.</div>
+            <div className="text-center text-white/40 text-xs py-2">No users found. Type a full email to invite via email.</div>
           ) : (
-            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>Search for friends to invite</div>
+            <div className="text-center text-white/40 text-xs py-2">Search for friends to invite</div>
           )}
         </div>
       </div>
@@ -705,23 +707,23 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
   onDeny: (id: string) => void;
   onBack: () => void;
 }) => (
-  <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-2', 'pb-4')}>
-    <div className={cn('flex', 'items-center', 'justify-between', 'px-6', 'mb-4')}>
-      <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
-        <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
+  <div className="flex flex-col h-auto text-white pt-2 pb-4">
+    <div className="flex items-center justify-between px-6 mb-4">
+      <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
+        <ChevronLeft className="w-5 h-5 text-white/50" />
       </button>
-      <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Join Requests ({requests.length})</span>
+      <span className="text-sm font-bold uppercase tracking-widest text-white/50">Join Requests ({requests.length})</span>
       <div className="w-9" />
     </div>
-    <div className={cn('max-h-[320px]', 'min-h-0', 'overflow-y-auto', 'px-6', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')} data-lenis-prevent="true">
+    <div className="max-h-[320px] min-h-0 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto" data-lenis-prevent="true">
       {requests.length === 0 ? (
-        <div className={cn('text-center', 'text-white/40', 'text-xs', 'mt-10')}>No pending requests</div>
+        <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
       ) : requests.map(req => (
-        <div key={req.socketId} className={cn('flex', 'items-center', 'justify-between', 'p-3', 'rounded-2xl', 'bg-white/5', 'border', 'border-white/10')}>
-          <span className={cn('font-semibold', 'text-sm', 'truncate', 'pr-2')}>{req.displayName}</span>
-          <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
-            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'hover:bg-red-500/30', 'transition-colors')}>Deny</button>
-            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-emerald-500', 'text-white', 'text-xs', 'font-bold', 'hover:bg-emerald-600', 'transition-colors')}>Approve</button>
+        <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
+          <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className="px-3 py-1.5 rounded-full bg-bad-500/20 text-bad-400 text-xs font-bold hover:bg-bad-500/30 transition-colors">Deny</button>
+            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className="px-3 py-1.5 rounded-full bg-ok-500 text-white text-xs font-bold hover:bg-ok-600 transition-colors">Approve</button>
           </div>
         </div>
       ))}
@@ -752,32 +754,32 @@ const RoomPill = ({
   if (isSyncing) {
     // While buffering just show a subtle spinner — pill is in transit to extended anyway
     return (
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2')}>
-        <Loader2 className={cn('w-3.5', 'h-3.5', 'text-white/50', 'animate-spin')} />
+      <div className="absolute inset-0 flex items-center justify-center gap-2">
+        <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
       </div>
     );
   }
 
   if (!hasTrack) {
     return (
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2', 'px-3', 'group')}>
-        <Search className={cn('w-3.5', 'h-3.5', 'text-white/50', 'group-hover:text-white', 'transition-colors')} />
-        <span className={cn('text-[11px]', 'font-bold', 'text-white/50', 'group-hover:text-white', 'transition-colors')}>Search</span>
+      <div className="absolute inset-0 flex items-center justify-center gap-2 px-3 group">
+        <Search className="w-3.5 h-3.5 text-white/50 group-hover:text-white transition-colors" />
+        <span className="text-[11px] font-bold text-white/50 group-hover:text-white transition-colors">Search</span>
       </div>
     );
   }
 
   return (
-    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-2.5', 'gap-2.5')}>
+    <div className="absolute inset-0 flex items-center px-2.5 gap-2.5">
       {/* Tiny thumbnail or disc */}
-      <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
+      <div className="w-7 h-7 rounded-[9px] shrink-0 overflow-hidden flex items-center justify-center bg-white/10">
         {showAlbumArt && thumbUrl
-          ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+          ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
       {/* Dynamic Right Side: Seek | Vol | EQ | Play */}
       <div
-        className={cn('flex', 'items-center', 'gap-1', 'flex-1', 'justify-center', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+        className="flex items-center gap-1 flex-1 justify-center cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
         onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
         onPointerDown={(e) => e.stopPropagation()}
         role="button"
@@ -785,18 +787,18 @@ const RoomPill = ({
       >
         {volIndicator ? (
           <>
-            {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <VolumeX className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{volIndicator.text}</span>
+            {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5 text-white" /> : <VolumeX className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white tabular-nums">{volIndicator.text}</span>
           </>
         ) : seekIndicator ? (
           <>
-            {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <Rewind className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{seekIndicator.text}</span>
+            {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5 text-white" /> : <Rewind className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white tabular-nums">{seekIndicator.text}</span>
           </>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
-          <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80')} />
+          <Play className="w-4 h-4 text-white/80 fill-white/80" />
         )}
       </div>
     </div>
@@ -824,16 +826,16 @@ const RadialNavigatorPillContent = ({
   }
 
   return (
-    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2.5', 'bg-black', 'rounded-full', 'select-none', 'border-none')}>
-      <div className={cn('flex', 'items-center', 'gap-2.5', 'min-w-0', 'flex-1', 'px-1')}>
-        <div className={cn('w-7', 'h-7', 'rounded-full', 'bg-white/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
+    <div className="absolute inset-0 flex items-center justify-between px-3 gap-2.5 bg-black rounded-full select-none border-none">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 px-1">
+        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
           <IconComponent className={`w-4 h-4 text-white ${!snappedItem ? "animate-spin-slow" : ""}`} />
         </div>
-        <div className={cn('flex', 'flex-col', 'justify-center', 'min-w-0')}>
-          <span className={cn('text-[11px]', 'font-bold', 'uppercase', 'tracking-wider', 'text-white', 'truncate', 'leading-tight')}>
+        <div className="flex flex-col justify-center min-w-0">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white truncate leading-tight">
             {snappedItem ? snappedItem.label : "Hold & Drag"}
           </span>
-          <span className={cn('text-[9px]', 'font-semibold', 'text-white/50', 'truncate', 'leading-tight')}>
+          <span className="text-[9px] font-semibold text-white/50 truncate leading-tight">
             {snappedItem ? "Release thumb to open" : "Move toward an icon to snap"}
           </span>
         </div>
@@ -884,23 +886,23 @@ const RoomExtendedPill = ({
   if (audio.error) {
     return (
       <div
-        className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2', 'bg-red-950/90', 'border', 'border-red-500/50', 'rounded-full', 'text-red-200', 'cursor-pointer', 'pointer-events-auto', 'shadow-[0_0_25px_rgba(239,68,68,0.5)]')}
+        className="absolute inset-0 flex items-center justify-between px-3 gap-2 bg-bad-950/90 border border-bad-500/50 rounded-full text-bad-200 cursor-pointer pointer-events-auto shadow-[0_0_25px_color-mix(in_srgb,var(--color-bad-500)_50%,transparent)]"
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onNextTrack?.(); }}
         title="Playback Error. Tap to skip track."
       >
-        <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0', 'flex-1')}>
-          <AlertCircle className={cn('w-4', 'h-4', 'text-red-400', 'shrink-0', 'animate-bounce')} />
-          <span className={cn('text-[10px]', 'font-bold', 'text-red-200', 'truncate')}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <AlertCircle className="w-4 h-4 text-bad-400 shrink-0 animate-bounce" />
+          <span className="text-[10px] font-bold text-bad-200 truncate">
             {audio.error}
           </span>
         </div>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onNextTrack?.(); }}
-          className={cn('px-2.5', 'py-1', 'rounded-full', 'bg-red-500/30', 'hover:bg-red-500/50', 'text-[10px]', 'font-black', 'text-red-100', 'flex', 'items-center', 'gap-1', 'shrink-0', 'transition-all', 'border', 'border-red-400/30')}
+          className="px-2.5 py-1 rounded-full bg-bad-500/30 hover:bg-bad-500/50 text-[10px] font-black text-bad-100 flex items-center gap-1 shrink-0 transition-all border border-bad-400/30"
         >
-          Skip <SkipForward className={cn('w-3', 'h-3')} />
+          Skip <SkipForward className="w-3 h-3" />
         </button>
       </div>
     );
@@ -915,25 +917,25 @@ const RoomExtendedPill = ({
 
   return (
     <>
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-3', 'gap-2.5')}>
+      <div className="absolute inset-0 flex items-stretch px-3 gap-2.5">
       {/* LEFT half: track info + playback progress */}
-      <div className={cn('flex', 'items-center', 'gap-2.5', 'flex-1', 'min-w-0', 'py-2')}>
+      <div className="flex items-center gap-2.5 flex-1 min-w-0 py-2">
         {/* Thumbnail */}
-        <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
+        <div className="w-7 h-7 rounded-[9px] shrink-0 overflow-hidden bg-white/10 flex items-center justify-center">
           {thumbUrl
-            ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+            ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
             : isSyncing
             ? <Loader2 className={`w-4 h-4 text-white/50 animate-spin`} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
         {/* Title + progress line */}
-        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pr-0.5')}>
-          <div className={cn('text-white', 'text-[11px]', 'font-semibold', 'truncate', 'leading-tight')}>
+        <div className="flex flex-col justify-center flex-1 min-w-0 pr-0.5">
+          <div className="text-white text-[11px] font-semibold truncate leading-tight">
             {title ? title.split(/\s+/).slice(0, 5).join(" ") : (isSyncing ? "Syncing..." : "No track")}
           </div>
           {isSyncing ? (
-            <div className={cn('mt-1.5', 'w-full')}>
+            <div className="mt-1.5 w-full">
               <SyncProgressBar
                 downloadProgress={downloadProgress}
                 deviceSyncProgress={deviceSyncProgress}
@@ -951,26 +953,26 @@ const RoomExtendedPill = ({
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
         <div
-          className={cn('flex', 'items-center', 'justify-center', 'gap-1', 'shrink-0', 'min-w-8', 'rounded-full', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+          className="flex items-center justify-center gap-1 shrink-0 min-w-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
           onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
           onPointerDown={(e) => e.stopPropagation()}
           role="button"
           aria-label={effectivePlaying ? "Pause" : "Play"}
         >
           {volIndicator ? (
-            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
-              {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5')} /> : <VolumeX className={cn('w-3.5', 'h-3.5')} />}
-              <span className={cn('text-[10px]', 'font-black')}>{volIndicator.text}</span>
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{volIndicator.text}</span>
             </div>
           ) : seekIndicator ? (
-            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
-              {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5')} /> : <Rewind className={cn('w-3.5', 'h-3.5')} />}
-              <span className={cn('text-[10px]', 'font-black')}>{seekIndicator.text}</span>
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5" /> : <Rewind className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{seekIndicator.text}</span>
             </div>
           ) : effectivePlaying ? (
             <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
           ) : (
-            <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80', 'shrink-0')} />
+            <Play className="w-4 h-4 text-white/80 fill-white/80 shrink-0" />
           )}
         </div>
       </div>
@@ -979,16 +981,16 @@ const RoomExtendedPill = ({
       {isHost && isPrivate && pendingRequestsCount > 0 && (
         <>
           {/* Divider */}
-          <div className={cn('w-px', 'bg-white/10', 'self-stretch', 'my-2.5', 'shrink-0')} />
-          <div className={cn('flex', 'items-center', 'py-2', 'shrink-0')}>
+          <div className="w-px bg-white/10 self-stretch my-2.5 shrink-0" />
+          <div className="flex items-center py-2 shrink-0">
             <button
               type="button"
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onRequestsClick(); }}
               aria-label={`${pendingRequestsCount} pending join requests`}
-              className={cn('flex', 'items-center', 'gap-1.5', 'px-2.5', 'py-1', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'transition-colors', 'text-[10px]', 'font-black', 'pointer-events-auto', 'whitespace-nowrap')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bad-500/20 text-bad-400 hover:bg-bad-500/30 transition-colors text-[10px] font-black pointer-events-auto whitespace-nowrap"
             >
-              <Users className={cn('w-3', 'h-3')} />
+              <Users className="w-3 h-3" />
               {pendingRequestsCount} pending
             </button>
           </div>
@@ -997,9 +999,9 @@ const RoomExtendedPill = ({
       </div>
       {/* Prefetch progress bar — thin strip at very bottom */}
       {isPrefetching && prefetchTitle && (
-        <div className={cn('absolute', 'bottom-0', 'left-0', 'right-0', 'h-[2px]', 'rounded-b-full', 'overflow-hidden', 'bg-white/10', 'pointer-events-none')}>
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-full overflow-hidden bg-white/10 pointer-events-none">
           <div
-            className={cn('h-full', 'transition-[width]', 'duration-300', 'ease-out')}
+            className="h-full transition-[width] duration-300 ease-out"
             style={{ width: `${prefetchProgress}%`, backgroundColor: accent }}
           />
         </div>
@@ -1046,8 +1048,8 @@ export function DynamicIsland() {
   const glowClassMap = {
     violet: "border border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.45)]",
     cyan: "border border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.45)]",
-    emerald: "border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
-    amber: "border border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
+    emerald: "border border-[#10b981]/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
+    amber: "border border-[#f59e0b]/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
     dark: "border border-white/8 shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
     none: "border border-white/10 shadow-none",
   };
@@ -1598,33 +1600,33 @@ export function DynamicIsland() {
 
     return (
       <div 
-        className={cn('fixed', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}
+        className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none"
         style={{
           top: "max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}
       >
-        <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
-          <Link href="/room/default" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
-            <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>
-              <Disc className={cn('w-4', 'h-4', 'sm:w-5', 'sm:h-5', 'text-foreground/70', 'animate-[spin_5s_linear_infinite]')} />
+        <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
+          <Link href="/room/default" className="flex items-center gap-2 sm:gap-3 group">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
+              <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
             </div>
-            <span className={cn('text-base', 'sm:text-lg', 'font-black', 'tracking-widest', 'text-foreground', 'transition-opacity', 'hover:opacity-80')}>
+            <span className="text-base sm:text-lg font-black tracking-widest text-foreground transition-opacity hover:opacity-80">
               SYNC<span className="text-foreground/50">BEATS</span>
             </span>
           </Link>
-          <div className={cn('flex', 'items-center', 'gap-3', 'sm:gap-5')}>
+          <div className="flex items-center gap-3 sm:gap-5">
             <ThemeToggle />
-            <div className={cn('w-px', 'h-6', 'bg-foreground/10', 'hidden', 'sm:block')} />
+            <div className="w-px h-6 bg-foreground/10 hidden sm:block" />
             {isProfile ? (
-              <Link href="/room/default" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
+              <Link href="/room/default" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
             ) : (
-              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className={cn('flex', 'items-center', 'gap-3', 'cursor-pointer', 'group', 'outline-none')}>
-                <div className={cn('text-right', 'hidden', 'sm:block')}>
-                  <div className={cn('text-sm', 'font-bold', 'text-foreground')}>{displayName}</div>
-                  <div className={cn('text-xs', 'font-semibold', 'text-foreground/40')}>{user?.email ?? ""}</div>
+              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className="flex items-center gap-3 cursor-pointer group outline-none">
+                <div className="text-right hidden sm:block">
+                  <div className="text-sm font-bold text-foreground">{displayName}</div>
+                  <div className="text-xs font-semibold text-foreground/40">{user?.email ?? ""}</div>
                 </div>
-                <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'flex', 'items-center', 'justify-center', 'border-2', 'border-transparent', 'glass-panel', 'group-active:scale-95', 'transition-all', 'shadow-md')}>
-                  <span className={cn('text-xs', 'sm:text-sm', 'font-black', 'text-foreground')}>{initials}</span>
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border-2 border-transparent glass-panel group-active:scale-95 transition-all shadow-md">
+                  <span className="text-xs sm:text-sm font-black text-foreground">{initials}</span>
                 </div>
               </div>
             )}
@@ -1752,7 +1754,7 @@ export function DynamicIsland() {
     <>
       {/* Backdrop */}
       <motion.div
-        className={cn('fixed', 'inset-0', 'z-40', 'pointer-events-none')}
+        className="fixed inset-0 z-40 pointer-events-none"
         animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
         transition={{ duration: 0.35, ease: EASE_OUT }}
         style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
@@ -1760,7 +1762,7 @@ export function DynamicIsland() {
       />
 
       <div 
-        className={cn('fixed', 'left-1/2', '-translate-x-1/2', 'z-100', 'flex', 'flex-col', 'items-center', 'pointer-events-none')}
+        className="fixed left-1/2 -translate-x-1/2 z-100 flex flex-col items-center pointer-events-none"
         style={{
           top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
         }}
@@ -1769,7 +1771,7 @@ export function DynamicIsland() {
             x slides the pair left by half the circle's footprint so the two
             stay centred as a group instead of the circle hanging off-screen. */}
         <motion.div
-          className={cn('relative', 'flex', 'items-center')}
+          className="relative flex items-center"
           animate={{ x: -secondaryReserve / 2 }}
           transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING}
         >
@@ -1865,7 +1867,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className={cn('absolute', '-inset-[1px]', 'pointer-events-none', 'z-[45]', 'rounded-[inherit]', 'overflow-hidden', 'p-[2px]')}
+                className="absolute -inset-[1px] pointer-events-none z-[45] rounded-[inherit] overflow-hidden p-[2px]"
                 style={{
                   WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
                   WebkitMaskComposite: "xor",
@@ -1875,7 +1877,7 @@ export function DynamicIsland() {
                 <motion.div
                   animate={reduceMotion ? { rotate: 0 } : { rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
-                  className={cn('w-[300%]', 'h-[300%]', '-top-[100%]', '-left-[100%]', 'absolute')}
+                  className="w-[300%] h-[300%] -top-[100%] -left-[100%] absolute"
                   style={{
                     background: `conic-gradient(from 0deg at 50% 50%,
                       transparent 0deg,
@@ -1899,7 +1901,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className={cn('absolute', 'inset-0', 'z-30', 'bg-black', 'rounded-full')}
+                className="absolute inset-0 z-30 bg-black rounded-full"
               >
                 <RadialNavigatorPillContent snappedItem={radialSnapInfo.snappedItem} />
               </motion.div>
@@ -1912,7 +1914,7 @@ export function DynamicIsland() {
               <motion.div
                 key="pill-content"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('absolute', 'inset-0')}
+                className="absolute inset-0"
               >
                 <RoomPill
                   effectivePlaying={effectivePlaying}
@@ -1936,7 +1938,7 @@ export function DynamicIsland() {
               <motion.div
                 key="extended-content"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('absolute', 'inset-0')}
+                className="absolute inset-0"
               >
                 <RoomExtendedPill
                   effectivePlaying={effectivePlaying}
@@ -1970,13 +1972,13 @@ export function DynamicIsland() {
               <motion.div
                 key="expanded-tab-container"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('w-full', 'relative', 'pointer-events-auto')}
+                className="w-full relative pointer-events-auto"
               >
                 {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
                 <div ref={contentMeasureRef}>
                 <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
                   {activeTab === "player" && (
-                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
 
                       <PlayerTab
                         effectivePlaying={effectivePlaying}
@@ -2006,12 +2008,12 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {activeTab === "network" && (
-                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                     </motion.div>
                   )}
                   {activeTab === "search" && (
-                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <SearchTab 
                         roomId={roomId!} 
                         initialMode={initialSearchMode}
@@ -2035,7 +2037,7 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {(activeTab === "deviceInfo" || activeTab === "invite") && (
-                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <InviteTab 
                         onBack={() => setActiveTab("player")} 
                         roomId={roomId || ''} 
@@ -2048,7 +2050,7 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {activeTab === "requests" && (
-                    <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'h-auto')}>
+                    <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
                       <RequestsTab
                         requests={pendingRequests || []}
                         onApprove={(id: any, name: any) => {
@@ -2078,19 +2080,19 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: isSwallowing ? 0.5 : 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={cn('absolute', 'inset-0', 'z-50', 'flex', 'flex-col', 'items-center', 'justify-center')}
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center"
               >
                 <motion.div 
                   animate={{ y: isSwallowing ? 20 : 0, scale: isSwallowing ? 0 : 1 }}
                   transition={{ duration: 0.3, ease: "backIn" }}
-                  className={cn('w-16', 'h-16', 'rounded-full', 'bg-white/20', 'flex', 'items-center', 'justify-center', 'mb-4', 'shadow-2xl')}
+                  className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4 shadow-2xl"
                 >
-                  <Upload className={cn('w-8', 'h-8', 'text-white')} />
+                  <Upload className="w-8 h-8 text-white" />
                 </motion.div>
                 <motion.span 
                   animate={{ opacity: isSwallowing ? 0 : 1 }}
                   transition={{ duration: 0.2 }}
-                  className={cn('text-lg', 'font-bold', 'text-white', 'tracking-wide', 'drop-shadow-md')}
+                  className="text-lg font-bold text-white tracking-wide drop-shadow-md"
                 >
                   Drop MP3
                 </motion.span>
@@ -2105,7 +2107,7 @@ export function DynamicIsland() {
             Absolutely placed off the island's right edge, so as the island
             animates between pill and extended the circle tracks its edge. */}
         <div
-          className={cn('absolute', 'left-full', 'top-0', 'h-full', 'flex', 'items-center', 'pointer-events-none')}
+          className="absolute left-full top-0 h-full flex items-center pointer-events-none"
           style={{ paddingLeft: SECONDARY_GAP }}
         >
           <AnimatePresence>
@@ -2125,7 +2127,7 @@ export function DynamicIsland() {
                 role="img"
                 aria-label={secondaryLabel}
                 title={secondaryLabel}
-                className={cn('relative', 'flex', 'items-center', 'justify-center', 'rounded-full', 'shrink-0')}
+                className="relative flex items-center justify-center rounded-full shrink-0"
                 style={{
                   width: SECONDARY_SIZE,
                   height: SECONDARY_SIZE,
@@ -2134,7 +2136,7 @@ export function DynamicIsland() {
                   transformOrigin: "left center",
                 }}
               >
-                <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className={cn('absolute', 'inset-0', 'w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
+                <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className="absolute inset-0 w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                   <circle cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
                   <circle
                     cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none"
@@ -2144,7 +2146,7 @@ export function DynamicIsland() {
                     style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
                   />
                 </svg>
-                <span className={cn('text-[10px]', 'font-black', 'tabular-nums', 'text-white/90')}>
+                <span className="text-[10px] font-black tabular-nums text-white/90">
                   {prefetch.nextTrackProgress}
                 </span>
               </motion.div>

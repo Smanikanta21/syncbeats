@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Outfit, JetBrains_Mono } from "next/font/google";
+import { Syne, JetBrains_Mono, Instrument_Sans } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
@@ -10,7 +10,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Toaster } from "sonner";
 import SmoothScrolling from "../components/SmoothScrolling";
-import { ToastProvider } from "../components/ToastProvider";
+
 import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
@@ -19,22 +19,49 @@ import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
 import { BeatProvider } from "../context/BeatContext";
 import { NavigationProgress } from "../components/NavigationProgress";
 import { CustomCursor } from "../components/CustomCursor";
-import "../lib/logger";
 
-const outfitFont = Outfit({
-  variable: "--font-sans",
+
+/**
+ * Font variables are deliberately named after the typeface, not after the role
+ * (`--font-sans` / `--font-mono`). Those role names are Tailwind `@theme` tokens;
+ * when next/font also emitted them, both landed on <html> at equal specificity
+ * and which one won came down to stylesheet order. Keeping the two layers
+ * separate means globals.css maps role -> face in exactly one place.
+ */
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument",
   subsets: ["latin"],
   preload: true,
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  // Variable font — the full 400-700 range, not pinned instances. The room runs
+  // at high density and leans on weight rather than size for hierarchy.
+  axes: ["wdth"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
+  variable: "--font-jetbrains",
   subsets: ["latin"],
   preload: true,
   display: "swap",
   weight: ["400", "600", "700"],
+});
+
+/**
+ * Display face. Syne's width grows with its weight — the glyphs genuinely get
+ * wider as they get bolder, which no normal grotesque does. That is why it is
+ * here: a heading animating `font-weight` 400 -> 800 reads as amplitude
+ * swelling rather than as text turning bold, and amplitude is the product.
+ *
+ * Loaded variable (no `weight`) so the whole 400-800 range is animatable.
+ * Replaces Bricolage Grotesque, whose `wdth` axis served the same gesture but
+ * had to be driven through `font-stretch` — an axis most engines refuse to
+ * interpolate smoothly, so the animation stepped.
+ */
+const syne = Syne({
+  variable: "--font-syne",
+  subsets: ["latin"],
+  preload: true,
+  display: "swap",
 });
 
 const BASE_URL = "https://www.syncbeats.in";
@@ -42,8 +69,10 @@ const BASE_URL = "https://www.syncbeats.in";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Pinch-zoom is deliberately left enabled. It was previously blocked with
+  // `maximumScale: 1, userScalable: false`, which Lighthouse reports as both an
+  // accessibility failure and a mobile-usability signal — and the room UI never
+  // needed it: nothing here is a map or a canvas that fights a pinch.
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
@@ -60,25 +89,24 @@ export const metadata: Metadata = {
   },
   title: {
     template: "%s | SyncBeats",
-    default: "SyncBeats | One track. Every phone. Zero lag.",
+    default: "SyncBeats | Play one song on every phone in the room",
   },
   description:
-    "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.",
+    "Turn every phone, tablet and laptop in the room into one speaker. SyncBeats keeps them under 25 ms apart in the browser — no app, no cables, free.",
   keywords: [
     "syncbeats",
-    "syncbeats.in",
-    "syncbeats instagram",
-    "@syncbeats.in",
-    "syncbeats app",
-    "music sync",
-    "listen together",
-    "spatial audio app",
-    "sync music across phones",
+    "play music on multiple phones at once",
+    "sync music across devices",
+    "listen to music together",
+    "multi device speaker app",
+    "group listening party",
+    "spatial audio from phones",
     "AmpMe alternative",
   ],
   openGraph: {
-    title: "SyncBeats - 3D audio that hits everyone at once.",
-    description: "Your crew. Your music. One massive speaker.",
+    title: "SyncBeats — one song, every phone in the room",
+    description:
+      "Share a six-character code and every device becomes a speaker, under 25 ms apart. Free, in the browser.",
     url: BASE_URL,
     siteName: "SyncBeats",
     images: [
@@ -94,9 +122,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SyncBeats | One track. Every phone. Zero lag.",
+    title: "SyncBeats — one song, every phone in the room",
     description:
-      "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience.",
+      "Share a six-character code and every device becomes a speaker, under 25 ms apart. Free, in the browser.",
     site: "@syncbeatsapp",
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
@@ -105,7 +133,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/syncbeats-icon.svg", type: "image/svg+xml" }
+      { url: "/favicon.svg", type: "image/svg+xml" }
     ],
     shortcut: "/apple-touch-icon.png",
     apple: [
@@ -115,9 +143,11 @@ export const metadata: Metadata = {
   applicationName: "SyncBeats",
   authors: [{ name: "SyncBeats", url: BASE_URL }],
   category: "music",
-  alternates: {
-    canonical: BASE_URL,
-  },
+  // NOTE: no `alternates.canonical` here on purpose. Metadata in the root layout
+  // is inherited by every route that doesn't override it, so a canonical set
+  // here made /contact, /privacy-policy and /terms-of-service all declare
+  // themselves duplicates of the homepage — which is an instruction to Google
+  // not to index them separately. Each indexable page now sets its own.
   robots: {
     index: true,
     follow: true,
@@ -131,6 +161,15 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Structured data. Deliberately only the two types that still do work:
+ * Organization (knowledge-panel / sameAs resolution) and WebApplication
+ * (category, price, platform). HowTo and FAQPage rich results were both pulled
+ * back by Google in 2023 — FAQPage now only renders for government and health
+ * sites — so the FAQ section earns its place as readable copy that matches what
+ * people search for, not as a markup trick. The FAQPage block it still emits
+ * costs nothing and keeps the Q&A machine-legible.
+ */
 const jsonLd = [
   {
     "@context": "https://schema.org",
@@ -149,9 +188,11 @@ const jsonLd = [
     name: "SyncBeats",
     url: BASE_URL,
     description:
-      "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together in real time.",
+      "SyncBeats plays one song across every phone, tablet and laptop in a room at the same instant — under 25 ms apart, in the browser, with no app to install.",
     applicationCategory: "MusicApplication",
-    operatingSystem: "All",
+    operatingSystem: "iOS, Android, macOS, Windows, Linux",
+    browserRequirements: "Requires a modern browser with Web Audio support",
+    inLanguage: "en",
     sameAs: [
       "https://www.instagram.com/syncbeats.in/",
       "https://github.com/Smanikanta21/syncbeats"
@@ -162,10 +203,14 @@ const jsonLd = [
       priceCurrency: "USD",
     },
     featureList: [
-      "Real-time music synchronization",
-      "Multi-device support",
-      "Room-based listening parties",
-      "No download required",
+      "Synchronized playback under 25 ms across devices",
+      "Join by six-character room code or QR scan",
+      "Spatial audio routing across participants",
+      "Shared queue with YouTube search and Spotify playlist import",
+      "Beat-matched lyrics",
+      "Per-device headphone latency correction",
+      "Private rooms with join approval",
+      "No install required",
     ],
   }
 ];
@@ -179,7 +224,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${outfitFont.variable} ${jetbrainsMono.variable} antialiased`}
+      className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${syne.variable} antialiased`}
     >
       <head>
         {/* JSON-LD structured data */}
@@ -237,25 +282,25 @@ export default function RootLayout({
 
 
 
-      <body className={cn('transition-colors', 'duration-300', 'bg-background', 'text-foreground')}>
+      <body className="transition-colors duration-300 bg-background text-foreground">
         {/* Replaces the native pointer everywhere, on fine-pointer devices that
             allow motion. Mounted above the providers so it survives navigation. */}
         <CustomCursor />
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
-        <div className={cn('fixed', 'inset-0', 'pointer-events-none', 'z-0')}>
+        <div className="fixed inset-0 pointer-events-none z-0">
           
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
-          <div className={cn('hidden', 'md:block', 'absolute', 'inset-0')}>
+          <div className="hidden md:block absolute inset-0">
 
-            <div className={cn('absolute', 'inset-0', 'opacity-[0.015]', 'dark:opacity-[0.03]')} style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+            <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 
           {/* MOBILE LAYER (Optimized, lightweight) */}
-          <div className={cn('block', 'md:hidden', 'absolute', 'inset-0')}>
-            <div className={cn('absolute', 'top-[0%]', 'left-[0%]', 'w-[70vw]', 'h-[70vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-violet-600/15', 'dark:from-violet-900/25', 'to-transparent', 'animate-pulse', 'duration-[16000ms]', 'will-change-transform')} style={{ transform: 'translate(-15%, -15%)' }} />
-            <div className={cn('absolute', 'top-[20%]', 'right-[0%]', 'w-[80vw]', 'h-[80vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-emerald-500/15', 'dark:from-emerald-900/25', 'to-transparent', 'animate-pulse', 'duration-[24000ms]', 'delay-1000', 'will-change-transform')} style={{ transform: 'translateX(15%)' }} />
-            <div className={cn('absolute', 'bottom-[0%]', 'left-[20%]', 'w-[90vw]', 'h-[90vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-blue-500/15', 'dark:from-blue-900/25', 'to-transparent', 'animate-pulse', 'duration-[20000ms]', 'delay-500', 'will-change-transform')} style={{ transform: 'translateY(15%)' }} />
-            <div className={cn('absolute', 'inset-0', 'opacity-[0.05]', 'dark:opacity-[0.08]')} style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
+          <div className="block md:hidden absolute inset-0">
+            <div className="absolute top-[0%] left-[0%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-violet-600/15 dark:from-violet-900/25 to-transparent animate-pulse duration-[16000ms] will-change-transform" style={{ transform: 'translate(-15%, -15%)' }} />
+            <div className="absolute top-[20%] right-[0%] w-[80vw] h-[80vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-dye-500/15 dark:from-dye-900/25 to-transparent animate-pulse duration-[24000ms] delay-1000 will-change-transform" style={{ transform: 'translateX(15%)' }} />
+            <div className="absolute bottom-[0%] left-[20%] w-[90vw] h-[90vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-blue-500/15 dark:from-blue-900/25 to-transparent animate-pulse duration-[20000ms] delay-500 will-change-transform" style={{ transform: 'translateY(15%)' }} />
+            <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.08]" style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
           </div>
 
         </div>
@@ -269,9 +314,7 @@ export default function RootLayout({
                 <AudioProvider>
                   <BeatProvider>
                     <VisualizerProvider>
-                      <ToastProvider>
-                        <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
-                      </ToastProvider>
+                        <div className="relative z-10 w-full min-h-full flex flex-col">{children}</div>
                     </VisualizerProvider>
                   </BeatProvider>
                 </AudioProvider>

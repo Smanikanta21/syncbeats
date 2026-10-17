@@ -40,7 +40,7 @@ export default function DefaultRoomDirector() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-foreground flex-col gap-4">
-        <p className="text-red-400 font-bold">{error}</p>
+        <p className="text-bad-600 dark:text-bad-400 font-bold">{error}</p>
         <button 
           onClick={() => window.location.reload()}
           className="px-6 py-2 bg-foreground text-background font-bold rounded-xl"

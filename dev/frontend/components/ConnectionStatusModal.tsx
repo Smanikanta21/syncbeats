@@ -29,7 +29,7 @@ export function ConnectionStatusModal() {
               animate={{ opacity: [0.15, 0.3, 0.15] }}
               transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
               className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70vw] h-[70vw] rounded-full blur-[140px] ${
-                isOffline ? "bg-amber-600/30" : "bg-red-600/30"
+                isOffline ? "bg-warn-600/30" : "bg-bad-600/30"
               }`}
             />
           </div>
@@ -47,8 +47,8 @@ export function ConnectionStatusModal() {
               transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
               className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-5 border shadow-2xl ${
                 isOffline
-                  ? "bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-amber-500/20"
-                  : "bg-red-500/10 border-red-500/30 text-red-500 shadow-red-500/20"
+                  ? "bg-warn-500/10 border-warn-500/30 text-warn-700 dark:text-warn-500 shadow-warn-500/20"
+                  : "bg-bad-500/10 border-bad-500/30 text-bad-500 shadow-bad-500/20"
               }`}
             >
               {isOffline ? (
@@ -76,7 +76,7 @@ export function ConnectionStatusModal() {
                 animate={{ opacity: [1, 0.3, 1] }}
                 transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
                 className={`w-2 h-2 rounded-full ${
-                  isOffline ? "bg-amber-500" : "bg-red-500"
+                  isOffline ? "bg-warn-500" : "bg-bad-500"
                 }`}
               />
               <span>

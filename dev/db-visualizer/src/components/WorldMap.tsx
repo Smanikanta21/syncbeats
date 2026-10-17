@@ -136,38 +136,38 @@ export default function WorldMap({ locations }: WorldMapProps) {
   };
 
   return (
-    <div className={cn('relative', 'w-full', 'bg-zinc-900/90', 'border', 'border-zinc-800/80', 'rounded-3xl', 'p-6', 'shadow-2xl', 'backdrop-blur-xl', 'overflow-hidden')}>
+    <div className="relative w-full bg-zinc-900/90 border border-zinc-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
       {/* Header */}
-      <div className={cn('flex', 'flex-col', 'sm:flex-row', 'sm:items-center', 'justify-between', 'gap-4', 'mb-6')}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <div className={cn('flex', 'items-center', 'gap-2')}>
-            <span className={cn('w-2.5', 'h-2.5', 'rounded-full', 'bg-emerald-500', 'animate-ping')} />
-            <h3 className={cn('text-lg', 'font-bold', 'text-white', 'tracking-tight')}>Interactive OpenStreetMap World Visualizer</h3>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+            <h3 className="text-lg font-bold text-white tracking-tight">Interactive OpenStreetMap World Visualizer</h3>
           </div>
-          <p className={cn('text-xs', 'text-zinc-400', 'mt-1')}>High-accuracy OpenStreetMap CartoDB dark layer with zoom, pan, and live IP pinpoints</p>
+          <p className="text-xs text-zinc-400 mt-1">High-accuracy OpenStreetMap CartoDB dark layer with zoom, pan, and live IP pinpoints</p>
         </div>
 
-        <div className={cn('flex', 'items-center', 'gap-3')}>
+        <div className="flex items-center gap-3">
           <button
             onClick={handleResetZoom}
-            className={cn('px-3', 'py-1.5', 'bg-zinc-800', 'hover:bg-zinc-700', 'text-zinc-300', 'text-xs', 'font-semibold', 'rounded-xl', 'border', 'border-zinc-700', 'transition-colors', 'flex', 'items-center', 'gap-1.5')}
+            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-xl border border-zinc-700 transition-colors flex items-center gap-1.5"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Reset View
           </button>
-          <div className={cn('text-xs', 'font-mono', 'text-emerald-400', 'bg-emerald-500/10', 'border', 'border-emerald-500/20', 'px-3', 'py-1.5', 'rounded-xl', 'font-bold')}>
+          <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-bold">
             {locations.length} Locations Plotted
           </div>
         </div>
       </div>
 
       {/* Leaflet Map Container */}
-      <div className={cn('relative', 'w-full', 'h-[450px]', 'bg-zinc-950', 'rounded-2xl', 'border', 'border-zinc-800/80', 'overflow-hidden', 'shadow-inner', 'z-0')}>
-        <div ref={mapContainerRef} className={cn('w-full', 'h-full')} />
+      <div className="relative w-full h-[450px] bg-zinc-950 rounded-2xl border border-zinc-800/80 overflow-hidden shadow-inner z-0">
+        <div ref={mapContainerRef} className="w-full h-full" />
       </div>
 
       {/* Location Cards list */}
-      <div className={cn('mt-6', 'grid', 'grid-cols-2', 'sm:grid-cols-3', 'md:grid-cols-4', 'lg:grid-cols-6', 'gap-3')}>
+      <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {locations.slice(0, 12).map((loc, idx) => (
           <div
             key={`card-${loc.ip}-${idx}`}
@@ -176,16 +176,16 @@ export default function WorldMap({ locations }: WorldMapProps) {
                 mapInstanceRef.current.setView([loc.lat, loc.lon], 8);
               }
             }}
-            className={cn('p-3', 'bg-zinc-950/60', 'border', 'border-zinc-800/80', 'rounded-2xl', 'hover:border-emerald-500/40', 'hover:bg-zinc-950', 'transition-all', 'cursor-pointer', 'group')}
+            className="p-3 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl hover:border-emerald-500/40 hover:bg-zinc-950 transition-all cursor-pointer group"
           >
-            <div className={cn('flex', 'items-center', 'justify-between', 'mb-1')}>
-              <span className={cn('p-1', 'rounded-lg', 'bg-zinc-900', 'border', 'border-zinc-800', 'text-emerald-400')}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="p-1 rounded-lg bg-zinc-900 border border-zinc-800 text-emerald-400">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
               </span>
-              <span className={cn('text-[10px]', 'font-mono', 'text-zinc-500', 'truncate', 'max-w-[80px]')}>{loc.ip}</span>
+              <span className="text-[10px] font-mono text-zinc-500 truncate max-w-[80px]">{loc.ip}</span>
             </div>
-            <div className={cn('text-xs', 'font-bold', 'text-zinc-200', 'group-hover:text-emerald-400', 'truncate')}>{loc.city || loc.country}</div>
-            <div className={cn('text-[10px]', 'text-zinc-400', 'truncate')}>{loc.country}</div>
+            <div className="text-xs font-bold text-zinc-200 group-hover:text-emerald-400 truncate">{loc.city || loc.country}</div>
+            <div className="text-[10px] text-zinc-400 truncate">{loc.country}</div>
           </div>
         ))}
       </div>

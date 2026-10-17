@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getServerUrl } from '../lib/api';
+import { getRestUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
 import { getTrackThumbnailUrl } from '../lib/colorExtractor';
+import { ytId } from '../lib/youtube';
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
@@ -651,13 +652,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 socket.off('track:receive_chunk', onChunk);
                 clearAllTimers();
 
-                const ytMatch = url.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-                if (!ytMatch) {
+                const videoId = ytId(url);
+                if (!videoId) {
                   reject(new Error(p2pErrMsg));
                   return;
                 }
-
-                const videoId = ytMatch[1];
                 const roomId  = window.location.pathname.split('/').pop();
                 console.warn(
                   `[WebSocket P2P] No seeders found. Falling back to yt-proxy for videoId: ${videoId}`
@@ -665,7 +664,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
                 try {
                   const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-                  const proxyUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+                  const proxyUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
                   const resp = await fetch(proxyUrl, { signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
                   if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
 
@@ -814,25 +813,24 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               requestChunks(); 
             });
           }
-        } else if (url.startsWith('youtube:')) {
-          const match = url.match(/^youtube:([a-zA-Z0-9_-]{11})/);
-          const videoId = match ? match[1] : '';
-          if (!videoId || videoId.length < 11) {
+        } else if (url.startsWith('youtube:') || ytId(url)) {
+          const videoId = ytId(url);
+          if (!videoId) {
             throw new Error(`Corrupted YouTube track ID. Please tap Reset Room or skip track.`);
           }
           const roomId = window.location.pathname.split('/').pop();
           const { getCachedYouTubeTrack, cacheYouTubeTrack } = await import('../lib/idb');
 
           // Check IDB v2 first!
-          const cachedBlob = await getCachedYouTubeTrack(videoId);
-          if (cachedBlob) {
+          const ytCachedBlob = await getCachedYouTubeTrack(videoId);
+          if (ytCachedBlob) {
             console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
             setDownloadProgress(100);
-            arrayBuffer = await cachedBlob.arrayBuffer();
+            arrayBuffer = await ytCachedBlob.arrayBuffer();
           } else {
             console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
             const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-            const fetchUrl = `${getServerUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+            const fetchUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
 
             // Concurrently fetch stream bytes in background to stash to IDB
             try {
@@ -880,7 +878,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             }
           }
         } else {
-          const fetchUrl = url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+          const fetchUrl = url.startsWith('/') ? `${getRestUrl()}${url}` : url;
 
           const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
           if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
@@ -1410,8 +1408,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }).catch(() => {});
     } else {
       const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
-        ? `${getServerUrl()}/${url}` 
-        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+        ? `${getRestUrl()}/${url}` 
+        : url.startsWith('/') ? `${getRestUrl()}${url}` : url;
       fetchPromiseRef.current = fetchAndDecode(absoluteUrl);
     }
   }, []);
