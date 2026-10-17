@@ -31,8 +31,8 @@ import { RoomRepository }      from './db/RoomRepository';
 
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
-import { AuditLogger } from './services/AuditLogger';
-import { notFoundHandler, errorHandler } from './utils/errorHandler';
+import { notFoundHandler, errorHandler, isInternalError, logErrorToFile } from './utils/errorHandler';
+import { safeStringify } from './utils/errorLogger';
 
 // ─── Timestamp all console output in Indian Standard Time (IST / UTC+5:30) ────
 (['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
@@ -41,19 +41,12 @@ import { notFoundHandler, errorHandler } from './utils/errorHandler';
     const istDate = new Date(Date.now() + 5.5 * 3600 * 1000);
     const ts = istDate.toISOString().replace('T', ' ').slice(0, 19);
     
-    // Serialize arguments for logging
-    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    // Serialize arguments for logging. Must never throw: this wrapper runs inside
+    // catch blocks, where a circular req object would turn logging into a crash.
+    const msg = args.map(arg =>
+      typeof arg === 'object' && arg !== null ? safeStringify(arg) : String(arg)
+    ).join(' ');
     original(`[${ts} IST]`, msg);
-
-    // Pipe directly to DB (skip AuditLogger's own stdout to avoid infinite loop)
-    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]') && !msg.includes('prisma:')) {
-      let action = `SERVER_${method.toUpperCase()}`;
-      if (msg.includes('[Server]')) action = 'SERVER_LIFECYCLE';
-      else if (msg.includes('[Cleanup]')) action = 'SERVER_CLEANUP';
-      else if (msg.includes('[Socket]')) action = 'SOCKET_EVENT';
-      
-      AuditLogger.log(action, msg).catch(() => {});
-    }
   };
 });
 
@@ -147,32 +140,69 @@ export class SyncBeatsServer {
     this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
-    // Internal details are kept off the wire by utils/errorHandler (it logs the raw
-    // error and sends a written message). The old blanket res.json masker that lived
-    // here rewrote *every* 5xx body to "Internal Server Error", including the messages
-    // routes had deliberately written for the user.
-
-    // Global Request Audit Logging Middleware
+    // ── Leakage Protection Interceptor ──────────────────────────────────────
+    // Guarantees that internal errors (Prisma, database schemas, stack traces)
+    // NEVER reach clients even if a handler inadvertently responds with raw err.message.
+    // Intercepted errors are translated, logged to logs/error.log with clear human-readable
+    // diagnostics and suggested fixes, and replaced with safe, user-facing messages.
     this.app.use((req, res, next) => {
-      if (req.path.startsWith('/files') || req.path.startsWith('/health') || req.method === 'OPTIONS') {
-        return next();
-      }
-      const start = Date.now();
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
-        const status = res.statusCode;
-        const isErr = status >= 400;
-        const msg = `${req.method} ${req.originalUrl} ${status} (${duration}ms)`;
-        
-        if (isErr) {
-          void AuditLogger.error(`[BACKEND] HTTP_${status}`, msg, ip);
-        } else {
-          void AuditLogger.info(`[BACKEND] HTTP_${status}`, msg, ip);
+      const originalJson = res.json.bind(res);
+      const originalSend = res.send.bind(res);
+
+      res.json = function (body: any) {
+        if (body && typeof body === 'object') {
+          // Check every field a client could read — handlers routinely put the
+          // human sentence in `error` and the raw one in `details`/`message`.
+          const textFields = ['error', 'message', 'details', 'stack', 'trace'] as const;
+          const leaking = textFields.filter(f => f in body && isInternalError(body[f]));
+
+          if (leaking.length > 0) {
+            const candidate = body[leaking[0]];
+            const explanation = logErrorToFile(candidate, {
+              method: req.method,
+              url: req.originalUrl || req.url,
+              ip: req.ip,
+              userId: (req as any)?.user?.sub,
+              userEmail: (req as any)?.user?.email,
+              body: req.body,
+              source: `Response Sanitize Interceptor: ${req.method} ${req.originalUrl || req.url}`,
+            });
+
+            // Replace the readable field, drop the diagnostic ones outright.
+            if (body.error !== undefined) body.error = explanation.userFacingMessage;
+            else body.message = explanation.userFacingMessage;
+            delete body.details;
+            delete body.stack;
+            delete body.trace;
+
+            // Only our own faults become a 5xx — P2002/P2025 stay a deliberate 4xx.
+            if (explanation.isInternal && res.statusCode < 500) {
+              res.status(500);
+            }
+          }
         }
-      });
+        return originalJson(body);
+      };
+
+      res.send = function (data: any) {
+        if (typeof data === 'string' && isInternalError(data)) {
+          const explanation = logErrorToFile(data, {
+            method: req.method,
+            url: req.originalUrl || req.url,
+            ip: req.ip,
+            source: `Response Sanitize Interceptor (send): ${req.method} ${req.originalUrl || req.url}`,
+          });
+          if (res.statusCode < 500) {
+            res.status(500);
+          }
+          return originalJson({ error: explanation.userFacingMessage });
+        }
+        return originalSend(data);
+      };
+
       next();
     });
+
 
     // Serve uploaded audio files with proper HTTP byte-range streaming.
     // express.static advertises Accept-Ranges but doesn't implement partial content
@@ -236,7 +266,9 @@ export class SyncBeatsServer {
     this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
     this.app.use('/spotify', createSpotifyRoutes());
+    this.app.use('/bridge', createMusicBridgeRoutes());
     this.app.use('/api/bridge', createMusicBridgeRoutes());
+    this.app.use('/playlists', playlistRoutes);
     this.app.use('/api/playlists', playlistRoutes);
     this.app.use('/feedback', createFeedbackRoutes());
     this.app.use('/telemetry', createTelemetryRoutes());
@@ -400,6 +432,16 @@ fi
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT',  () => shutdown('SIGINT'));
+
+    process.on('unhandledRejection', (reason) => {
+      logErrorToFile(reason, { source: 'Process: unhandledRejection' });
+      console.error('[Process] Unhandled promise rejection:', reason);
+    });
+
+    process.on('uncaughtException', (err) => {
+      logErrorToFile(err, { source: 'Process: uncaughtException' });
+      console.error('[Process] Uncaught exception:', err);
+    });
   }
 
   start(): void {

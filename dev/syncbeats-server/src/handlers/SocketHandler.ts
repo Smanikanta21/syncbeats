@@ -1,12 +1,18 @@
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
-import { eventBus, EVENTS } from '../events/EventBus';
+
 import { UserRepository } from '../auth/UserRepository';
 import {
   JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition, RepeatMode
 } from '../types';
-import { roomCodeLookupError } from '../utils/errorHandler';
+import { roomCodeLookupError, logErrorToFile, explainError } from '../utils/errorHandler';
+
+function emitSafeError(socket: Socket, err: unknown, source: string, payload?: unknown): void {
+  // Always logged — a non-internal error is still a failure worth a trail.
+  const explanation = logErrorToFile(err, { source, body: payload });
+  socket.emit('error', { message: explanation.userFacingMessage });
+}
 
 /** What a client sees when it acts on a room the server no longer has. */
 const ROOM_GONE = 'This room is no longer active. Try rejoining from the hub.';
@@ -55,27 +61,29 @@ export class SocketHandler {
     private roomRepo:    RoomRepository,
   ) {
     // Forward room state changes → socket.io rooms
-    eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
+    this.roomManager.on('room:stateChanged', (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
       
       // Persist state to DB to recover after reloads or server restarts
       this.roomRepo.updateState(snap.roomId, snap.state, snap.position, snap.trackUrl).catch(err => {
+        logErrorToFile(err, { source: `DB Sync: updateState room ${snap.roomId}` });
         console.error(`[DB Sync] Failed to save state for room ${snap.roomId}:`, err);
       });
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
+    this.roomManager.on('room:participantJoined', ({ roomId, participant }: { roomId: string; participant: unknown }) => {
       this.io.to(roomId).emit('room:participantJoined', participant);
       
       const p = participant as any;
       if (p.userId) {
         this.roomRepo.recordParticipantJoin(roomId, p.userId, p.socketId, p.displayName).catch(err => {
+          logErrorToFile(err, { source: `DB Sync: recordParticipantJoin ${p.userId} in room ${roomId}` });
           console.error(`[DB Sync] Failed to record join for ${p.userId} in ${roomId}:`, err);
         });
       }
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }: { roomId: string; socketId: string }) => {
+    this.roomManager.on('room:participantLeft', ({ roomId, socketId }: { roomId: string; socketId: string }) => {
       this.io.to(roomId).emit('room:participantLeft', socketId);
 
       this.roomRepo.recordParticipantLeave(roomId, socketId).catch(err => {
@@ -83,26 +91,26 @@ export class SocketHandler {
       });
     });
 
-    eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }: { roomId: string; hostId: string }) => {
+    this.roomManager.on('room:hostChanged', ({ roomId, hostId }: { roomId: string; hostId: string }) => {
       this.io.to(roomId).emit('room:hostChanged', hostId);
     });
 
     // When a file is uploaded → broadcast track URL to every client in room
-    eventBus.on(EVENTS.TRACK_SET, ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
+    this.roomManager.on('room:trackSet', ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
       console.log(`[Socket] Broadcasting room:trackSet to ${roomId}`);
       this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
     });
 
-    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
+    this.roomManager.on('room:queueChanged', ({ roomId, queue }: { roomId: string; queue: any[] }) => {
       this.io.to(roomId).emit('room:queueChanged', { queue });
       this.scheduleQueueSave(roomId);
     });
 
-    eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
+    this.roomManager.on('playback:schedule', (payload: any) => {
       this.io.to(payload.roomId).emit('playback:schedule', payload);
     });
 
-    eventBus.on(EVENTS.PLAYBACK_PAUSE, (payload: any) => {
+    this.roomManager.on('playback:pause', (payload: any) => {
       this.io.to(payload.roomId).emit('playback:pause', payload);
     });
   }
@@ -348,7 +356,7 @@ export class SocketHandler {
         if (!room) return;
         room.syncSchedule(trackUrl, positionMs, startTime, senderId, title, artist, thumbnail);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        emitSafeError(socket, err, 'playback:schedule', { roomId, trackUrl });
       }
     });
 
@@ -358,7 +366,7 @@ export class SocketHandler {
       try {
         room.play(socket.id);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        emitSafeError(socket, err, 'playback:play', { roomId });
       }
     });
 
@@ -369,7 +377,7 @@ export class SocketHandler {
         const pos = positionMs !== undefined ? positionMs : room.computeCurrentPosition();
         room.syncPause(pos, senderId);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        emitSafeError(socket, err, 'playback:pause', { roomId });
       }
     });
 
@@ -379,7 +387,7 @@ export class SocketHandler {
         if (!room) return;
         room.seek(socket.id, position);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        emitSafeError(socket, err, 'playback:seek', { roomId, position });
       }
     });
 
@@ -457,7 +465,7 @@ export class SocketHandler {
         if (!room) return;
         room.setParticipantVolume(targetSocketId?.trim() || socket.id, volume);
       } catch (err) {
-        socket.emit('error', { message: (err as Error).message });
+        emitSafeError(socket, err, 'room:setParticipantVolume', { roomId, targetSocketId });
       }
     });
 
