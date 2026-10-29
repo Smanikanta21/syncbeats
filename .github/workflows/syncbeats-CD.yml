@@ -153,6 +153,8 @@ jobs:
           AUTH_FROM_EMAIL: ${{ vars.AUTH_FROM_EMAIL || 'auth@syncbeats.in' }}
           UPDATES_FROM_EMAIL: ${{ vars.UPDATES_FROM_EMAIL || 'updates@syncbeats.in' }}
           ADMIN_PASSWORD: ${{ vars.ADMIN_PASSWORD || 'syncbeatsadmin' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEMETRY_DATABASE_URL: ${{ secrets.TELEMETRY_DATABASE_URL }}
         run: |
           cat <<EOF > .env.vm
           COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
@@ -165,6 +167,8 @@ jobs:
           POSTGRES_USER=$POSTGRES_USER
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
           POSTGRES_DB=$ENV_POSTGRES_DB
+          DATABASE_URL=$DATABASE_URL
+          TELEMETRY_DATABASE_URL=$TELEMETRY_DATABASE_URL
           FRONTEND_URL=$FRONTEND_URL
           BACKEND_URL=$BACKEND_URL
           JWT_SECRET=$JWT_SECRET

@@ -45,6 +45,8 @@ dev/syncbeats-server/yt-dlp
 dev/syncbeats-server/yt-dlp_linux
 dev/syncbeats-server/tmp/
 CLAUDE.md
+snapshots/
+*.sql
 
 # Xcode / Swift / macOS
 *.xcuserdata/

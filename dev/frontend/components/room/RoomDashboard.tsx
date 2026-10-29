@@ -8,7 +8,7 @@ import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Check, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Menu, Radio, AudioLines
+  LayoutGrid, Check, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Menu, Radio, PanelLeft, PanelRight
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { AudioEQ } from "./AudioEQ";
@@ -16,7 +16,9 @@ import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
 import { RoomReactions } from "./RoomReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
+import { SpatialAudioModule } from "./SpatialAudioModule";
 
+import { useSettings } from "../../hooks/useSettings";
 import { SettingsPanel } from "../settings";
 import { ThemeToggle } from "../ThemeToggle";
 
@@ -69,6 +71,10 @@ interface RoomDashboardProps {
   onLeave?: () => void;
   onSetParticipantVolume?: (socketId: string, vol: number) => void;
   onAddSong?: () => void;
+
+  // Pluggable Spatial Audio (componentized)
+  spatialSlot?: React.ReactNode;
+  showSpatialAudio?: boolean;
 }
 
 type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
@@ -87,26 +93,6 @@ function GlassCard({ children, className = "", style }: { children: React.ReactN
       }}
     >
       {children}
-    </div>
-  );
-
-}
-
-function SpatialBetaCard({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className={`flex h-full min-h-36 items-center justify-between gap-5 rounded-3xl border border-foreground/10 bg-foreground/[0.035] p-5 sm:p-6 ${compact ? "" : "flex-col items-start"}`}>
-      <div className="min-w-0">
-        <div className="mb-3 flex items-center gap-2 text-foreground/55">
-          <AudioLines className="h-4 w-4" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Spatial audio</span>
-          <span className="rounded-full border border-foreground/15 px-2 py-0.5 text-[10px] font-semibold text-foreground/65">Beta</span>
-        </div>
-        <h2 className="text-lg font-semibold tracking-tight">Coming soon</h2>
-        <p className="mt-1 max-w-xl text-sm leading-5 text-foreground/55">
-          Spatial placement is paused while we refine its audio quality and device controls. Playback remains available in the room player.
-        </p>
-      </div>
-      {compact && <span className="hidden shrink-0 rounded-full bg-foreground/5 px-3 py-1.5 text-xs text-foreground/50 sm:inline-flex">Unavailable in this beta</span>}
     </div>
   );
 }
@@ -192,12 +178,15 @@ function VisualsModal({
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate,
+  spatialSlot, showSpatialAudio = false,
   audio,
   onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
   const router = useRouter();
   const { logout } = useAuth();
+  const { settings, updateSettings } = useSettings();
+  const isSidebarRight = settings.sidebarPosition === "right";
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
@@ -388,11 +377,23 @@ export function RoomDashboard({
       }}
     >
       <FullscreenPrompt />
-      {/* ── Desktop Layout (lg+) ───────────────────────────────────────────── */}
+      {/* ── Desktop Layout (lg+) ───────────────────────────────────────── */}
       <div className="hidden lg:flex flex-1 min-h-0 p-5 pt-18 gap-4">
-        {/* Primary workspace: player, with spatial features parked as a beta. */}
-        <div className="flex-1 flex flex-col min-w-0 gap-3 min-h-0">
-          <SpatialBetaCard compact />
+        {/* Primary workspace: Stage & Controls */}
+        <div className={cn("flex-1 flex flex-col min-w-0 gap-3 min-h-0", isSidebarRight ? "order-1" : "order-2")}>
+          {/* Optional pluggable Spatial Audio slot */}
+          {spatialSlot ? (
+            <div className="shrink-0">{spatialSlot}</div>
+          ) : showSpatialAudio ? (
+            <div className="shrink-0">
+              <SpatialAudioModule compact />
+            </div>
+          ) : null}
+
+          {/* Equalizer, Ambient Visualizer & Synced Lyrics Stage */}
+          <GlassCard className="flex-1 min-h-0 p-4 flex flex-col" isPlaying={isPlaying}>
+            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
+          </GlassCard>
 
           {/* Desktop Playback Controls */}
           <GlassCard className="shrink-0 px-5 py-3 hidden lg:flex items-center justify-between gap-6" isPlaying={isPlaying}>
@@ -448,15 +449,10 @@ export function RoomDashboard({
               <div className="text-xs text-foreground/50 truncate">{currentQueueItem?.artist || "Live Stream"}</div>
             </div>
           </GlassCard>
-
-          {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
-          <GlassCard className="h-65 shrink-0 p-4 flex flex-col min-h-0" isPlaying={isPlaying}>
-            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
-          </GlassCard>
         </div>
 
-        {/* Right Sidebar: Room Details + Queue */}
-        <GlassCard className="w-80 2xl:w-88 shrink-0 flex flex-col min-h-0 p-3 gap-3" isPlaying={isPlaying}>
+        {/* Desktop Sidebar: Room Details + Queue */}
+        <GlassCard className={cn("w-80 2xl:w-88 shrink-0 flex flex-col min-h-0 p-3 gap-3", isSidebarRight ? "order-2" : "order-1")} isPlaying={isPlaying}>
 
           {/* Room Details Header — Ultra Clean 2-Row Card */}
           <div className="shrink-0 flex flex-col gap-2.5 bg-foreground/3 p-2.5 rounded-2xl border border-foreground/8">
@@ -562,15 +558,12 @@ export function RoomDashboard({
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
-                {/* <HoverExpandPill
-                    icon={UserPlus}
-                    label="Invite"
-                    onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-                    active
-                    activeColor="bg-blue-500/10 text-blue-400 border-blue-500/25"
-                    title="Invite Friends"
-                  /> */}
-
+                <HoverExpandPill
+                  icon={isSidebarRight ? PanelLeft : PanelRight}
+                  label={isSidebarRight ? "Dock Left" : "Dock Right"}
+                  onClick={() => updateSettings({ sidebarPosition: isSidebarRight ? "left" : "right" })}
+                  title={isSidebarRight ? "Dock sidebar to the left" : "Dock sidebar to the right"}
+                />
                 <HoverExpandPill
                   icon={User}
                   label="Profile"
@@ -779,7 +772,7 @@ export function RoomDashboard({
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-2 flex flex-col">
-              <SpatialBetaCard />
+              {spatialSlot || <SpatialAudioModule />}
             </motion.div>
           )}
           {mobileTab === "playing" && (
@@ -946,6 +939,7 @@ export function RoomDashboard({
           onProfile={openProfilePage}
           onLogout={logout}
           onGoToHub={() => router.push("/hub")}
+          showSpatialTab={showSpatialAudio || !!spatialSlot}
         />
       </div>
 

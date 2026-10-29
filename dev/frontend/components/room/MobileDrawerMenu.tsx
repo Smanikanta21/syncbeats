@@ -16,9 +16,10 @@ interface MobileDrawerMenuProps {
   onProfile: () => void;
   onLogout: () => void;
   onGoToHub?: () => void;
+  showSpatialTab?: boolean;
 }
 
-const TABS = [
+const ALL_TABS = [
   { id: "playing", icon: Disc3, label: "Player" },
   { id: "queue", icon: ListMusic, label: "Queue" },
   { id: "spatial", icon: AudioLines, label: "Spatial · Beta" },
@@ -26,7 +27,9 @@ const TABS = [
   { id: "chat", icon: MessageSquare, label: "Chat" },
 ];
 
-export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab, onShowQR, onScanQR, onCopyLink, onProfile, onLogout, onGoToHub }: MobileDrawerMenuProps) {
+export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab, onShowQR, onScanQR, onCopyLink, onProfile, onLogout, onGoToHub, showSpatialTab = false }: MobileDrawerMenuProps) {
+  const tabs = ALL_TABS.filter((t) => t.id !== "spatial" || showSpatialTab);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -63,7 +66,7 @@ export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab, onSh
             </div>
 
             <div className="flex flex-col gap-2">
-              {TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
