@@ -14,7 +14,6 @@ export interface AdaptiveParams {
   NTP_RESYNC_INTERVAL_MS:  number;
   DRIFT_CHECK_INTERVAL_MS: number;
   DRIFT_HARD_SEEK_MS:      number;
-  DRIFT_SOFT_SEEK_MS:      number;
 }
 
 export interface UseAdaptiveSyncReturn {
@@ -32,49 +31,43 @@ export interface UseAdaptiveSyncReturn {
 // ─── Parameter table ─────────────────────────────────────────────────────────
 //
 // Design rationale for poor vs excellent:
-//  • Poor devices have noisy clock-offset estimates → they "appear" to drift more.
-//    Raising DRIFT_HARD_SEEK_MS gives rate-correction room to quietly fix the
-//    drift instead of triggering jarring hard-seeks.  This only affects the
-//    poor device itself — other devices are completely untouched.
+//  • Poor links get fewer probes and a wider correction threshold so jitter
+//    does not trigger repeated audible seeks on that device.
 //  • Fewer NTP samples on poor links avoids hammering a congested connection.
 //  • Wider RTT gate stops perfectly valid slow pings from being thrown away.
 
 const PARAM_TABLE: Record<NetworkQuality, AdaptiveParams> = {
   excellent: {
-    NTP_SAMPLE_COUNT:        20,     // More samples → tighter median
+    NTP_SAMPLE_COUNT:        7,
     NTP_RTT_GATE_MS:         150,    // Tight gate on a fast link
-    NTP_PING_GAP_MS:         10,     // Fast burst
-    NTP_RESYNC_INTERVAL_MS:  4_000,  // Re-sync every 4 s
-    DRIFT_CHECK_INTERVAL_MS: 100,    // Check drift 10×/s
+    NTP_PING_GAP_MS:         20,
+    NTP_RESYNC_INTERVAL_MS:  10_000,
+    DRIFT_CHECK_INTERVAL_MS: 250,    // Four checks per second while visible
     DRIFT_HARD_SEEK_MS:      20,     // Crossfade seek if >20 ms off (avoids long echo/phasing)
-    DRIFT_SOFT_SEEK_MS:      2,      // Rate-correct if >2 ms off
   },
   good: {
-    NTP_SAMPLE_COUNT:        15,
+    NTP_SAMPLE_COUNT:        7,
     NTP_RTT_GATE_MS:         250,
-    NTP_PING_GAP_MS:         20,
-    NTP_RESYNC_INTERVAL_MS:  5_000,
-    DRIFT_CHECK_INTERVAL_MS: 200,
+    NTP_PING_GAP_MS:         40,
+    NTP_RESYNC_INTERVAL_MS:  12_000,
+    DRIFT_CHECK_INTERVAL_MS: 350,
     DRIFT_HARD_SEEK_MS:      25,
-    DRIFT_SOFT_SEEK_MS:      5,
   },
   fair: {
-    NTP_SAMPLE_COUNT:        10,
+    NTP_SAMPLE_COUNT:        5,
     NTP_RTT_GATE_MS:         400,
-    NTP_PING_GAP_MS:         40,
-    NTP_RESYNC_INTERVAL_MS:  8_000,
-    DRIFT_CHECK_INTERVAL_MS: 350,
+    NTP_PING_GAP_MS:         60,
+    NTP_RESYNC_INTERVAL_MS:  15_000,
+    DRIFT_CHECK_INTERVAL_MS: 600,
     DRIFT_HARD_SEEK_MS:      35,
-    DRIFT_SOFT_SEEK_MS:      8,
   },
   poor: {
-    NTP_SAMPLE_COUNT:        6,      // Minimal pings — don't thrash a bad link
+    NTP_SAMPLE_COUNT:        4,      // Small bursts avoid adding load on a poor link
     NTP_RTT_GATE_MS:         600,    // Accept slow-but-valid pings
-    NTP_PING_GAP_MS:         80,     // Breathe between pings
-    NTP_RESYNC_INTERVAL_MS:  12_000, // Re-sync every 12 s to avoid load
-    DRIFT_CHECK_INTERVAL_MS: 500,    // Check 2×/s — good enough
+    NTP_PING_GAP_MS:         100,
+    NTP_RESYNC_INTERVAL_MS:  20_000,
+    DRIFT_CHECK_INTERVAL_MS: 1_000,  // Lower wakeups on unstable/slow links
     DRIFT_HARD_SEEK_MS:      50,
-    DRIFT_SOFT_SEEK_MS:      12,
   },
 };
 
@@ -125,7 +118,6 @@ export function useAdaptiveSync(socket: Socket): UseAdaptiveSyncReturn {
       NTP_RESYNC_INTERVAL_MS:  Math.round(ewmaBlend(current.NTP_RESYNC_INTERVAL_MS,  target.NTP_RESYNC_INTERVAL_MS,  EWMA_ALPHA)),
       DRIFT_CHECK_INTERVAL_MS: Math.round(ewmaBlend(current.DRIFT_CHECK_INTERVAL_MS, target.DRIFT_CHECK_INTERVAL_MS, EWMA_ALPHA)),
       DRIFT_HARD_SEEK_MS:      Math.round(ewmaBlend(current.DRIFT_HARD_SEEK_MS,      target.DRIFT_HARD_SEEK_MS,      EWMA_ALPHA)),
-      DRIFT_SOFT_SEEK_MS:      Math.round(ewmaBlend(current.DRIFT_SOFT_SEEK_MS,      target.DRIFT_SOFT_SEEK_MS,      EWMA_ALPHA)),
     };
 
     // Update reactive quality state only on tier transitions to avoid re-renders

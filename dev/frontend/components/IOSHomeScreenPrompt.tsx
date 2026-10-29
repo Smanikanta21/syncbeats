@@ -56,7 +56,7 @@ export function IOSHomeScreenPrompt() {
           <div className="glass-panel p-5 rounded-3xl border border-foreground/15 shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl relative overflow-hidden flex flex-col gap-4">
             
             {/* Subtle Top Ambient Glow */}
-            <div className="absolute -top-10 -right-10 w-36 h-36 bg-linear-to-br from-dye-500/20 to-field-500/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-10 -right-10 w-36 h-36 bg-linear-to-br from-[var(--warm-tint)] to-[var(--cool-tint)] opacity-30 rounded-full blur-2xl pointer-events-none" />
 
             {/* Header */}
             <div className="flex items-center justify-between z-10">
@@ -82,7 +82,7 @@ export function IOSHomeScreenPrompt() {
             {/* Instructions Grid */}
             <div className="grid grid-cols-2 gap-2 text-xs font-semibold z-10">
               <div className="bg-foreground/5 border border-foreground/10 rounded-2xl p-3 flex flex-col items-center text-center gap-1.5">
-                <div className="w-7 h-7 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-full bg-foreground/5 text-foreground/70 flex items-center justify-center">
                   <Share className="w-4 h-4" />
                 </div>
                 <span className="text-foreground/80">1. Tap <strong className="text-foreground">Share</strong> icon below</span>
@@ -97,7 +97,7 @@ export function IOSHomeScreenPrompt() {
             </div>
 
             {/* Pointer Indicator Arrow */}
-            <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent-color)] pt-1 z-10">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-[var(--accent-color)] pt-1 z-10">
               <Smartphone className="w-3.5 h-3.5" />
               <span>Enjoy 120Hz Fullscreen Experience</span>
             </div>

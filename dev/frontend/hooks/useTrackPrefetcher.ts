@@ -1,255 +1,140 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { getRestUrl } from "../lib/api";
-import { ytId } from "../lib/youtube";
-import type { TrackQueueItem } from "../lib/types";
+import { useEffect, useRef, useState } from 'react';
+import { ytId } from '../lib/youtube';
+import { trackCacheKey } from '../lib/trackIdentity';
+import { selectNextTrack } from '../lib/roomState';
+import { downloadTrack, resolvePlayableTrack } from '../lib/trackDownload';
+import { prefetchDelay, validDownloadSpeed } from '../lib/prefetchPolicy';
+import type { RoomSnapshot } from '../lib/types';
 
-const SPEED_STORAGE_KEY = "sb_dl_speed_bps";
-const BUFFER_MARGIN_SECONDS = 20; // start downloading this many extra seconds before needed
-const DEFAULT_SPEED_BPS = 300_000; // 300 KB/s conservative default
-
-// ── Speed estimation persistence ─────────────────────────────────────────────
+const SPEED_STORAGE_KEY = 'sb_dl_speed_bps';
 function loadSpeedEstimate(): number {
-  try {
-    const v = localStorage.getItem(SPEED_STORAGE_KEY);
-    return v ? parseFloat(v) : DEFAULT_SPEED_BPS;
-  } catch {
-    return DEFAULT_SPEED_BPS;
-  }
+  try { return validDownloadSpeed(Number(localStorage.getItem(SPEED_STORAGE_KEY))); }
+  catch { return validDownloadSpeed(0); }
 }
 
-function saveSpeedEstimate(bps: number) {
-  try {
-    const prev = loadSpeedEstimate();
-    const blended = prev * 0.6 + bps * 0.4; // EWMA blend
-    localStorage.setItem(SPEED_STORAGE_KEY, String(blended));
-  } catch {}
-}
-
-// ── Extract videoId from ws-p2p URL ───────────────────────────────────────────
-export function extractVideoId(trackUrl: string): string | null {
-  return ytId(trackUrl);
-}
-
-// ── State exposed to callers ──────────────────────────────────────────────────
+export const extractVideoId = ytId;
 export interface PrefetchState {
-  nextTrackProgress: number;    // 0 = idle, 1-99 = downloading, 100 = done
+  nextTrackProgress: number;
   nextTrackTitle: string | null;
   isPrefetching: boolean;
+  status?: 'idle' | 'resolving' | 'downloading' | 'cached' | 'ready' | 'failed' | 'cancelled';
+  isIndeterminate?: boolean;
+  error?: string | null;
 }
+const EMPTY: PrefetchState = { nextTrackProgress: 0, nextTrackTitle: null, isPrefetching: false, status: 'idle' };
 
-interface UseTrackPrefetcherOptions {
-  snapshot: { queue: TrackQueueItem[], repeatMode?: "off" | "track" | "all", shuffle?: boolean } | null;
+interface Options {
+  snapshot: RoomSnapshot | null;
   currentTime: number;
   duration: number;
+  isCurrentReady: boolean;
   roomId: string;
 }
 
-export function useTrackPrefetcher({
-  snapshot,
-  currentTime,
-  duration,
-  roomId,
-}: UseTrackPrefetcherOptions): PrefetchState {
-  const [nextTrackProgress, setNextTrackProgress] = useState(0);
-  const [nextTrackTitle, setNextTrackTitle] = useState<string | null>(null);
-  const [isPrefetching, setIsPrefetching] = useState(false);
+export function useTrackPrefetcher(options: Options): PrefetchState {
+  const target = selectNextTrack(options.snapshot);
+  const key = target ? options.roomId + ':' + target.id + ':' + trackCacheKey(target.trackUrl) : '';
+  const latest = useRef({ ...options, target });
+  const [state, setState] = useState<PrefetchState & { key: string }>({ ...EMPTY, key: '' });
 
-  const abortRef = useRef<AbortController | null>(null);
-  const prefetchedUrlRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    latest.current = { ...options, target };
+  });
 
-  // Derive the next track in the queue
-  const nextTrack = (() => {
-    if (!snapshot?.queue || snapshot.queue.length === 0) return null;
-    const idx = snapshot.queue.findIndex(q => q.isCurrent);
-    if (idx === -1) return null;
-    
-    if (snapshot.repeatMode === "track") {
-      return snapshot.queue[idx]; // Prefetch the same track! (though usually already cached)
-    }
+  useEffect(() => {
+    let cancelled = false;
+    let running = false;
+    let done = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const track = latest.current.target;
+    if (!track || !key) return;
+    const publish = (patch: Partial<PrefetchState>) => {
+      if (!cancelled) setState(previous => ({
+        ...(previous.key === key ? previous : EMPTY),
+        key, nextTrackTitle: track.title, ...patch,
+      }));
+    };
 
-    if (idx >= snapshot.queue.length - 1) {
-      if (snapshot.repeatMode === "all") {
-        return snapshot.queue[0]; // Loop back to start
-      }
-      return null;
-    }
-    return snapshot.queue[idx + 1] ?? null;
-  })();
-
-  const doDownload = useCallback(async (track: TrackQueueItem) => {
-    let resolvedUrl = track.trackUrl;
-    
-    // Check if it's a lazy-loaded Spotify track
-    if (track.trackUrl.startsWith('spotify-lazy:')) {
-      const trackId = track.trackUrl.split(':')[1];
+    const download = async () => {
+      running = true;
+      publish({ status: track.trackUrl.startsWith('spotify-lazy:') ? 'resolving' : 'downloading',
+        isPrefetching: true, isIndeterminate: true, nextTrackProgress: 0, error: null });
       try {
-        setNextTrackTitle(`Resolving: ${track.title}`);
-        setIsPrefetching(true);
-        const res = await fetch(`${getRestUrl()}/rooms/${roomId}/resolve-lazy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // Pass authorization if needed
-            'Authorization': `Bearer ${localStorage.getItem('sb_auth_token') || ''}`
-          },
-          body: JSON.stringify({
-            queueItemId: track.id,
-            trackId,
-            title: track.title,
-            artist: track.artist || ''
-          })
-        });
-        
-        const data = await res.json();
-        if (data.success && data.youtubeId) {
-          resolvedUrl = `youtube:${data.youtubeId}`;
-          console.log(`[Prefetcher] Resolved lazy track to ${resolvedUrl}`);
-        } else {
-          console.warn('[Prefetcher] Failed to resolve lazy track:', data);
-          setIsPrefetching(false);
+        const url = await resolvePlayableTrack(track, options.roomId, controller.signal);
+        if (cancelled) return;
+        // Non-YouTube swarm sources keep their existing foreground P2P loader.
+        if ((url.startsWith('magnet:') || url.startsWith('ws-p2p:')) && !ytId(url)) {
+          done = true;
+          publish({ status: 'idle', isPrefetching: false, isIndeterminate: false });
           return;
         }
-      } catch (err) {
-        console.error('[Prefetcher] Error resolving lazy track:', err);
-        setIsPrefetching(false);
+        publish({ status: 'downloading' });
+        const result = await downloadTrack(url, options.roomId, {
+          priority: 'prefetch', title: track.title, signal: controller.signal,
+          onProgress: progress => publish({ nextTrackProgress: progress ?? 0, isIndeterminate: progress == null }),
+        });
+        if (cancelled) return;
+        if (result.downloadDurationMs && result.downloadDurationMs > 100) {
+          try {
+            const speed = validDownloadSpeed(result.blob.size / (result.downloadDurationMs / 1000));
+            localStorage.setItem(SPEED_STORAGE_KEY, String(loadSpeedEstimate() * 0.6 + speed * 0.4));
+          } catch { /* Storage access is optional. */ }
+        }
+        done = true;
+        publish({ status: result.cached ? 'cached' : result.reusable ? 'ready' : 'failed', isPrefetching: false,
+          isIndeterminate: false, nextTrackProgress: result.reusable ? 100 : 0,
+          error: result.reusable ? null : 'Storage is unavailable. This track will load when needed.' });
+      } catch (error) {
+        if (cancelled) return;
+        const wasAborted = error instanceof DOMException && error.name === 'AbortError';
+        if (!wasAborted) failures++;
+        publish({ status: wasAborted ? 'cancelled' : 'failed', isPrefetching: false,
+          isIndeterminate: false, error: wasAborted ? null : 'The next track will load when needed.' });
+        if (failures < 3) timer = setTimeout(tick, Math.min(15_000, 2000 * 2 ** failures));
+      } finally {
+        running = false;
+      }
+    };
+
+    function tick() {
+      if (cancelled || done || running) return;
+      const current = latest.current;
+      if (!current.isCurrentReady) {
+        timer = setTimeout(tick, 1000);
         return;
       }
+      const delay = prefetchDelay(current.duration, current.currentTime, loadSpeedEstimate(),
+        track?.sizeBytes, track?.durationSec, track?.trackUrl.startsWith('spotify-lazy:'));
+      if (delay === 0) void download();
+      else timer = setTimeout(tick, Math.min(1000, delay * 1000));
     }
-
-    const videoId = extractVideoId(resolvedUrl);
-    if (!videoId) {
-       const parsedId = ytId(resolvedUrl);
-       if (!parsedId) return;
-       
-       resolvedUrl = `ws-p2p:yt:${parsedId}_audio`;
-    }
-
-    const finalVideoId = extractVideoId(resolvedUrl);
-    if (!finalVideoId || finalVideoId.length < 11) return;
-
-    // Ensure we use the exact IDB key that useAudioPlayer expects
-    const idbKey = resolvedUrl.startsWith('youtube:') ? finalVideoId : resolvedUrl;
-
-    const { getTrack, saveTrack } = await import("../lib/idb");
-    const existing = await getTrack(idbKey);
-    if (existing) {
-      setNextTrackProgress(100);
-      setIsPrefetching(false);
-      return;
-    }
-
-    if (abortRef.current) abortRef.current.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-
-    setNextTrackTitle(track.title);
-    setIsPrefetching(true);
-    setNextTrackProgress(1);
-
-    const authToken = typeof window !== "undefined" ? (localStorage.getItem("token") || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-    const proxyUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${finalVideoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-    const startedAt = Date.now();
-
-    try {
-      const resp = await fetch(proxyUrl, { signal: ctrl.signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
-      if (!resp.ok) throw new Error(`yt-proxy ${resp.status}`);
-
-      const contentLength = resp.headers.get("content-length");
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      const reader = resp.body!.getReader();
-      const chunks: Uint8Array[] = [];
-      let loaded = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (ctrl.signal.aborted) return;
-        chunks.push(value);
-        loaded += value.length;
-        if (total > 0) setNextTrackProgress(Math.round((loaded / total) * 100));
+    tick();
+    const resume = () => {
+      if (!running && !done) {
+        failures = 0;
+        if (timer) clearTimeout(timer);
+        tick();
       }
-
-      if (ctrl.signal.aborted) return;
-
-      const merged = new Uint8Array(loaded);
-      let off = 0;
-      for (const c of chunks) { merged.set(c, off); off += c.length; }
-      const blob = new Blob([merged.buffer], { type: "audio/mpeg" });
-      await saveTrack(idbKey, blob);
-
-      const elapsed = (Date.now() - startedAt) / 1000;
-      if (elapsed > 0) saveSpeedEstimate(loaded / elapsed);
-
-      setNextTrackProgress(100);
-      setIsPrefetching(false);
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
-      console.warn("[Prefetcher] Failed to pre-download next track:", err);
-      setIsPrefetching(false);
-      setNextTrackProgress(0);
-    }
-  }, [roomId]);
-
-  const scheduleOrTrigger = useCallback((track: TrackQueueItem) => {
-    if (prefetchedUrlRef.current === track.trackUrl) return;
-    const videoId = extractVideoId(track.trackUrl);
-    if (!videoId) return; // non-YT track, handled elsewhere
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    // If duration unknown, download immediately
-    if (!duration || duration === 0) {
-      prefetchedUrlRef.current = track.trackUrl;
-      doDownload(track);
-      return;
-    }
-
-    const speedBps = loadSpeedEstimate();
-    // Estimate size: use sizeBytes from queue item if available
-    const sizeEstimate = (track as any).sizeBytes ?? speedBps * 120;
-    const estimatedDownloadSecs = sizeEstimate / speedBps;
-    const timeRemaining = duration - currentTime;
-    const triggerWhenRemainingBelow = estimatedDownloadSecs + BUFFER_MARGIN_SECONDS;
-
-    if (timeRemaining <= triggerWhenRemainingBelow) {
-      prefetchedUrlRef.current = track.trackUrl;
-      doDownload(track);
-    } else {
-      const delayMs = Math.max(0, (timeRemaining - triggerWhenRemainingBelow) * 1000);
-      timerRef.current = setTimeout(() => {
-        prefetchedUrlRef.current = track.trackUrl;
-        doDownload(track);
-      }, delayMs);
-    }
-  }, [currentTime, duration, doDownload]);
-
-  // Reset when current track changes
-  const currentTrackUrl = snapshot?.queue?.find(q => q.isCurrent)?.trackUrl;
-  useEffect(() => {
-    prefetchedUrlRef.current = null;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-    setNextTrackProgress(0);
-    setIsPrefetching(false);
-    setNextTrackTitle(null);
-  }, [currentTrackUrl]);
-
-  // Schedule / trigger as time advances
-  useEffect(() => {
-    if (!nextTrack) return;
-    if (prefetchedUrlRef.current === nextTrack.trackUrl) return;
-    scheduleOrTrigger(nextTrack);
-  }, [nextTrack, scheduleOrTrigger, currentTime]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (abortRef.current) abortRef.current.abort();
     };
-  }, []);
+    const visible = () => { if (document.visibilityState === 'visible') resume(); };
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('online', resume);
+      document.removeEventListener('visibilitychange', visible);
+      // Keep the bytes in flight if this exact target just became the current track.
+      const current = latest.current;
+      const promoted = current.roomId === options.roomId && current.snapshot?.trackUrl &&
+        trackCacheKey(current.snapshot.trackUrl) === trackCacheKey(track.trackUrl);
+      if (!promoted) controller.abort();
+    };
+  }, [key, options.roomId]);
 
-  return useMemo(() => ({ nextTrackProgress, nextTrackTitle, isPrefetching }), [nextTrackProgress, nextTrackTitle, isPrefetching]);
+  return state.key === key ? state : EMPTY;
 }

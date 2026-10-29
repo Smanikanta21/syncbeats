@@ -63,6 +63,7 @@ build/
 *.dSYM
 Pods/
 docs/*
+!docs/GLOBAL_SYNC_DESIGN.md
 
 # Cookies & Cache
 cookies.txt
@@ -89,6 +90,9 @@ implementation_plan.md
 .claude/
 .agents/
 skills-lock.json
+
+# Local Obsidian notes
+/abhinay-syncbeats/
 
 # /brag render scratch (probe frames, scene html, share copy)
 brag-output*/

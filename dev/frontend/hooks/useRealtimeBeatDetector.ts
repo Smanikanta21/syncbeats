@@ -25,8 +25,6 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
     peakHold: [0, 0, 0, 0, 0, 0],
     lastFrameTime: 0,
     prevTimestamp: 0,
-    lastSyntheticBeatTime: 0,
-    syntheticBeatCount: 0,
   });
 
   useEffect(() => {
@@ -74,32 +72,15 @@ export function useRealtimeBeatDetector(enabled: boolean = true) {
         if (sum > 5) isDataActive = true;
       }
 
-      const isDev = process.env.NEXT_PUBLIC_ENV !== "production" && (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ENV === "development");
-
-      // Fallback: If WebAudio FFT data is unavailable or zero (e.g. YouTube stream or CORS limitation),
-      // run a smooth rhythmic beat pulse clock so ambient lighting and spatial nodes dance to the music!
+      // Do not invent a metronome when the stream has no readable FFT data. A
+      // synthetic pulse looks like beat detection but quickly drifts away from
+      // the song. Spotify analysis remains the fallback for supported tracks.
       if (!isDataActive || !data) {
-        if (!s.lastSyntheticBeatTime) s.lastSyntheticBeatTime = timestamp;
-        const targetInterval = isDev ? 480 : 500; // ~120-125 BPM
-        if (timestamp - s.lastSyntheticBeatTime > targetInterval) {
-          s.lastSyntheticBeatTime = timestamp;
-          s.syntheticBeatCount = (s.syntheticBeatCount || 0) + 1;
-
-          const pattern: Array<"bass" | "mid" | "treble"> = ["bass", "mid", "bass", "treble"];
-          const beatType = pattern[s.syntheticBeatCount % pattern.length];
-          const intensity = isDev ? 0.7 + Math.random() * 0.3 : 0.8; // Constant smooth intensity in prod
-
-          emitBeat({
-            timestamp,
-            beatType,
-            intensity,
-            source: "realtime-fft",
-          });
-        }
         return;
       }
 
       const scale = (data ? data.length : 256) / 256;
+      const isDev = process.env.NEXT_PUBLIC_ENV !== "production" && (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_ENV === "development");
       let sub = 0, bass = 0, lowMids = 0, mids = 0, upperMids = 0, highs = 0;
       const getAvg = (start: number, end: number) => {
         const sIdx = Math.floor(start * scale);

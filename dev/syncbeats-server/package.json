@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "test": "echo \"No test specified\" && exit 0",
+    "test": "ts-node src/core/RoomTests.ts",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -38,7 +39,6 @@
     "jsonwebtoken": "^9.0.3",
     "play-dl": "^1.9.7",
     "redis": "^6.0.0",
-    "resend": "^6.12.4",
     "socket.io": "^4.8.3",
     "spotify-url-info": "^3.3.1",
     "ua-parser-js": "^2.0.10",

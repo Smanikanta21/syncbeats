@@ -3,49 +3,59 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @layer base {
-  /* ── "Constructive" ───────────────────────────────────────────────────────
-     The palette is two inks in water. `--dye` (magenta) and `--field` (cyan)
-     are the brand; they read as chop when apart and brighten where they
-     overlay, which is what constructive interference actually does and what
-     the product actually does to a room full of phones.
+  /* ── "Smoked glass" ───────────────────────────────────────────────────────
+     No brand hue. The chrome is ink on paper, and depth comes from TEMPERATURE
+     rather than colour: `--warm-tint` where light passes through the glass,
+     `--cool-tint` where thickness builds. That is what smoked glass does, and
+     it keeps the material reading as glass instead of as a flat dark theme.
 
-     Surfaces are water depth, not grey. Both themes carry real chroma in the
-     neutrals (light leans cool-blue, dark is visibly blue rather than a tinted
-     near-black) so the inks sit in the same world as the ground they're on.
+     Colour on the site now comes from exactly two places: album art (the room's
+     fluid field) and semantic state (ok/warn/bad below) — so state is the only
+     saturated chroma left and reads at a glance.
 
-     Semantic ok/warn/bad live deliberately OUTSIDE the brand hues — see the
-     hue-separation note in @theme below. */
+     The accent properties are defined here and resolve to ink. Every
+     var(--accent-*) call sites keeps working unchanged. */
   :root {
-    --background: #e8edef;   /* paper — cool, deliberately not cream */
-    --foreground: #061018;   /* ink */
+    --background: #f1f1ef;   /* paper */
+    --foreground: #111111;   /* ink */
     --surface: #ffffff;
-    --edge: #c9d4d8;
-    --glass-border: rgba(6, 16, 24, 0.08);
-    --glass-border-hover: rgba(6, 16, 24, 0.16);
+    --edge: #d6d6d2;
+    --glass-border: rgba(17, 17, 17, 0.08);
+    --glass-border-hover: rgba(17, 17, 17, 0.16);
     --glass-bg: rgba(255, 255, 255, 0.72);
     --glass-bg-hover: rgba(255, 255, 255, 0.92);
-    --glass-shadow: 0 4px 24px rgba(6, 16, 24, 0.06);
+    --glass-shadow: 0 4px 24px rgba(17, 17, 17, 0.06);
 
-    /* Live accent. startAccentVars() overwrites these on <html> as the walk
-       drifts between the two inks; these values are the first-paint / SSR state
-       and the floor if JS never runs. Read in DynamicAuroraButton and across
-       the landing page. Must stay in step with ACCENT_STAGES in lib/accent.ts. */
-    --accent-color: oklch(67% 0.26 338);
-    --accent-glow: oklch(67% 0.26 338 / 0.35);
-    --accent-border: oklch(67% 0.26 338 / 0.4);
-    --accent-gradient: linear-gradient(135deg, oklch(67% 0.26 338) 0%, oklch(71% 0.131 215) 100%);
+    /* Temperature, not hue. Two references, used by the ambient field and the
+       fluid blobs so a glass panel has something to sit in. */
+    --warm-tint: #fff6e8;
+    --cool-tint: #dce4ec;
+
+    /* Ink accent, resolved per theme for both SSR and client rendering. */
+    --accent-color: var(--foreground);
+    --accent-glow: rgba(17, 17, 17, 0.08);
+    --accent-border: rgba(17, 17, 17, 0.22);
+    --accent-gradient: linear-gradient(135deg, #111111 0%, rgba(17, 17, 17, 0.7) 100%);
+    --accent-blob-1: rgba(111, 126, 144, 0.15);
+    --accent-blob-2: rgba(148, 163, 184, 0.18);
   }
 
   [data-theme="dark"] {
-    --background: #04131c;   /* depth */
-    --foreground: #e6f0f4;
-    --surface: #0b1f2b;
-    --edge: #16323f;
-    --glass-border: rgba(230, 240, 244, 0.10);
-    --glass-border-hover: rgba(230, 240, 244, 0.22);
-    --glass-bg: rgba(11, 31, 43, 0.65);
-    --glass-bg-hover: rgba(22, 50, 63, 0.80);
-    --glass-shadow: 0 12px 40px -10px rgba(2, 8, 12, 0.7);
+    --background: #0e0f0f;
+    --foreground: #eaeae8;
+    --surface: #181a1b;
+    --edge: #26282a;
+    --glass-border: rgba(234, 234, 232, 0.10);
+    --glass-border-hover: rgba(234, 234, 232, 0.20);
+    --glass-bg: rgba(24, 26, 27, 0.62);
+    --glass-bg-hover: rgba(38, 40, 42, 0.78);
+    --glass-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7);
+
+    --accent-glow: rgba(234, 234, 232, 0.10);
+    --accent-border: rgba(234, 234, 232, 0.22);
+    --accent-gradient: linear-gradient(135deg, #eaeae8 0%, rgba(234, 234, 232, 0.7) 100%);
+    --accent-blob-1: rgba(148, 163, 184, 0.21);
+    --accent-blob-2: rgba(100, 116, 139, 0.18);
   }
 
   html,
@@ -61,29 +71,33 @@
     overflow-x: clip;
   }
 
-  /* The display face carries h1 and h2 ONLY.
-     Syne is a genuine display face: it has no opsz axis and it widens as it
-     bolds, so at 13-14px and weight 700-800 — which is what the room's dense
-     panel titles are — it renders as a shrunken billboard, far heavier and
-     wider than the layout budgeted for. Bricolage got away with the blanket
-     h1-h4 rule because its opsz axis quietly compensated at small sizes; Syne
-     has nothing to compensate with.
+  /* Native app feel on small screens: prevent elastic overscroll bounce, double tap zoom, and unexpected zoom */
+  @media (max-width: 768px) {
+    html,
+    body {
+      touch-action: manipulation;
+      overscroll-behavior: none;
+      overscroll-behavior-y: none;
+      -webkit-text-size-adjust: 100%;
+    }
+  }
 
-     So h3/h4 stay on the text face. The practical rule: if it is set at the
-     `title` step or larger, it can wear Syne. Below that, it is UI, not a
-     headline, and it uses `font-sans` like everything else around it.
-     Anything that genuinely wants the display face at a small size can ask for
-     it with `font-display` explicitly. */
+  /* One face, two treatments. The display face is Archivo set 105% wide; the
+     text face is the same Archivo at normal width. Because it is the same
+     family, h1-h4 can all keep the heading treatment without the "shrunken
+     billboard" problem Syne had at 13-14px — Archivo is a normal-width
+     grotesque, so weight and size alone carry the hierarchy. */
   h1,
   h2 {
     font-family: var(--font-display);
-    letter-spacing: -0.008em;
+    font-stretch: 105%;
+    letter-spacing: -0.02em;
   }
 
   h3,
   h4 {
     font-family: var(--font-sans);
-    letter-spacing: -0.004em;
+    letter-spacing: -0.008em;
   }
 
   html.lenis,
@@ -216,10 +230,11 @@
     100% { background-position: 0% 0; }
   }
   .lyric-sweep {
+    --lyric-fill: var(--foreground);
     background-image: linear-gradient(
       90deg,
-      var(--foreground) 50%,
-      color-mix(in srgb, var(--foreground) 22%, transparent) 50%
+      var(--lyric-fill) 50%,
+      color-mix(in srgb, var(--lyric-fill) 22%, transparent) 50%
     );
     background-size: 220% 100%;
     background-position: 120% 0;
@@ -227,6 +242,123 @@
     background-clip: text;
     color: transparent;
     animation: lyricSweep 3.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  .magnetic-fill-card {
+    --fill-x: 50%;
+    --fill-y: 50%;
+    transition-property: color, transform;
+    transition-duration: 650ms;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .magnetic-fill-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--foreground);
+    clip-path: circle(0px at var(--fill-x) var(--fill-y));
+    transition: clip-path var(--fill-duration, 420ms) cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: clip-path;
+    pointer-events: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .magnetic-fill-card:is(:hover, [data-lit="true"]) {
+      color: var(--background);
+    }
+    .magnetic-fill-card:is(:hover, [data-lit="true"])::before {
+      clip-path: circle(var(--fill-radius, 0px) at var(--fill-x) var(--fill-y));
+    }
+    .magnetic-fill-card:is(:hover, [data-lit="true"]) .magnetic-fill-secondary {
+      color: color-mix(in srgb, var(--background) 65%, transparent);
+    }
+    .magnetic-fill-card:is(:hover, [data-lit="true"]) .magnetic-fill-icon {
+      color: color-mix(in srgb, var(--background) 70%, transparent);
+    }
+    .magnetic-fill-card:is(:hover, [data-lit="true"]) .lyric-sweep {
+      --lyric-fill: var(--background);
+    }
+    .magnetic-fill-card:is(:hover, [data-lit="true"]) .lyric-dot {
+      background-color: color-mix(in srgb, var(--background) 60%, transparent);
+    }
+  }
+  @media (max-width: 767px) {
+    .capability-deck-rail {
+      height: 320svh;
+      position: relative;
+    }
+    .capability-card-stack {
+      position: sticky;
+      top: max(calc(env(safe-area-inset-top) + 5rem), calc(50svh - 20rem));
+      display: block;
+      height: min(70svh, 40rem);
+    }
+    .capability-card-stack > .magnetic-fill-card {
+      position: absolute;
+      inset: 50% 0 auto;
+      width: 100%;
+      max-height: 100%;
+      min-height: min(46svh, 28rem);
+      overflow: hidden;
+      translate: 0 -50%;
+      background-color: color-mix(in srgb, var(--background) 90%, var(--foreground) 10%);
+      border-color: color-mix(in srgb, var(--foreground) 24%, transparent);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+      transform-origin: 50% 100%;
+      transition: transform 760ms cubic-bezier(0.22, 1, 0.36, 1), opacity 600ms ease, color 620ms ease, background-color 620ms ease;
+    }
+    .capability-card-stack > .magnetic-fill-card::before {
+      transition-duration: 680ms;
+      transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+  @media (hover: none), (max-width: 767px) {
+    .magnetic-fill-card:not([data-scroll-active="true"]) > * {
+      opacity: 0;
+      transition: opacity 600ms ease;
+    }
+    .magnetic-fill-card[data-scroll-active="true"] {
+      color: var(--background);
+      z-index: 50;
+      background-color: var(--foreground);
+    }
+    .magnetic-fill-card[data-scroll-active="true"] > * {
+      opacity: 1;
+      transition: opacity 260ms 120ms ease;
+    }
+    .magnetic-fill-card[data-scroll-active="true"]::before {
+      clip-path: circle(200% at 50% 50%);
+    }
+    .magnetic-fill-card[data-scroll-active="true"] .magnetic-fill-secondary {
+      color: color-mix(in srgb, var(--background) 65%, transparent);
+    }
+    .magnetic-fill-card[data-scroll-active="true"] .magnetic-fill-icon {
+      color: color-mix(in srgb, var(--background) 70%, transparent);
+    }
+    .magnetic-fill-card[data-scroll-active="true"] .lyric-sweep {
+      --lyric-fill: var(--background);
+    }
+    .magnetic-fill-card[data-scroll-active="true"] .lyric-dot {
+      background-color: color-mix(in srgb, var(--background) 60%, transparent);
+    }
+  }
+  .magnetic-fill-card:active {
+    color: var(--background);
+  }
+  .magnetic-fill-card:active::before {
+    clip-path: circle(200% at var(--fill-x) var(--fill-y));
+  }
+  .magnetic-fill-card:active .magnetic-fill-secondary {
+    color: color-mix(in srgb, var(--background) 65%, transparent);
+  }
+  .magnetic-fill-card:active .magnetic-fill-icon {
+    color: color-mix(in srgb, var(--background) 70%, transparent);
+  }
+  .magnetic-fill-card:active .lyric-sweep {
+    --lyric-fill: var(--background);
+  }
+  .magnetic-fill-card:active .lyric-dot {
+    background-color: color-mix(in srgb, var(--background) 60%, transparent);
   }
   /* Instrumental dots — shown wherever a stretch of a song has no vocals
      (lyrics panel, and the feature preview on the landing page). A slow rise
@@ -351,6 +483,18 @@
     cursor: none !important;
   }
 
+  /* Blend a white cursor source against whatever is under it: difference
+     produces black over the magnetic light fill and white over the dark page. */
+  .contrast-pointer-layer {
+    mix-blend-mode: difference;
+  }
+  .contrast-pointer-ring {
+    border-color: #fff;
+  }
+  .contrast-pointer-dot {
+    background-color: #fff;
+  }
+
   .no-touch-select {
     -webkit-user-select: none !important;
     -moz-user-select: none !important;
@@ -367,20 +511,14 @@
   --color-surface: var(--surface);
   --color-edge: var(--edge);
 
-  /* ── Semantic + brand scales ───────────────────────────────────────────────
+  /* ── Semantic scales ───────────────────────────────────────────────────────
      Registered as full scales on purpose: every call site in the app spells
      state as `bg-ok-500/10`, `text-bad-400`, `border-warn-500/30`, so the shade
-     and opacity modifiers have to keep working. Defining the family is what
-     lets ~215 raw `emerald`/`red`/`amber` classes become a family rename
-     instead of 80 hand-written mappings.
+     and opacity modifiers have to keep working.
 
-     HUE SEPARATION IS LOAD-BEARING. In OKLCH:
-       bad 23°   warn 76°   ok 158°   field 215°   dye 338°
-     Every brand↔semantic gap is ≥45°. The first draft of this palette used
-     #FF2E88 for the dye (hue 2°) and #1FD6C1 for the field (hue 182°), which
-     put the brand magenta 21° from error-red and the brand cyan 24° from
-     ok-green — i.e. a destructive button and the brand accent would have been
-     the same colour at a glance. If you retune a hue, re-check all six gaps.
+     With the brand hue gone (see the "Smoked glass" note at the top), state is
+     the ONLY saturated chroma on the site — which is exactly what makes it
+     readable at a glance. There is no longer a brand hue to separate from.
 
      ok/warn/bad anchor on Radix's step-9 values (contrast already validated on
      both light and dark grounds) rather than invented numbers. Chroma peaks at
@@ -423,29 +561,10 @@
   --color-bad-900: oklch(34.6% 0.124 23);
   --color-bad-950: oklch(24.6% 0.093 23);
 
-  /* dye — brand ink A, magenta */
-  --color-dye-100: oklch(93.0% 0.088 338);
-  --color-dye-200: oklch(87.0% 0.146 338);
-  --color-dye-300: oklch(80.0% 0.203 338);
-  --color-dye-400: oklch(74.0% 0.244 338);
-  --color-dye-500: oklch(67.0% 0.260 338);
-  --color-dye-600: oklch(59.5% 0.250 338);
-  --color-dye-700: oklch(52.0% 0.229 338);
-  --color-dye-800: oklch(45.0% 0.198 338);
-  --color-dye-900: oklch(39.0% 0.166 338);
-  --color-dye-950: oklch(29.0% 0.125 338);
-
-  /* field — brand ink B, cyan */
-  --color-field-100: oklch(93.0% 0.045 215);
-  --color-field-200: oklch(87.0% 0.073 215);
-  --color-field-300: oklch(81.5% 0.102 215);
-  --color-field-400: oklch(77.0% 0.123 215);
-  --color-field-500: oklch(71.0% 0.131 215);
-  --color-field-600: oklch(63.5% 0.126 215);
-  --color-field-700: oklch(56.0% 0.115 215);
-  --color-field-800: oklch(49.0% 0.100 215);
-  --color-field-900: oklch(43.0% 0.084 215);
-  --color-field-950: oklch(33.0% 0.063 215);
+  /* dye — removed. See the "Smoked glass" note at the top of this file: the
+     brand no longer has a hue, so these scales are gone. If a decorative
+     wash was using dye-500, it now uses foreground at low alpha, or one of
+     --warm-tint / --cool-tint. */
 
   /* Narrow-phone breakpoint. `xs:` was already being used in the room
      (RoomDashboard's PRIVATE/PUBLIC label, AudioEQ's preset name) but was never
@@ -460,30 +579,30 @@
      to nothing invalidates the whole font-family declaration, so a trailing
      `system-ui, sans-serif` in the list would never be reached.
 
-     Display is Syne, picked because it WIDENS as it bolds — so a heading
-     animating wght 400->800 reads as amplitude swelling rather than just
-     getting heavier. That gesture is the landing hero (see Hero.tsx), which is
-     why the face is chosen for a behaviour and not a vibe. */
-  --font-sans: var(--font-instrument, ui-sans-serif), system-ui, sans-serif;
+     One face does everything now. Archivo is a precise grotesque with real
+     `wght` and `wdth` axes: display text is the same family set wider and
+     heavier, so headings feel like the same instrument as the body instead of
+     a second voice. The wide axis is why the hero's width gesture survives —
+     it is a display property, not a quirk of the face. */
+  --font-sans: var(--font-archivo, ui-sans-serif), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains, ui-monospace), monospace;
-  --font-display: var(--font-syne, var(--font-instrument, ui-sans-serif)), system-ui, sans-serif;
+  --font-display: var(--font-archivo, ui-sans-serif), system-ui, sans-serif;
 
   /* Type scale — perfect fourth (1.333), fluid between mobile and desktop.
-     Tracking is looser than the Bricolage-era values at every step (hero was
-     -0.03, display -0.022, title -0.012): Syne is already tightly set and its
-     glyphs widen with weight, so the old negatives crushed the counters on any
-     heading above 600. */
+     Tracking is tighter than the Syne-era values: Archivo is a normal-width
+     grotesque, so it can carry the negative tracking that a widening display
+     face could not. */
   --text-hero: clamp(2.75rem, 8.5vw, 7rem);
   --text-hero--line-height: 0.94;
-  --text-hero--letter-spacing: -0.015em;
+  --text-hero--letter-spacing: -0.03em;
 
   --text-display: clamp(2rem, 4.6vw, 3.75rem);
   --text-display--line-height: 1;
-  --text-display--letter-spacing: -0.01em;
+  --text-display--letter-spacing: -0.022em;
 
   --text-title: clamp(1.35rem, 2vw, 1.777rem);
   --text-title--line-height: 1.18;
-  --text-title--letter-spacing: -0.005em;
+  --text-title--letter-spacing: -0.012em;
 
   --text-lead: clamp(1.0625rem, 1.35vw, 1.333rem);
   --text-lead--line-height: 1.55;
@@ -505,6 +624,56 @@
   }
 }
 
+/* Ambient page light: the gradients keep their soft edges while their large
+   surfaces drift slowly across the fixed viewport behind the app. */
+.ambient-blob {
+  position: absolute;
+  width: clamp(30rem, 72vw, 74rem);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.ambient-blob--warm {
+  top: -34%;
+  left: -28%;
+  opacity: 0.34;
+  animation: ambientDriftWarm 42s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+.ambient-blob--cool {
+  top: 4%;
+  right: -36%;
+  opacity: 0.24;
+  animation: ambientDriftCool 51s cubic-bezier(0.45, 0, 0.55, 1) -13s infinite alternate;
+}
+
+.ambient-blob--warm-secondary {
+  bottom: -48%;
+  left: 8%;
+  opacity: 0.2;
+  animation: ambientDriftLow 47s cubic-bezier(0.45, 0, 0.55, 1) -21s infinite alternate;
+}
+
+@keyframes ambientDriftWarm {
+  0% { transform: translate3d(-3vw, -2vh, 0) scale(0.92); }
+  52% { transform: translate3d(38vw, 26vh, 0) scale(1.04); }
+  100% { transform: translate3d(67vw, 62vh, 0) scale(0.96); }
+}
+
+@keyframes ambientDriftCool {
+  0% { transform: translate3d(2vw, 1vh, 0) scale(0.98); }
+  48% { transform: translate3d(-40vw, 31vh, 0) scale(0.9); }
+  100% { transform: translate3d(-63vw, -11vh, 0) scale(1.05); }
+}
+
+@keyframes ambientDriftLow {
+  0% { transform: translate3d(0, 2vh, 0) scale(0.9); }
+  55% { transform: translate3d(25vw, -48vh, 0) scale(1.02); }
+  100% { transform: translate3d(69vw, -24vh, 0) scale(0.94); }
+}
+
 .animate-ambient-breathing {
   animation: ambientBreathing 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
@@ -524,5 +693,9 @@
   }
   .lyric-sweep {
     background-position: 0 0 !important; /* freeze fully sung, still readable */
+  }
+  .magnetic-fill-card,
+  .magnetic-fill-card::before {
+    transition-duration: 0.01ms !important;
   }
 }

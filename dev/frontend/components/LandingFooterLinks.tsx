@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { InstagramIcon } from "./InstagramFollowButton";
 
 export function LandingFooterLinks() {

@@ -1,110 +1,43 @@
 "use client";
 
-/**
- * Hero
- *
- * Leads with a headline and the room code, over the full-bleed WebGL field.
- *
- * The headline animates on its own `wdth` axis rather than off scroll: it is
- * above the fold, so there is no scroll to read yet. Narrow-to-normal on mount
- * is the same "adrift settling into lock" gesture SyncRoom makes.
- *
- * The `sr-only` keyword paragraph that used to sit at the top of this component
- * is gone. It was ~90 words of text visible only to crawlers, closing on "the
- * best AmpMe and BeatSync alternative" — the hidden-text pattern Google's spam
- * policies name outright. Everything it claimed now appears as readable copy in
- * SyncRoom, Capabilities and FAQ, which is where a crawler would rather find it
- * anyway.
- */
-
 import Link from "next/link";
+import { ArrowRight, Headphones } from "lucide-react";
 import { motion } from "framer-motion";
-import { ArrowUpRight } from "lucide-react";
-
 import { RoomCodeEntry } from "./RoomCodeEntry";
-
-const LINE = {
-  hidden: { opacity: 0, y: 24, fontStretch: "75%" },
-  shown: { opacity: 1, y: 0, fontStretch: "100%" },
-};
+import { ListeningScene } from "../brand/ListeningScene";
 
 export function Hero() {
   return (
-    <section className="relative z-10 flex min-h-dvh w-full shrink-0 flex-col items-center justify-center px-5 pt-28 pb-20 md:py-24">
-      <div className="mx-auto flex w-full max-w-4xl flex-col items-center text-center">
-        <motion.p
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="mb-7 flex items-center gap-2.5 text-sm text-foreground/50"
-        >
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--accent-color)" }}
-          />
-          Synchronised playback, in the browser
-        </motion.p>
+    <section className="relative z-10 flex min-h-[min(900px,100svh)] w-full items-center px-5 pb-16 pt-24 sm:px-8 sm:pb-20 lg:px-12 lg:pt-28">
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-10 lg:grid-cols-[minmax(0,0.96fr)_minmax(0,1.04fr)] lg:gap-14 xl:gap-20">
+        <div className="relative z-10">
+          <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-5 flex items-center gap-2.5 text-sm font-medium text-foreground/55">
+            <Headphones className="h-4 w-4" />Shared listening, in sync
+          </motion.p>
 
-        <h1 className="font-display text-hero font-semibold text-balance">
-          <motion.span
-            className="block"
-            variants={LINE}
-            initial="hidden"
-            animate="shown"
-            transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
-          >
-            One track.
-          </motion.span>
-          <motion.span
-            className="block"
-            variants={LINE}
-            initial="hidden"
-            animate="shown"
-            transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.28 }}
-          >
-            Every phone.
-          </motion.span>
-        </h1>
+          <motion.h1 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }} className="max-w-[11ch] font-display text-hero font-semibold text-balance">
+            One track. Every speaker.
+          </motion.h1>
 
-        <motion.p
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.5 }}
-          className="mt-7 max-w-xl text-lead text-foreground/60 text-pretty"
-        >
-          Every device in the room becomes a speaker, locked to the same clock and held
-          there — under 25&nbsp;ms apart, with nothing to install.
-        </motion.p>
+          <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.12 }} className="mt-6 max-w-[44ch] text-lead text-foreground/60 text-pretty">
+            Turn the phones around you into one shared sound system. Open a room, invite your people, and press play.
+          </motion.p>
 
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.64 }}
-          className="mt-10 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
-        >
-          <RoomCodeEntry />
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <RoomCodeEntry className="w-full sm:w-auto" />
+            <span className="hidden text-sm text-foreground/35 sm:block">or</span>
+            <Link href="/hub" className="group flex h-14 items-center justify-center gap-2 rounded-2xl bg-foreground px-5 text-sm font-semibold text-background transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground">
+              Start a room<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
 
-          <span className="hidden text-sm text-foreground/35 sm:block">or</span>
+          <p className="mt-5 text-sm text-foreground/45">Free to use · Nothing to install · Works in your browser</p>
+        </div>
 
-          <Link
-            href="/hub"
-            className="group flex items-center justify-center gap-2 rounded-2xl border border-foreground/10 bg-foreground px-6 py-4 text-sm font-semibold text-background transition-transform hover:-translate-y-0.5"
-          >
-            Start a room
-            <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Link>
+        <motion.div initial={{ opacity: 0, y: 20, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }} className="w-full">
+          <ListeningScene />
         </motion.div>
       </div>
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 1.1 }}
-        className="pointer-events-none absolute bottom-7 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2.5"
-      >
-        <span className="text-xs text-foreground/35">Watch it lock</span>
-        <span className="block h-9 w-px bg-linear-to-b from-foreground/30 to-transparent" />
-      </motion.div>
     </section>
   );
 }

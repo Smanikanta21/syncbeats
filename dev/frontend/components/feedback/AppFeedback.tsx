@@ -1,7 +1,6 @@
 // components/feedback/AppFeedback.tsx — Unified Error & Warning display component
 // Translates technical/internal error strings into human-readable messages.
 
-import React from "react";
 import { AlertCircle, AlertTriangle, Info, CheckCircle, RefreshCw } from "lucide-react";
 import { cn } from "../../lib/utils";
 

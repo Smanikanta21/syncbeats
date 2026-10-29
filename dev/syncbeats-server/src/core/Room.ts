@@ -1,18 +1,20 @@
 import { EventEmitter }  from 'events';
+import { randomUUID } from 'crypto';
 import { PlaybackState } from './PlaybackState';
-import { RoomQueue }     from './RoomQueue';
+import { RoomQueue, trackKey } from './RoomQueue';
+import { ytId as extractYtId } from '../utils/youtube';
 import { Participant, RoomSnapshot, SpatialPosition, ChatMessage, QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
 
 export class Room extends EventEmitter {
+  private readonly instanceId = randomUUID();
+  private playbackInstanceId: string | null = null;
   private state:        PlaybackState          = PlaybackState.IDLE;
-  private position:     number                 = 0;   // ms
   private trackUrl:     string | null          = null;
   private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
   private queue:        RoomQueue              = new RoomQueue();
   private spatial:      Map<string, SpatialPosition> = new Map();
   private chatHistory:  ChatMessage[]          = [];
-  private snapshotTime: number                 = Date.now();
   private isPrivate:    boolean                = false;
   private createdAt:    number                 = Date.now();
   private accumulatedSessionTimeMs: number     = 0;
@@ -53,7 +55,7 @@ export class Room extends EventEmitter {
   clearChatHistory(): void {
     this.chatHistory = [];
   }
-  
+
   setParticipantVolume(socketId: string, volume: number): void {
     const participant = this.participants.get(socketId);
     if (!participant) return;
@@ -77,9 +79,10 @@ export class Room extends EventEmitter {
         : new Date(data.createdAt).getTime();
     }
     if (data.queue) this.queue = RoomQueue.fromJSON(data.queue);
-    
+
     // Ensure the trackUrl is always represented in the queue so it's not orphaned
-    const url = data.trackUrl || this.queue.current()?.trackUrl;
+    const wasIdle = data.playbackState === PlaybackState.IDLE && !data.trackUrl;
+    const url = wasIdle ? null : (data.trackUrl || this.queue.current()?.trackUrl);
     if (url) {
       const known = this.queue.findByUrl(url);
       if (!known) {
@@ -91,14 +94,12 @@ export class Room extends EventEmitter {
     }
 
     this.hostId   = data.hostId;
-    this.trackUrl = this.queue.current()?.trackUrl ?? data.trackUrl;
+    this.trackUrl = wasIdle ? null : (this.queue.current()?.trackUrl ?? data.trackUrl);
     this.pendingPlay = false;
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
     this.timeline.pauseOffset = Math.max(0, data.positionMs / 1000);
-    this.state    = PlaybackState.PAUSED;
-    this.position     = data.positionMs;
-    this.snapshotTime = Date.now();
+    this.state    = this.trackUrl ? PlaybackState.PAUSED : PlaybackState.IDLE;
     this.isHydrated   = true;
   }
 
@@ -106,8 +107,8 @@ export class Room extends EventEmitter {
 
   private pendingPlay: boolean = false;
 
-  play(requesterId: string): void {
-    if (this.timeline.isPlaying) return;
+  play(_requesterId: string): void {
+    if (this.timeline.isPlaying || !this.trackUrl) return;
 
     // If all participants are already ready (same track, resuming from pause),
     // skip the readiness gate entirely and start playback immediately.
@@ -119,6 +120,7 @@ export class Room extends EventEmitter {
 
     // New track or first play — gate on readiness with a 10s timeout fallback.
     this.pendingPlay = true;
+    this.emit('stateChanged', this.snapshot());
     if (this.readyTimeout) clearTimeout(this.readyTimeout);
     this.readyTimeout = setTimeout(() => {
       if (this.pendingPlay && !this.timeline.isPlaying) {
@@ -126,9 +128,12 @@ export class Room extends EventEmitter {
         this._startPlayback();
       }
     }, 10_000);
+    this.readyTimeout.unref();
   }
 
   private _startPlayback(): void {
+    if (!this.trackUrl) return;
+    this.playbackInstanceId = randomUUID();
     this.pendingPlay = false;
     if (this.readyTimeout) {
       clearTimeout(this.readyTimeout);
@@ -136,18 +141,19 @@ export class Room extends EventEmitter {
     }
     const scheduleDelay = 150; // Reduced from 800ms for snappier play button response
     const atEpoch = Date.now() + scheduleDelay;
-    
+
     this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;
     this.timeline.isPlaying = true;
-    this.snapshotTime = Date.now();
     this.state = PlaybackState.PLAYING;
 
-    const ytMatch = this.trackUrl ? this.trackUrl.match(/^(?:youtube:)?([a-zA-Z0-9_-]{11})$/) : null;
-    const ytId = ytMatch ? ytMatch[1] : null;
+    const ytId = extractYtId(this.trackUrl);
     const fallbackThumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
     const item = this.queue.current();
 
     this.emit('schedule', {
+      roomId: this.roomId,
+      roomInstanceId: this.instanceId,
+      playbackInstanceId: this.playbackInstanceId,
       atEpoch,
       fromPosition: this.timeline.pauseOffset,
       trackUrl: this.trackUrl,
@@ -159,120 +165,77 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
-  pause(_requesterId: string, positionMs?: number): void {
+  pause(requesterId: string, positionMs?: number): void {
+    if (!this.trackUrl) return;
+    const position = positionMs ?? this.computeCurrentPosition();
+    if (!Number.isFinite(position)) return;
     this.pendingPlay = false;
-    if (!this.timeline.isPlaying) return;
-    
-    if (typeof positionMs === 'number') {
-      this.timeline.pauseOffset = Math.max(0, positionMs / 1000);
-    } else {
-      this.timeline.pauseOffset = this.computeCurrentPosition() / 1000;
-    }
-    
+    this.playbackInstanceId = null;
+    if (this.readyTimeout) { clearTimeout(this.readyTimeout); this.readyTimeout = null; }
+    this.timeline.pauseOffset = Math.max(0, position / 1000);
     this.timeline.startEpoch = null;
     this.timeline.isPlaying = false;
-    this.position = this.timeline.pauseOffset * 1000;
     this.state = PlaybackState.PAUSED;
-
-    this.emit('pause', { pauseOffset: this.timeline.pauseOffset });
-    this.emit('stateChanged', this.snapshot());
-  }
-  
-  // Directly syncs the room state from a client-emitted playback:schedule event
-  syncSchedule(trackUrl: string, positionMs: number, startEpoch: number, senderId?: string, hintTitle?: string, hintArtist?: string, hintThumbnail?: string): void {
-    const isSameTrack = this.trackUrl === trackUrl;
-    this.trackUrl = trackUrl;
-    this.position = positionMs;
-    this.timeline.pauseOffset = positionMs / 1000;
-
-    // Point the queue at whatever the client is playing. The old implementation prepended a
-    // synthetic item whenever fuzzy URL matching failed here, which is how queues grew on their
-    // own — add() is exact-keyed and idempotent, so a repeat of the same track is a no-op.
-    const known = this.queue.findByUrl(trackUrl);
-    if (known) {
-      if (this.queue.current()?.id !== known.id) {
-        this.queue.setCurrent(known.id);
-        this.emitQueueChanged();
-      }
-    } else {
-      const { first } = this.queue.add(
-        [{ trackUrl, title: hintTitle, artist: hintArtist, thumbnail: hintThumbnail }],
-        senderId || 'system',
-      );
-      if (first) this.queue.setCurrent(first.id);
-      this.emitQueueChanged();
-    }
-
-    // Reset readiness for all participants if changing track so everyone buffers before play
-    if (!isSameTrack) {
-      for (const p of this.participants.values()) {
-        p.isReady = false;
-        p.isBlocked = false;
-      }
-    }
-
-    // Set 15-second safety timeout so lagging/disconnected devices don't block the room forever
-    if (this.readyTimeout) clearTimeout(this.readyTimeout);
-    this.readyTimeout = setTimeout(() => {
-      let changed = false;
-      for (const p of this.participants.values()) {
-        if (!p.isReady && !p.isBlocked) {
-          p.isBlocked = true;
-          changed = true;
-          console.log(`[Room ${this.roomId}] Participant ${p.socketId} timed out waiting for ready, marking as blocked.`);
-        }
-      }
-      if (changed) {
-        this.emit('stateChanged', this.snapshot());
-        if (this.pendingPlay && this.allReady()) {
-          this._startPlayback();
-        }
-      }
-    }, 15000);
-
-    if (!this.allReady()) {
-      console.log(`[Room ${this.roomId}] Not all participants ready for track ${trackUrl}, marking pendingPlay = true`);
-      this.pendingPlay = true;
-      this.timeline.isPlaying = false;
-      this.timeline.startEpoch = null;
-      this.state = PlaybackState.PAUSED;
-      this.snapshotTime = Date.now();
-      this.emit('stateChanged', this.snapshot());
-    } else {
-      this._startPlayback();
-    }
-  }
-
-  // Directly syncs the room state from a client-emitted playback:pause event
-  syncPause(positionMs: number, senderId?: string): void {
-    this.pendingPlay = false;
-    this.timeline.startEpoch = null;
-    this.timeline.isPlaying = false;
-    this.timeline.pauseOffset = positionMs / 1000;
-    this.position = positionMs;
-    this.state = PlaybackState.PAUSED;
-    this.snapshotTime = Date.now();
-    
-    this.emit('pause', { 
-        // Mobile App Keys
-        positionMs: positionMs,
-        senderId: senderId,
-        // Web App Keys
-        pauseOffset: this.timeline.pauseOffset
+    this.emit('pause', {
+      roomId: this.roomId, roomInstanceId: this.instanceId,
+      pauseOffset: this.timeline.pauseOffset,
+      positionMs: this.timeline.pauseOffset * 1000, senderId: requesterId,
     });
     this.emit('stateChanged', this.snapshot());
   }
 
+  // Directly syncs the room state from a client-emitted playback:schedule event
+  syncSchedule(trackUrl: string, positionMs: number, _startEpoch: number, senderId?: string, hintTitle?: string, hintArtist?: string, hintThumbnail?: string): void {
+    if (!trackUrl || !Number.isFinite(positionMs)) return;
+    const sameTrack = !!this.trackUrl && trackKey(this.trackUrl) === trackKey(trackUrl);
+    let item = this.queue.findByUrl(trackUrl);
+    if (!item) {
+      item = this.queue.add(
+        [{ trackUrl, title: hintTitle, artist: hintArtist, thumbnail: hintThumbnail }],
+        senderId || 'system',
+      ).first;
+    }
+    if (!item) return;
+    if (this.queue.current()?.id !== item.id) this.queue.setCurrent(item.id);
+    this.trackUrl = trackUrl;
+    this.timeline.pauseOffset = Math.max(0, positionMs / 1000);
+    this.timeline.startEpoch = null;
+    this.timeline.isPlaying = false;
+    this.playbackInstanceId = null;
+    this.state = PlaybackState.PAUSED;
+    this.pendingPlay = true;
+    if (!sameTrack) {
+      for (const participant of this.participants.values()) {
+        participant.isReady = false;
+        participant.isBlocked = false;
+      }
+    }
+    this.emit('trackSet', { trackUrl, title: item.title });
+    this.emitQueueChanged();
+    this.play(senderId || 'system');
+  }
+
+  // Directly syncs the room state from a client-emitted playback:pause event
+  syncPause(positionMs: number, senderId?: string): void {
+    this.pause(senderId || 'system', positionMs);
+  }
+
   seek(_requesterId: string, positionMs: number): void {
-    const positionSec = positionMs / 1000;
-    
+    if (!this.trackUrl || !Number.isFinite(positionMs)) return;
+    const positionSec = Math.max(0, positionMs / 1000);
+    this.timeline.pauseOffset = positionSec;
+    this.playbackInstanceId = null;
+
     if (this.timeline.isPlaying) {
       const scheduleDelay = 150; // Reduced from 500ms for snappier seek response
       const atEpoch = Date.now() + scheduleDelay;
-      this.timeline.startEpoch = atEpoch - positionMs;
-      
-  
+      this.timeline.startEpoch = atEpoch - positionSec * 1000;
+      this.playbackInstanceId = randomUUID();
+
       this.emit('schedule', {
+        roomId: this.roomId,
+        roomInstanceId: this.instanceId,
+        playbackInstanceId: this.playbackInstanceId,
         atEpoch,
         fromPosition: positionSec,
         trackUrl: this.trackUrl,
@@ -283,19 +246,10 @@ export class Room extends EventEmitter {
       });
     } else {
       this.timeline.pauseOffset = positionSec;
-      this.position = positionMs;
-      this.emit('pause', { pauseOffset: positionSec });
+      this.emit('pause', { roomId: this.roomId, roomInstanceId: this.instanceId, pauseOffset: positionSec });
     }
-    
-    this.snapshotTime = Date.now();
     this.emit('stateChanged', this.snapshot());
   }
-
-
-
-
-
-
 
   // ── Queue ─────────────────────────────────────────────────────────────
   //
@@ -353,8 +307,8 @@ export class Room extends EventEmitter {
     return moved;
   }
 
-  nextTrack(autoplay = true): QueueItem | null {
-    const item = this.queue.next();
+  nextTrack(autoplay = true, manual = true): QueueItem | null {
+    const item = this.queue.next(manual);
     if (!item) { this.resetPlayback(); return null; }
     this._loadItem(item, autoplay);
     return item;
@@ -367,10 +321,20 @@ export class Room extends EventEmitter {
     return item;
   }
 
-  /** Called for every device's `playback:ended`; only the first one through advances. */
-  handleTrackEnded(trackUrl: string): QueueItem | null {
-    if (!this.queue.shouldAdvance(trackUrl)) return null;
-    return this.nextTrack(true);
+  /** Instance-aware clients can finish short tracks and repeat-one without a time debounce. */
+  handleTrackEnded(trackUrl: string, playbackInstanceId?: string): QueueItem | null {
+    if (!this.timeline.isPlaying || !this.playbackInstanceId || !this.trackUrl) return null;
+    if (trackKey(trackUrl) !== trackKey(this.trackUrl)) return null;
+    if (playbackInstanceId !== undefined) {
+      if (playbackInstanceId !== this.playbackInstanceId) return null;
+    } else {
+      // Compatibility for older native/web clients that only send a URL.
+      if (!this.queue.shouldAdvance(trackUrl)) return null;
+      const duration = this.queue.current()?.durationSec;
+      if (duration && this.computeCurrentPosition() < duration * 1000 - 1000) return null;
+    }
+    this.playbackInstanceId = null; // consume before emitting any successor events
+    return this.nextTrack(true, false);
   }
 
   setShuffle(on: boolean): void {
@@ -385,36 +349,35 @@ export class Room extends EventEmitter {
 
   /** Swap a lazy placeholder url for its resolved one (spotify-lazy: → youtube:). */
   resolveQueueItem(id: string, trackUrl: string): QueueItem | null {
+    const wasCurrent = this.queue.current()?.id === id;
+    const autoplay = this.timeline.isPlaying || this.pendingPlay;
     const item = this.queue.resolve(id, trackUrl);
-    if (item) this.emitQueueChanged();
+    if (item && wasCurrent) this._loadItem(item, autoplay);
+    else if (item) this.emitQueueChanged();
     return item;
   }
 
   private _loadItem(item: QueueItem, autoplay: boolean): void {
+    const sameTrack = !!this.trackUrl && trackKey(this.trackUrl) === item.key;
     this.trackUrl = item.trackUrl;
-    this.position = 0;
     this.timeline.pauseOffset = 0;
     this.timeline.startEpoch = null;
     this.timeline.isPlaying = false;
-    this.pendingPlay = false;
-    // Everyone re-buffers so the next start is still sample-aligned.
-    for (const p of this.participants.values()) { p.isReady = false; p.isBlocked = false; }
-
+    this.playbackInstanceId = null;
+    this.state = PlaybackState.PAUSED;
+    this.pendingPlay = autoplay;
+    if (this.readyTimeout) { clearTimeout(this.readyTimeout); this.readyTimeout = null; }
+    if (!sameTrack) {
+      for (const p of this.participants.values()) { p.isReady = false; p.isBlocked = false; }
+    }
     this.emit('trackSet', { trackUrl: item.trackUrl, title: item.title });
     this.emitQueueChanged();
-
-    if (autoplay) {
-      this.play('system');
-    } else {
-      this.state = PlaybackState.PAUSED;
-      this.snapshotTime = Date.now();
-      this.emit('stateChanged', this.snapshot());
-    }
+    if (autoplay) this.play('system');
   }
 
   private resetPlayback(): void {
+    this.playbackInstanceId = null;
     this.trackUrl = null;
-    this.position = 0;
     this.state = PlaybackState.IDLE;
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
@@ -425,16 +388,15 @@ export class Room extends EventEmitter {
   }
 
   private emitQueueChanged(): void {
-    this.snapshotTime = Date.now();
     this.emit('queueChanged', this.queue.snapshot());
     this.emit('stateChanged', this.snapshot());
   }
 
   resetRoom(): void {
+    this.playbackInstanceId = null;
     this.chatHistory = [];
     this.queue.clear();
     this.trackUrl = null;
-    this.position = 0;
     this.state = PlaybackState.IDLE;
     this.timeline.isPlaying = false;
     this.timeline.startEpoch = null;
@@ -448,15 +410,15 @@ export class Room extends EventEmitter {
       p.isReady = false;
       p.isBlocked = false;
     }
-    this.snapshotTime = Date.now();
     this.emitQueueChanged();
   }
 
   // ── Readiness tracking ────────────────────────────────────────────────
 
-  setParticipantReady(socketId: string, ready: boolean): void {
+  setParticipantReady(socketId: string, ready: boolean, trackUrl?: string): void {
     const p = this.participants.get(socketId);
-    if (!p) return;
+    if (!p || (trackUrl !== undefined && trackKey(trackUrl) !== trackKey(this.trackUrl || ''))) return;
+    if (p.isReady === ready) return;
     p.isReady = ready;
     if (ready) {
       p.isBlocked = false;
@@ -521,10 +483,7 @@ export class Room extends EventEmitter {
     p.volume = this.clampVolume(p.volume ?? 100);
     this.participants.set(p.socketId, p);
 
-    // If the room is not actively playing, clear pendingPlay so joining devices don't auto-start playback
-    if (!this.timeline.isPlaying) {
-      this.pendingPlay = false;
-    }
+    // A joining device must not cancel an already requested readiness-gated start.
 
     // If first participant joined or room was empty:
     if (wasEmpty) {
@@ -585,6 +544,7 @@ export class Room extends EventEmitter {
         this.sessionExpiryTimer = null;
         this.emit('stateChanged', this.snapshot());
       }, Room.SESSION_EXPIRY_MS);
+      this.sessionExpiryTimer.unref();
     } else {
       // Participants still remain — check if remaining participants are now all ready
       if (this.pendingPlay && this.allReady()) {
@@ -619,7 +579,7 @@ export class Room extends EventEmitter {
     if (!this.timeline.isPlaying || this.timeline.startEpoch === null) {
       return this.timeline.pauseOffset * 1000;
     }
-    return Date.now() - this.timeline.startEpoch;
+    return Math.max(0, Date.now() - this.timeline.startEpoch);
   }
 
   setSpatialPosition(deviceId: string, position: SpatialPosition): void {
@@ -631,9 +591,14 @@ export class Room extends EventEmitter {
   }
 
   snapshot(): RoomSnapshot {
+    const queue = this.queue.snapshot();
+    const nextItem = this.queue.peekNext();
+    const nextTrack = nextItem ? queue.find(item => item.id === nextItem.id) ?? null : null;
     const sessionDurationMs = this.getSessionDurationMs();
     return {
       roomId:                 this.roomId,
+      roomInstanceId:         this.instanceId,
+      playbackInstanceId:     this.playbackInstanceId,
       trackUrl:               this.trackUrl,
       position:               this.computeCurrentPosition(),
       state:                  this.state,
@@ -649,7 +614,8 @@ export class Room extends EventEmitter {
       isPlaying:              this.timeline.isPlaying,
       pendingPlay:            this.pendingPlay,
       isPrivate:              this.isPrivate,
-      queue:                  this.queue.snapshot(),
+      queue,
+      nextTrack,
       queueVersion:           this.queue.version,
       shuffle:                this.queue.shuffle,
       repeatMode:             this.queue.repeatMode,
@@ -657,14 +623,12 @@ export class Room extends EventEmitter {
   }
 
   getIsPrivate(): boolean { return this.isPrivate; }
-  
+
   setIsPrivate(isPrivate: boolean): void {
     if (this.isPrivate === isPrivate) return;
     this.isPrivate = isPrivate;
     this.emit('stateChanged', this.snapshot());
   }
-
-
 
   private clampVolume(value: number): number {
     if (!Number.isFinite(value)) return 100;

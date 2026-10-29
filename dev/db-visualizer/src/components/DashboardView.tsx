@@ -35,7 +35,7 @@ export default function DashboardView({ onNavigateTable }: DashboardViewProps) {
           if (geoRes.ok) {
             const geoData = await geoRes.json();
             const locArray: GeoLocationItem[] = Object.values(geoData.geoData || {});
-            
+
             // Associate users with location items
             locArray.forEach((loc) => {
               loc.users = statsData.users
@@ -331,8 +331,6 @@ export default function DashboardView({ onNavigateTable }: DashboardViewProps) {
                 </tr>
               ) : (
                 filteredUsers.map((u: any) => {
-                  const firstDev = u.devices[0];
-                  const geo = firstDev?.ip ? geoLocations.find((g) => g.ip === firstDev.ip) : null;
 
                   return (
                     <tr

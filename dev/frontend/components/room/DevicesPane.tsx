@@ -3,14 +3,15 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Wifi, Volume2, Loader2, CheckCircle2, Activity, Plus, UserPlus, ChevronDown
+  Volume2, Loader2, Activity, UserPlus, ChevronDown
 } from "lucide-react";
 import type { Participant } from "../../lib/types";
 import { devicesApi, type Device, getDeviceId } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { cn } from "../../lib/utils";
-import { getDeviceIcon, getFriendlyDeviceName, parseParticipantNames } from "../../lib/deviceNaming";
+import { getDeviceIcon, parseParticipantNames } from "../../lib/deviceNaming";
 import { HoverExpandPill } from "../HoverExpandPill";
+import { MarqueeText } from "../MarqueeText";
 
 interface DevicesPaneProps {
   participants: Participant[];
@@ -60,7 +61,7 @@ function formatLastSeen(dateStr?: string | null): string {
 function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Device, customDeviceName?: string, onRename: (id: string, name: string) => Promise<void> }) {
   const DevIcon = getDeviceIcon(device.name, device.user_agent ?? undefined);
   const lastSeenStr = formatLastSeen(device.last_seen_at);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(device.name);
   const [saving, setSaving] = useState(false);
@@ -112,9 +113,13 @@ function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Dev
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground/60 truncate">{displayName}</span>
-              <button onClick={() => setIsEditing(true)} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity">Edit</button>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="min-w-0 flex-1">
+                <MarqueeText className="text-xs font-bold text-foreground/60">
+                  {displayName}
+                </MarqueeText>
+              </div>
+              <button onClick={() => setIsEditing(true)} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity shrink-0">Edit</button>
             </div>
           )}
           {!isEditing && <span className="text-[10px] font-semibold text-foreground/35 block mt-0.5">{lastSeenStr}</span>}
@@ -123,7 +128,7 @@ function OfflineDeviceCard({ device, customDeviceName, onRename }: { device: Dev
 
       {!isEditing && (
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-foreground/5 border border-foreground/10 shrink-0">
-          <span className="text-[9px] font-black uppercase tracking-wider text-foreground/40">Offline</span>
+          <span className="text-[9px] font-semibold text-foreground/40">Offline</span>
         </div>
       )}
     </motion.div>
@@ -315,15 +320,19 @@ function ParticipantRow({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-foreground/90 truncate">{deviceName}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="min-w-0 flex-1">
+                <MarqueeText className="text-xs font-bold text-foreground/90">
+                  {deviceName}
+                </MarqueeText>
+              </div>
               {isMe && dbId && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsEditing(true);
                   }}
-                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-bold text-foreground/40 hover:text-foreground transition-opacity shrink-0"
                 >
                   Edit
                 </button>
@@ -385,15 +394,15 @@ function ParticipantRow({
               {/* Stats grid */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Latency</div>
+                  <div className="text-[9px] text-foreground/30 font-bold mb-0.5">Latency</div>
                   <div className="text-xs font-black" style={{ color: latencyColor(lat) }}>{lat}ms</div>
                 </div>
                 <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Jitter</div>
+                  <div className="text-[9px] text-foreground/30 font-bold mb-0.5">Jitter</div>
                   <div className="text-xs font-black text-foreground/70">{Math.round(p.jitter ?? 0)}ms</div>
                 </div>
                 <div className="rounded-xl bg-foreground/4 px-2.5 py-1.5 col-span-2">
-                  <div className="text-[9px] uppercase tracking-widest text-foreground/30 font-bold mb-0.5">Status</div>
+                  <div className="text-[9px] text-foreground/30 font-bold mb-0.5">Status</div>
                   <div className="text-[11px] font-semibold text-foreground/70">
                     {statusText}
                   </div>
@@ -493,7 +502,7 @@ export function DevicesPane({
     // 2. Reconcile account devices with my user group
     if (accountDevices.length > 0) {
       let myKey = myUserId ? `user_${myUserId}` : Array.from(map.keys()).find(k => map.get(k)?.isMe);
-      
+
       // If we used myUserId but that group doesn't exist (e.g. legacy client or missing userId in snapshot),
       // fallback to finding the group where isMe is true.
       if (myKey && !map.has(myKey)) {
@@ -526,7 +535,7 @@ export function DevicesPane({
       accountDevices.forEach(d => {
         // Precise matching by deviceId if available, fallback to name matching for legacy clients
         let isInRoom = false;
-        
+
         if (d.device_key && activeDeviceIds.size > 0) {
           isInRoom = activeDeviceIds.has(d.device_key);
         } else {
@@ -567,11 +576,11 @@ export function DevicesPane({
             label="Invite"
             onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
             active
-            activeColor="bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-xs"
+            activeColor="bg-foreground/10 text-foreground border-foreground/15"
             title="Invite Friends"
           />
         </div>
-        
+
         <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold animate-pulse text-ok-700 dark:text-ok-400">
           {/* <span className="w-1.5 h-1.5 rounded-full bg-ok-400" /> */}
           <span>{participants.length} online</span>
@@ -635,14 +644,14 @@ export function DevicesPane({
                          `warn`. It was amber only because a Host badge looks
                          like a crown, which is not what warn means. */
                       <span
-                        className="border border-(--accent-border) text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md shrink-0 whitespace-nowrap"
+                        className="border border-(--accent-border) text-[8px] font-semibold px-1.5 py-0.2 rounded-md shrink-0 whitespace-nowrap"
                         style={{ background: "var(--accent-glow)", color: "var(--accent-color)" }}
                       >
                         Host
                       </span>
                     )}
                     {group.isMe && (
-                      <span className="text-[9px] font-black tracking-widest text-foreground/40 uppercase shrink-0 whitespace-nowrap">
+                      <span className="text-[9px] font-semibold text-foreground/40 shrink-0 whitespace-nowrap">
                         (You)
                       </span>
                     )}
@@ -696,4 +705,3 @@ export function DevicesPane({
     </div>
   );
 }
-

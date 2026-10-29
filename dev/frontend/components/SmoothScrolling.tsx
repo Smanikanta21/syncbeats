@@ -20,14 +20,16 @@ export default function SmoothScrolling({ children }: { children: React.ReactNod
       return;
     }
 
+    const touchLayout = window.matchMedia("(pointer: coarse)").matches;
     const lenis = new Lenis({
       autoRaf: true,
-      duration: 1.2,
+      duration: 1,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       orientation: "vertical",
       gestureOrientation: "vertical",
       wheelMultiplier: 1,
-      touchMultiplier: 2,
+      syncTouch: touchLayout,
+      touchMultiplier: 1,
       smoothWheel: true,
       autoResize: true,
     });

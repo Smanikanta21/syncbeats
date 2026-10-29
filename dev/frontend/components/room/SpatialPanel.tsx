@@ -39,7 +39,7 @@ const SpatialScene3D = dynamic(
     ssr: false,
     loading: () => (
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/25">
+        <span className="text-[10px] font-bold text-foreground/25">
           Loading stage…
         </span>
       </div>
@@ -347,12 +347,12 @@ export function SpatialPanel({
           )}
 
           {mode === "room" && otherUserCount === 0 && (
-            <div className="pointer-events-none absolute left-1/2 top-4 hidden -translate-x-1/2 rounded-full bg-background/70 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-foreground/40 backdrop-blur lg:block">
+            <div className="pointer-events-none absolute left-1/2 top-4 hidden -translate-x-1/2 rounded-full bg-background/70 px-3 py-1 text-[9px] font-bold text-foreground/40 backdrop-blur lg:block">
               You're the only one here
             </div>
           )}
 
-          <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 select-none text-[9px] font-bold uppercase tracking-widest text-foreground/20 lg:block">
+          <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 select-none text-[9px] font-bold text-foreground/20 lg:block">
             Drag a speaker to move it · Drag empty space to orbit · Scroll to zoom
           </div>
         </div>

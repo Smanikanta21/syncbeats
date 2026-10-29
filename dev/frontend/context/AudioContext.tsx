@@ -2,7 +2,7 @@
 
 // context/AudioContext.tsx — Singleton audio player shared across app
 
-import React, { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useSettings } from "../hooks/useSettings";
 

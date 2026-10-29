@@ -1,11 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma, { sanitizeNullBytes } from '../db/prisma';
-import { RoomRepository } from '../db/RoomRepository';
-import { RoomManager } from '../core/RoomManager';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
-const repo = new RoomRepository();
-const roomManager = RoomManager.getInstance();
 
 // =========================================================================
 // 🛑 WARNING FOR FUTURE AGENTS 🛑
@@ -25,7 +21,7 @@ let appSpotifyTokenExpiresAt = 0;
 
 export async function getAppSpotifyToken(): Promise<string> {
   if (appSpotifyToken && Date.now() < appSpotifyTokenExpiresAt) return appSpotifyToken;
-  
+
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: {
@@ -40,7 +36,6 @@ export async function getAppSpotifyToken(): Promise<string> {
   appSpotifyTokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
   return appSpotifyToken as string;
 }
-
 
 async function getSpotifyTokens(code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   const body = new URLSearchParams({
@@ -121,8 +116,6 @@ export async function getUserSpotifyToken(userId: string): Promise<string | null
 }
 
 // ── YouTube search match ─────────────────────────────────────────────────────
-
-
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -469,7 +462,7 @@ export function createSpotifyRoutes(): Router {
       const emptyBridgedPlaylists = playlists.filter(
         p => p.tracks.length === 0 && (p.sourceType === 'SPOTIFY_BRIDGE' || p.sourceType === 'SPOTIFY')
       );
-      
+
       if (emptyBridgedPlaylists.length > 0) {
         for (const p of emptyBridgedPlaylists) {
           await prisma.playlist.delete({ where: { id: p.id } }).catch(() => {});
@@ -514,7 +507,7 @@ export function createSpotifyRoutes(): Router {
   // DELETE /spotify/my-playlists/:id - Delete a specific playlist
   router.delete('/my-playlists/:id', requireAuth, async (req: any, res: any) => {
     const { id } = req.params;
-    
+
     const playlist = await prisma.playlist.findUnique({
       where: { id }
     });
@@ -596,14 +589,14 @@ export function createSpotifyRoutes(): Router {
         while (segmentIdx < segments.length && segments[segmentIdx].start + segments[segmentIdx].duration < beatStart) {
           segmentIdx++;
         }
-        
+
         if (segmentIdx >= segments.length) break;
         const seg = segments[segmentIdx];
-        
+
         // Very basic heuristic based on Spotify's timbre vector
         // timbre[1]: brightness (negative = darker/bassier, positive = brighter/trebley)
         const t1 = seg.timbre[1] || 0;
-        
+
         let beatType = 'mid';
         if (t1 < -20) beatType = 'bass';
         else if (t1 > 30) beatType = 'treble';

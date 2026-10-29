@@ -1,17 +1,13 @@
 "use client";
 
 import { useState, FormEvent, useEffect, useCallback, ReactNode, InputHTMLAttributes } from "react";
-import { motion, AnimatePresence, MotionConfig, useReducedMotion, Variants } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig, Variants } from "framer-motion";
 import { Mail, User, Lock, ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
-import { roomsApi } from "../../lib/api";
 import { cn } from "@/lib/utils";
-
-import { LoginAvatar } from "../../components/auth/LoginAvatar";
-import { AccentEngine } from "../../components/landing/AccentEngine";
-import { startAccentVars } from "../../lib/accent";
+import { SyncBeatsLogo } from "../../components/brand/SyncBeatsLogo";
 
 /**
  * The panel composes as one piece. This used to stagger each field in with a
@@ -28,37 +24,17 @@ const item: Variants = {
   show: { opacity: 1, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } },
 };
 
-/**
- * Let the avatar's thumbs up land before the route changes. Module-level so its
- * identity is stable — the Google path calls it from inside a useEffect.
- */
-const CELEBRATE_MS = 950;
-const celebrate = (setHappy: (v: boolean) => void) =>
-  new Promise<void>((resolve) => {
-    setHappy(true);
-    setTimeout(resolve, CELEBRATE_MS);
-  });
-
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const router  = useRouter();
   const { user, loading: authLoading, login, register, googleLogin } = useAuth();
-  const reduced = useReducedMotion();
 
-  // The accent properties drive the focus rings and the mode-switch underline, so
-  // the page drifts through the same palette the landing does instead of sitting
-  // on the static emerald fallback.
-  useEffect(() => startAccentVars(!!reduced), [reduced]);
-
-  // If user is already authenticated, force route directly to active room or hub
+  // Authenticated users begin at the hub, where they can choose or create a room.
   useEffect(() => {
     if (!authLoading && user) {
-      roomsApi.default()
-        .then((res) => {
-          if (res?.roomId) router.replace(`/room/${res.roomId}`);
-          else router.replace("/room/default");
-        })
-        .catch(() => router.replace("/room/default"));
+      const requested = new URLSearchParams(window.location.search).get("returnTo");
+      const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/hub";
+      router.replace(destination);
     }
   }, [user, authLoading, router]);
 
@@ -71,15 +47,14 @@ export default function AuthPage() {
   const [error,    setError]    = useState<string | null>(null);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
-  // Drives the avatar's thumbs up. Held for CELEBRATE_MS before navigating —
-  // without the pause the route change unmounts it mid-spring.
-  const [happy, setHappy] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
 
     if (params.get('mode') === 'register') {
+      // Initialize the one-time query-selected mode after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLogin(false);
     }
 
@@ -121,17 +96,17 @@ export default function AuthPage() {
     setError(null);
     setLoading(true);
 
-    if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
-      (window as any).google.accounts.id.cancel();
-    }
+    const googleIdentity = (window as Window & {
+      google?: { accounts?: { id?: { cancel: () => void } } };
+    }).google?.accounts?.id;
+    googleIdentity?.cancel();
 
     try {
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') || '/room/default';
+      const returnTo = params.get('returnTo') || '/hub';
 
       if (isLogin) {
         const token = await login(email, password);
-        await celebrate(setHappy);
         if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
@@ -240,16 +215,15 @@ export default function AuthPage() {
       setLoading(true);
       try {
         const params = new URLSearchParams(window.location.search);
-        const returnTo = params.get('returnTo') || '/room/default';
+        const returnTo = params.get('returnTo') || '/hub';
         const token = await googleLogin(idToken);
-        await celebrate(setHappy);
         if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
           router.push(returnTo);
         }
-      } catch (err: any) {
-        setError(err.message || "Google sign-in failed");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Google sign-in failed");
         setLoading(false);
       }
     };
@@ -291,55 +265,85 @@ export default function AuthPage() {
     // reducedMotion="user" drops framer's transform animations for viewers who
     // ask for less motion, without a conditional on every element.
     <MotionConfig reducedMotion="user">
-      <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden px-4 py-24 sm:px-6">
-        {/* Ambient colour only — the avatar in the panel is the motion graphic
-            on this page now. */}
-        <AccentEngine reduced={!!reduced} />
-
-        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50">
-          <Link
-            href="/"
-            className="group flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15 font-mono text-data uppercase tracking-[0.18em] text-foreground/70 shadow-xl transition-all active:scale-95 hover:border-(--accent-border) hover:text-foreground"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-            <span>Home</span>
+      <div className="relative mx-auto grid h-dvh min-h-dvh w-full max-w-[1440px] overflow-x-hidden overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(28rem,0.88fr)]">
+        <aside className="relative hidden min-h-dvh flex-col justify-between px-8 pt-[max(3rem,calc(env(safe-area-inset-top,0px)+1rem))] pb-[max(3rem,calc(env(safe-area-inset-bottom,0px)+1rem))] lg:flex xl:px-14 xl:pt-[max(3.5rem,calc(env(safe-area-inset-top,0px)+1rem))] xl:pb-[max(3.5rem,calc(env(safe-area-inset-bottom,0px)+1rem))]">
+          <Link href="/" className="w-fit">
+            <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
           </Link>
-        </div>
 
-        <motion.main
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          className="relative z-10 w-full max-w-lg glass-panel rounded-[2.5rem] border border-foreground/15 p-6 sm:p-10 shadow-2xl"
-        >
-          <div className="flex items-start justify-between gap-4">
+          <section className="mx-auto flex w-full max-w-[38rem] flex-1 flex-col justify-center py-8" aria-labelledby="login-story-title">
+            <p className="micro-label mb-4">How it works</p>
+            <h2 id="login-story-title" className="max-w-[11ch] font-display text-5xl font-semibold leading-[1.02] tracking-[-0.045em] text-balance xl:text-6xl">
+              Make a room for the music.
+            </h2>
+            <p className="mt-5 max-w-md text-base leading-relaxed text-foreground/55 xl:text-lg">
+              Start on one device, bring the others in, and share one queue.
+            </p>
+
+            <ol className="mt-9 border-t border-foreground/10">
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">01</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Open a room</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Choose your listening room or create one.</p>
+                </div>
+              </li>
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">02</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Join another device</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Use the room code or scan its QR code.</p>
+                </div>
+              </li>
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">03</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Share the queue</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Pick music together, then press play.</p>
+                </div>
+              </li>
+            </ol>
+          </section>
+
+        </aside>
+
+        <div className="relative flex min-h-dvh items-center justify-center px-4 pb-[max(3rem,calc(env(safe-area-inset-bottom,0px)+1rem))] pt-[max(8rem,calc(env(safe-area-inset-top,0px)+4.5rem))] sm:px-7 lg:px-10 lg:pt-[max(3.5rem,calc(env(safe-area-inset-top,0px)+1rem))] lg:pb-[max(3.5rem,calc(env(safe-area-inset-bottom,0px)+1rem))]">
+          <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+1rem)] flex items-center justify-between lg:hidden">
+            <Link href="/" className="flex items-center"><SyncBeatsLogo markClassName="h-8 w-8" wordmarkClassName="text-base" /></Link>
+            <Link href="/" className="flex min-h-10 items-center gap-1.5 rounded-full px-2 text-sm text-foreground/50 transition-colors hover:text-foreground">
+              <ArrowLeft className="h-4 w-4" /> Website
+            </Link>
+          </div>
+
+          <motion.main
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10 w-full max-w-[29rem] glass-panel rounded-[2rem] p-5 sm:p-8 xl:p-9"
+          >
+          <div>
+            <div className="mb-6 grid grid-cols-2 rounded-2xl border border-foreground/[0.07] bg-foreground/[0.035] p-1" role="group" aria-label="Account access">
+              <button type="button" onClick={() => switchMode(true)} aria-pressed={isLogin} className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors ${isLogin ? "bg-background text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground"}`}>Sign in</button>
+              <button type="button" onClick={() => switchMode(false)} aria-pressed={!isLogin} className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors ${!isLogin ? "bg-background text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground"}`}>Create account</button>
+            </div>
             <AnimatePresence mode="wait">
               <motion.div
-                key={isLogin ? "head-login" : "head-signup"}
-                initial={{ opacity: 0, y: 10 }}
+                key={isLogin ? "title-login" : "title-signup"}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               >
-                <p className="mb-3 flex items-center gap-2.5 font-mono text-data uppercase tracking-[0.22em] text-foreground/40">
-                  <span
-                    className="inline-block h-1.5 w-1.5 rounded-full"
-                    style={{ background: "var(--accent-color)" }}
-                  />
-                  {isLogin ? "Sign in" : "Create account"}
-                </p>
-                <h1 className="font-display text-display font-semibold text-foreground">
-                  {isLogin ? "Sound, in step." : "Get in step."}
+                <h1 className="max-w-[14ch] font-display text-display font-semibold text-foreground">
+                  {isLogin ? "Welcome back." : "Join SyncBeats."}
                 </h1>
-                <p className="mt-3 text-lead text-foreground/55 text-pretty">
+                <p className="mt-3 max-w-sm text-base leading-relaxed text-foreground/55 text-pretty">
                   {isLogin
-                    ? "Log in to pick up where your session left off."
-                    : "Turn the devices you own into one speaker."}
+                    ? "Sign in to return to your listening room."
+                    : "Bring the devices you own together and listen as one."}
                 </p>
               </motion.div>
             </AnimatePresence>
-
-            <LoginAvatar happy={happy} />
           </div>
 
           <AnimatePresence>
@@ -366,7 +370,7 @@ export default function AuthPage() {
               initial="hidden"
               animate="show"
               exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
-              className="mt-7 space-y-4"
+              className="mt-6 space-y-4"
             >
               {!isLogin && (
                 <Field
@@ -412,8 +416,8 @@ export default function AuthPage() {
                 required
                 action={
                   isLogin ? (
-                    <Link href="/forgot-password" className="font-mono text-data uppercase tracking-[0.18em] text-foreground/45 hover:text-foreground transition-colors">
-                      Forgot?
+                    <Link href="/forgot-password" className="text-data font-semibold text-foreground/45 hover:text-foreground transition-colors">
+                      Forgot password
                     </Link>
                   ) : undefined
                 }
@@ -443,7 +447,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                className="group mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-background font-semibold shadow-lg disabled:opacity-60 disabled:cursor-wait"
+                className="group mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold transition-opacity hover:opacity-85 disabled:opacity-60 disabled:cursor-wait"
               >
                 {loading
                   ? (isLogin ? "Signing in…" : "Creating account…")
@@ -457,7 +461,7 @@ export default function AuthPage() {
 
               <motion.div variants={item} className="flex items-center gap-3 pt-2">
                 <span className="h-px flex-1 bg-foreground/10" />
-                <span className="font-mono text-data uppercase tracking-[0.2em] text-foreground/30">or</span>
+                <span className="text-data text-foreground/30">or</span>
                 <span className="h-px flex-1 bg-foreground/10" />
               </motion.div>
 
@@ -468,7 +472,7 @@ export default function AuthPage() {
                 type="button"
                 disabled={loading}
                 onClick={handleGoogleOAuth}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-foreground/5 border border-foreground/10 hover:bg-foreground/10 text-foreground text-sm font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-wait"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.035] text-foreground text-sm font-semibold transition-colors hover:bg-foreground/[0.07] disabled:opacity-50 disabled:cursor-wait"
               >
                 <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -497,6 +501,7 @@ export default function AuthPage() {
             </button>
           </motion.p>
         </motion.main>
+        </div>
       </div>
     </MotionConfig>
   );
@@ -530,7 +535,7 @@ function Field({
   return (
     <motion.div variants={item} className="space-y-1.5">
       <div className="flex items-center justify-between ml-1">
-        <label htmlFor={name} className="font-mono text-data uppercase tracking-[0.18em] text-foreground/45">
+        <label htmlFor={name} className="text-data font-semibold text-foreground/55">
           {label}
         </label>
         {action}

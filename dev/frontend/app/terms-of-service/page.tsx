@@ -22,10 +22,10 @@ export default function TermsOfService() {
         <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
       </Link>
 
-      {/* Background Gradients */}
+      {/* Background — temperature, not hue. See "Smoked glass" in globals.css. */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] bg-dye-500/5 blur-[120px] rounded-full mix-blend-screen" />
-        <div className="absolute top-[40%] -left-[10%] w-[400px] h-[400px] bg-blue-500/5 blur-[100px] rounded-full mix-blend-screen" />
+        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] rounded-full mix-blend-screen blur-[120px]" style={{ background: 'var(--warm-tint)', opacity: 0.14 }} />
+        <div className="absolute top-[40%] -left-[10%] w-[400px] h-[400px] rounded-full mix-blend-screen blur-[100px]" style={{ background: 'var(--cool-tint)', opacity: 0.2 }} />
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-24 relative z-10">
@@ -33,7 +33,7 @@ export default function TermsOfService() {
           <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-linear-to-b from-foreground to-foreground/50">
             Terms of Service
           </h1>
-          <p className="text-foreground/50 font-bold uppercase tracking-widest text-sm">Last updated: {lastUpdated}</p>
+          <p className="text-foreground/50 font-bold text-sm">Last updated: {lastUpdated}</p>
         </div>
 
         <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 md:p-12 shadow-[0_8px_40px_rgba(0,0,0,0.04)] space-y-12">

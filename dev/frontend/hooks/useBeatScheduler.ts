@@ -5,13 +5,13 @@ import { useBeatEngine, BeatEvent } from "../context/BeatContext";
 import { useOptionalAudio } from "../context/AudioContext";
 import { useRealtimeBeatDetector } from "./useRealtimeBeatDetector";
 import { useSyncInfo } from "../context/SyncContext";
-import { getServerUrl, getAuthToken } from "../lib/api";
+import { getAuthToken } from "../lib/api";
 
 export function useBeatScheduler(trackUrl?: string | null) {
   const { emitBeat } = useBeatEngine();
   const audioContext = useOptionalAudio();
   const { isRoomPlaying: isPlaying } = useSyncInfo();
-  
+
   const [cachedEvents, setCachedEvents] = useState<BeatEvent[] | null>(null);
   const [useFallback, setUseFallback] = useState(!trackUrl);
   const nextEventIdx = useRef(0);
@@ -23,9 +23,9 @@ export function useBeatScheduler(trackUrl?: string | null) {
       setUseFallback(true);
       return;
     }
-    
+
     let isMounted = true;
-    
+
     const token = getAuthToken();
 
     fetch(`/api/spotify/audio-analysis?trackUrl=${encodeURIComponent(trackUrl)}`, {
@@ -66,7 +66,7 @@ export function useBeatScheduler(trackUrl?: string | null) {
 
     const checkAndEmit = () => {
       rafRef.current = requestAnimationFrame(checkAndEmit);
-      
+
       if (!isPlaying || !audioContext.isPlaying) return;
 
       // This logic requires we know the "track start time" in the AudioContext timeline.
@@ -74,9 +74,9 @@ export function useBeatScheduler(trackUrl?: string | null) {
       // E.g., if the user seeks, the context must know.
       // We will assume audioContext exposes something like `getCurrentTimeMs()` or we use `positionMs` from room state
       // For precision, we use the `AudioContext.currentTime` coupled with the known track start time.
-      
+
       const currentPosMs = audioContext.getTruePosition ? audioContext.getTruePosition() * 1000 : (audioContext.currentTime ? audioContext.currentTime * 1000 : 0);
-      
+
       // Fast forward if we seeked
       while (
         nextEventIdx.current < cachedEvents.length &&

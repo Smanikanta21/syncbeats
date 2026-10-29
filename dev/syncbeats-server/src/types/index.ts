@@ -55,6 +55,8 @@ export interface TrackQueueItem extends QueueItem {
 
 export interface RoomSnapshot {
   roomId:                 string;
+  roomInstanceId?:        string;
+  playbackInstanceId?:    string | null;
   trackUrl:               string | null;
   position:               number;       // ms, computed at snapshot time
   state:                  PlaybackState;
@@ -72,6 +74,7 @@ export interface RoomSnapshot {
   isPrivate?:             boolean;
   queue:                  TrackQueueItem[];
   queueVersion:           number;
+  nextTrack?:             TrackQueueItem | null;
   shuffle:                boolean;
   repeatMode:             RepeatMode;
 }
@@ -96,6 +99,9 @@ export interface PingPayload  { t0: number; seq?: number; }
 export interface PongPayload  { t0: number; t1: number; t2: number; seq?: number; }
 
 export interface PlaybackSchedulePayload {
+  roomId?: string;
+  roomInstanceId?: string;
+  playbackInstanceId?: string | null;
   startEpoch: number;
   fromPosition: number;
   trackUrl?: string;
@@ -111,4 +117,3 @@ export interface ChatMessage {
   message: string;
   timestamp: number;
 }
-

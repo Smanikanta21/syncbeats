@@ -41,7 +41,7 @@ export function InstagramFollowButton({
         rel="noopener noreferrer"
         className={cn(
           "inline-flex items-center gap-1.5 text-xs font-semibold transition-all duration-300 hover:opacity-90",
-          "text-pink-500 hover:text-pink-400 dark:text-pink-400 dark:hover:text-pink-300",
+          "text-foreground/60 hover:text-foreground",
           className
         )}
         aria-label="Follow SyncBeats on Instagram"
@@ -59,7 +59,7 @@ export function InstagramFollowButton({
         target="_blank"
         rel="noopener noreferrer"
         className={cn(
-          "inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-pink-500/30 bg-pink-500/10 text-pink-500 dark:text-pink-400 hover:bg-pink-500/20 hover:border-pink-500/50 font-bold text-xs uppercase tracking-wider transition-all duration-300 shadow-sm hover:shadow-pink-500/20 active:scale-95",
+          "inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-foreground/[0.035] px-4 py-2.5 text-sm font-semibold text-foreground/75 transition-colors duration-300 hover:border-foreground/20 hover:bg-foreground/[0.07] hover:text-foreground active:scale-[0.98]",
           className
         )}
       >
@@ -76,7 +76,7 @@ export function InstagramFollowButton({
         target="_blank"
         rel="noopener noreferrer"
         className={cn(
-          "inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-white font-bold text-xs tracking-wider uppercase bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg hover:shadow-pink-500/25 transition-all duration-300",
+          "inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition-opacity duration-300 hover:opacity-85 active:scale-[0.98]",
           className
         )}
       >
@@ -92,32 +92,25 @@ export function InstagramFollowButton({
       href={instagramUrl}
       target="_blank"
       rel="noopener noreferrer"
-      whileHover={{ 
-        scale: 1.02, 
-        boxShadow: "0 12px 40px -10px rgba(225, 48, 108, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.25)",
-        borderColor: "rgba(225, 48, 108, 0.5)",
-      }}
+      whileHover={{ scale: 1.01, borderColor: "var(--glass-border-hover)" }}
       whileTap={{ scale: 0.98 }}
       className={cn(
         "group relative w-full h-14 rounded-2xl",
         "bg-foreground/4 dark:bg-white/[0.05]",
         "backdrop-blur-2xl border border-foreground/15 dark:border-white/10",
         "flex items-center justify-center gap-3 px-6",
-        "text-foreground font-black text-xs md:text-sm tracking-widest uppercase",
+        "text-foreground font-semibold text-sm",
         "transition-all duration-500 cursor-pointer overflow-hidden select-none",
         className
       )}
     >
-      {/* Ambient Instagram Gradient Hover Glow */}
-      <span className="absolute inset-0 bg-gradient-to-r from-[#833ab4]/15 via-[#fd1d1d]/15 to-[#fcb045]/15 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-      {/* Vibrant Instagram Icon Badge */}
-      <div className="relative z-10 w-7 h-7 rounded-lg bg-linear-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] flex items-center justify-center shrink-0 shadow-md shadow-pink-500/20 group-hover:scale-110 transition-transform duration-300">
+      {/* Keep Instagram's identity in its icon; the surrounding control follows
+          SyncBeats' neutral smoked-glass palette. */}
+      <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-linear-to-tr from-[#833ab4] via-[#fd1d1d] to-[#fcb045] transition-transform duration-300 group-hover:scale-105">
         <InstagramIcon className="w-4 h-4 text-white shrink-0" />
       </div>
 
-      {/* Label with Hover Gradient Text */}
-      <span className="relative z-10 font-black tracking-widest uppercase transition-all duration-300 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-pink-400 group-hover:via-[#fd1d1d] group-hover:to-[#fcb045]">
+      <span className="relative z-10 font-semibold">
         {showHandle ? "Follow @syncbeats.in" : "Follow on Instagram"}
       </span>
     </motion.a>

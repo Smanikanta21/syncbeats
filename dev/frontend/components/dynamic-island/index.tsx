@@ -6,15 +6,15 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
   Loader2, AlertCircle, AlertTriangle, Activity,
   ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
-  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass, X
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAudio } from "../../context/AudioContext";
 
 import { useUpload } from "../../context/UploadContext";
-import { JoinRequest } from "../../lib/types";
+import { JoinRequest, type TrackActivity } from "../../lib/types";
 import { getSocket } from "../../lib/socket";
 import { roomsApi, usersApi } from "../../lib/api";
 import { ytId } from "../../lib/youtube";
@@ -25,6 +25,9 @@ import { useNetworkStats, qualityColor } from "../../hooks/useNetworkStats";
 import { SearchTab } from "../room/SearchTab";
 import { useSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
+import { trackCacheKey } from "../../lib/trackIdentity";
+import { INITIAL_ISLAND, islandReducer, islandView, type IslandActivity, type IslandView } from './state';
+import { useIslandDock, useIslandSize, useIslandViewport } from './useDock';
 
 // ─────────────────────────────────────────────────────────
 // Constants
@@ -75,7 +78,6 @@ const contentMorph = (reduce: boolean) =>
         transition: { duration: 0.24, delay: 0.1, ease: EASE_OUT },
       };
 
-const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
 // Extended grows while syncing: the sync bar adds a label row that clips at 44.
 // 62 = title (14) + gap (6) + label row (13) + gap (6) + bar (4) + py-2 (16).
@@ -106,7 +108,7 @@ function useIslandAccent() {
 }
 
 // Room island states
-type IslandState = "pill" | "extended" | "expanded";
+type IslandState = IslandView;
 type IslandTab = "player" | "network" | "search" | "requests" | "deviceInfo" | "invite";
 
 // ─────────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ type IslandTab = "player" | "network" | "search" | "requests" | "deviceInfo" | "
 
 const globalYtTitleCache = new Map<string, string>();
 
-function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | null): string {
+function cleanTrackTitle(title: string | null | undefined): string {
   if (!title) return "Unknown Track";
   let fileName = title.split('/').pop() ?? '';
   fileName = fileName.split('?')[0];
@@ -159,7 +161,7 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
   if (!trackUrl) return null;
   const customThumbMatch = trackUrl.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
-  
+
   const id = ytId(trackUrl);
   if (id) {
     return `https://i.ytimg.com/vi/${id}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
@@ -172,6 +174,7 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
 // ─────────────────────────────────────────────────────────
 
 import { AudioBars } from "./AudioBars";
+import { SyncBeatsLogo } from "../brand/SyncBeatsLogo";
 
 // ─────────────────────────────────────────────────────────
 // CompactProgressBar
@@ -221,56 +224,17 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
 // ─────────────────────────────────────────────────────────
 
 const SyncProgressBar = ({
-  downloadProgress,
-  deviceSyncProgress,
-  participants,
-  incomingTrack,
-  isReady,
+  activity,
   isStuck,
   onSkip,
 }: {
-  downloadProgress: number;
-  deviceSyncProgress: Record<string, number>;
-  participants: any[];
-  incomingTrack: { title: string; progress: number } | null;
-  isReady: boolean;
+  activity: IslandActivity;
   isStuck?: boolean;
   onSkip?: () => void;
 }) => {
-  const upload = useUpload();
   const accent = useIslandAccent();
-
-  // Compute overall sync progress only for active room participants
-  const activeSocketIds = new Set((participants || []).map((p: any) => p.socketId));
-  const progresses = Object.entries(deviceSyncProgress)
-    .filter(([sid]) => activeSocketIds.has(sid))
-    .map(([, p]) => p);
-  const hasSync = progresses.length > 0;
-  const avgSync = hasSync
-    ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length)
-    : 0;
-
-  const progress = upload.isUploading
-    ? (upload.uploadProgress || 10)
-    : incomingTrack
-    ? incomingTrack.progress
-    : !isReady
-    ? downloadProgress
-    : hasSync
-    ? avgSync
-    : 100;
-
-  const label = upload.isUploading
-    ? "Uploading Song..."
-    : incomingTrack
-    ? (incomingTrack.title ? `Receiving "${incomingTrack.title.substring(0, 18)}..."` : "Receiving Track")
-    : isStuck
-    ? "Stuck • Tap to skip"
-    : !isReady
-    ? "Downloading Track"
-    : hasSync && avgSync < 100
-    ? "Syncing Devices"
-    : "Synced";
+  const progress = activity.progress;
+  const label = isStuck ? 'Taking longer · tap to skip' : activity.label;
 
   const canSkip = !!(isStuck && onSkip);
 
@@ -283,7 +247,7 @@ const SyncProgressBar = ({
     >
       <div className="flex items-center justify-between gap-2">
         <span
-          className="text-[9px] font-black uppercase tracking-widest flex items-center gap-1 min-w-0"
+          className="text-[9px] font-semibold flex items-center gap-1 min-w-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.45)" }}
         >
           {isStuck && <AlertTriangle className="w-3 h-3 shrink-0 animate-bounce" />}
@@ -293,13 +257,13 @@ const SyncProgressBar = ({
           className="text-[10px] font-black tabular-nums shrink-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.6)" }}
         >
-          {progress}%
+          {progress == null ? '…' : `${progress}%`}
         </span>
       </div>
-      <div className="w-full h-1 rounded-full bg-white/15 overflow-hidden">
+      <div className="w-full h-1 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-label={activity.label} aria-valuenow={progress ?? undefined} aria-valuemin={0} aria-valuemax={100}>
         <div
           className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out', isStuck && 'animate-pulse')}
-          style={{ width: `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
+          style={{ width: progress == null ? '35%' : `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
         />
       </div>
     </div>
@@ -377,9 +341,9 @@ const tabVariants = {
 
 const PlayerTab = ({
   effectivePlaying, trackTitle, trackUrl, isReady, error, downloadProgress,
-  progress, displayTime, duration, hasTrack, onToggle, onNext, onPrev, onSeek,
+  duration, hasTrack, onToggle, onNext, onPrev, onSeek,
   onTabChange, isRoom, roomParticipants, pendingRequestsCount, isHost, isPrivate,
-  isVisible = true, audio, deviceSyncProgress,
+  isVisible = true, deviceSyncProgress,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:") || !!trackUrl?.startsWith("ws-p2p:yt:");
   const thumbnailUrl = getTrackThumbnail(trackUrl, 'hq');
@@ -436,7 +400,7 @@ const PlayerTab = ({
                     return (
                       <div key={p.socketId} className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5">
                         <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                        <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest whitespace-nowrap">{p.displayName}</span>
+                        <span className="text-[10px] font-bold text-white/70 whitespace-nowrap">{p.displayName}</span>
                         <div className="w-12 h-1 bg-black/40 rounded-full overflow-hidden shrink-0">
                           <div className="h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${progress}%`, backgroundColor: accent }} />
                         </div>
@@ -532,18 +496,18 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
         <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors pointer-events-auto">
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h3 className="text-white font-bold tracking-widest uppercase">Network Health</h3>
+        <h3 className="text-white font-bold ">Network Health</h3>
       </div>
       <div className="flex-1 flex flex-col gap-4">
         <div className="flex justify-between items-end">
           <div className="flex flex-col">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Latency</span>
+            <span className="text-white/50 text-xs font-bold ">Latency</span>
             <span className="text-white font-black text-3xl" style={{ color: qualityColor(netStats.quality) }}>
               {Math.round(netStats.latency || 0)}<span className="text-lg text-white/50 ml-1">ms</span>
             </span>
           </div>
           <div className="flex flex-col items-end gap-0.5">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Jitter</span>
+            <span className="text-white/50 text-xs font-bold ">Jitter</span>
             <span className="text-white font-bold text-xl">{Math.round(netStats.jitter || 0)}ms</span>
           </div>
         </div>
@@ -555,7 +519,7 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Sync Correction</span>
+            <span className="text-white/50 text-xs font-bold ">Sync Correction</span>
             <span className="text-white font-bold text-sm tabular-nums">{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
           <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
@@ -622,7 +586,7 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
         <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-1.5 hover:bg-white/10 rounded-full transition-colors -ml-1 pointer-events-auto">
           <ChevronLeft className="w-4 h-4 text-white/70" />
         </button>
-        <span className="text-xs font-bold uppercase tracking-widest text-white/60">Invite Friends</span>
+        <span className="text-xs font-bold text-white/60">Invite Friends</span>
       </div>
       <div className="flex flex-col">
         <div className="relative mb-3 shrink-0">
@@ -712,7 +676,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
       <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
         <ChevronLeft className="w-5 h-5 text-white/50" />
       </button>
-      <span className="text-sm font-bold uppercase tracking-widest text-white/50">Join Requests ({requests.length})</span>
+      <span className="text-sm font-bold text-white/50">Join Requests ({requests.length})</span>
       <div className="w-9" />
     </div>
     <div className="max-h-[320px] min-h-0 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto" data-lenis-prevent="true">
@@ -736,7 +700,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
 // ─────────────────────────────────────────────────────────
 
 const RoomPill = ({
-  effectivePlaying, trackTitle, trackUrl, isRoom, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback, showAlbumArt = true
+  effectivePlaying, trackUrl, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback, showAlbumArt = true
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -832,7 +796,7 @@ const RadialNavigatorPillContent = ({
           <IconComponent className={`w-4 h-4 text-white ${!snappedItem ? "animate-spin-slow" : ""}`} />
         </div>
         <div className="flex flex-col justify-center min-w-0">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-white truncate leading-tight">
+          <span className="text-[11px] font-bold text-white truncate leading-tight">
             {snappedItem ? snappedItem.label : "Hold & Drag"}
           </span>
           <span className="text-[9px] font-semibold text-white/50 truncate leading-tight">
@@ -850,19 +814,15 @@ const RadialNavigatorPillContent = ({
 // ─────────────────────────────────────────────────────────
 
 const RoomExtendedPill = ({
-  effectivePlaying, trackTitle, trackUrl, isReady,
-  downloadProgress, deviceSyncProgress, participants, incomingTrack,
+  effectivePlaying, trackTitle, trackUrl, activity, notice,
   pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback,
-  prefetchProgress, prefetchTitle, isPrefetching, isStuck, onNextTrack,
+  isStuck, onNextTrack, onRetry,
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
   trackUrl: string | null;
-  isReady: boolean;
-  downloadProgress: number;
-  deviceSyncProgress: Record<string, number>;
-  participants: any[];
-  incomingTrack: { title: string; progress: number } | null;
+  activity: IslandActivity | null;
+  notice: IslandActivity | null;
   pendingRequestsCount: number;
   isHost: boolean;
   isPrivate: boolean;
@@ -870,17 +830,13 @@ const RoomExtendedPill = ({
   seekIndicator: { amount: number; text: string } | null;
   volIndicator: { amount: number; text: string } | null;
   onTogglePlayback: () => void;
-  prefetchProgress: number;
-  prefetchTitle: string | null;
-  isPrefetching: boolean;
   isStuck?: boolean;
   onNextTrack?: () => void;
+  onRetry: () => void;
 }) => {
   const audio = useAudio();
-  const upload = useUpload();
-  const accent = useIslandAccent();
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
-  const title = cleanTrackTitle(trackTitle);
+  const title = trackTitle ? cleanTrackTitle(trackTitle) : 'SyncBeats';
 
   // If there's an active audio error (decoding failed / blocked track), display error alert in Dynamic Island
   if (audio.error) {
@@ -888,8 +844,7 @@ const RoomExtendedPill = ({
       <div
         className="absolute inset-0 flex items-center justify-between px-3 gap-2 bg-bad-950/90 border border-bad-500/50 rounded-full text-bad-200 cursor-pointer pointer-events-auto shadow-[0_0_25px_color-mix(in_srgb,var(--color-bad-500)_50%,transparent)]"
         onPointerDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onNextTrack?.(); }}
-        title="Playback Error. Tap to skip track."
+        title="Playback error"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <AlertCircle className="w-4 h-4 text-bad-400 shrink-0 animate-bounce" />
@@ -897,10 +852,13 @@ const RoomExtendedPill = ({
             {audio.error}
           </span>
         </div>
+        <button type="button" onClick={e => { e.stopPropagation(); onRetry(); }} className="min-w-11 min-h-11 text-[10px] font-bold focus-visible:outline-2 focus-visible:outline-white">
+          Retry
+        </button>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onNextTrack?.(); }}
-          className="px-2.5 py-1 rounded-full bg-bad-500/30 hover:bg-bad-500/50 text-[10px] font-black text-bad-100 flex items-center gap-1 shrink-0 transition-all border border-bad-400/30"
+          className="min-h-11 min-w-11 px-2 rounded-full bg-bad-500/30 hover:bg-bad-500/50 text-[10px] font-black text-bad-100 flex items-center gap-1 shrink-0 transition-all border border-bad-400/30 focus-visible:outline-2 focus-visible:outline-white"
         >
           Skip <SkipForward className="w-3 h-3" />
         </button>
@@ -908,12 +866,7 @@ const RoomExtendedPill = ({
     );
   }
 
-  const hasTrack = !!trackUrl || !!trackTitle;
-  const activeSocketIds = new Set((participants || []).map((p: any) => p.socketId));
-  const progresses = Object.entries(deviceSyncProgress)
-    .filter(([sid]) => activeSocketIds.has(sid))
-    .map(([, p]) => p);
-  const isSyncing = (hasTrack && !isReady) || incomingTrack != null || upload.isUploading || (hasTrack && progresses.length > 0 && progresses.some(p => p < 100));
+  const isSyncing = activity?.status === 'active';
 
   return (
     <>
@@ -934,29 +887,27 @@ const RoomExtendedPill = ({
           <div className="text-white text-[11px] font-semibold truncate leading-tight">
             {title ? title.split(/\s+/).slice(0, 5).join(" ") : (isSyncing ? "Syncing..." : "No track")}
           </div>
-          {isSyncing ? (
+          {isSyncing && activity ? (
             <div className="mt-1.5 w-full">
               <SyncProgressBar
-                downloadProgress={downloadProgress}
-                deviceSyncProgress={deviceSyncProgress}
-                participants={participants}
-                incomingTrack={incomingTrack}
-                isReady={isReady}
+                activity={activity}
                 isStuck={isStuck}
                 onSkip={onNextTrack}
               />
             </div>
+          ) : notice ? (
+            <span className="mt-1 truncate text-[10px] text-white/70" role="status">{notice.label}</span>
           ) : (
             <CompactProgressBar isPlaying={effectivePlaying} isVisible />
           )}
         </div>
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
-        <div
-          className="flex items-center justify-center gap-1 shrink-0 min-w-8 rounded-full cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
+        <button
+          type="button"
+          className="flex items-center justify-center gap-1 shrink-0 min-w-11 min-h-11 rounded-full cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto focus-visible:outline-2 focus-visible:outline-white"
           onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
           onPointerDown={(e) => e.stopPropagation()}
-          role="button"
           aria-label={effectivePlaying ? "Pause" : "Play"}
         >
           {volIndicator ? (
@@ -974,7 +925,7 @@ const RoomExtendedPill = ({
           ) : (
             <Play className="w-4 h-4 text-white/80 fill-white/80 shrink-0" />
           )}
-        </div>
+        </button>
       </div>
 
       {/* RIGHT half: join requests (if any) */}
@@ -997,15 +948,6 @@ const RoomExtendedPill = ({
         </>
       )}
       </div>
-      {/* Prefetch progress bar — thin strip at very bottom */}
-      {isPrefetching && prefetchTitle && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-full overflow-hidden bg-white/10 pointer-events-none">
-          <div
-            className="h-full transition-[width] duration-300 ease-out"
-            style={{ width: `${prefetchProgress}%`, backgroundColor: accent }}
-          />
-        </div>
-      )}
     </>
   );
 };
@@ -1016,7 +958,7 @@ const RoomExtendedPill = ({
 
 export function DynamicIsland() {
   const pathname = usePathname();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
   const {
@@ -1025,11 +967,14 @@ export function DynamicIsland() {
     play, pause, seek, nextTrack, prevTrack, prefetch,
   } = useSyncInfo();
   const isRoom = pathname.includes("/room/");
+  const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
+  const { layoutWidth: windowWidth, bounds: viewportBounds } = useIslandViewport();
+  const isMobile = windowWidth > 0 && windowWidth < 768;
   const isHost = hostId === user?.id;
   const hasTrack = audio.hasTrack;
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
   const activeSocketIds = useMemo(
-    () => new Set((roomParticipants || []).map((p: any) => p.socketId)),
+    () => new Set(roomParticipants.filter(p => !p.isReady && !p.isBlocked).map(p => p.socketId)),
     [roomParticipants]
   );
   const isAnyOtherDeviceBuffering = useMemo(() => {
@@ -1059,13 +1004,27 @@ export function DynamicIsland() {
 
   // ── Island state machine
   // In room: pill / extended / expanded
-  const [islandState, setIslandState] = useState<IslandState>("pill");
+  const [island, dispatchIsland] = useReducer(islandReducer, INITIAL_ISLAND);
+  const islandState = islandView(island);
+  const setIslandState = useCallback((view: IslandState) => {
+    dispatchIsland({ type: view === 'expanded' ? 'open' : view === 'extended' ? 'preview' : 'close' });
+  }, []);
   const [isExpanded, setIsExpanded] = useState(false); // non-room
   const islandRef = useRef<HTMLDivElement>(null);
   const [wiggle, setWiggle] = useState(false);
   const [isSwallowing, setIsSwallowing] = useState(false);
-  const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevReqCountRef = useRef(0);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submissionRef = useRef(0);
+  const restoreTriggerFocus = useCallback(() => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && islandRef.current?.contains(focused)) focused.blur();
+    requestAnimationFrame(() => islandRef.current?.focus({ preventScroll: true }));
+  }, []);
+  const closeIsland = useCallback(() => {
+    dispatchIsland({ type: 'close' });
+    restoreTriggerFocus();
+  }, [restoreTriggerFocus]);
 
   const uploadRef = useRef(upload);
   useEffect(() => {
@@ -1074,11 +1033,13 @@ export function DynamicIsland() {
 
   useEffect(() => {
     let dragCounter = 0;
+    let cancelled = false;
+    let dropTimer: ReturnType<typeof setTimeout> | undefined;
 
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       dragCounter++;
-      
+
       const types = e.dataTransfer?.types;
       let hasFiles = true; // Default to true to be safe
       if (types) {
@@ -1115,16 +1076,19 @@ export function DynamicIsland() {
 
       const files = Array.from(e.dataTransfer?.files || []);
       const audioFiles = files.filter(f => f.type.startsWith('audio/') || f.name.toLowerCase().endsWith('.mp3'));
-      
+
       if (audioFiles.length > 0) {
         setIsSwallowing(true);
-        setTimeout(async () => {
+        const currentRoomId = roomId;
+        if (dropTimer) clearTimeout(dropTimer);
+        dropTimer = setTimeout(async () => {
+          if (cancelled) return;
           setIsSwallowing(false);
-          const currentRoomId = window.location.pathname.split("/room/")[1]?.split("/")[0];
           if (currentRoomId) {
             setIslandState("pill");
             setActiveTab("player");
             for (const file of audioFiles) {
+              if (cancelled) break;
               try {
                 await uploadRef.current.uploadFile(file, currentRoomId);
               } catch (err) {
@@ -1142,36 +1106,28 @@ export function DynamicIsland() {
     window.addEventListener("drop", handleDrop);
 
     return () => {
+      cancelled = true;
+      if (dropTimer) clearTimeout(dropTimer);
       window.removeEventListener("dragenter", handleDragEnter);
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("dragover", handleDragOver);
       window.removeEventListener("drop", handleDrop);
     };
-  }, []);
-
+  }, [roomId, setIslandState]);
 
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
-  const [inviteQuery, setInviteQuery] = useState("");
-  const [inviteResultsCount, setInviteResultsCount] = useState(0);
-  const [inviteLoading, setInviteLoading] = useState(false);
+
   const [initialSearchMode, setInitialSearchMode] = useState<"youtube" | "spotify" | null>(null);
-  const [activeSearchMode, setActiveSearchMode] = useState<"youtube" | "spotify" | null | undefined>(undefined);
+
   const [slideDir, setSlideDir] = useState(1);
-  const [ytResultsCount, setYtResultsCount] = useState(0);
+
   const [seekIndicator, setSeekIndicator] = useState<{ amount: number; text: string } | null>(null);
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [volIndicator, setVolIndicator] = useState<{ amount: number; text: string } | null>(null);
   const volTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [forceShowDetails, setForceShowDetails] = useState(false);
-  const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
-  const [isImportingPlaylist, setIsImportingPlaylist] = useState(false);
-  const [hasSearchContent, setHasSearchContent] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isHoveringRef = useRef(false);
-  const [windowWidth, setWindowWidth] = useState(0);
-  const [windowHeight, setWindowHeight] = useState(0);
   const localProgressRef = useRef(0);
   // ── Auto-sizing: measures actual rendered content height ──────────────────
   const contentMeasureRef = useRef<HTMLDivElement>(null);
@@ -1204,17 +1160,6 @@ export function DynamicIsland() {
     return () => window.removeEventListener("modal:toggle", handleModalToggle as EventListener);
   }, []);
 
-  useEffect(() => {
-    setWindowWidth(window.innerWidth);
-    setWindowHeight(window.innerHeight);
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-      setWindowHeight(window.innerHeight);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   // ── ResizeObserver: auto-size island to content ──────────────────────────
   useEffect(() => {
     const el = contentMeasureRef.current;
@@ -1233,14 +1178,9 @@ export function DynamicIsland() {
   }, [islandState]); // re-attach whenever island opens/closes
 
   const lastTapRef = useRef<number>(0);
-  const [scrubTime, setScrubTime] = useState<number | null>(null);
-  const scrubTimeRef = useRef<number | null>(null);
-  useEffect(() => { scrubTimeRef.current = scrubTime; }, [scrubTime]);
 
-  const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
   const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
-  const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
-  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 
   const [isBufferingStuck, setIsBufferingStuck] = useState(false);
 
@@ -1255,38 +1195,56 @@ export function DynamicIsland() {
     }
   }, [hasTrack, audio.isReady, audio.downloadProgress, audio.error]);
 
-
-
-  // ── Auto-trigger extended when syncing/buffering, stay extended until done
-  useEffect(() => {
-    if (!isRoom) return;
-    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering));
-    if (isSyncing) {
-      if (islandState === "expanded") return; // Allow user to interact with the expanded island during sync
-      // Force extended and cancel any pending shrink — stay here until done
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = null;
-      if (islandState !== "extended") setIslandState("extended");
-    } else if (islandState === "extended" && !isHoveringRef.current) {
-      // Syncing just finished — brief pause then snap back to appropriate state
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = setTimeout(() => setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill"), 1200);
+  const activity = useMemo<IslandActivity | null>(() => {
+    if (!isRoom) return null;
+    const fromTransfer = (transfer: TrackActivity, prefix: string): IslandActivity => ({
+      id: transfer.roomId + ':' + transfer.id,
+      status: transfer.status,
+      progress: transfer.indeterminate ? null : transfer.progress,
+      label: transfer.status === 'failed' ? transfer.error || 'Could not prepare this track'
+        : transfer.status === 'cancelled' ? 'Transfer cancelled'
+        : transfer.status === 'complete' ? 'Added to queue' : prefix + transfer.title,
+    });
+    if (hasTrack && audio.error) return { id: 'audio:' + trackCacheKey(audio.trackUrl || ''), label: audio.error, status: 'failed', progress: null };
+    if (hasTrack && !audio.isReady) return {
+      id: 'audio:' + trackCacheKey(audio.trackUrl || ''), status: 'active',
+      label: audio.downloadProgress >= 100 ? 'Preparing audio' : 'Downloading track',
+      progress: audio.downloadIndeterminate || audio.downloadProgress >= 100 ? null : audio.downloadProgress,
+    };
+    if (upload.activity?.roomId === roomId && upload.activity.status === 'active') return fromTransfer(upload.activity, 'Adding: ');
+    if (incomingTrack?.roomId === roomId && incomingTrack.status === 'active') return fromTransfer(incomingTrack, 'Preparing: ');
+    if (incomingTrack?.roomId === roomId && incomingTrack.status === 'failed') return fromTransfer(incomingTrack, '');
+    if (pendingPlay && (isAnyOtherDeviceBuffering || activeSocketIds.size > 0)) {
+      const progresses = [...activeSocketIds].map(id => deviceSyncProgress[id]).filter(Number.isFinite);
+      return { id: 'peers:' + trackCacheKey(audio.trackUrl || ''), status: 'active', label: 'Waiting for devices',
+        progress: progresses.length ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length) : null };
     }
-  }, [audio.isReady, incomingTrack, isAnyOtherDeviceBuffering, isRoom, islandState, effectivePlaying, hasTrack]);
+    if (upload.activity?.roomId === roomId) return fromTransfer(upload.activity, '');
+    if (incomingTrack?.roomId === roomId) return fromTransfer(incomingTrack, '');
+    return null;
+  }, [isRoom, roomId, hasTrack, audio.error, audio.trackUrl, audio.isReady, audio.downloadProgress, audio.downloadIndeterminate,
+      upload.activity, incomingTrack, pendingPlay, isAnyOtherDeviceBuffering, activeSocketIds, deviceSyncProgress]);
 
-  // ── Playing state changes
+  useEffect(() => { dispatchIsland({ type: 'reset' }); }, [pathname]);
   useEffect(() => {
-    if (!isRoom || isHoveringRef.current || islandState === "expanded") return;
-    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering));
-    if (isSyncing) return; // let the syncing effect handle it
+    dispatchIsland({ type: 'context', playing: effectivePlaying && hasTrack,
+      requests: isHost && isPrivate && pendingRequests.length > 0, activity });
+  }, [effectivePlaying, hasTrack, isHost, isPrivate, pendingRequests.length, activity, pathname]);
 
-    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-    if (effectivePlaying && hasTrack) {
-      if (islandState === "pill") setIslandState("extended");
-    } else {
-      if (islandState === "extended") setIslandState("pill");
+  // A single completion timer owns dismissal. Progress updates do not restart it.
+  const noticeId = island.notice?.id;
+  const activityIsActive = island.activity?.status === 'active';
+  useEffect(() => {
+    if (!noticeId || island.expanded || activityIsActive) return;
+    const timer = setTimeout(() => dispatchIsland({ type: 'dismiss', id: noticeId }), 1200);
+    return () => clearTimeout(timer);
+  }, [noticeId, island.expanded, activityIsActive, pathname]);
+
+  useEffect(() => () => {
+    for (const ref of [previewTimerRef, clickTimerRef, pressTimerRef, seekTimeoutRef, volTimeoutRef]) {
+      if (ref.current) clearTimeout(ref.current);
     }
-  }, [effectivePlaying, hasTrack, isRoom, islandState, incomingTrack, audio.isReady, isAnyOtherDeviceBuffering]);
+  }, [pathname]);
 
   // ── Default to search tab if manually expanded with no track and player tab active
   useEffect(() => {
@@ -1296,27 +1254,6 @@ export function DynamicIsland() {
     }
   }, [isRoom, hasTrack, islandState, activeTab]);
 
-  // ── Collapse island to pill if current track is cleared (e.g. queue cleared)
-  // Only collapse if the user is not actively viewing an expanded modal tab (like invite or search)
-  useEffect(() => {
-    if (isRoom && !hasTrack && islandState !== "expanded") {
-      setIslandState("pill");
-    }
-  }, [hasTrack, isRoom, islandState]);
-
-  // ── Auto-trigger extended for join requests
-  useEffect(() => {
-    if (!isRoom) return;
-    const currentCount = pendingRequests?.length || 0;
-    const prevCount = prevReqCountRef.current;
-    if (currentCount > prevCount) {
-      setIslandState("extended");
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), 10000);
-    }
-    prevReqCountRef.current = currentCount;
-  }, [pendingRequests?.length, isRoom]);
-
   const showVolIndicator = useCallback((deltaOrAbs: number, isAbsolute = false) => {
     setVolIndicator({ amount: deltaOrAbs, text: isAbsolute ? `${deltaOrAbs}%` : `${deltaOrAbs > 0 ? "+" : ""}${deltaOrAbs}%` });
     if (volTimeoutRef.current) clearTimeout(volTimeoutRef.current);
@@ -1324,12 +1261,10 @@ export function DynamicIsland() {
   }, []);
 
   useEffect(() => {
-    const handleShowDeviceInfo = (e: any) => {
-      setDeviceInfoTarget(e.detail.socketId);
+    const handleShowDeviceInfo = () => {
       setActiveTab("deviceInfo");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
     return () => window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
@@ -1338,35 +1273,29 @@ export function DynamicIsland() {
   useEffect(() => {
     const handleExpandAdd = () => {
       setInitialSearchMode("youtube");
-      setActiveSearchMode("youtube");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandSpotify = () => {
       setInitialSearchMode("spotify");
-      setActiveSearchMode("spotify");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandInvite = () => {
       setSlideDir(0);
       setActiveTab("invite");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandSync = () => {
       setSlideDir(0);
       setActiveTab("network");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
 
     document.addEventListener("island:expand-add", handleExpandAdd);
@@ -1385,12 +1314,12 @@ export function DynamicIsland() {
   useEffect(() => {
     if (isRoom) {
       if (islandState === "pill") {
-        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        const t = setTimeout(() => { setActiveTab("player"); }, 500);
         return () => clearTimeout(t);
       }
     } else {
       if (!isExpanded) {
-        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        const t = setTimeout(() => { setActiveTab("player"); }, 500);
         return () => clearTimeout(t);
       }
     }
@@ -1403,7 +1332,7 @@ export function DynamicIsland() {
     const handleClickOutside = (e: MouseEvent) => {
       if (!document.contains(e.target as Node)) return;
       if (islandRef.current && !islandRef.current.contains(e.target as Node)) {
-        if (isRoom) setIslandState("pill");
+        if (isRoom) closeIsland();
         else setIsExpanded(false);
       }
     };
@@ -1416,25 +1345,7 @@ export function DynamicIsland() {
       cancelAnimationFrame(id);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [islandState, isExpanded, isRoom, hasTrack]);
-
-  // ── Inactivity timer (mobile)
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    const expanded = isRoom ? islandState === "expanded" : isExpanded;
-    // Do not auto-close expanded interactive tabs (invite, search, deviceInfo, requests, settings)
-    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "invite" && activeTab !== "search" && activeTab !== "requests") {
-      inactivityTimerRef.current = setTimeout(() => {
-        if (isRoom) setIslandState("pill");
-        else setIsExpanded(false);
-      }, 3000);
-    }
-  }, [islandState, isExpanded, windowWidth, activeTab, isRoom]);
-
-  useEffect(() => {
-    resetInactivityTimer();
-    return () => { if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current); };
-  }, [islandState, isExpanded, windowWidth, resetInactivityTimer]);
+  }, [islandState, isExpanded, isRoom, closeIsland]);
 
   const showSeekIndicator = useCallback((amount: number) => {
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
@@ -1444,7 +1355,6 @@ export function DynamicIsland() {
 
   const handleTabChange = useCallback((newTab: IslandTab) => {
     if (activeTab === newTab) return;
-    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     const order: Record<IslandTab, number> = { network: -1, player: 0, search: 1, invite: 2, requests: 3, deviceInfo: 4 };
     setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
     setActiveTab(newTab);
@@ -1455,8 +1365,8 @@ export function DynamicIsland() {
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const isProfile = pathname.includes("/profile");
 
-  const displayTime = scrubTime !== null ? scrubTime : audio.currentTime || 0;
-  const displayProgress = scrubTime !== null ? scrubTime / Math.max(audio.duration, 1) : localProgressRef.current;
+  const displayTime = audio.currentTime || 0;
+  const displayProgress = localProgressRef.current;
 
   const _isPlayingRef = useRef(false);
   const _getTruePosRef = useRef(audio.getTruePosition);
@@ -1468,7 +1378,7 @@ export function DynamicIsland() {
   useEffect(() => {
     let rafId: number;
     const tick = () => {
-      if (_isPlayingRef.current && scrubTimeRef.current === null) {
+      if (_isPlayingRef.current) {
         const pos = _getTruePosRef.current();
         const dur = _durationRef.current;
         if (dur > 0) localProgressRef.current = Math.min(1, pos / dur);
@@ -1513,7 +1423,7 @@ export function DynamicIsland() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input, textarea, select, button, [role="tab"], [role="button"]')) || (document.activeElement as HTMLElement)?.isContentEditable) return;
       const state = _keyboardStateRef.current;
       if (e.code === "Space") {
         e.preventDefault();
@@ -1541,7 +1451,7 @@ export function DynamicIsland() {
         if (newVol !== cur) {
           audio.setVolume(newVol);
           showVolIndicator(newVol - cur);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1552,7 +1462,7 @@ export function DynamicIsland() {
         if (newVol !== cur) {
           audio.setVolume(newVol);
           showVolIndicator(newVol - cur);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1561,7 +1471,7 @@ export function DynamicIsland() {
         if (audio.toggleMute) {
           const newVol = audio.toggleMute();
           showVolIndicator(newVol, true);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1572,53 +1482,88 @@ export function DynamicIsland() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [audio, play, pause, seek]);
 
-  // Compute syncing flag first — used both for dimensions and handlers
-  const isSyncingNow = isRoom && (
-    incomingTrack != null ||
-    upload.isUploading ||
-    (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering))
-  );
+  const isSyncingNow = isRoom && activity?.status === 'active';
 
-  // Auto-extend island to show downloading progress bar whenever a song is downloading/buffering
+  const isExpanded_room = islandState === 'expanded';
+  const isExtended_room = islandState === 'extended';
+  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing && !radialSnapInfo?.isOpen;
+  const [secondaryExiting, setSecondaryExiting] = useState(false);
+  useEffect(() => { if (showSecondary) setSecondaryExiting(true); }, [showSecondary]);
+  useEffect(() => { if (isModalOpen || !isRoom) setSecondaryExiting(false); }, [isModalOpen, isRoom]);
+  const secondaryReserve = showSecondary || secondaryExiting ? SECONDARY_SIZE + SECONDARY_GAP : 0;
+  const secondaryProgressLabel = prefetch.isIndeterminate ? 'preparing' : `${prefetch.nextTrackProgress}%`;
+  const secondaryLabel = prefetch.nextTrackTitle
+    ? `Next track: ${prefetch.nextTrackTitle} — ${secondaryProgressLabel}` : `Next track — ${secondaryProgressLabel}`;
+  const availableWidth = Math.max(1, viewportBounds.width - secondaryReserve);
+  const pillWidth = Math.min(hasTrack ? 120 : 86, availableWidth);
+  const hasPending = isHost && isPrivate && pendingRequests.length > 0;
+  const extendedWidth = Math.min(hasPending ? 460 : 360, availableWidth);
+  const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
+  const expandedWidth = Math.min(840, availableWidth);
+  const maxIslandHeight = Math.max(1, viewportBounds.height - (isMobile ? 0 : Math.max(0, 28 - viewportBounds.y)));
+  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight + 8);
+  const dropZoneSize = Math.min(240, availableWidth, maxIslandHeight);
+  const currentWidth = wiggle || isSwallowing ? dropZoneSize
+    : radialSnapInfo?.isOpen ? Math.min(265, availableWidth)
+    : isExpanded_room ? expandedWidth : isExtended_room ? extendedWidth : pillWidth;
+  const currentHeight = Math.min(maxIslandHeight, wiggle || isSwallowing ? dropZoneSize
+    : isExpanded_room ? expandedHeight : isExtended_room ? extendedHeight : COMPACT_HEIGHT);
+  const currentRadius = wiggle || isSwallowing ? 48 : isExpanded_room ? 36 : currentHeight / 2;
+  const renderedSize = useIslandSize(islandRef, isRoom && !isModalOpen && joinStatus !== 'pending' && joinStatus !== 'denied');
+  const docking = useIslandDock(false,
+    isExpanded_room, {
+      width: Math.min(renderedSize?.width ?? currentWidth, availableWidth) + secondaryReserve,
+      height: Math.min(renderedSize?.height ?? currentHeight, maxIslandHeight),
+    }, viewportBounds);
+
   useEffect(() => {
-    if (isSyncingNow && islandState === "pill") {
-      setIslandState("extended");
-    }
-  }, [isSyncingNow, islandState]);
+    if (!isExpanded_room || !isRoom) return;
+    const frame = requestAnimationFrame(() => {
+      if (!islandRef.current?.contains(document.activeElement)) islandRef.current?.focus({ preventScroll: true });
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeIsland(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(islandRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'
+      ) || []).filter(element => element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === islandRef.current)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === islandRef.current)) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', onKey); };
+  }, [isExpanded_room, isRoom, closeIsland]);
 
   // ── Render guard
   if (isModalOpen) return null;
-  if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) return null;
+  if (isRoom && joinStatus === "denied") return null;
 
   // ── Non-room layout (nav bar)
   if (!isRoom) {
     // Legacy compact/expanded for non-room
-    const currentExpandedHeight: number | "auto" = "auto";
-    const dynamicExpandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
-    const dynamicCompactWidth = !hasTrack ? dynamicExpandedWidth
-      : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
 
     return (
       <div 
         className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none"
         style={{
-          top: "max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          top: "max(calc(1.5rem + 2px), calc(env(safe-area-inset-top, 0px) + 0.5rem + 2px))",
         }}
       >
         <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
           <Link href="/room/default" className="flex items-center gap-2 sm:gap-3 group">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 group-hover:scale-105 transition-all outline-none">
-              <Disc className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70 animate-[spin_5s_linear_infinite]" />
-            </div>
-            <span className="text-base sm:text-lg font-black tracking-widest text-foreground transition-opacity hover:opacity-80">
-              SYNC<span className="text-foreground/50">BEATS</span>
-            </span>
+            <SyncBeatsLogo markClassName="h-9 w-9 sm:h-10 sm:w-10 group-hover:scale-105 transition-transform" wordmarkClassName="text-base sm:text-lg" />
           </Link>
           <div className="flex items-center gap-3 sm:gap-5">
             <ThemeToggle />
             <div className="w-px h-6 bg-foreground/10 hidden sm:block" />
             {isProfile ? (
-              <Link href="/room/default" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold tracking-widest uppercase hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
+              <Link href="/room/default" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
             ) : (
               <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className="flex items-center gap-3 cursor-pointer group outline-none">
                 <div className="text-right hidden sm:block">
@@ -1636,118 +1581,41 @@ export function DynamicIsland() {
     );
   }
 
-  // ── Room island layout
-  // Three states: pill / extended / expanded
-  const isExpanded_room = islandState === "expanded";
-  const isExtended_room = islandState === "extended";
-
-  // Secondary island = background tasks only. Uploads are deliberately excluded:
-  // upload.isUploading already drives isSyncingNow, which auto-extends the main
-  // island and shows "Uploading Song..." there. Prefetch is the only task that
-  // runs behind an unaffected island, so it's the only one that earns a circle.
-  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing;
-  const secondaryLabel = prefetch.nextTrackTitle
-    ? `Downloading next track: ${prefetch.nextTrackTitle} — ${prefetch.nextTrackProgress}%`
-    : `Downloading next track — ${prefetch.nextTrackProgress}%`;
-  // Width the circle needs beside the island. The extended island already runs
-  // to within 16px of both edges on a phone, so without reserving this the
-  // circle lands off-screen — and a fixed element doesn't scroll into view, it
-  // just silently disappears. Reserving alone isn't enough either: the island
-  // is centred, so freed width splits across both sides. The wrapper below also
-  // shifts left by half of this, which keeps the pair centred as a group.
-  const secondaryReserve = showSecondary ? SECONDARY_SIZE + SECONDARY_GAP : 0;
-
-  // Pill dimensions
-  const pillWidth = hasTrack ? 120 : 86;
-  const pillHeight = COMPACT_HEIGHT;
-  // Extended dimensions (iOS live-activity style)
-  const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
-  const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32 - secondaryReserve);
-  // While syncing the extended pill carries a second row (sync label + bar), so
-  // it needs the extra height or the bar clips against the bottom edge.
-  const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
-  const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
-
-  // ── Auto-sized height: drive island size from actual rendered content ─────
-  // The ResizeObserver watches the content wrapper and feeds its scrollHeight
-  // back here. We add a small buffer (8px) so the content never clips.
-  const ISLAND_VERT_PAD = 8;
-  const maxIslandHeight = windowHeight > 0 ? windowHeight - 32 : 900;
-  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight + ISLAND_VERT_PAD);
-
-  // Current animated dimensions
-  // When radial navigator active: expand to 265px
-  const dropZoneSize = windowWidth > 0 ? Math.min(240, windowWidth - 64) : 240;
-  const currentWidth = wiggle || isSwallowing
-    ? dropZoneSize
-    : radialSnapInfo?.isOpen
-    ? Math.min(265, (windowWidth > 0 ? windowWidth : 320) - 32)
-    : isExpanded_room
-    ? expandedWidth
-    : isExtended_room
-    ? extendedWidth
-    : pillWidth;
-  const currentHeight = wiggle || isSwallowing
-    ? dropZoneSize
-    : isExpanded_room
-    ? expandedHeight
-    : isExtended_room
-    ? extendedHeight
-    : pillHeight;
-  // Stay a true pill in every collapsed state — radius tracks the live height.
-  const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : currentHeight / 2);
-
-  const handlePointerDown_room = () => {
-    resetInactivityTimer();
-    if (windowWidth >= 768) return;
-    if (islandState === "expanded") return;
+  const cancelPress = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = null;
+    setIsPressing(false);
+  };
+  const openIsland = () => {
+    if (!hasTrack) { setInitialSearchMode('youtube'); setSlideDir(0); setActiveTab('search'); }
+    dispatchIsland({ type: 'open' });
+  };
+  const handlePointerDown_room = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('button, a, input, select, textarea, [role="slider"]')) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
-      if (!hasTrack) {
-        setInitialSearchMode("youtube");
-        setSlideDir(0);
-        setActiveTab("search");
-      }
-      setIslandState("expanded");
-      setForceShowDetails(false);
-      setIsPressing(false);
-      pressTimerRef.current = null;
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(50);
+      cancelPress();
+      openIsland();
+      if (!reduceMotion) navigator.vibrate?.(30);
     }, 300);
   };
-
   const handlePointerUp_room = () => {
-    resetInactivityTimer();
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-      setIsPressing(false);
-      const nowTime = Date.now();
-      // Restrict double-tap toggle to pill & extended states only (never when expanded)
-      if (islandState !== "expanded" && nowTime - lastTapRef.current < 500) {
-        handleToggle();
-        lastTapRef.current = 0;
-      } else {
-        lastTapRef.current = nowTime;
-        if (islandState === "pill") {
-          if (!hasTrack) {
-            setInitialSearchMode("youtube");
-            setSlideDir(0);
-            setActiveTab("search");
-            setIslandState("expanded");
-          } else {
-            setIslandState("extended");
-            if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-            const delaySec = islandCustomizer.autoShrinkDelaySec ?? 6;
-            if (delaySec > 0) {
-              shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), delaySec * 1000);
-            }
-          }
-        } else if (islandState === "extended") {
-          setIslandState("pill");
-        }
-      }
+    if (!pressTimerRef.current) return;
+    cancelPress();
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) {
+      handleToggle();
+      lastTapRef.current = 0;
+      return;
     }
+    lastTapRef.current = now;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!hasTrack) openIsland();
+    else if (islandState === 'pill') {
+      dispatchIsland({ type: 'preview' });
+      const delay = islandCustomizer.autoShrinkDelaySec ?? 6;
+      if (delay > 0) previewTimerRef.current = setTimeout(() => dispatchIsland({ type: 'end-preview' }), delay * 1000);
+    } else dispatchIsland({ type: 'compact' });
   };
 
   return (
@@ -1758,13 +1626,13 @@ export function DynamicIsland() {
         animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
         transition={{ duration: 0.35, ease: EASE_OUT }}
         style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
-        onClick={() => setIslandState("pill")}
+        onClick={closeIsland}
       />
 
       <div 
-        className="fixed left-1/2 -translate-x-1/2 z-100 flex flex-col items-center pointer-events-none"
+        className="fixed z-100 flex flex-col items-center pointer-events-none left-1/2 -translate-x-1/2"
         style={{
-          top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          top: "max(calc(1.75rem + 2px), calc(env(safe-area-inset-top, 0px) + 0.5rem + 2px))",
         }}
       >
         {/* relative: anchors the secondary circle to the island's right edge.
@@ -1778,68 +1646,60 @@ export function DynamicIsland() {
         <motion.div
           ref={islandRef}
           onContextMenu={e => e.preventDefault()}
-          onPointerDown={e => { handlePointerDown_room(); resetInactivityTimer(); }}
-          onPointerUp={e => { handlePointerUp_room(); resetInactivityTimer(); }}
+          role={isExpanded_room ? 'dialog' : 'button'}
+          aria-label={isExpanded_room ? 'Room controls' : 'Open music controls'}
+          aria-expanded={isExpanded_room}
+          aria-modal={isExpanded_room || undefined}
+          tabIndex={isExpanded_room ? -1 : 0}
+          onPointerDown={handlePointerDown_room}
+          onPointerUp={handlePointerUp_room}
+          onClickCapture={event => {
+            if (docking.suppressClick()) { event.preventDefault(); event.stopPropagation(); }
+          }}
           onMouseEnter={() => {
-            if (windowWidth >= 768) {
-              isHoveringRef.current = true;
-              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-              if (islandState === "pill" && hasTrack) {
-                setIslandState("extended");
-              }
+            if (!isMobile && hasTrack) {
+              if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+              dispatchIsland({ type: 'preview' });
             }
           }}
           onMouseLeave={() => {
-            if (windowWidth >= 768) {
-              isHoveringRef.current = false;
-              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-              // Do NOT auto-shrink when the island is expanded into a modal tab (invite, search, deviceInfo, etc.)
-              // Only auto-shrink hover-preview "extended" pills.
-              if (islandState === "extended") {
-                shrinkTimerRef.current = setTimeout(() => {
-                  setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
-                }, 1200);
-              }
-            }
-            handlePointerUp_room();
-          }}
-          onClick={e => {
-            if (windowWidth >= 768) {
-              if (islandState === "pill" || islandState === "extended") {
-                if (!hasTrack) {
-                  setInitialSearchMode("youtube");
-                  setSlideDir(0);
-                  setActiveTab("search");
-                }
-                setIslandState("expanded");
-              } else if (islandState === "expanded") {
-                if (activeTab === "player" || activeTab === "network" || activeTab === "deviceInfo") {
-                  setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
-                }
-              }
+            if (!isMobile) {
+              if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+              previewTimerRef.current = setTimeout(() => dispatchIsland({ type: 'end-preview' }), 1200);
             }
           }}
-          onPointerLeave={() => { handlePointerUp_room(); resetInactivityTimer(); }}
-          onPointerMove={resetInactivityTimer}
-          onDoubleClick={e => {
-            e.preventDefault();
-            if (islandState === "pill" || islandState === "extended") {
-              handleToggle();
+          onKeyDown={event => {
+            if (event.target === event.currentTarget && !isExpanded_room && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault(); event.stopPropagation(); openIsland();
             }
+          }}
+          onClick={event => {
+            if (isExpanded_room) return;
+            if (event.detail === 0) { openIsland(); return; }
+            if (!isMobile) {
+              if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+              clickTimerRef.current = setTimeout(openIsland, 300);
+            }
+          }}
+          onDoubleClick={event => {
+            if (isMobile || isExpanded_room || docking.suppressClick()) return;
+            event.preventDefault();
+            if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+            handleToggle();
           }}
           initial={false}
           transition={{
             width: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
             height: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
             borderRadius: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
-            scale: isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
+            scale: reduceMotion ? { duration: 0 } : isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
             x: wiggle && !isSwallowing ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30 }
           }}
           animate={{
             width: currentWidth,
             height: currentHeight,
             borderRadius: currentRadius,
-            scale: isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
+            scale: reduceMotion ? 1 : isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
             x: wiggle && !isSwallowing && !reduceMotion ? [0, -5, 5, -5, 5, -5, 5, 0] : 0
           }}
           style={{
@@ -1851,12 +1711,14 @@ export function DynamicIsland() {
             flexDirection: "column",
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
-            maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
+            maxHeight: maxIslandHeight,
+            maxWidth: viewportBounds.width - secondaryReserve,
+            touchAction: isMobile && !isExpanded_room ? 'none' : 'auto',
             WebkitUserSelect: "none",
             WebkitTouchCallout: "none",
             userSelect: "none",
           }}
-          className={cn("pointer-events-auto select-none no-touch-select", currentGlowClass)}
+          className={cn("pointer-events-auto select-none no-touch-select focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white", currentGlowClass)}
         >
           {/* Rotating Border Light Beam — one flat accent arc, no colour fade */}
           <AnimatePresence>
@@ -1944,11 +1806,8 @@ export function DynamicIsland() {
                   effectivePlaying={effectivePlaying}
                   trackTitle={audio.trackTitle}
                   trackUrl={audio.trackUrl}
-                  isReady={audio.isReady}
-                  downloadProgress={audio.downloadProgress}
-                  deviceSyncProgress={deviceSyncProgress}
-                  participants={roomParticipants}
-                  incomingTrack={incomingTrack}
+                  activity={activity}
+                  notice={island.notice}
                   pendingRequestsCount={pendingRequests?.length || 0}
                   isHost={isHost}
                   isPrivate={isPrivate}
@@ -1956,11 +1815,9 @@ export function DynamicIsland() {
                   seekIndicator={seekIndicator}
                   volIndicator={volIndicator}
                   onTogglePlayback={handleToggle}
-                  prefetchProgress={prefetch.nextTrackProgress}
-                  prefetchTitle={prefetch.nextTrackTitle}
-                  isPrefetching={prefetch.isPrefetching}
                   isStuck={isBufferingStuck}
                   onNextTrack={nextTrack}
+                  onRetry={() => { audio.unlockAudio(); audio.retryTrack(); play(); }}
                 />
               </motion.div>
             )}
@@ -1972,21 +1829,32 @@ export function DynamicIsland() {
               <motion.div
                 key="expanded-tab-container"
                 {...contentMorph(!!reduceMotion)}
-                className="w-full relative pointer-events-auto"
+                className="w-full h-full relative pointer-events-auto overflow-y-auto overscroll-contain"
+                style={{ maxHeight: currentHeight, touchAction: 'pan-y' }}
               >
                 {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
                 <div ref={contentMeasureRef}>
+                  <div className="flex items-center justify-end px-3 pt-2 text-white" onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      aria-label="Close music controls"
+                      onClick={closeIsland}
+                      className="min-h-11 min-w-11 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 focus-visible:outline-2 focus-visible:outline-white transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
                 <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
                   {activeTab === "player" && (
                     <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
 
                       <PlayerTab
                         effectivePlaying={effectivePlaying}
-                        trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
+                        trackTitle={audio.trackTitle}
                         trackUrl={audio.trackUrl}
                         isReady={audio.isReady}
                         error={audio.error}
-                        downloadProgress={incomingTrack ? incomingTrack.progress : audio.downloadProgress}
+                        downloadProgress={audio.downloadProgress}
                         audio={audio}
                         deviceSyncProgress={deviceSyncProgress}
                         progress={displayProgress}
@@ -2018,20 +1886,15 @@ export function DynamicIsland() {
                         roomId={roomId!} 
                         initialMode={initialSearchMode}
                         onBack={() => setActiveTab("player")} 
-                        onResultsCountChange={setYtResultsCount} 
-                        onModeChange={setActiveSearchMode}
                         onLoadingStateChange={setIsSearchLoading}
                         isSearchOnly={false} 
-                        onPlaylistViewChange={setIsViewingPlaylist}
-                        onImportingStateChange={setIsImportingPlaylist}
-                        onHasContentChange={setHasSearchContent}
-                        onErrorStateChange={setSearchError}
                         isPlaying={audio.isPlaying}
                         hasTrack={hasTrack}
-                        onSuccess={() => { 
-                          setWiggle(true); 
-                          setTimeout(() => setWiggle(false), 400); 
-                          if (isRoom) setIslandState("extended");
+                        onSuccess={() => {
+                          setIsSearchLoading(false);
+                          setActiveTab('player');
+                          dispatchIsland({ type: 'submitted', id: `enqueue:${roomId}:${++submissionRef.current}` });
+                          restoreTriggerFocus();
                         }}
                       />
                     </motion.div>
@@ -2040,12 +1903,7 @@ export function DynamicIsland() {
                     <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <InviteTab 
                         onBack={() => setActiveTab("player")} 
-                        roomId={roomId || ''} 
-                        onStateChange={(q, count, l) => {
-                          setInviteQuery(q);
-                          setInviteResultsCount(count);
-                          setInviteLoading(l);
-                        }}
+                        roomId={roomId || ''}
                       />
                     </motion.div>
                   )}
@@ -2110,7 +1968,7 @@ export function DynamicIsland() {
           className="absolute left-full top-0 h-full flex items-center pointer-events-none"
           style={{ paddingLeft: SECONDARY_GAP }}
         >
-          <AnimatePresence>
+          <AnimatePresence onExitComplete={() => { if (!showSecondary) setSecondaryExiting(false); }}>
             {showSecondary && (
               <motion.div
                 key="secondary-island"
@@ -2142,12 +2000,12 @@ export function DynamicIsland() {
                     cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none"
                     stroke={activeGlowColorHex} strokeWidth="2.5" strokeLinecap="round"
                     strokeDasharray={SECONDARY_C}
-                    strokeDashoffset={SECONDARY_C * (1 - prefetch.nextTrackProgress / 100)}
+                    strokeDashoffset={SECONDARY_C * (prefetch.isIndeterminate ? 0.7 : 1 - prefetch.nextTrackProgress / 100)}
                     style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
                   />
                 </svg>
                 <span className="text-[10px] font-black tabular-nums text-white/90">
-                  {prefetch.nextTrackProgress}
+                  {prefetch.isIndeterminate ? <Loader2 className="w-4 h-4 motion-safe:animate-spin" /> : prefetch.nextTrackProgress}
                 </span>
               </motion.div>
             )}

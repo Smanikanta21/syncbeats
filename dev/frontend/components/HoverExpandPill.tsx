@@ -94,7 +94,7 @@ export function HoverExpandPill({
             animate={{ opacity: 1, width: "auto" }}
             exit={{ opacity: 0, width: 0 }}
             transition={{ type: "spring", stiffness: 450, damping: 28 }}
-            className="text-[10px] font-extrabold uppercase tracking-wider whitespace-nowrap overflow-hidden"
+            className="text-[10px] font-semibold whitespace-nowrap overflow-hidden"
           >
             {label}
           </motion.span>

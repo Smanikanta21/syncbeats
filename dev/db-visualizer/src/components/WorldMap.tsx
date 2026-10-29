@@ -1,9 +1,8 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
-import { cn } from "@/lib/utils";
 
 export interface GeoLocationItem {
   ip: string;
@@ -26,7 +25,6 @@ export default function WorldMap({ locations }: WorldMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
-  const [hoveredPoint, setHoveredPoint] = useState<GeoLocationItem | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !mapContainerRef.current) return;

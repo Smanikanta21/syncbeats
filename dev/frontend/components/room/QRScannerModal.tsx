@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useCallback, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "../../lib/utils";
 import jsQR from "jsqr";
 import { X, AlertCircle, ScanLine, Clock, ArrowRight, Clipboard, CameraOff, Music } from "lucide-react";
 import { roomsApi, RoomRecord } from "../../lib/api";
@@ -20,7 +19,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef<number>(0);
-  
+
   const [status, setStatus] = useState<ScanStatus>("scanning");
   const [errorMessage, setErrorMessage] = useState("");
   const [hasCameraError, setHasCameraError] = useState(false);
@@ -28,7 +27,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
 
   // Manual Entry State
   const [joinCode, setJoinCode] = useState("");
-  
+
   // Recent Rooms State
   const [recentRooms, setRecentRooms] = useState<RoomRecord[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
@@ -84,7 +83,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   const handleValidQR = (roomId: string) => {
     if (status !== "scanning") return;
     setStatus("success");
-    
+
     // Play success feedback
     if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([50, 50, 50]);
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -123,7 +122,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   const scanLoop = () => {
     if (!videoRef.current || !canvasRef.current || status === "success") return;
     const video = videoRef.current;
-    
+
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -131,9 +130,9 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
+
         let foundUrl: string | null = null;
-        
+
         if ('BarcodeDetector' in window) {
           const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
           detector.detect(canvas).then((barcodes: any) => {
@@ -172,7 +171,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         }
       }
     }
-    
+
     if (status === "scanning") {
       requestRef.current = requestAnimationFrame(scanLoop);
     }
@@ -201,7 +200,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
   return (
     <div className="fixed inset-0 z-9999 flex flex-col items-center p-4 sm:p-8 bg-black/90 backdrop-blur-md overflow-y-auto">
       <canvas ref={canvasRef} className="hidden" />
-      
+
       {/* Header & Close button */}
       <div className="w-full max-w-sm flex items-center justify-between shrink-0 mb-6 mt-4">
         <h2 className="text-white font-bold tracking-widest uppercase text-lg">Join Room</h2>
@@ -230,13 +229,13 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
               muted
               className="absolute inset-0 w-full h-full object-cover"
             />
-            
+
             <div className="absolute inset-0 bg-black/40" />
 
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="relative w-64 h-64">
                 <div className="absolute inset-0 bg-transparent rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" />
-                
+
                 {status === "scanning" && (
                   <div className="absolute inset-0">
                      <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }} className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-3xl" />
@@ -258,7 +257,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                       </div>
                     </motion.div>
                   )}
-                  
+
                   {status === "error" && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -273,7 +272,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                 </AnimatePresence>
               </div>
             </div>
-            
+
             <div className="absolute bottom-8 left-0 right-0 text-center pointer-events-none">
               <p className="text-white/70 text-xs mt-2 font-medium drop-shadow-md">Point camera at a SyncBeats room</p>
             </div>
@@ -282,9 +281,9 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
 
         {/* Manual Code Entry */}
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-white/50 text-xs font-bold uppercase tracking-widest">
+          <div className="micro-label flex items-center gap-2 text-white/55">
             <div className="flex-1 h-px bg-white/10" />
-            <span>Or Enter Code</span>
+            <span>Or enter a code</span>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
@@ -295,9 +294,9 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               placeholder="------"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-center text-2xl font-black tracking-[0.2em] text-white placeholder:text-white/20 outline-none focus:border-dye-400 focus:bg-white/10 transition-all uppercase"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-center font-mono text-2xl font-semibold tracking-[0.18em] text-white placeholder:text-white/20 outline-none transition-all focus:border-white/40 focus:bg-white/10 uppercase"
             />
-            
+
             {joinCode.length === 0 && (
               <button
                 type="button"
@@ -315,7 +314,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   type="submit"
-                  className="absolute right-3 w-12 h-12 rounded-xl bg-dye-500 text-white flex items-center justify-center hover:bg-dye-400 transition-colors shadow-lg"
+                  className="absolute right-3 w-12 h-12 rounded-xl bg-white text-black flex items-center justify-center hover:bg-white/90 transition-colors shadow-lg"
                 >
                   <ArrowRight className="w-6 h-6" />
                 </motion.button>
@@ -327,10 +326,10 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
         {/* Recent Rooms */}
         <div className="flex flex-col gap-3 mt-4">
           <div className="flex items-center gap-2 text-white/80 font-semibold text-sm">
-            <Clock className="w-4 h-4 text-dye-400" />
+            <Clock className="w-4 h-4 text-white/60" />
             Recent Rooms
           </div>
-          
+
           <div className="flex flex-col gap-2">
             {loadingRooms ? (
               <div className="text-white/30 text-xs py-4 text-center">Loading...</div>
@@ -349,8 +348,8 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                   }}
                   className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all text-left group"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-dye-500/10 flex items-center justify-center shrink-0 border border-dye-500/20 group-hover:bg-dye-500/20 transition-colors">
-                    <Music className="w-6 h-6 text-dye-400" />
+                  <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20 group-hover:bg-white/20 transition-colors">
+                    <Music className="w-6 h-6 text-white/80" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-base font-bold text-white truncate">Room {room.id}</div>
@@ -358,7 +357,7 @@ export function QRScannerModal({ onClose }: QRScannerModalProps) {
                       {room.participant_count || 0} participants • Room ID: {room.id}
                     </div>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-white/30 group-hover:text-dye-400 group-hover:translate-x-1 transition-all" />
+                  <ArrowRight className="w-5 h-5 text-white/30 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </button>
               ))
             )}

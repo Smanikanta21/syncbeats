@@ -12,8 +12,8 @@ import { ACCENT_CYCLE_S, accentAt } from "@/lib/accent";
  *
  * The blobs read `--accent-blob-1` / `--accent-blob-2` back through `var()`
  * rather than holding a palette of their own, which is what makes desync
- * structurally impossible: there is exactly one writer (`startAccentVars`) and
- * everything on screen is downstream of it. framer is left doing what it is
+ * structurally impossible: globals.css owns the palette and everything on
+ * screen is downstream of it. framer is left doing what it is
  * good at — the geometric drift, which is transform-only.
  *
  * The mouse follower's position and shape live on MotionValues, not state. The
@@ -23,7 +23,7 @@ import { ACCENT_CYCLE_S, accentAt } from "@/lib/accent";
  */
 
 /** Stage 0, inlined as the `var()` fallback so the first paint is never bare. */
-const STAGE_0 = accentAt(0);
+const STAGE_0 = accentAt();
 
 const FLUID_BLOB_PATH_1 = [
   "55% 45% 38% 62% / 60% 38% 62% 40%",

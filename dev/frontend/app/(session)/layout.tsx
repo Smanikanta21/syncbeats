@@ -12,14 +12,15 @@ import { MessageSquare } from "lucide-react";
 
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
-import { GlobalLoadingScreen } from "../../components/GlobalLoadingScreen";
+import { useLoadingTasks } from "../../context/LoadingContext";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, serverError, resendVerification, renameDevice, replaceDevice } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const isRoom = pathname?.includes("/room/");
+  const isRoom = pathname?.startsWith("/room/") && pathname !== "/room/default";
   const isProfile = pathname?.includes("/profile");
+  const isHub = pathname === "/hub";
   const [deviceName, setDeviceName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -31,6 +32,17 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [fetchingDevices, setFetchingDevices] = useState(false);
+  const { setLoadingTask } = useLoadingTasks();
+
+  useEffect(() => {
+    const task = loading
+      ? { title: "Restoring your session", detail: "Checking your sign-in and room access.", priority: 5 }
+      : fetchingDevices
+        ? { title: "Preparing this device", detail: "Loading your trusted devices and audio settings.", priority: 5 }
+        : null;
+    setLoadingTask("session", task);
+    return () => setLoadingTask("session", null);
+  }, [loading, fetchingDevices, setLoadingTask]);
 
   // Auto-prompt feedback modal once per session after 5 mins in room
   useEffect(() => {
@@ -160,7 +172,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   if (serverError) {
     return (
       <div className="flex h-dvh w-full flex-col items-center justify-center bg-background px-6 text-center text-foreground">
-        <p className="mb-3 font-mono text-data uppercase tracking-[0.22em] text-foreground/40">Offline</p>
+        <p className="micro-label mb-3">Offline</p>
         <h1 className="mb-3 font-display text-display font-semibold">Cannot connect to server</h1>
         <p className="mb-8 max-w-md text-lead text-foreground/55 text-pretty">
           The SyncBeats server is currently unreachable. Please check your connection or wait a moment for the server to wake up.
@@ -178,8 +190,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
-      {(loading || fetchingDevices) && <GlobalLoadingScreen />}
-      {user && !loading && !isProfile && <DynamicIsland />}
+      {user && !loading && !isProfile && !isHub && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className="fixed top-24 left-1/2 z-60 w-[min(92vw,720px)] -translate-x-1/2 rounded-3xl border border-warn-400/30 bg-warn-500/10 px-4 py-3 backdrop-blur-xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -203,7 +214,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/70 backdrop-blur-xl px-4">
           <div className="w-full max-w-md rounded-4xl border border-foreground/10 bg-background p-6 shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
             <div className="mb-4">
-              <p className="text-xs font-bold uppercase tracking-[0.3em] text-foreground/50">Device setup</p>
+              <p className="micro-label">Device setup</p>
               <h2 className="mt-2 text-2xl font-black text-foreground">Select your device</h2>
               <p className="mt-2 text-sm text-foreground/50">This login is not registered in our device database yet. Pick the device type or enter a custom name.</p>
             </div>
@@ -277,7 +288,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
 
-      <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
+      <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : isHub ? "min-h-dvh w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
         {(!loading && user) ? children : null}
       </div>
 

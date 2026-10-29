@@ -48,11 +48,9 @@ function NavigationProgressContent() {
             scaleX: { duration: 0.4, ease: "easeOut" },
             opacity: { duration: 0.2 },
           }}
-          // The bar sweeps dye -> field, so a navigation reads as the two inks
-          // crossing. Was emerald -> teal -> cyan with a hardcoded emerald glow
-          // (rgba(52,211,153,.8)) that the colour sweep could not reach, which
-          // left the glow a full palette behind the gradient above it.
-          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-dye-500 via-dye-400 to-field-500 shadow-[0_0_12px_var(--accent-glow)] pointer-events-none"
+          // Ink, not a hue. Depth is carried by the opacity ramp instead of a
+          // colour sweep — the palette has no brand hue to walk.
+          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-foreground/20 via-foreground/70 to-foreground shadow-[0_0_12px_var(--accent-glow)] pointer-events-none"
         />
       )}
     </AnimatePresence>

@@ -113,7 +113,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-[10px] font-bold text-foreground/50">PLACE</span>
-        <span className="truncate font-mono text-[9px] font-bold text-sky-400">
+        <span className="truncate text-[10px] font-semibold text-foreground/60">
           {selected ? selected.label : "—"}
         </span>
       </div>
@@ -126,7 +126,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
             className={cn(
               "flex-1 rounded-md py-0.5 text-[9px] font-bold transition-colors",
               p.id === viewId
-                ? "bg-sky-500 text-white"
+                ? "bg-foreground text-background"
                 : "bg-foreground/5 text-foreground/50 hover:bg-foreground/15",
             )}
           >
@@ -173,7 +173,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
             <div
               key={d.deviceId}
               title={d.label}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-field-400/70"
+              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/50"
               style={{ left: pct(u), top: pct(w) }}
             />
           );
@@ -182,7 +182,7 @@ export function PanPads({ field, selected, onPreview, onCommit }: PanPadsProps) 
         {/* The handle */}
         <div
           ref={handleRef}
-          className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-[3px] bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.9)]"
+          className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-[3px] bg-foreground shadow-[0_0_10px_var(--accent-glow)]"
           style={{ left: "50%", top: "50%" }}
         />
       </div>

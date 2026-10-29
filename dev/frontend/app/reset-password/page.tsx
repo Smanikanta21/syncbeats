@@ -55,7 +55,7 @@ function ResetPasswordContent() {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight text-foreground">Reset Password</h1>
-            <p className="text-xs uppercase tracking-[0.24em] text-foreground/50 font-semibold">Secure Recovery</p>
+            <p className="micro-label">Secure recovery</p>
           </div>
         </div>
 
@@ -70,7 +70,7 @@ function ResetPasswordContent() {
         ) : (
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.2em] text-foreground/50 font-semibold">New Password</label>
+              <label className="text-data font-semibold text-foreground/55">New password</label>
               <div className="relative">
                 <Lock className="h-4 w-4 text-foreground/50 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -93,7 +93,7 @@ function ResetPasswordContent() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.2em] text-foreground/50 font-semibold">Confirm Password</label>
+              <label className="text-data font-semibold text-foreground/55">Confirm password</label>
               <div className="relative">
                 <Lock className="h-4 w-4 text-foreground/50 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input

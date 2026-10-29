@@ -51,12 +51,14 @@ export interface AppSettings {
   ambientEnabled?: boolean;
   showDebugAudio?: boolean;
   liquidMotion?: boolean;
+  sidebarPosition?: "left" | "right";
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   audioLatencyOffsetMs: 0,
   syncAggressiveness: "high",
   keepScreenAwake: false,
+  sidebarPosition: "left",
   islandCustomizer: {
     glowColor: "violet",
     autoShrinkDelaySec: 6,

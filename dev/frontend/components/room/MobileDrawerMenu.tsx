@@ -1,7 +1,7 @@
-import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Disc3, ListMusic, AudioLines, Radio, MessageSquare } from "lucide-react";
+import { X, Disc3, ListMusic, AudioLines, Radio, MessageSquare, Copy, QrCode, ScanLine, UserRound, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "../ThemeToggle";
 
 export type MobileTab = "playing" | "queue" | "spatial" | "devices" | "chat";
 
@@ -10,17 +10,23 @@ interface MobileDrawerMenuProps {
   onClose: () => void;
   activeTab: MobileTab;
   onChangeTab: (tab: MobileTab) => void;
+  onShowQR: () => void;
+  onScanQR: () => void;
+  onCopyLink: () => void;
+  onProfile: () => void;
+  onLogout: () => void;
+  onGoToHub?: () => void;
 }
 
 const TABS = [
   { id: "playing", icon: Disc3, label: "Player" },
   { id: "queue", icon: ListMusic, label: "Queue" },
-  { id: "spatial", icon: AudioLines, label: "Spatial" },
+  { id: "spatial", icon: AudioLines, label: "Spatial · Beta" },
   { id: "devices", icon: Radio, label: "Devices" },
   { id: "chat", icon: MessageSquare, label: "Chat" },
 ];
 
-export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab }: MobileDrawerMenuProps) {
+export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab, onShowQR, onScanQR, onCopyLink, onProfile, onLogout, onGoToHub }: MobileDrawerMenuProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -33,25 +39,29 @@ export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab }: Mo
             onClick={onClose}
             className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9990]"
           />
-          
+
           {/* Drawer */}
           <motion.div
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a]/90 backdrop-blur-3xl border-t border-white/10 rounded-t-[32px] p-6 z-[9999] shadow-2xl flex flex-col gap-4 pb-12"
+            className="fixed bottom-0 left-0 right-0 max-h-[88dvh] overflow-y-auto bg-background/95 backdrop-blur-3xl border-t border-foreground/10 rounded-t-[2rem] p-5 sm:p-6 z-[9999] shadow-2xl flex flex-col gap-4 pb-[max(2rem,env(safe-area-inset-bottom))]"
           >
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-black text-white/90 uppercase tracking-widest pl-2">Menu</h2>
+              <div className="pl-1">
+                <p className="micro-label">Your listening room</p>
+                <h2 className="mt-1 text-lg font-semibold text-foreground">Room menu</h2>
+              </div>
               <button 
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+                aria-label="Close room menu"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/10 bg-foreground/5 text-foreground/70 transition-colors hover:bg-foreground/10"
               >
-                <X className="w-4 h-4 text-white/70" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="flex flex-col gap-2">
               {TABS.map((tab) => {
                 const Icon = tab.icon;
@@ -64,17 +74,39 @@ export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab }: Mo
                       onClose();
                     }}
                     className={cn(
-                      "flex items-center gap-4 px-4 py-4 rounded-2xl transition-all",
-                      isActive 
-                        ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)] border border-[var(--accent-color)]/20 shadow-[0_0_15px_var(--accent-glow)]"
-                        : "bg-white/5 text-white/70 hover:bg-white/10 border border-transparent"
+                      "flex min-h-12 items-center gap-4 rounded-2xl border px-4 py-3 transition-all",
+                      isActive
+                        ? "border-foreground/15 bg-foreground text-background"
+                        : "border-foreground/[0.07] bg-foreground/[0.035] text-foreground/70 hover:bg-foreground/[0.07]"
                     )}
                   >
                     <Icon className="w-5 h-5" />
-                    <span className="font-bold text-sm tracking-wide">{tab.label}</span>
+                    <span className="text-sm font-semibold">{tab.label}</span>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="border-t border-foreground/[0.08] pt-4">
+              <p className="micro-label mb-3">Invite and account</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "Show room QR", Icon: QrCode, action: onShowQR },
+                  { label: "Scan a code", Icon: ScanLine, action: onScanQR },
+                  { label: "Copy invite link", Icon: Copy, action: onCopyLink },
+                  ...(onGoToHub ? [{ label: "My rooms", Icon: Radio, action: onGoToHub }] : []),
+                  { label: "Profile", Icon: UserRound, action: onProfile },
+                  { label: "Sign out", Icon: LogOut, action: onLogout },
+                ].map(({ label, Icon, action }) => (
+                  <button key={label} type="button" onClick={() => { onClose(); action(); }} className="flex min-h-11 items-center gap-2 rounded-xl border border-foreground/[0.08] px-3 text-left text-xs font-semibold text-foreground/65 transition-colors hover:bg-foreground/[0.05]">
+                    <Icon className="h-4 w-4" />{label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm text-foreground/55">
+                Appearance
+                <ThemeToggle size="sm" />
+              </div>
             </div>
           </motion.div>
         </>

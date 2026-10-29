@@ -1,12 +1,11 @@
 "use client";
 
-import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { WifiOff, ServerOff, RefreshCw, AlertTriangle } from "lucide-react";
+import { WifiOff, ServerOff, RefreshCw } from "lucide-react";
 import { useConnection } from "../context/ConnectionContext";
 
 export function ConnectionStatusModal() {
-  const { isOnline, isServerReachable, serverError, retryNow } = useConnection();
+  const { isOnline, isServerReachable, retryNow } = useConnection();
 
   // Show modal ONLY if user is offline OR server is genuinely unreachable
   const isOffline = !isOnline;

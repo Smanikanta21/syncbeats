@@ -2,6 +2,8 @@
 
 This document contains a comprehensive suite of highly interactive system design, flow, data, and deployment diagrams for SyncBeats. It details how the Next.js frontend, Express/Socket.io backend, PostgreSQL DB, S3 Storage, and YouTube integration work together in harmony.
 
+> Current synchronization assumptions and the global-region design are documented in [GLOBAL_SYNC_DESIGN.md](./GLOBAL_SYNC_DESIGN.md). The diagrams below describe the current code paths; they are not an acoustic performance claim.
+
 ---
 
 ## Table of Contents
@@ -51,7 +53,7 @@ graph TB
         subgraph PlaybackUC ["Playback & Control"]
             UC7["Play / Pause Stream\n(Synchronized)"]:::usecase
             UC8["Seek Track Position\n(Synchronized)"]:::usecase
-            UC9["Adjust Spatial Audio / Volume"]:::usecase
+            UC9["Spatial Audio (Beta / Coming soon; disabled)"]:::usecase
         end
 
         %% Track handling Cases
@@ -120,7 +122,6 @@ classDiagram
         -httpServer: HttpServer
         -io: Server
         -roomManager: RoomManager
-        -syncEngine: SyncEngine
         -socketHandler: SocketHandler
         -roomRepo: RoomRepository
         +constructor()
@@ -174,23 +175,16 @@ classDiagram
         PAUSED
     }
 
-    class SyncEngine {
-        +constructor()
-        +computeDeviation(clientTime: number, serverTime: number) number
-        +shouldTriggerResync(deviation: number) boolean
-    }
-
     class SocketHandler {
         -io: Server
         -roomManager: RoomManager
-        -syncEngine: SyncEngine
         -roomRepo: RoomRepository
-        +constructor(io, rm, se, repo)
+        +constructor(io, rm, repo)
         +register(socket: Socket) void
         -handlePlay(socket, payload) void
         -handlePause(socket, payload) void
         -handleSeek(socket, payload) void
-        -handleLatencySync(socket, payload) void
+        -handleClockPing(socket, payload) void
     }
 
     class RoomRepository {
@@ -204,13 +198,11 @@ classDiagram
 
     %% Relationships & Associations
     SyncBeatsServer *-- RoomManager : composes
-    SyncBeatsServer *-- SyncEngine : composes
     SyncBeatsServer *-- SocketHandler : composes
     SyncBeatsServer *-- RoomRepository : composes
     RoomManager o-- Room : manages (1-to-N)
     Room *-- PlaybackState : maintains state
     SocketHandler ..> RoomManager : delegates logic to
-    SocketHandler ..> SyncEngine : analyzes drift with
     RoomRepository ..> Room : populates state for
 ```
 
@@ -218,63 +210,41 @@ classDiagram
 
 ## 3. Sequence Diagram (Real-Time Sync & Playback Flow)
 
-This diagram details the exact WebSocket event flow and latency calculation loop that ensures perfectly synchronized playback between multiple devices, including the **Download & Play** flow.
+This diagram shows the current client-authoritative clock estimation and playback flow. The server distributes room state and answers clock pings; it does not calculate client drift or issue correction commands.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor H as Host Client
-    actor P as Participant Client
+    actor H as Host Device
+    actor P as Participant Device
     participant S as SyncBeats Backend
     participant DB as Prisma DB
-    participant S3 as AWS S3 Bucket
-    participant YT as yt-dlp & YouTube
 
-    %% Phase 1: Connection & Sync
-    note over H, S: Phase 1: Room Creation & Connection
-    H->>S: GET /rooms/:roomId (Verify)
-    S-->>H: 200 OK
-    H->>S: WS Event: "join" { roomId, displayName, userId }
-    S->>DB: Fetch active Room & Queue items
-    DB-->>S: Return Room state & track URL
-    S->>S: Add Host to live Room Manager maps
-    S-->>H: WS Emit: "roomState" (Full snapshot)
-
-    %% Phase 2: Playback Start (Zero-Buffering Playback Scheduler)
-    note over H, S: Phase 2: Zero-Buffering Playback Control
-    H->>S: WS Event: "play" { positionMs }
-    S->>S: Calculate startEpoch = Date.now() + 400ms (schedule delay)
-    S->>DB: Update Room state to "PLAYING"
-    S-->>H: WS Emit: "schedulePlay" { startEpoch, fromPosition }
-    S-->>P: WS Emit: "schedulePlay" { startEpoch, fromPosition }
-    note over H, P: Both clients wait until startEpoch is reached, then play audio in absolute lockstep.
-
-    %% Phase 3: Drift Compensation (High-precision Sync Loop)
-    note over P, S: Phase 3: Continuous Drift Compensation
-    loop Every 5 Seconds
-        P->>S: WS Event: "sync" { clientLocalTimestamp, currentPlaybackPosition }
-        S->>S: Calculate round-trip time (RTT) & server-client drift
-        S-->>P: WS Emit: "syncCorrection" { driftMs, targetPlaybackPosition }
-        alt Drift > 50ms
-            P->>P: Smoothly adjust HTML5 Audio element speed (0.95x or 1.05x)
-        alt Drift > 300ms
-            P->>P: Hard-seek audio playback timeline directly to target
-        end
+    note over H,S: On join, each client estimates server-minus-client clock offset independently.
+    loop NTP burst and periodic resync
+        H->>S: sync:ping { t0, seq }
+        S-->>H: sync:pong { t0, t1, t2, seq }
+        note over H: t3 is reconstructed from t0 plus performance.now elapsed time.
+        note over H: offset = ((t1−t0)+(t2−t3))/2; RTT = (t3−t0)−(t2−t1)
+        P->>S: sync:ping { t0, seq }
+        S-->>P: sync:pong { t0, t1, t2, seq }
     end
 
-    %% Phase 4: Download & Play (YouTube Integration)
-    note over H, YT: Phase 4: YouTube Download & Play Flow
-    H->>S: POST /rooms/:roomId/yt-download { videoId, title }
-    S->>DB: Check User upload storage quota (< 100MB)
-    S->>YT: Exec yt-dlp to download and convert to MP3 locally
-    YT-->>S: Local mp3 file generated in /uploads/
-    S->>S3: Upload mp3 to S3 bucket
-    S3-->>S: Return secure, CDN-ready S3 URL
-    S->>S: Remove local temp mp3 file
-    S->>DB: Insert new RoomQueueItem (isCurrent = true)
-    S->>S: Add track to live Room Queue
-    S-->>H: WS Emit: "queueChanged" & "trackSet"
-    S-->>P: WS Emit: "queueChanged" & "trackSet"
+    H->>S: playback:play / playback:seek
+    S->>S: Readiness gate, update room timeline, choose future atEpoch
+    S-->>H: playback:schedule { atEpoch, startEpoch, fromPosition }
+    S-->>P: playback:schedule { atEpoch, startEpoch, fromPosition }
+    Note over H,P: Each AudioContext schedules locally against its offset-adjusted server epoch and compensates output latency.
+
+    loop Foreground drift check (adaptive 250–1000 ms)
+        H->>H: Compare expected render position with Web Audio position
+        P->>P: Compare expected render position with Web Audio position
+        alt Error within device threshold
+            H->>H: Keep rate at 1.0; no correction
+        else Larger error
+            H->>H: Brief gain crossfade, then seek to the shared timeline
+        end
+    end
 ```
 
 ---

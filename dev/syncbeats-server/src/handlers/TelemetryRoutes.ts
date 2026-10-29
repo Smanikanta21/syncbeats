@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import prisma from '../db/prisma';
 
 // ── Simple in-memory rate limiter (per IP, 1 req / 10s) ──────────────────────
 const lastSeen = new Map<string, number>();

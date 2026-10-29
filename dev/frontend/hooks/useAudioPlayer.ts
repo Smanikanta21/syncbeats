@@ -1,16 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getRestUrl } from '../lib/api';
+import { getServerUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
 import { getTrackThumbnailUrl } from '../lib/colorExtractor';
 import { ytId } from '../lib/youtube';
+import { isSameTrack } from '../lib/trackIdentity';
+import { downloadTrack, trackDownloads } from '../lib/trackDownload';
+import type { PlaybackSchedulePayload } from '../lib/types';
+
+export interface RoomMediaCommands {
+  play: () => void;
+  pause: () => void;
+  seek: (positionMs: number) => void;
+  next: () => void;
+  previous: () => void;
+}
 
 export interface AudioPlayerState {
   isPlaying:     boolean;
   isReady:       boolean;
   isBuffering:   boolean;
   downloadProgress: number;
+  downloadIndeterminate: boolean;
   hasTrack:      boolean;       
   audioUnlocked: boolean;       
   currentTime:   number;       
@@ -38,7 +50,12 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   getVolume:   () => number;
   toggleMute:  () => number;
   setTrack:    (url: string, title?: string, artist?: string) => void;
+  retryTrack:  () => void;
   clearTrack:  () => void;
+  isReadyForTrack: (url: string | null) => boolean;
+  setPlaybackInstance: (id: string | null, startEpoch?: number) => void;
+  setRoomCommands: (commands: RoomMediaCommands | null) => void;
+  cancelPendingStart: () => void;
   unlockAudio: () => void;
   setManualLatency: (latency: number) => void;
   scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
@@ -73,13 +90,13 @@ export function formatTime(seconds: number): string {
 }
 
 export function useAudioPlayer(): UseAudioPlayerReturn {
-  const rafRef   = useRef<number>(0);
 
   const [isPlaying,   setIsPlaying]   = useState(false);
   const isPlayingRef = useRef(false); // mirror of isPlaying that's always fresh (no closure staleness)
   const [isReady,     setIsReady]     = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadIndeterminate, setDownloadIndeterminate] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration,    setDuration]    = useState(0);
   const [volume,      setVolumeState] = useState(100);
@@ -90,6 +107,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const [trackArtist, setTrackArtist] = useState("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [error,       setError]       = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const [outputLatency, setOutputLatencyState] = useState(0);
   const [manualLatency, setManualLatencyState] = useState(0);
@@ -119,21 +137,43 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const trackUrlRef = useRef<string | null>(null);
   const fetchPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   const playbackRateRef = useRef<number>(1);
-  
+
   const startTimeRef = useRef<number>(0);
   const pauseOffsetRef = useRef<number>(0);
-  const pendingScheduleRef = useRef<{ payload: any; clockOffset: number } | null>(null);
+  const pendingScheduleRef = useRef<{ payload: PlaybackSchedulePayload; clockOffset: number; id: number } | null>(null);
+  const loadGenerationRef = useRef(0);
+  const playbackInstanceRef = useRef<string | null>(null);
+  const playbackEpochRef = useRef<number | null>(null);
+  const activeScheduleKeyRef = useRef<string | null>(null);
+  const roomCommandsRef = useRef<RoomMediaCommands | null>(null);
+  const setRoomCommands = useCallback((commands: RoomMediaCommands | null) => { roomCommandsRef.current = commands; }, []);
+  const setPlaybackInstance = useCallback((id: string | null, startEpoch?: number) => {
+    if (playbackInstanceRef.current !== id || playbackEpochRef.current !== (startEpoch ?? null)) {
+      scheduleIdRef.current++;
+      pendingScheduleRef.current = null;
+    }
+    playbackInstanceRef.current = id;
+    playbackEpochRef.current = startEpoch ?? null;
+  }, []);
+  const isReadyForTrack = useCallback((url: string | null) =>
+    !!audioBufferRef.current && isSameTrack(url, trackUrlRef.current), []);
   const unlockTimeoutRef = useRef<number | null>(null);
   const scheduleIdRef = useRef<number>(0);
+  const cancelPendingStart = useCallback(() => {
+    scheduleIdRef.current++;
+    pendingScheduleRef.current = null;
+  }, []);
   const activeFetchAbortRef = useRef<AbortController | null>(null);
   const pendingArrayBufferRef = useRef<ArrayBuffer | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
 
   const SILENT_MP3_URI = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD////////////////////////////////////////////////////////////////";
 
-  // Anchor iOS AVAudioSessionCategoryPlayback during WebAudio buffer playback
-  // so iOS Safari/PWA does not suspend AudioContext when screen turns off or app is backgrounded.
+  // Best-effort media-session anchoring; the browser still controls background suspension.
   const ensureBackgroundAudioSession = useCallback(() => {
+    try {
+      const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+      if (session) session.type = 'playback';
+    } catch { /* Audio Session API is not available in every browser. */ }
     if (streamingAudioElRef.current) {
       if (!streamingAudioElRef.current.src || streamingAudioElRef.current.src === "") {
         streamingAudioElRef.current.src = SILENT_MP3_URI;
@@ -145,26 +185,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
-  const setStreamingAudioSrc = useCallback((src: string | null) => {
-    if (objectUrlRef.current) {
-      try { URL.revokeObjectURL(objectUrlRef.current); } catch (e) {}
-      objectUrlRef.current = null;
-    }
-    if (streamingAudioElRef.current) {
-      if (src) {
-        if (src.startsWith('blob:')) {
-          objectUrlRef.current = src;
-        }
-        streamingAudioElRef.current.src = src;
-      } else {
-        streamingAudioElRef.current.removeAttribute('src');
-        streamingAudioElRef.current.load();
-      }
-    }
-  }, []);
-
   // ── Audio Graph Setup ─────────────────────────────────────────────────────
-  // setupAudioGraph creates the FULL chain: Gain → EQ[5] → Analyser → Destination.
+  // setupAudioGraph creates the FULL chain: Gain → EQ[7] → Analyser → Destination.
   // It is called BOTH on initial mount AND in unlockAudio, so EQ is always wired.
   const setupAudioGraph = useCallback(() => {
     if (audioCtxRef.current) return; // already set up
@@ -212,8 +234,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       return filter;
     });
     eqNodesRef.current = eqNodes;
-
-    // Wire: Gain → EQ[0..4] → Analyser → Destination
+    // Wire: Gain → EQ[0..6] → Analyser → Destination
     gainNodeRef.current.connect(eqNodes[0]);
     for (let i = 0; i < eqNodes.length - 1; i++) {
       eqNodes[i].connect(eqNodes[i + 1]);
@@ -246,19 +267,19 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setupAudioGraph();
-      if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
-        setAudioUnlocked(true);
-      }
+      const context = audioCtxRef.current;
+      if (!context) return;
+      const handleState = () => setAudioUnlocked(context.state === 'running');
+      handleState();
+      // Safari can enter "interrupted" as well as "suspended" after a call or lock.
+      context.addEventListener('statechange', handleState);
+      return () => context.removeEventListener('statechange', handleState);
     }
-    return () => {
-      if (objectUrlRef.current) {
-        try { URL.revokeObjectURL(objectUrlRef.current); } catch (e) {}
-        objectUrlRef.current = null;
-      }
-    };
   }, [setupAudioGraph]);
 
   const stopCurrentSource = useCallback(() => {
+    isPlayingRef.current = false;
+    activeScheduleKeyRef.current = null;
     pendingScheduleRef.current = null;
     if (unlockTimeoutRef.current) {
       clearTimeout(unlockTimeoutRef.current);
@@ -290,7 +311,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     // React state is 1 render behind at the time of the pause click, which caused
     // getTruePosition to return an ~2s stale position when pausing.
     if (!isPlayingRef.current) return pauseOffsetRef.current;
-    
+
     // For WebAudio, use the same clock (audioCtx.currentTime) that scheduled playback
     if (audioCtxRef.current) {
       const elapsed = Math.max(0, audioCtxRef.current.currentTime - startTimeRef.current) * playbackRateRef.current;
@@ -328,7 +349,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (!analyserNodeRef.current || audioCtxRef.current?.state !== 'running') return 0;
     const dataArray = new Uint8Array(analyserNodeRef.current.frequencyBinCount);
     analyserNodeRef.current.getByteFrequencyData(dataArray);
-    
+
     // Average the lower frequencies (bass) for the "beat" pulse
     let sum = 0;
     const sampleCount = 10;
@@ -352,12 +373,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     ensureBackgroundAudioSession();
     detectOutputDevice();
 
-    // Always optimistically unlock in the UI so the user isn't stuck forever.
-    setAudioUnlocked(true);
+    setAudioUnlocked(audioCtxRef.current?.state === 'running');
 
     if (audioCtxRef.current) {
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().catch((err) => {
+      if (audioCtxRef.current.state !== 'running') {
+        audioCtxRef.current.resume().then(() => setAudioUnlocked(audioCtxRef.current?.state === 'running')).catch((err) => {
+          setAudioUnlocked(false);
           console.warn("Failed to resume AudioContext", err);
         });
       }
@@ -377,12 +398,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       const pending = pendingScheduleRef.current;
       if (pending) {
         // Check scheduleIdRef to ensure no pauseAt() was called while we waited
-        const idBefore = scheduleIdRef.current;
+        const idBefore = pending.id;
         pendingScheduleRef.current = null;
         if (idBefore !== scheduleIdRef.current) return; // pauseAt was called, abort
         const serverNow = Date.now() + pending.clockOffset;
         const elapsed = Math.max(0, (serverNow - pending.payload.startEpoch) / 1000);
-        
+
         const adjustedPayload = {
           ...pending.payload,
           atEpoch: Date.now() + pending.clockOffset + 100,
@@ -409,15 +430,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (typeof window === "undefined") return;
 
     const resumeIfNeeded = () => {
-      if (!isPlayingRef.current) return;
-      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current.resume().catch(() => {});
+      if (!isPlayingRef.current && !pendingScheduleRef.current) return;
+      const context = audioCtxRef.current;
+      if (context && context.state !== 'running' && context.state !== 'closed') {
+        void context.resume().then(() => {
+          setAudioUnlocked(context.state === 'running');
+        }).catch(() => setAudioUnlocked(false));
       }
       if (streamingAudioElRef.current && streamingAudioElRef.current.paused) {
         ensureBackgroundAudioSession();
       }
       if ("mediaSession" in navigator) {
-        navigator.mediaSession.playbackState = "playing";
+        navigator.mediaSession.playbackState = isPlayingRef.current ? 'playing' : 'paused';
       }
     };
 
@@ -486,9 +510,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
-      
+
       let activeDevice = audioOutputs.find(d => d.deviceId === 'default') || audioOutputs[0];
-      
+
       if (audioCtxRef.current && typeof (audioCtxRef.current as any).sinkId === 'string') {
         const sinkId = (audioCtxRef.current as any).sinkId;
         if (sinkId) activeDevice = audioOutputs.find(d => d.deviceId === sinkId) || activeDevice;
@@ -497,7 +521,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       if (activeDevice) {
         const label = activeDevice.label || "System Default";
         setOutputDeviceName(label);
-        
+
         let type = 'speaker';
         const lowerLabel = label.toLowerCase();
         if (lowerLabel.includes('bluetooth') || lowerLabel.includes('airpods') || lowerLabel.includes('bose') || lowerLabel.includes('sony') || lowerLabel.includes('wh-') || lowerLabel.includes('wf-') || lowerLabel.includes('galaxy buds')) {
@@ -507,7 +531,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         }
         setOutputDeviceType(type);
       }
-      
+
       if (audioCtxRef.current) {
         const outLat = audioCtxRef.current.outputLatency || 0;
         const baseLat = audioCtxRef.current.baseLatency || 0;
@@ -545,13 +569,34 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const fetchAndDecode = (url: string) => {
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
 
+    const generation = loadGenerationRef.current;
+    const controller = new AbortController();
+    activeFetchAbortRef.current?.abort();
+    activeFetchAbortRef.current = controller;
+    const isCurrent = () => generation === loadGenerationRef.current && !controller.signal.aborted && isSameTrack(url, trackUrlRef.current);
+    const roomId = window.location.pathname.split('/').pop() || '';
+    const reportProgress = (value: number | null) => {
+      if (!isCurrent()) return;
+      setDownloadIndeterminate(value == null);
+      setDownloadProgress(value ?? 0);
+    };
+    trackDownloads.prioritize(url);
     const promise = (async () => {
       setIsReady(false);
+      setIsBuffering(true);
+      setDownloadProgress(0);
       setError(null);
       try {
         let arrayBuffer: ArrayBuffer = new ArrayBuffer(0);
 
-        if (url.startsWith('magnet:')) {
+        const adopted = trackDownloads.adopt(url, controller.signal, reportProgress);
+        const { getTrack } = await import('../lib/idb');
+        const cached = adopted ? (await adopted).blob : await getTrack(url);
+        if (!isCurrent()) return null;
+        if (cached) {
+          reportProgress(100);
+          arrayBuffer = await cached.arrayBuffer();
+        } else if (url.startsWith('magnet:')) {
           console.log('[WebTorrent] Downloading magnet URI...');
           const client = await getWebTorrentClient();
           if (!client) throw new Error("WebTorrent failed to load");
@@ -564,49 +609,54 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             client.seed(cachedBlob);
             arrayBuffer = await cachedBlob.arrayBuffer();
           } else {
-            arrayBuffer = await new Promise((resolve, reject) => {
+            arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+              let detach = () => {};
+              let settled = false;
+              const finish = (err?: unknown, data?: ArrayBuffer) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(deadline);
+                controller.signal.removeEventListener('abort', onAbort);
+                detach();
+                if (err) reject(err); else resolve(data!);
+              };
+              const onAbort = () => finish(new DOMException('Download cancelled', 'AbortError'));
+              const deadline = setTimeout(() => finish(new Error('The track transfer timed out. Try again.')), 120_000);
+              controller.signal.addEventListener('abort', onAbort, { once: true });
+              if (controller.signal.aborted) { onAbort(); return; }
               const onTorrent = (torrent: any) => {
-                const file = torrent.files.find((f: any) => f.name.endsWith('.mp3') || f.name.endsWith('.wav'));
-                if (!file) return reject(new Error("No audio file found in torrent"));
-
-                let lastProgress = 0;
-                torrent.on('download', () => {
-                  const pct = Math.round(torrent.progress * 100);
-                  if (pct !== lastProgress && pct >= 0 && pct <= 100) {
-                    lastProgress = pct;
-                    setDownloadProgress(pct);
-                    const { getSocket } = require('../lib/socket');
-                    const socket = getSocket();
-                    const roomId = window.location.pathname.split('/').pop();
-                    if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
-                  }
-                });
-
-                file.getBlob(async (err: any, blob: Blob) => {
-                  if (err) return reject(err);
+                if (settled || !isCurrent()) return;
+                const file = torrent.files.find((f: any) => /\.(mp3|wav|m4a|ogg|flac)$/i.test(f.name));
+                if (!file) { finish(new Error('No audio file found in torrent')); return; }
+                const progress = () => { if (isCurrent()) reportProgress(Math.round(torrent.progress * 100)); };
+                torrent.on('download', progress);
+                detach = () => torrent.removeListener('download', progress);
+                file.getBlob(async (err: unknown, blob: Blob) => {
+                  if (settled || !isCurrent()) return;
+                  if (err) { finish(err); return; }
                   try {
                     await saveTrack(url, blob);
-                  } catch (e) {
-                    console.error("Failed to save to IDB", e);
-                  }
-                  blob.arrayBuffer().then(resolve).catch(reject);
+                    if (!isCurrent()) { onAbort(); return; }
+                    finish(undefined, await blob.arrayBuffer());
+                  } catch (error) { finish(error); }
                 });
               };
-
               const existing = client.get(url);
               if (existing) {
                 if (existing.ready) onTorrent(existing);
-                else existing.on('ready', () => onTorrent(existing));
-              } else {
-                client.add(url, onTorrent);
-              }
+                else {
+                  const ready = () => onTorrent(existing);
+                  existing.once('ready', ready);
+                  detach = () => existing.removeListener('ready', ready);
+                }
+              } else client.add(url, onTorrent);
             });
           }
         } else if (url.startsWith('ws-p2p:')) {
           console.log('[WebSocket P2P] Requesting track from swarm...', url);
           const { getTrack, saveTrack } = await import('../lib/idb');
           const cachedBlob = await getTrack(url);
-          
+
           if (cachedBlob) {
             console.log('[WebSocket P2P] Found track locally in IDB!');
             arrayBuffer = await cachedBlob.arrayBuffer();
@@ -615,11 +665,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
             const RETRY_INTERVAL_MS = 8_000;  // Wait 8s per attempt
             const CHUNK_IDLE_MS    = 15_000;  // Reset timer if no chunk for 15s
 
-            if (activeFetchAbortRef.current) {
-              activeFetchAbortRef.current.abort();
-            }
-            const abortCtrl = new AbortController();
-            activeFetchAbortRef.current = abortCtrl;
+            const abortCtrl = controller;
             const { signal } = abortCtrl;
 
             arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
@@ -633,7 +679,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const { getSocket } = require('../lib/socket');
               const socket = getSocket();
               const roomId = window.location.pathname.split('/').pop();
-              
+
               const chunks: ArrayBuffer[] = [];
               const receivedIndices = new Set<number>();
               let expectedChunks = 0;
@@ -651,55 +697,23 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               const failOrFallback = async (p2pErrMsg: string) => {
                 socket.off('track:receive_chunk', onChunk);
                 clearAllTimers();
+                if (!isCurrent()) { reject(new DOMException('Download cancelled', 'AbortError')); return; }
 
                 const videoId = ytId(url);
                 if (!videoId) {
                   reject(new Error(p2pErrMsg));
                   return;
                 }
-                const roomId  = window.location.pathname.split('/').pop();
                 console.warn(
                   `[WebSocket P2P] No seeders found. Falling back to yt-proxy for videoId: ${videoId}`
                 );
 
                 try {
-                  const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-                  const proxyUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-                  const resp = await fetch(proxyUrl, { signal, headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
-                  if (!resp.ok) throw new Error(`yt-proxy returned ${resp.status}`);
-
-                  const contentLength = resp.headers.get('content-length');
-                  let ytBuffer: ArrayBuffer;
-
-                  if (contentLength) {
-                    const total = parseInt(contentLength, 10);
-                    let loaded = 0;
-                    const reader = resp.body!.getReader();
-                    const ytChunks: Uint8Array[] = [];
-                    while (true) {
-                      const { done, value } = await reader.read();
-                      if (done) break;
-                      ytChunks.push(value);
-                      loaded += value.length;
-                      const pct = Math.round((loaded / total) * 100);
-                      setDownloadProgress(pct);
-                      const { getSocket: gs } = require('../lib/socket');
-                      
-                      gs().emit('room:sync_progress', { roomId, progress: pct });
-                    }
-                    const concat = new Uint8Array(loaded);
-                    let off = 0;
-                    for (const c of ytChunks) { concat.set(c, off); off += c.length; }
-                    ytBuffer = concat.buffer;
-                  } else {
-                    ytBuffer = await resp.arrayBuffer();
-                  }
-
-                  const blob = new Blob([ytBuffer], { type: 'audio/mpeg' });
-                  saveTrack(url, blob).catch(() => {});
-                  console.log('[WebSocket P2P] yt-proxy fallback succeeded. Saved to IDB.');
-                  activeFetchAbortRef.current = null;
-                  resolve(ytBuffer);
+                  const result = await downloadTrack(url, roomId || '', {
+                    signal, priority: 'playback', title: trackTitle, onProgress: reportProgress,
+                  });
+                  if (!isCurrent()) { reject(new DOMException('Download cancelled', 'AbortError')); return; }
+                  resolve(await result.blob.arrayBuffer());
                 } catch (fallbackErr) {
                   if (signal.aborted) {
                     reject(new DOMException('Download cancelled — track changed', 'AbortError'));
@@ -712,9 +726,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
               };
 
               const requestChunks = () => {
-                if (signal.aborted) return;
+                if (!isCurrent()) return;
                 console.log(`[WebSocket P2P] Requesting chunks (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
-                socket.emit('track:request_file', { roomId, trackUrl: url });
+                if (socket.connected) socket.emit('track:request_file', { roomId, trackUrl: url });
 
                 retryTimeoutId = setTimeout(() => {
                   if (signal.aborted) return;
@@ -732,7 +746,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                 }, RETRY_INTERVAL_MS);
               };
 
-
               const resetIdleTimer = () => {
                 if (idleTimeoutId) clearTimeout(idleTimeoutId);
                 idleTimeoutId = setTimeout(() => {
@@ -741,26 +754,30 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   }
                 }, CHUNK_IDLE_MS);
               };
-              
+
               const onChunk = async (payload: any) => {
                 if (payload.trackUrl !== url) return;
-                if (signal.aborted) return;
+                if (!isCurrent()) return;
+                if (!Number.isInteger(payload.totalChunks) || payload.totalChunks <= 0 || payload.totalChunks > 8192 ||
+                    !Number.isInteger(payload.chunkIndex) || payload.chunkIndex < 0 || payload.chunkIndex >= payload.totalChunks) return;
+                if (expectedChunks && expectedChunks !== payload.totalChunks) return;
+                if (receivedIndices.has(payload.chunkIndex)) return;
 
                 if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
-                
+
                 if (expectedChunks === 0 && payload.totalChunks) {
                   expectedChunks = payload.totalChunks;
                 }
-                
+
                 receivedIndices.add(payload.chunkIndex);
-                
+
                 let bufferData: ArrayBuffer;
                 if (payload.data instanceof ArrayBuffer) {
                   bufferData = payload.data;
                 } else if (payload.data && payload.data.type === 'Buffer' && Array.isArray(payload.data.data)) {
                   bufferData = new Uint8Array(payload.data.data).buffer;
                 } else if (payload.data instanceof Uint8Array) {
-                  bufferData = payload.data.buffer;
+                  bufferData = new Uint8Array(payload.data).buffer;
                 } else {
                   try {
                     bufferData = new Uint8Array(payload.data).buffer;
@@ -769,30 +786,29 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                     bufferData = new ArrayBuffer(0);
                   }
                 }
-                
+
                 chunks[payload.chunkIndex] = bufferData;
-                
+
                 if (receivedIndices.size === 1 && typeof document !== 'undefined') {
                   document.dispatchEvent(new CustomEvent('p2pDownloadStart', { detail: { total: expectedChunks } }));
                 }
 
                 if (expectedChunks > 0) {
                   const pct = Math.round((receivedIndices.size / expectedChunks) * 100);
-                  setDownloadProgress(pct);
-                  socket.emit('room:sync_progress', { roomId, progress: pct });
+                  reportProgress(pct);
                 }
-                
+
                 if (receivedIndices.size === expectedChunks && expectedChunks > 0) {
                   socket.off('track:receive_chunk', onChunk);
                   clearAllTimers();
-                  
+
                   const totalLength = chunks.reduce((acc, c) => acc + (c?.byteLength || 0), 0);
                   const result = new Uint8Array(totalLength);
                   let off = 0;
                   for (let i = 0; i < expectedChunks; i++) {
                     if (chunks[i]) { result.set(new Uint8Array(chunks[i]), off); off += chunks[i].byteLength; }
                   }
-                  
+
                   const buffer = result.buffer;
                   try {
                     const blob = new Blob([buffer], { type: 'audio/mpeg' });
@@ -801,124 +817,28 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
                   } catch (e) {
                     console.error('[WebSocket P2P] Failed to save track to IDB:', e);
                   }
-                  
-                  activeFetchAbortRef.current = null;
+
+                  if (!isCurrent()) { reject(new DOMException('Download cancelled', 'AbortError')); return; }
                   resolve(buffer);
                 } else {
                   resetIdleTimer();
                 }
               };
-              
+
               socket.on('track:receive_chunk', onChunk);
               requestChunks(); 
             });
           }
-        } else if (url.startsWith('youtube:') || ytId(url)) {
-          const videoId = ytId(url);
-          if (!videoId) {
-            throw new Error(`Corrupted YouTube track ID. Please tap Reset Room or skip track.`);
-          }
-          const roomId = window.location.pathname.split('/').pop();
-          const { getCachedYouTubeTrack, cacheYouTubeTrack } = await import('../lib/idb');
-
-          // Check IDB v2 first!
-          const ytCachedBlob = await getCachedYouTubeTrack(videoId);
-          if (ytCachedBlob) {
-            console.log(`[AudioPlayer] 🚀 IDB HIT for videoId '${videoId}'! 0ms latency load...`);
-            setDownloadProgress(100);
-            arrayBuffer = await ytCachedBlob.arrayBuffer();
-          } else {
-            console.log(`[AudioPlayer] ⚡ IDB MISS for videoId '${videoId}'. Stream-and-Stash starting...`);
-            const authToken = typeof window !== 'undefined' ? (localStorage.getItem('token') || (document.cookie.match(/token=([^;]+)/)?.[1])) : null;
-            const fetchUrl = `${getRestUrl()}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-
-            // Concurrently fetch stream bytes in background to stash to IDB
-            try {
-              const response = await fetch(fetchUrl, {
-                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-              });
-              if (!response.ok) {
-                throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
-              }
-              const contentLength = response.headers.get('content-length');
-              const total = contentLength ? parseInt(contentLength, 10) : 0;
-              let loaded = 0;
-              const reader = response.body!.getReader();
-              const chunks: Uint8Array[] = [];
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                  chunks.push(value);
-                  loaded += value.length;
-                  if (total > 0) {
-                    const pct = Math.round((loaded / total) * 100);
-                    setDownloadProgress(pct);
-                    const { getSocket } = require('../lib/socket');
-                    const socket = getSocket();
-                    const roomId = window.location.pathname.split('/').pop();
-                    if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
-                  }
-                }
-                const concat = new Uint8Array(loaded);
-                let offset = 0;
-                for (const chunk of chunks) {
-                  concat.set(chunk, offset);
-                  offset += chunk.length;
-                }
-                arrayBuffer = concat.buffer;
-
-                // Stash to IDB asynchronously
-                const stashedBlob = new Blob([arrayBuffer], { type: 'audio/mp4' });
-                cacheYouTubeTrack(videoId, stashedBlob, trackTitle).catch(err => {
-                  console.warn('[AudioPlayer] Background stash to IDB warning:', err);
-                });
-            } catch (bgErr) {
-              console.log('[AudioPlayer] Background stream caching bypassed or failed:', bgErr);
-              throw bgErr; // Throw to trigger outer catch and set UI error
-            }
-          }
         } else {
-          const fetchUrl = url.startsWith('/') ? `${getRestUrl()}${url}` : url;
-
-          const paramMatch = fetchUrl.match(/[?&]videoId=([^&#]+)/);
-          if (paramMatch && paramMatch[1] && paramMatch[1].length < 11) {
-            throw new Error(`Corrupted YouTube track ID '${paramMatch[1]}'. Please tap Reset Room or skip track.`);
-          }
-
-          const response = await fetch(fetchUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
-          }
-          const contentLength = response.headers.get('content-length');
-          if (contentLength) {
-            const total = parseInt(contentLength, 10);
-            let loaded = 0;
-            const reader = response.body!.getReader();
-            const chunks = [];
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
-              loaded += value.length;
-              const pct = Math.round((loaded / total) * 100);
-              setDownloadProgress(pct);
-              const { getSocket } = require('../lib/socket');
-              const socket = getSocket();
-              const roomId = window.location.pathname.split('/').pop();
-              if (roomId) socket.emit('room:sync_progress', { roomId, progress: pct });
-            }
-            const concat = new Uint8Array(loaded);
-            let offset = 0;
-            for (const chunk of chunks) {
-              concat.set(chunk, offset);
-              offset += chunk.length;
-            }
-            arrayBuffer = concat.buffer;
-          } else {
-            arrayBuffer = await response.arrayBuffer();
-          }
+          if (url.startsWith('spotify-lazy:')) throw new Error('This track is still being resolved.');
+          const result = await downloadTrack(url, roomId, {
+            signal: controller.signal, priority: 'playback', title: trackTitle,
+            onProgress: reportProgress,
+          });
+          arrayBuffer = await result.blob.arrayBuffer();
         }
 
+        if (!isCurrent()) return null;
         if (!audioCtxRef.current) {
           pendingArrayBufferRef.current = arrayBuffer;
           return null;
@@ -936,6 +856,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           // transfers it instead of copying — saves 6–8 MB at peak decode.
           decodedData = await audioCtxRef.current.decodeAudioData(arrayBuffer);
         } catch (decodeErr) {
+          if (!isCurrent()) return null;
+          trackDownloads.forget(url);
           console.error('[AudioPlayer] Failed to decode audio data', decodeErr);
           setError("Playback Error: Failed to decode audio. Track may be blocked or corrupted.");
           setIsBuffering(false);
@@ -943,24 +865,32 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           // Do NOT store arrayBuffer back into pendingArrayBufferRef — it was
           // transferred (detached) by decodeAudioData, so the reference is dead.
 
-          if (url.startsWith('ws-p2p:') || url.startsWith('magnet:')) {
+          {
             const { removeTrack } = await import('../lib/idb');
             await removeTrack(url).catch(console.error);
           }
 
           return null;
         }
+        if (!isCurrent()) return null;
         audioBufferRef.current = decodedData;
         pendingArrayBufferRef.current = null;
         setDuration(decodedData.duration);
         setIsReady(true);
+        setIsBuffering(false);
+        reportProgress(100);
         return decodedData;
       } catch (err) {
+        if (!isCurrent() || (err instanceof DOMException && err.name === 'AbortError')) return null;
+        setIsBuffering(false);
         console.error("Error fetching/decoding audio data", err);
         setError(err instanceof Error ? err.message : "Failed to load audio");
         return null;
       } finally {
-        fetchPromiseRef.current = null;
+        if (generation === loadGenerationRef.current) {
+          fetchPromiseRef.current = null;
+          activeFetchAbortRef.current = null;
+        }
       }
     })();
 
@@ -988,8 +918,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     fetchPromiseRef.current = null;
 
-    fetchAndDecode(trackUrl);
-    pauseAt(0);
+    if (isSameTrack(trackUrl, trackUrlRef.current)) void fetchAndDecode(trackUrl);
 
     return () => {
       if (activeFetchAbortRef.current) {
@@ -997,7 +926,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         activeFetchAbortRef.current = null;
       }
     };
-  }, [trackUrl]); 
+  }, [trackUrl, loadAttempt]);
 
   useEffect(() => {
     if (!audioUnlocked) return;
@@ -1007,16 +936,21 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     pendingArrayBufferRef.current = null;
 
+    const generation = loadGenerationRef.current;
     // Pass directly (no .slice(0)) — transfers the buffer, avoids a copy
     audioCtxRef.current.decodeAudioData(pending)
       .then((decodedData) => {
+        if (generation !== loadGenerationRef.current) return;
         audioBufferRef.current = decodedData;
         setDuration(decodedData.duration);
         setIsReady(true);
+        setIsBuffering(false);
+        setDownloadProgress(100);
+        setDownloadIndeterminate(false);
         // Apply pending room schedule now that the buffer is ready
         const pendingSched = pendingScheduleRef.current;
         if (pendingSched) {
-          const idBefore = scheduleIdRef.current;
+          const idBefore = pendingSched.id;
           pendingScheduleRef.current = null;
           if (idBefore !== scheduleIdRef.current) return; // pauseAt was called during decode, abort
           const clockOffset = pendingSched.clockOffset;
@@ -1031,7 +965,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         }
       })
       .catch((err) => {
+        if (generation !== loadGenerationRef.current) return;
         console.error('[AudioPlayer] Deferred decode still failed:', err);
+        setIsBuffering(false);
+        setIsReady(false);
         setError(err instanceof Error ? err.message : 'Failed to decode audio');
       });
   }, [audioUnlocked]);
@@ -1058,7 +995,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     if (!pending) return;
     // Capture schedule ID before consuming — if pauseAt() was called between
     // the schedule being saved and this effect firing, the ID will differ.
-    const idBefore = scheduleIdRef.current;
+    const idBefore = pending.id;
     pendingScheduleRef.current = null;
     if (idBefore !== scheduleIdRef.current) return; // pauseAt was called, abort
     const clockOffset = pending.clockOffset;
@@ -1089,132 +1026,109 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const scheduleStartRef = useRef<((payload: any, clockOffset: number) => Promise<void>) | null>(null);
 
-  const scheduleStart = useCallback(async (payload: any, clockOffset: number) => {
+  const scheduleStart = useCallback(async (payload: PlaybackSchedulePayload, clockOffset: number) => {
+    const key = payload.playbackInstanceId ?? String(payload.startEpoch);
+    if (isPlayingRef.current && activeScheduleKeyRef.current === key &&
+        isSameTrack(trackUrlRef.current, payload.trackUrl)) return;
+    setPlaybackInstance(payload.playbackInstanceId ?? null, payload.startEpoch);
+    const id = ++scheduleIdRef.current;
+    const generation = loadGenerationRef.current;
     stopCurrentSource();
-    if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
-
-    if (!audioCtxRef.current) {
-      setupAudioGraph();
-    }
-
-    // If track URL differs from what's loaded, we can't play yet —
-    // save the schedule and let the fetch/decode pipeline apply it when ready.
-    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
-      console.log('[AudioPlayer] scheduleStart: trackUrl mismatch, saving pending');
-      pendingScheduleRef.current = { payload, clockOffset };
-      return;
-    }
+    if (!audioCtxRef.current) setupAudioGraph();
+    const stillCurrent = () => id === scheduleIdRef.current && generation === loadGenerationRef.current &&
+      (!payload.trackUrl || isSameTrack(trackUrlRef.current, payload.trackUrl));
+    if (payload.trackUrl && !isSameTrack(trackUrlRef.current, payload.trackUrl)) return;
 
     let buffer = audioBufferRef.current;
-    if (!buffer && payload.trackUrl) {
-      // Await the in-flight fetch if one exists (started by useEffect[trackUrl]).
-      if (fetchPromiseRef.current) {
-        buffer = await fetchPromiseRef.current;
+    if (!buffer && fetchPromiseRef.current) buffer = await fetchPromiseRef.current;
+    if (!stillCurrent()) return;
+    if (!buffer || !audioCtxRef.current) {
+      pendingScheduleRef.current = { payload, clockOffset, id };
+      return;
+    }
+    if (audioCtxRef.current.state !== 'running') {
+      pendingScheduleRef.current = { payload, clockOffset, id };
+      try {
+        await audioCtxRef.current.resume();
+        if (!stillCurrent() || (audioCtxRef.current.state as AudioContextState) !== 'running') return;
+        setAudioUnlocked(true);
+      } catch {
+        if (stillCurrent()) setAudioUnlocked(false);
+        return;
       }
     }
-
-    if (payload.trackUrl && trackUrlRef.current && trackUrlRef.current !== payload.trackUrl) {
-      console.log('[AudioPlayer] scheduleStart superseded by new trackUrl:', trackUrlRef.current, 'vs', payload.trackUrl);
-      return;
-    }
-
-    if (!buffer) {
-      // Buffer still unavailable — save pending schedule.
-      // Will be applied by isReady useEffect or unlockAudio once decode completes.
-      console.log('[AudioPlayer] scheduleStart: no buffer yet, saving pending schedule');
-      pendingScheduleRef.current = { payload, clockOffset };
-      return;
-    }
-
-    if (audioCtxRef.current?.state === 'suspended') {
-      console.log('[AudioPlayer] AudioContext suspended — saving pending schedule and attempting resume');
-      pendingScheduleRef.current = { payload, clockOffset };
-      audioCtxRef.current.resume().catch(() => {});
-      return;
-    }
-
-    if (!audioCtxRef.current) return;
-
-    const localAtEpoch = payload.atEpoch - clockOffset;
-    const msUntilStart = localAtEpoch - Date.now();
-
-    const source = audioCtxRef.current.createBufferSource();
+    if (!stillCurrent()) return;
+    pendingScheduleRef.current = null;
+    const context = audioCtxRef.current;
+    const source = context.createBufferSource();
     source.buffer = buffer;
-
-    // ── FIX: Connect source → Gain → EQ chain → Analyser → Destination ──
-    // Previously firstNode was computed but source.connect() still pointed directly
-    // to gainNodeRef, completely bypassing the EQ. Now we wire it correctly.
     source.connect(gainNodeRef.current!);
-    
+    const sourceUrl = trackUrlRef.current;
+    const instance = payload.playbackInstanceId ?? null;
     source.onended = () => {
-      try { source.disconnect(); } catch (e) {}
+      if (sourceNodeRef.current !== source) return;
       source.onended = null;
+      source.disconnect();
+      sourceNodeRef.current = null;
+      activeScheduleKeyRef.current = null;
+      isPlayingRef.current = false;
+      pauseOffsetRef.current = buffer!.duration;
       setIsPlaying(false);
-      setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded'));
+      setCurrentTime(buffer!.duration);
+      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { trackUrl: sourceUrl, playbackInstanceId: instance } }));
     };
-
-    const hardwareLatency = outputLatencyRef.current;
-    const totalLatency = hardwareLatency + manualLatencyRef.current;
-    
-    const idealAudioCtxStartTime = audioCtxRef.current.currentTime + msUntilStart / 1000 - totalLatency;
-
-    if (idealAudioCtxStartTime >= audioCtxRef.current.currentTime) {
-      source.start(idealAudioCtxStartTime, payload.fromPosition);
-      sourceNodeRef.current = source;
-      startTimeRef.current = idealAudioCtxStartTime;
-      pauseOffsetRef.current = payload.fromPosition;
-    } else {
-      const lateBySeconds = audioCtxRef.current.currentTime - idealAudioCtxStartTime;
-      const correctPosition = payload.fromPosition + lateBySeconds;
-      const clampedPosition = Math.min(correctPosition, buffer.duration - 0.1);
-      
-      source.start(0, Math.max(0, clampedPosition));
-      sourceNodeRef.current = source;
-      startTimeRef.current = audioCtxRef.current.currentTime;
-      pauseOffsetRef.current = Math.max(0, clampedPosition);
-    }
-    
+    const latency = outputLatencyRef.current + manualLatencyRef.current;
+    const idealStart = context.currentTime + (payload.atEpoch - clockOffset - Date.now()) / 1000 - latency;
+    const start = Math.max(context.currentTime, idealStart);
+    const position = Math.max(0, Math.min(buffer.duration, payload.fromPosition + Math.max(0, context.currentTime - idealStart)));
+    source.start(start, position);
+    sourceNodeRef.current = source;
+    activeScheduleKeyRef.current = key;
+    playbackRateRef.current = 1;
+    startTimeRef.current = start;
+    pauseOffsetRef.current = position;
     isPlayingRef.current = true;
     setIsPlaying(true);
-    setCurrentTime(pauseOffsetRef.current);
+    setCurrentTime(position);
     ensureBackgroundAudioSession();
-  }, [audioUnlocked, stopCurrentSource, ensureBackgroundAudioSession]);
+  }, [stopCurrentSource, setupAudioGraph, setPlaybackInstance, ensureBackgroundAudioSession]);
 
   scheduleStartRef.current = scheduleStart;
 
   const playNow = useCallback((expectedPosition: number) => {
-    scheduleIdRef.current += 1;
+    if (!audioCtxRef.current || !audioBufferRef.current || audioCtxRef.current.state !== 'running') return;
+    scheduleIdRef.current++;
     stopCurrentSource();
-    if (unlockTimeoutRef.current) clearTimeout(unlockTimeoutRef.current);
-
-    if (!audioCtxRef.current || !audioBufferRef.current) return;
-    if (audioCtxRef.current.state === 'suspended' && !audioUnlocked) return;
-    
+    const buffer = audioBufferRef.current;
     const source = audioCtxRef.current.createBufferSource();
-    source.buffer = audioBufferRef.current;
+    source.buffer = buffer;
     source.connect(gainNodeRef.current!);
-    
+    const sourceUrl = trackUrlRef.current;
+    const instance = playbackInstanceRef.current;
     source.onended = () => {
-      try { source.disconnect(); } catch (e) {}
+      if (sourceNodeRef.current !== source) return;
       source.onended = null;
+      source.disconnect();
+      sourceNodeRef.current = null;
+      activeScheduleKeyRef.current = null;
+      isPlayingRef.current = false;
+      pauseOffsetRef.current = buffer.duration;
       setIsPlaying(false);
-      setCurrentTime(0);
-      document.dispatchEvent(new CustomEvent('audioEnded'));
+      setCurrentTime(buffer.duration);
+      document.dispatchEvent(new CustomEvent('audioEnded', { detail: { trackUrl: sourceUrl, playbackInstanceId: instance } }));
     };
-
-    const clampedPosition = Math.min(audioBufferRef.current.duration - 0.1, expectedPosition);
-
-    source.start(0, Math.max(0, clampedPosition));
+    const position = Math.max(0, Math.min(buffer.duration, expectedPosition));
+    source.start(0, position);
     sourceNodeRef.current = source;
-    
+    activeScheduleKeyRef.current = instance ?? String(playbackEpochRef.current);
+    playbackRateRef.current = 1;
     startTimeRef.current = audioCtxRef.current.currentTime;
-    pauseOffsetRef.current = clampedPosition;
+    pauseOffsetRef.current = position;
     isPlayingRef.current = true;
     setIsPlaying(true);
-    setCurrentTime(clampedPosition);
+    setCurrentTime(position);
     ensureBackgroundAudioSession();
-  }, [audioUnlocked, stopCurrentSource, ensureBackgroundAudioSession]);
+  }, [stopCurrentSource, ensureBackgroundAudioSession]);
 
   const pauseAt = useCallback((position: number) => {
     scheduleIdRef.current += 1;
@@ -1262,17 +1176,25 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     };
 
     setHandler("play", () => {
-      if (!isPlaying) play();
+      if (roomCommandsRef.current) roomCommandsRef.current.play();
+      else if (!isPlayingRef.current) play();
     });
     setHandler("pause", () => {
-      if (isPlaying) pause();
+      if (roomCommandsRef.current) roomCommandsRef.current.pause();
+      else if (isPlayingRef.current) pause();
     });
     setHandler("seekto", (details) => {
       if (details.seekTime != null) {
-        seek(details.seekTime);
+        if (roomCommandsRef.current) roomCommandsRef.current.seek(details.seekTime * 1000);
+        else seek(details.seekTime);
       }
     });
-  }, [isPlaying, play, pause, seek]);
+    setHandler('nexttrack', () => roomCommandsRef.current?.next());
+    setHandler('previoustrack', () => roomCommandsRef.current?.previous());
+    return () => {
+      for (const action of ['play', 'pause', 'seekto', 'nexttrack', 'previoustrack'] as MediaSessionAction[]) setHandler(action, null);
+    };
+  }, [play, pause, seek]);
 
   // Update OS System Media Control Position State slider
   useEffect(() => {
@@ -1317,7 +1239,6 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
-
   const setVolume = useCallback((nextVolume: number | ((prev: number) => number)) => {
     setVolumeState(prev => {
       const vol = typeof nextVolume === "function" ? nextVolume(prev) : nextVolume;
@@ -1346,14 +1267,29 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const getVolume = useCallback(() => volumeRef.current, []);
 
+  const retryTrack = useCallback(() => {
+    if (!trackUrlRef.current || audioBufferRef.current || fetchPromiseRef.current || pendingArrayBufferRef.current) return;
+    loadGenerationRef.current++;
+    scheduleIdRef.current++;
+    activeFetchAbortRef.current?.abort();
+    setError(null);
+    setLoadAttempt(attempt => attempt + 1);
+  }, []);
+
   const setTrack = useCallback((url: string, title = "Unknown Track", artist = "") => {
     if (!url) return;
-    if (url === trackUrlRef.current && audioBufferRef.current) {
+    if (isSameTrack(url, trackUrlRef.current)) {
       setTrackTitle(title);
       setTrackArtist(artist);
       return;
     }
+    loadGenerationRef.current++;
+    scheduleIdRef.current++;
+    activeFetchAbortRef.current?.abort();
+    fetchPromiseRef.current = null;
     stopCurrentSource();
+    setDownloadProgress(0);
+    setDownloadIndeterminate(false);
     setIsPlaying(false);
     setIsReady(false);
     setIsBuffering(false);
@@ -1369,6 +1305,16 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   }, []);
 
   const clearTrack = useCallback(() => {
+    loadGenerationRef.current++;
+    scheduleIdRef.current++;
+    activeFetchAbortRef.current?.abort();
+    activeFetchAbortRef.current = null;
+    pendingArrayBufferRef.current = null;
+    setIsReady(false);
+    setIsBuffering(false);
+    setDownloadProgress(0);
+    setDownloadIndeterminate(false);
+    setDuration(0);
     stopCurrentSource();
     trackUrlRef.current = null;
     setTrackUrl(null);
@@ -1384,13 +1330,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
   const prefetchTrack = useCallback((url: string) => {
     if (!url) return;
-    
+
     if (url.startsWith('magnet:')) {
       getWebTorrentClient().then(async client => {
         if (!client) return;
         const { getTrack } = await import('../lib/idb');
         if (await getTrack(url)) return;
-        
+
         const existing = client.get(url);
         if (!existing) {
           client.add(url, async (torrent: any) => {
@@ -1407,19 +1353,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         }
       }).catch(() => {});
     } else {
-      const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:')) 
-        ? `${getRestUrl()}/${url}` 
-        : url.startsWith('/') ? `${getRestUrl()}${url}` : url;
-      fetchPromiseRef.current = fetchAndDecode(absoluteUrl);
+      const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:'))
+        ? `${getServerUrl()}/${url}`
+        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+      const roomId = window.location.pathname.split('/').pop() || '';
+      void downloadTrack(absoluteUrl, roomId, { priority: 'prefetch' }).catch(() => {});
     }
   }, []);
 
-
-  const progress = duration > 0 ? currentTime / duration : 0;
   const hasTrack = trackUrl !== null && trackUrl.length > 0;
 
   return {
-    isPlaying, isReady, isBuffering, downloadProgress, hasTrack, audioUnlocked,
+    isPlaying, isReady, isBuffering, downloadProgress, downloadIndeterminate, hasTrack, audioUnlocked,
     currentTime,
     duration,
     progress: duration > 0 ? (currentTime / duration) * 100 : 0,
@@ -1441,7 +1386,12 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     seekPct,
     setVolume,
     setTrack,
+    retryTrack,
     clearTrack,
+    isReadyForTrack,
+    setPlaybackInstance,
+    setRoomCommands,
+    cancelPendingStart,
     unlockAudio,
     setManualLatency,
     scheduleStart, playNow, pauseAt,    getTruePosition,

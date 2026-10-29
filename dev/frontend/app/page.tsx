@@ -11,6 +11,7 @@ import { Hero } from "../components/landing/Hero";
 import { SyncRoom } from "../components/landing/SyncRoom";
 import { Capabilities } from "../components/landing/Capabilities";
 import { FAQ } from "../components/landing/FAQ";
+import { PwaRootRedirect } from "../components/pwa/PwaRootRedirect";
 
 // Title and description come from the root layout, which already describes the
 // homepage. Only the canonical is set here — see the note in app/layout.tsx for
@@ -33,11 +34,10 @@ const CONTACTS = [
 
 export default function LandingPage() {
   return (
-    // SyncScrollProvider holds the one `alignment` value the WebGL field reads.
-    // SyncRoom is its only writer now — the field converges with the demo rather
-    // than with the scrollbar.
+    // SyncScrollProvider holds the resting alignment read by the ambient field.
     <SyncScrollProvider>
       <div className="relative w-full overflow-x-clip bg-transparent font-sans text-foreground selection:bg-foreground selection:text-background">
+        <PwaRootRedirect />
         <AmbientField />
         <LandingNavbar />
 

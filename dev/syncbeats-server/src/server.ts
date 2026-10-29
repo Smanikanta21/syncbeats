@@ -40,7 +40,7 @@ import { safeStringify } from './utils/errorLogger';
   (console as any)[method] = (...args: unknown[]) => {
     const istDate = new Date(Date.now() + 5.5 * 3600 * 1000);
     const ts = istDate.toISOString().replace('T', ' ').slice(0, 19);
-    
+
     // Serialize arguments for logging. Must never throw: this wrapper runs inside
     // catch blocks, where a circular req object would turn logging into a crash.
     const msg = args.map(arg =>
@@ -203,7 +203,6 @@ export class SyncBeatsServer {
       next();
     });
 
-
     // Serve uploaded audio files with proper HTTP byte-range streaming.
     // express.static advertises Accept-Ranges but doesn't implement partial content
     // (206) responses — which browsers require for audio seeking and mid-file joins.
@@ -250,16 +249,15 @@ export class SyncBeatsServer {
   }
 
   private setupRoutes(): void {
-    const baseUrl = `http://localhost:${PORT}`;
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
     this.app.use('/auth',    createAuthRoutes());
-    
+
     const userRepository = new UserRepository();
     this.app.use('/users',   createUserRoutes(userRepository));
-    
+
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
     this.app.use('/search',  createSearchRoutes());
@@ -422,13 +420,28 @@ fi
   }
 
   private setupGracefulShutdown(): void {
+    let shuttingDown = false;
     const shutdown = async (signal: string) => {
-      console.log(`\n[Server] ${signal} received — shutting down gracefully`);
-      this.httpServer.close(async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log('[Server] ' + signal + ' received — shutting down gracefully');
+      const deadline = setTimeout(() => {
+        console.error('[Server] Shutdown exceeded 10 seconds; pending writes may not be durable.');
+        process.exit(1);
+      }, 10_000);
+      deadline.unref();
+      try {
+        // Disconnect sockets first so their final paused state joins the persistence queue.
+        await new Promise<void>(resolve => this.io.close(() => resolve()));
+        await this.socketHandler.flushPersistence();
         await prisma.$disconnect();
+        clearTimeout(deadline);
         console.log('[Server] Closed. Goodbye.');
         process.exit(0);
-      });
+      } catch (error) {
+        console.error('[Server] Could not flush room state during shutdown:', error);
+        process.exit(1);
+      }
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT',  () => shutdown('SIGINT'));
@@ -447,7 +460,7 @@ fi
   start(): void {
     this.httpServer.listen(PORT, () => {
       console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.in/api' : `
-        
+
         |-----------------------------|
         | 'http://localhost:${PORT}'
         |-----------------------------|`}`);

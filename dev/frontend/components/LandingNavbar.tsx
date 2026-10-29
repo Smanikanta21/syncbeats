@@ -2,13 +2,12 @@
 
 import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
 import Link from "next/link";
-import Image from "next/image";
 import { ThemeToggle } from "./ThemeToggle";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import Magnetic from "./Magnetic";
-import { cn } from "@/lib/utils";
 import { DynamicAuroraButton } from "./DynamicAuroraButton";
+import { SyncBeatsMark } from "./brand/SyncBeatsLogo";
 
 export function LandingNavbar() {
   const { user } = useAuth();
@@ -24,7 +23,7 @@ export function LandingNavbar() {
     <div 
       className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none px-3 sm:px-0"
       style={{
-        top: "max(0.75rem, env(safe-area-inset-top, 0px))",
+        top: "max(calc(0.75rem + 2px), calc(env(safe-area-inset-top, 0px) + 2px))",
       }}
     >
       <motion.header 
@@ -42,26 +41,26 @@ export function LandingNavbar() {
       >
       <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center">
         <Link href="/" className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight text-foreground group flex items-center gap-2.5">
-          <Image src="/favicon.svg" alt="SyncBeats Logo" width={isScrolled ? 26 : 32} height={isScrolled ? 26 : 32} priority className="group-hover:scale-110 block transition-all duration-300 shrink-0 rounded-lg overflow-hidden" />
-          <span>SYNC<span className="text-foreground/40 transition-colors group-hover:text-foreground">BEATS</span></span>
+          <SyncBeatsMark className={`${isScrolled ? "h-[26px] w-[26px]" : "h-8 w-8"} group-hover:scale-110 block transition-all duration-300 rounded-lg overflow-hidden`} />
+          <span>SyncBeats</span>
         </Link>
       </motion.div>
-      
+
       <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} className="flex items-center gap-2 sm:gap-3 md:gap-4">
         {user ? (
           <Magnetic>
-            <DynamicAuroraButton href="/room/default" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
+            <DynamicAuroraButton href="/hub" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
               Launch App
             </DynamicAuroraButton>
           </Magnetic>
         ) : (
           <>
-          <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-9 px-3' : 'h-11 px-4 sm:px-6'} rounded-full items-center justify-center font-mono text-data tracking-[0.18em] uppercase text-foreground/70 hover:text-foreground hover:border-(--accent-border) border border-transparent transition-all duration-300`}>
+          <Link href="/login" className={`hidden sm:flex ${isScrolled ? 'h-9 px-3' : 'h-11 px-4 sm:px-6'} rounded-full items-center justify-center text-data font-semibold text-foreground/70 hover:text-foreground hover:border-(--accent-border) border border-transparent transition-all duration-300`}>
             Login
           </Link>
           <Magnetic>
-            <DynamicAuroraButton href="/login" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
-              Start Session
+            <DynamicAuroraButton href="/hub" className={`${isScrolled ? 'h-9 px-4 text-[11px] sm:text-xs' : 'h-11 px-6 text-xs md:text-sm'}`}>
+              Open SyncBeats
             </DynamicAuroraButton>
           </Magnetic>
           </>

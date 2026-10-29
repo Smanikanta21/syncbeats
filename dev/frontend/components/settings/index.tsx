@@ -1,9 +1,13 @@
+"use client";
+
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Smartphone, Sparkles, Plus, Trash2, Loader2 } from "lucide-react";
+import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Sparkles, Plus, Trash2, Loader2, PanelLeft, PanelRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSettings, GradientNode, DEFAULT_SETTINGS, type AppSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../lib/utils";
+import { RoomPreview } from "./RoomPreview";
+import { DEFAULT_NODE_POSITIONS, AUDIO_BAND_NAMES, GRADIENT_PRESETS, getVisiblePresets } from "./presets";
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -11,47 +15,6 @@ interface SettingsPanelProps {
   onInteractionStateChange?: (interacting: boolean) => void;
   isEmbedded?: boolean;
 }
-
-const DEFAULT_NODE_POSITIONS: Record<number, { x: number; y: number }[]> = {
-  2: [
-    { x: 25, y: 45 },
-    { x: 75, y: 45 },
-  ],
-  3: [
-    { x: 20, y: 35 },
-    { x: 80, y: 35 },
-    { x: 50, y: 75 },
-  ],
-  4: [
-    { x: 20, y: 30 },
-    { x: 80, y: 30 },
-    { x: 20, y: 70 },
-    { x: 80, y: 70 },
-  ],
-  5: [
-    { x: 15, y: 25 },
-    { x: 85, y: 25 },
-    { x: 50, y: 50 },
-    { x: 20, y: 75 },
-    { x: 85, y: 75 },
-  ],
-  6: [
-    { x: 50, y: 12 },
-    { x: 18, y: 35 },
-    { x: 18, y: 65 },
-    { x: 82, y: 35 },
-    { x: 82, y: 65 },
-    { x: 50, y: 88 },
-  ],
-};
-
-const AUDIO_BAND_NAMES: Record<number, string[]> = {
-  2: ["Bass", "Treble"],
-  3: ["Bass", "Mids", "Treble"],
-  4: ["Sub Bass", "Low Mids", "Upper Mids", "Treble"],
-  5: ["Sub Bass", "Punch Bass", "Warm Mids", "Vocal Lead", "Treble"],
-  6: ["Sub Bass", "Bass", "Low Mids", "Mids", "Upper Mids", "Highs"],
-};
 
 function hexToHue(hex: string): number {
   let c = hex.replace("#", "");
@@ -71,279 +34,6 @@ function hexToHue(hex: string): number {
     h /= 6;
   }
   return Math.round(h * 360);
-}
-
-function RoomPreview({ 
-  onInteractionStateChange,
-  onUpdateSettings,
-}: { 
-  onInteractionStateChange?: (interacting: boolean) => void;
-  onUpdateSettings?: (updates: Partial<AppSettings>) => void;
-}) {
-  const { settings, updateSettings: rawUpdateSettings } = useSettings();
-  const updateSettings = onUpdateSettings || rawUpdateSettings;
-  const containerRef = useRef<HTMLDivElement>(null);
-  // refs for each blob element so we can animate them imperatively
-  const blobRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  const nodes = settings.gradientSettings?.nodes || [
-    { id: "1", color: "#8b5cf6", position: 0 },
-    { id: "2", color: "#ec4899", position: 50 },
-    { id: "3", color: "#3b82f6", position: 100 }
-  ];
-
-  const count = nodes.length;
-  const defaultLayout = DEFAULT_NODE_POSITIONS[count] || DEFAULT_NODE_POSITIONS[3];
-
-  // ── Demo Beat Animation ────────────────────────────────────────────────
-  // Drives each blob with a staggered synthetic beat so the modal preview
-  // looks alive even when no audio is playing.
-  useEffect(() => {
-    const BPM = 118;          // synthetic BPM for the demo
-    const BEAT_MS = 60000 / BPM;
-    let rafId: number;
-    let startTime: number | null = null;
-
-    // Per-blob: beat hit time, decay value
-    const peakHold = new Array(6).fill(0);
-    const phases   = [0, 0.5, 1.0, 1.5, 0.25, 0.75]; // stagger beats across bands
-
-    const animate = (ts: number) => {
-      if (!startTime) startTime = ts;
-      const elapsed = ts - startTime;
-
-      const bMult = (settings.ambientBrightness || 100) / 100;
-      const cMult = (settings.ambientContrast  || 100) / 100;
-
-      for (let i = 0; i < count; i++) {
-        const el = blobRefs.current[i];
-        if (!el) continue;
-
-        const node = nodes[i];
-        const phaseMs = phases[i] * BEAT_MS;
-        const beatPos = ((elapsed + phaseMs) % BEAT_MS) / BEAT_MS; // 0..1 within beat
-
-        // Sharp attack on beat 0, exponential decay
-        const isHit = beatPos < 0.08;
-        if (isHit) peakHold[i] = Math.min(1, peakHold[i] + 0.9);
-        peakHold[i] *= 0.92; // decay
-
-        const v = peakHold[i];
-        // Quadratic scale: strong hits feel harder
-        const scale = 1 + v * v * 0.4;
-        const opacity = (0.65 + v * v * 0.35) * bMult;
-
-        el.style.transform = `translate(-50%, -50%) scale(${scale})`;
-        el.style.opacity = `${Math.min(0.98, opacity)}`;
-        el.style.filter = `brightness(${bMult + v * 0.4}) contrast(${cMult}) saturate(${cMult + v * 0.4}) drop-shadow(0 0 25px ${node.color})`;
-        el.style.background = `radial-gradient(circle, ${node.color} 0%, ${node.color} 30%, transparent 75%)`;
-      }
-
-      rafId = requestAnimationFrame(animate);
-    };
-
-    rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
-  }, [count, nodes, settings.ambientBrightness, settings.ambientContrast]);
-
-  const startDrag = (nodeIdx: number) => (e: React.PointerEvent) => {
-    if (!containerRef.current) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const targetEl = e.currentTarget as HTMLElement;
-    try {
-      targetEl.setPointerCapture(e.pointerId);
-    } catch {}
-
-    onInteractionStateChange?.(true);
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      moveEvent.preventDefault();
-      const xPct = Math.max(5, Math.min(95, Math.round(((moveEvent.clientX - rect.left) / rect.width) * 100)));
-      const yPct = Math.max(5, Math.min(95, Math.round(((moveEvent.clientY - rect.top) / rect.height) * 100)));
-      
-      const updatedNodes = nodes.map((n, idx) =>
-        idx === nodeIdx ? { ...n, x: xPct, y: yPct, position: xPct } : n
-      );
-
-      const updatedAmbientPos = {
-        sub: settings.ambientPositions?.sub || { x: 20, y: 25 },
-        bass: settings.ambientPositions?.bass || { x: 80, y: 25 },
-        lowMid: settings.ambientPositions?.lowMid || { x: 20, y: 75 },
-        mid: settings.ambientPositions?.mid || { x: 80, y: 75 },
-        upperMid: settings.ambientPositions?.upperMid || { x: 50, y: 20 },
-        high: settings.ambientPositions?.high || { x: 50, y: 80 },
-      };
-      const bands: ('sub' | 'bass' | 'lowMid' | 'mid' | 'upperMid' | 'high')[] = ['sub', 'bass', 'lowMid', 'mid', 'upperMid', 'high'];
-      if (bands[nodeIdx]) {
-        updatedAmbientPos[bands[nodeIdx]] = { x: xPct, y: yPct };
-      }
-
-      updateSettings({
-        gradientSettings: { ...settings.gradientSettings, nodes: updatedNodes },
-        ambientPositions: updatedAmbientPos
-      });
-    };
-
-    const handlePointerUp = (upEvent: PointerEvent) => {
-      try {
-        targetEl.releasePointerCapture(upEvent.pointerId);
-      } catch {}
-
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-
-      onInteractionStateChange?.(false);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-  };
-
-  return (
-    <div ref={containerRef} className="w-full aspect-video max-h-85 rounded-3xl relative overflow-hidden bg-[#0A0D14] border border-white/8 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)] flex flex-col justify-between p-3 select-none mb-6">
-      
-      {/* Glowing Ambient Background Blobs — animated by demo beat rAF loop */}
-      {nodes.map((node, idx) => {
-        const posX = node.x ?? defaultLayout[idx]?.x ?? (20 + idx * 25);
-        const posY = node.y ?? defaultLayout[idx]?.y ?? (35 + (idx % 2) * 30);
-        const bMult = (settings.ambientBrightness || 100) / 100;
-        const baseOp = Math.min(0.95, Math.max(0.15, 0.38 * bMult));
-        return (
-          <div 
-            key={`blob-${node.id}-${idx}`}
-            ref={(el) => { blobRefs.current[idx] = el; }}
-            className="absolute rounded-full blur-[45px] w-[50%] aspect-square pointer-events-none will-change-transform"
-            style={{
-              left: `${posX}%`,
-              top: `${posY}%`,
-              transform: 'translate(-50%, -50%)',
-              opacity: baseOp,
-              background: `radial-gradient(circle, ${node.color} 0%, transparent 70%)`
-            }}
-          />
-        );
-      })}
-
-      {/* Interactive Drag Handles for Lights matching EXACT NODE COLORS */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {/* Helper instruction text */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/80 border border-white/15 rounded-full px-3 py-1 text-[8px] font-black uppercase tracking-widest text-white/80 backdrop-blur-md shadow-lg">
-          ✦ Drag Nodes to Reposition Light Blobs ✦
-        </div>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            const resetNodes = nodes.map((n, idx) => ({
-              ...n,
-              x: defaultLayout[idx]?.x ?? (20 + idx * 25),
-              y: defaultLayout[idx]?.y ?? (35 + (idx % 2) * 30),
-            }));
-            updateSettings({
-              gradientSettings: { ...settings.gradientSettings, nodes: resetNodes }
-            });
-          }}
-          className="absolute bottom-2 right-2 z-30 bg-black/85 hover:bg-black text-white/80 hover:text-white border border-white/20 px-2.5 py-1 rounded-xl text-[8px] font-bold uppercase tracking-wider transition-all pointer-events-auto shadow-md"
-        >
-          Reset Positions
-        </button>
-
-        {nodes.map((node, idx) => {
-          const posX = node.x ?? defaultLayout[idx]?.x ?? (20 + idx * 25);
-          const posY = node.y ?? defaultLayout[idx]?.y ?? (35 + (idx % 2) * 30);
-          const bandNames = AUDIO_BAND_NAMES[count] || AUDIO_BAND_NAMES[3];
-          const bandName = bandNames[idx] || `Band ${idx + 1}`;
-          return (
-            <div
-              key={`handle-${node.id}-${idx}`}
-              onPointerDown={startDrag(idx)}
-              className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border bg-black/90 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing shadow-2xl select-none touch-none z-30 group"
-              style={{
-                left: `${posX}%`,
-                top: `${posY}%`,
-                borderColor: node.color,
-                boxShadow: `0 0 16px ${node.color}`
-              }}
-            >
-              <div 
-                className="w-3 h-3 rounded-full animate-pulse" 
-                style={{
-                  background: node.color,
-                  boxShadow: `0 0 10px ${node.color}`
-                }}
-              />
-
-              {/* Band Label Pill */}
-              <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-black/90 text-white/90 border border-white/20 rounded-lg px-2 py-0.5 text-[8px] font-black uppercase tracking-wider whitespace-nowrap shadow-xl pointer-events-none backdrop-blur-md flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ background: node.color }} />
-                <span>{bandName} ({posX}%, {posY}%)</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Grid Overlay Line */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,#090c13_95%)] pointer-events-none" />
-
-      {/* Room UI Mockup */}
-      <div className="relative z-10 w-full h-full flex flex-col justify-between pointer-events-none opacity-90">
-        
-        {/* Header Row */}
-        <div className="flex items-center justify-between w-full h-4 px-1 shrink-0">
-          {/* Room Info */}
-          <div className="flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-ok-500 animate-pulse" />
-            <span className="text-[6px] font-black text-white/50 tracking-wider">ROOM: 798591</span>
-          </div>
-          {/* Mini Dynamic Island */}
-          <div className="px-2 py-0.5 rounded-full bg-black/85 border border-white/10 flex items-center gap-1 scale-[0.85] shrink-0">
-            <div className="w-1 h-1 rounded-full bg-ok-500" />
-            <div className="w-2 h-1 flex gap-[0.5px] items-center">
-              <div className="w-[0.5px] h-0.5 bg-white/60 animate-pulse" />
-              <div className="w-[0.5px] h-1 bg-white/80" />
-              <div className="w-[0.5px] h-0.5 bg-white/60 animate-pulse" />
-            </div>
-            <span className="text-[4px] font-bold text-white/90">Calling</span>
-          </div>
-          {/* Controls Placeholder */}
-          <div className="w-4 h-1.5 rounded bg-white/10" />
-        </div>
-
-        {/* Center Spatial Room Grid Visual Mockup (Clean wireframe without dark backdrop blur box) */}
-        <div className="flex-1 w-full flex items-center justify-center relative my-1">
-          <div className="w-[85%] h-full border border-white/10 rounded-2xl relative flex items-center justify-center">
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-40 h-40 rounded-full border border-white/5 animate-ping opacity-20" />
-              <div className="w-24 h-24 rounded-full border border-white/10" />
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Playbar Mockup */}
-        <div className="w-full h-6 rounded-xl bg-black/80 border border-white/10 px-2 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-violet-500/40 border border-violet-500/60" />
-            <div className="flex flex-col">
-              <div className="w-12 h-1 rounded bg-white/40" />
-              <div className="w-8 h-1 rounded bg-white/20 mt-0.5" />
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-white/20" />
-            <div className="w-3 h-3 rounded-full bg-white/80 flex items-center justify-center">
-              <div className="w-1 h-1 bg-black rounded-sm" />
-            </div>
-            <div className="w-2 h-2 rounded-full bg-white/20" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function SettingsPanel({
@@ -412,140 +102,6 @@ export function SettingsPanel({
   const handleRestoreDefaults = () => {
     updateSettings(DEFAULT_SETTINGS);
   };
-  
-  const PALETTES_BY_COUNT: Record<number, { name: string; colors: any; brightness: number; contrast: number; }[]> = {
-    3: [
-      {
-        name: "Default",
-        colors: { subHue: 320, bassHue: 0, lowMidHue: 40, midHue: 120, upperMidHue: 200, highHue: 240 },
-        brightness: 100,
-        contrast: 100
-      },
-      {
-        name: "Miami Neon",
-        colors: { subHue: 320, bassHue: 180, lowMidHue: 40, midHue: 320, upperMidHue: 200, highHue: 270 },
-        brightness: 110,
-        contrast: 130
-      },
-      {
-        name: "Fire & Ice",
-        colors: { subHue: 320, bassHue: 15, lowMidHue: 40, midHue: 190, upperMidHue: 200, highHue: 240 },
-        brightness: 100,
-        contrast: 120
-      },
-      {
-        name: "Golden Hour",
-        colors: { subHue: 320, bassHue: 25, lowMidHue: 40, midHue: 355, upperMidHue: 200, highHue: 280 },
-        brightness: 115,
-        contrast: 110
-      },
-      {
-        name: "Organic Sage",
-        colors: { subHue: 320, bassHue: 130, lowMidHue: 40, midHue: 160, upperMidHue: 200, highHue: 45 },
-        brightness: 100,
-        contrast: 100
-      }
-    ],
-    4: [
-      {
-        name: "Default",
-        colors: { subHue: 320, bassHue: 0, lowMidHue: 40, midHue: 120, upperMidHue: 200, highHue: 280 },
-        brightness: 100,
-        contrast: 100
-      },
-      {
-        name: "Retrowave Grid",
-        colors: { subHue: 320, bassHue: 270, lowMidHue: 40, midHue: 210, upperMidHue: 200, highHue: 25 },
-        brightness: 120,
-        contrast: 140
-      },
-      {
-        name: "Volcanic Dusk",
-        colors: { subHue: 355, bassHue: 290, lowMidHue: 40, midHue: 20, upperMidHue: 200, highHue: 50 },
-        brightness: 110,
-        contrast: 115
-      },
-      {
-        name: "Northern Lights",
-        colors: { subHue: 190, bassHue: 280, lowMidHue: 40, midHue: 140, upperMidHue: 200, highHue: 230 },
-        brightness: 100,
-        contrast: 110
-      },
-      {
-        name: "Cotton Candy",
-        colors: { subHue: 200, bassHue: 270, lowMidHue: 40, midHue: 330, upperMidHue: 200, highHue: 20 },
-        brightness: 120,
-        contrast: 100
-      }
-    ],
-    5: [
-      {
-        name: "Default",
-        colors: { subHue: 320, bassHue: 0, lowMidHue: 40, midHue: 120, upperMidHue: 200, highHue: 280 },
-        brightness: 100,
-        contrast: 100
-      },
-      {
-        name: "Tokio Drift",
-        colors: { subHue: 330, bassHue: 280, lowMidHue: 40, midHue: 180, upperMidHue: 250, highHue: 65 },
-        brightness: 120,
-        contrast: 140
-      },
-      {
-        name: "Sherbet Sunrise",
-        colors: { subHue: 25, bassHue: 350, lowMidHue: 40, midHue: 5, upperMidHue: 50, highHue: 335 },
-        brightness: 115,
-        contrast: 115
-      },
-      {
-        name: "Cyber Forest",
-        colors: { subHue: 140, bassHue: 90, lowMidHue: 40, midHue: 200, upperMidHue: 240, highHue: 310 },
-        brightness: 100,
-        contrast: 120
-      },
-      {
-        name: "Midnight Mirage",
-        colors: { subHue: 160, bassHue: 320, lowMidHue: 40, midHue: 220, upperMidHue: 250, highHue: 280 },
-        brightness: 95,
-        contrast: 125
-      }
-    ],
-    6: [
-      {
-        name: "Default",
-        colors: { subHue: 320, bassHue: 0, lowMidHue: 40, midHue: 120, upperMidHue: 200, highHue: 280 },
-        brightness: 100,
-        contrast: 100
-      },
-      {
-        name: "Rainbow Spectrum",
-        colors: { subHue: 0, bassHue: 300, lowMidHue: 240, midHue: 35, upperMidHue: 120, highHue: 180 },
-        brightness: 100,
-        contrast: 100
-      },
-      {
-        name: "Neon Oasis",
-        colors: { subHue: 90, bassHue: 165, lowMidHue: 350, midHue: 200, upperMidHue: 250, highHue: 310 },
-        brightness: 120,
-        contrast: 135
-      },
-      {
-        name: "Desert Horizon",
-        colors: { subHue: 345, bassHue: 355, lowMidHue: 275, midHue: 45, upperMidHue: 30, highHue: 15 },
-        brightness: 110,
-        contrast: 115
-      },
-      {
-        name: "Glacial Dream",
-        colors: { subHue: 210, bassHue: 150, lowMidHue: 325, midHue: 175, upperMidHue: 230, highHue: 260 },
-        brightness: 105,
-        contrast: 110
-      }
-    ]
-  };
-
-  const activeLightCount = settings.activeLightCount || 3;
-  const currentPalettes = PALETTES_BY_COUNT[activeLightCount] || PALETTES_BY_COUNT[3];
 
   return (
     <div className="flex flex-col h-full w-full min-h-0 relative">
@@ -556,7 +112,7 @@ export function SettingsPanel({
           <h2 className="text-lg sm:text-2xl font-black text-foreground truncate">{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* ── Conditional Unsaved Changes Floating Dialogue Capsule ── */}
           <AnimatePresence>
             {isDirty && (
@@ -567,7 +123,7 @@ export function SettingsPanel({
                 transition={{ duration: 0.25, ease: "easeOut" }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-foreground/10 dark:bg-white/10 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-2xl shrink-0"
               >
-                <span className="hidden md:inline-block text-[10px] font-black uppercase tracking-wider text-warn-600 dark:text-warn-400 animate-pulse mr-1">
+                <span className="hidden md:inline-block text-[10px] font-semibold text-warn-600 dark:text-warn-400 animate-pulse mr-1">
                   Unsaved Changes
                 </span>
 
@@ -585,11 +141,6 @@ export function SettingsPanel({
                 <button
                   onClick={handleSaveToCloud}
                   disabled={isSaving}
-                  /* Primary action, so it wears the brand accent rather than
-                     ok-500. The green here conflated two different jobs: "this
-                     is the primary thing to click" and "status: good". The
-                     Check/"Saved!" state below already carries the success
-                     signal, which is what green was standing in for. */
                   className="px-3 py-1.5 rounded-xl text-white font-black text-xs transition-all active:scale-95 border border-(--accent-border) flex items-center gap-1.5 shadow-lg shrink-0 hover:opacity-90"
                   style={{
                     background: "var(--accent-gradient)",
@@ -613,8 +164,9 @@ export function SettingsPanel({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-foreground/10 active:bg-foreground/20 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
+              className="p-2 sm:p-2.5 rounded-full bg-foreground/10 hover:bg-foreground/20 active:bg-foreground/30 text-foreground transition-all cursor-pointer shrink-0 border border-foreground/10 shadow-xs"
               title="Close"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -646,7 +198,7 @@ export function SettingsPanel({
                 <h3 className="text-base sm:text-lg font-bold text-foreground">Theme & Gradient Editor</h3>
               </div>
             )}
-            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
+            <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
               {settings.gradientSettings?.presetName || "Custom Theme"}
             </span>
           </div>
@@ -658,9 +210,9 @@ export function SettingsPanel({
           {/* Interactive Demo Room Canvas with Draggable 2D Light Nodes (Development or Static Node Mode Only) */}
           {showSpatialCanvas && (
             <div className="mb-5">
-              <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1.5 flex items-center justify-between">
+              <div className="text-[10px] font-semibold text-foreground/40 mb-1.5 flex items-center justify-between">
                 <span>Interactive Demo Room Screen (Spatial Lighting)</span>
-                <span className="text-[9px] text-foreground/50 font-bold uppercase">Drag Nodes to Reposition</span>
+                <span className="text-[9px] text-foreground/50 font-bold ">Drag Nodes to Reposition</span>
               </div>
               <RoomPreview
                 onInteractionStateChange={onInteractionStateChange}
@@ -671,7 +223,7 @@ export function SettingsPanel({
 
           {/* Live Gradient Preview Bar */}
           <div className="mb-5">
-            <div className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1.5 flex items-center justify-between">
+            <div className="text-[10px] font-semibold text-foreground/40 mb-1.5 flex items-center justify-between">
               <span>Live Gradient Preview</span>
               <span className="font-mono text-foreground/50">
                 {(settings.gradientSettings?.nodes || []).length} Color Stops
@@ -793,10 +345,10 @@ export function SettingsPanel({
           {/* Quick Color Count Presets Switcher */}
           <div className="mb-5 p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-foreground/50 block">
+              <label className="text-[10px] font-semibold text-foreground/50 block">
                 Select Theme Palette Size
               </label>
-              <span className="text-[9px] font-bold text-foreground/40 uppercase">
+              <span className="text-[9px] font-bold text-foreground/40 ">
                 2 to 6 Colors
               </span>
             </div>
@@ -816,38 +368,8 @@ export function SettingsPanel({
                     type="button"
                     onClick={() => {
                       const existingNodes = settings.gradientSettings?.nodes || [];
-                      const countPresets: Record<number, { name: string; nodes: GradientNode[] }[]> = {
-                        2: [
-                          { name: "Electric Violet", nodes: [{ id: "n1", color: "#8b5cf6", position: 0 }, { id: "n2", color: "#3b82f6", position: 100 }] },
-                          { name: "Solar Flare", nodes: [{ id: "n1", color: "#f97316", position: 0 }, { id: "n2", color: "#ef4444", position: 100 }] },
-                          { name: "Emerald Mist", nodes: [{ id: "n1", color: "#10b981", position: 0 }, { id: "n2", color: "#06b6d4", position: 100 }] },
-                          { name: "Synth Wave", nodes: [{ id: "n1", color: "#a855f7", position: 0 }, { id: "n2", color: "#ec4899", position: 100 }] },
-                        ],
-                        3: [
-                          { name: "Cyber Neon", nodes: [{ id: "n1", color: "#8b5cf6", position: 0 }, { id: "n2", color: "#ec4899", position: 50 }, { id: "n3", color: "#3b82f6", position: 100 }] },
-                          { name: "Aurora Borealis", nodes: [{ id: "n1", color: "#10b981", position: 0 }, { id: "n2", color: "#06b6d4", position: 50 }, { id: "n3", color: "#8b5cf6", position: 100 }] },
-                          { name: "Sunset Flare", nodes: [{ id: "n1", color: "#f97316", position: 0 }, { id: "n2", color: "#ef4444", position: 50 }, { id: "n3", color: "#a855f7", position: 100 }] },
-                          { name: "Deep Ocean", nodes: [{ id: "n1", color: "#0284c7", position: 0 }, { id: "n2", color: "#3b82f6", position: 50 }, { id: "n3", color: "#6366f1", position: 100 }] },
-                        ],
-                        4: [
-                          { name: "Spectrum Prism", nodes: [{ id: "n1", color: "#ef4444", position: 0 }, { id: "n2", color: "#f59e0b", position: 33 }, { id: "n3", color: "#10b981", position: 66 }, { id: "n4", color: "#3b82f6", position: 100 }] },
-                          { name: "Hyperdrive", nodes: [{ id: "n1", color: "#ec4899", position: 0 }, { id: "n2", color: "#8b5cf6", position: 33 }, { id: "n3", color: "#3b82f6", position: 66 }, { id: "n4", color: "#06b6d4", position: 100 }] },
-                          { name: "Forest Glow", nodes: [{ id: "n1", color: "#059669", position: 0 }, { id: "n2", color: "#10b981", position: 33 }, { id: "n3", color: "#84cc16", position: 66 }, { id: "n4", color: "#eab308", position: 100 }] },
-                          { name: "Magma Core", nodes: [{ id: "n1", color: "#991b1b", position: 0 }, { id: "n2", color: "#dc2626", position: 33 }, { id: "n3", color: "#f97316", position: 66 }, { id: "n4", color: "#fbbf24", position: 100 }] },
-                        ],
-                        5: [
-                          { name: "Tokyo Neon", nodes: [{ id: "n1", color: "#f43f5e", position: 0 }, { id: "n2", color: "#d946ef", position: 25 }, { id: "n3", color: "#8b5cf6", position: 50 }, { id: "n4", color: "#06b6d4", position: 75 }, { id: "n5", color: "#10b981", position: 100 }] },
-                          { name: "Galaxy Cosmos", nodes: [{ id: "n1", color: "#4c1d95", position: 0 }, { id: "n2", color: "#7c3aed", position: 25 }, { id: "n3", color: "#2563eb", position: 50 }, { id: "n4", color: "#0d9488", position: 75 }, { id: "n5", color: "#059669", position: 100 }] },
-                          { name: "Golden Horizon", nodes: [{ id: "n1", color: "#7c2d12", position: 0 }, { id: "n2", color: "#c2410c", position: 25 }, { id: "n3", color: "#ea580c", position: 50 }, { id: "n4", color: "#f59e0b", position: 75 }, { id: "n5", color: "#fef08a", position: 100 }] },
-                        ],
-                        6: [
-                          { name: "Full Spectrum", nodes: [{ id: "n1", color: "#ef4444", position: 0 }, { id: "n2", color: "#f97316", position: 20 }, { id: "n3", color: "#eab308", position: 40 }, { id: "n4", color: "#10b981", position: 60 }, { id: "n5", color: "#3b82f6", position: 80 }, { id: "n6", color: "#a855f7", position: 100 }] },
-                          { name: "Neon Hex", nodes: [{ id: "n1", color: "#f43f5e", position: 0 }, { id: "n2", color: "#d946ef", position: 20 }, { id: "n3", color: "#8b5cf6", position: 40 }, { id: "n4", color: "#06b6d4", position: 60 }, { id: "n5", color: "#10b981", position: 80 }, { id: "n6", color: "#84cc16", position: 100 }] },
-                          { name: "Cosmic Array", nodes: [{ id: "n1", color: "#1e1b4b", position: 0 }, { id: "n2", color: "#4c1d95", position: 20 }, { id: "n3", color: "#7c3aed", position: 40 }, { id: "n4", color: "#ec4899", position: 60 }, { id: "n5", color: "#f97316", position: 80 }, { id: "n6", color: "#fbbf24", position: 100 }] },
-                        ],
-                      };
 
-                      const targetPreset = countPresets[count]?.[0];
+                      const targetPreset = GRADIENT_PRESETS[count]?.[0];
                       if (targetPreset) {
                         const updatedNodes = targetPreset.nodes.map((n, idx) => ({
                           ...n,
@@ -876,39 +398,14 @@ export function SettingsPanel({
 
           {/* Dynamic Tailored Presets Grid */}
           <div className="mb-6 space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block">
+            <label className="text-[10px] font-semibold text-foreground/40 block">
               {(settings.gradientSettings?.nodes || []).length}-Color Presets
             </label>
             <div className="grid grid-cols-2 gap-2">
               {(() => {
                 const currentCount = (settings.gradientSettings?.nodes || []).length;
-                const presetsByCount: Record<number, { name: string; nodes: GradientNode[] }[]> = {
-                  2: [
-                    { name: "Electric Violet", nodes: [{ id: "n1", color: "#8b5cf6", position: 0 }, { id: "n2", color: "#3b82f6", position: 100 }] },
-                    { name: "Solar Flare", nodes: [{ id: "n1", color: "#f97316", position: 0 }, { id: "n2", color: "#ef4444", position: 100 }] },
-                    { name: "Emerald Mist", nodes: [{ id: "n1", color: "#10b981", position: 0 }, { id: "n2", color: "#06b6d4", position: 100 }] },
-                    { name: "Synth Wave", nodes: [{ id: "n1", color: "#a855f7", position: 0 }, { id: "n2", color: "#ec4899", position: 100 }] },
-                  ],
-                  3: [
-                    { name: "Cyber Neon", nodes: [{ id: "n1", color: "#8b5cf6", position: 0 }, { id: "n2", color: "#ec4899", position: 50 }, { id: "n3", color: "#3b82f6", position: 100 }] },
-                    { name: "Aurora Borealis", nodes: [{ id: "n1", color: "#10b981", position: 0 }, { id: "n2", color: "#06b6d4", position: 50 }, { id: "n3", color: "#8b5cf6", position: 100 }] },
-                    { name: "Sunset Flare", nodes: [{ id: "n1", color: "#f97316", position: 0 }, { id: "n2", color: "#ef4444", position: 50 }, { id: "n3", color: "#a855f7", position: 100 }] },
-                    { name: "Deep Ocean", nodes: [{ id: "n1", color: "#0284c7", position: 0 }, { id: "n2", color: "#3b82f6", position: 50 }, { id: "n3", color: "#6366f1", position: 100 }] },
-                  ],
-                  4: [
-                    { name: "Spectrum Prism", nodes: [{ id: "n1", color: "#ef4444", position: 0 }, { id: "n2", color: "#f59e0b", position: 33 }, { id: "n3", color: "#10b981", position: 66 }, { id: "n4", color: "#3b82f6", position: 100 }] },
-                    { name: "Hyperdrive", nodes: [{ id: "n1", color: "#ec4899", position: 0 }, { id: "n2", color: "#8b5cf6", position: 33 }, { id: "n3", color: "#3b82f6", position: 66 }, { id: "n4", color: "#06b6d4", position: 100 }] },
-                    { name: "Forest Glow", nodes: [{ id: "n1", color: "#059669", position: 0 }, { id: "n2", color: "#10b981", position: 33 }, { id: "n3", color: "#84cc16", position: 66 }, { id: "n4", color: "#eab308", position: 100 }] },
-                    { name: "Magma Core", nodes: [{ id: "n1", color: "#991b1b", position: 0 }, { id: "n2", color: "#dc2626", position: 33 }, { id: "n3", color: "#f97316", position: 66 }, { id: "n4", color: "#fbbf24", position: 100 }] },
-                  ],
-                  5: [
-                    { name: "Tokyo Neon", nodes: [{ id: "n1", color: "#f43f5e", position: 0 }, { id: "n2", color: "#d946ef", position: 25 }, { id: "n3", color: "#8b5cf6", position: 50 }, { id: "n4", color: "#06b6d4", position: 75 }, { id: "n5", color: "#10b981", position: 100 }] },
-                    { name: "Galaxy Cosmos", nodes: [{ id: "n1", color: "#4c1d95", position: 0 }, { id: "n2", color: "#7c3aed", position: 25 }, { id: "n3", color: "#2563eb", position: 50 }, { id: "n4", color: "#0d9488", position: 75 }, { id: "n5", color: "#059669", position: 100 }] },
-                    { name: "Golden Horizon", nodes: [{ id: "n1", color: "#7c2d12", position: 0 }, { id: "n2", color: "#c2410c", position: 25 }, { id: "n3", color: "#ea580c", position: 50 }, { id: "n4", color: "#f59e0b", position: 75 }, { id: "n5", color: "#fef08a", position: 100 }] },
-                  ],
-                };
 
-                const activePresets = presetsByCount[currentCount] || presetsByCount[3];
+                const activePresets = getVisiblePresets(currentCount);
 
                 return activePresets.map((preset) => {
                   const isActive = settings.gradientSettings?.presetName === preset.name;
@@ -945,7 +442,7 @@ export function SettingsPanel({
 
           {/* Color Picker, Rainbow Spectrum & Position Editor */}
           <div className="space-y-4 mb-5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block">Custom Frequency Band Colors, Spectrum & Spatial Positions</label>
+            <label className="text-[10px] font-semibold text-foreground/40 block">Custom Frequency Band Colors, Spectrum & Spatial Positions</label>
             <div className="space-y-3">
               {(settings.gradientSettings?.nodes || [
                 { id: "1", color: "#8b5cf6", position: 0 },
@@ -1000,7 +497,7 @@ export function SettingsPanel({
 
                     {/* Rainbow Color Spectrum Slider */}
                     <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[9px] text-foreground/40 font-bold uppercase">
+                      <div className="flex justify-between items-center text-[9px] text-foreground/40 font-bold ">
                         <span>Color Spectrum (Hue)</span>
                         <span className="font-mono">{currentHue}°</span>
                       </div>
@@ -1082,7 +579,6 @@ export function SettingsPanel({
           </div>
         </section>
 
-
         {!onlyVisuals && (
           /* Sync Settings */
           <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
@@ -1090,11 +586,11 @@ export function SettingsPanel({
               <Zap className="w-5 h-5 text-foreground/70" />
               <h3 className="text-lg font-bold text-foreground">Synchronization</h3>
             </div>
-            
+
             <div className="space-y-6">
               <div>
                 <div className="flex justify-between mb-1">
-                  <label className="text-xs font-bold uppercase tracking-widest text-foreground/50">Audio Latency Offset (ms)</label>
+                  <label className="text-xs font-bold text-foreground/50">Audio Latency Offset (ms)</label>
                   <span className="text-xs font-medium">{settings.audioLatencyOffsetMs} ms</span>
                 </div>
                 <input 
@@ -1109,7 +605,7 @@ export function SettingsPanel({
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 block mb-2">Sync Aggressiveness</label>
+                <label className="text-xs font-bold text-foreground/50 block mb-2">Sync Aggressiveness</label>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => updateSettings({ syncAggressiveness: 'high' })}
@@ -1142,7 +638,7 @@ export function SettingsPanel({
                   <h3 className="text-lg font-bold text-foreground">Screen & Display</h3>
                 </div>
                 {settings.keepScreenAwake && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-warn-500/15 border border-warn-500/30 text-warn-600 dark:text-warn-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                  <span className="px-2.5 py-0.5 rounded-full bg-warn-500/15 border border-warn-500/30 text-warn-600 dark:text-warn-400 text-[9px] font-semibold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-warn-400 animate-pulse" />
                     Awake Active
                   </span>
@@ -1173,6 +669,47 @@ export function SettingsPanel({
                   />
                 </button>
               </div>
+
+              {/* Room Sidebar Position */}
+              <div className="mt-4 pt-4 border-t border-foreground/5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-foreground">Room Sidebar Position</span>
+                    <span className="text-[10px] text-foreground/40">Choose where the room sidebar is docked on desktop</span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-foreground/50">
+                    {settings.sidebarPosition === "right" ? "Right" : "Left (Default)"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => updateSettings({ sidebarPosition: "left" })}
+                    className={cn(
+                      "py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 cursor-pointer",
+                      (settings.sidebarPosition ?? "left") === "left"
+                        ? "bg-foreground text-background border-foreground shadow-sm"
+                        : "bg-foreground/5 text-foreground/70 border-foreground/10 hover:bg-foreground/10"
+                    )}
+                  >
+                    <PanelLeft className="w-3.5 h-3.5" />
+                    <span>Left (Default)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateSettings({ sidebarPosition: "right" })}
+                    className={cn(
+                      "py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 cursor-pointer",
+                      settings.sidebarPosition === "right"
+                        ? "bg-foreground text-background border-foreground shadow-sm"
+                        : "bg-foreground/5 text-foreground/70 border-foreground/10 hover:bg-foreground/10"
+                    )}
+                  >
+                    <PanelRight className="w-3.5 h-3.5" />
+                    <span>Right</span>
+                  </button>
+                </div>
+              </div>
             </section>
 
             {/* Dynamic Island Customizer Section */}
@@ -1188,7 +725,7 @@ export function SettingsPanel({
               <div className="space-y-4">
                 {/* Glow Accent Theme */}
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Glow Accent Theme</label>
+                  <label className="text-[10px] font-semibold text-foreground/40 block mb-2">Glow Accent Theme</label>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
                     {[
                       { id: "violet", label: "Violet", color: "bg-purple-500" },
@@ -1220,7 +757,7 @@ export function SettingsPanel({
 
                 {/* Auto-Shrink Delay */}
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 block mb-2">Auto-Shrink Delay</label>
+                  <label className="text-[10px] font-semibold text-foreground/40 block mb-2">Auto-Shrink Delay</label>
                   <div className="grid grid-cols-4 gap-1.5">
                     {[
                       { sec: 3, label: "3s Fast" },

@@ -1,4 +1,5 @@
-import type { RoomSnapshot } from './types';
+import type { RoomSnapshot, Participant, TrackQueueItem } from './types';
+export type { Participant, TrackQueueItem } from './types';
 import { toast } from 'sonner';
 
 export function getRestUrl(): string {
@@ -35,7 +36,6 @@ export function getServerUrl(): string {
 
 const DEVICE_STORAGE_KEY = 'sb_device_id';
 const AUTH_COOKIE_KEY = 'sb_token';
-const AUTH_STORAGE_KEY = 'sb_token';
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 
 export function getDeviceId(): string | null {
@@ -58,24 +58,19 @@ function readCookie(name: string): string | null {
 }
 
 export function getAuthToken(): string | null {
-  const cookieToken = readCookie(AUTH_COOKIE_KEY);
-  if (cookieToken) return cookieToken;
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(AUTH_STORAGE_KEY);
+  return readCookie(AUTH_COOKIE_KEY);
 }
 
 export function setAuthToken(token: string): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(token)}; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
-  localStorage.setItem(AUTH_STORAGE_KEY, token);
 }
 
 export function clearAuthToken(): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${AUTH_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
 function getToken(): string | null {
@@ -263,29 +258,6 @@ export const authApi = {
 
 // ── Rooms ─────────────────────────────────────────────────────────────────
 
-export interface Participant {
-  socketId:    string;
-  displayName: string;
-  joinedAt:    number;
-  isReady:     boolean;
-  volume:      number;
-}
-
-export interface TrackQueueItem {
-  id:         string;
-  trackUrl:   string;
-  title:      string;
-  artist?:    string;
-  thumbnail?: string;
-  fileName:   string;
-  queueIndex: number;
-  isCurrent:  boolean;
-  /** Set once the track played through to the end; drives the History section. */
-  playedAt?:  number;
-  addedBy:    string;
-  createdAt:  number;
-}
-
 export interface RoomRecord {
   id:             string;
   host_id:        string;
@@ -298,6 +270,13 @@ export interface RoomRecord {
   repeat_mode:    string;
   is_private?:    boolean;
   participant_count?: number;
+}
+
+export interface OnlineRoomRecord {
+  id: string;
+  host_name: string;
+  participant_count: number;
+  is_playing: boolean;
 }
 
 export interface DeviceListResponse {
@@ -342,6 +321,9 @@ export const roomsApi = {
 
   mine: () =>
     request<{ rooms: RoomRecord[] }>('/rooms/mine', {}, true),
+
+  online: () =>
+    request<{ rooms: OnlineRoomRecord[] }>('/rooms/online', {}, true),
 
   endSession: (roomId: string) =>
     request<{ ok: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' }, true),

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { Participant, JoinRequest } from "../lib/types";
+import { Participant, JoinRequest, type TrackActivity } from "../lib/types";
 import type { PrefetchState } from "../hooks/useTrackPrefetcher";
 
 interface SyncCtx {
@@ -13,8 +13,8 @@ interface SyncCtx {
   setParticipants: (v: Participant[]) => void;
   pendingPlay: boolean;
   setPendingPlay: (v: boolean) => void;
-  incomingTrack: { title: string, progress: number } | null;
-  setIncomingTrack: (v: { title: string, progress: number } | null) => void;
+  incomingTrack: TrackActivity | null;
+  setIncomingTrack: (v: TrackActivity | null) => void;
   pendingRequests: JoinRequest[];
   setPendingRequests: (v: JoinRequest[]) => void;
   hostId: string | null;
@@ -61,7 +61,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [isRoomPlaying, setIsRoomPlaying] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [pendingPlay, setPendingPlay] = useState(false);
-  const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  const [incomingTrack, setIncomingTrack] = useState<TrackActivity | null>(null);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   const [hostId, setHostId] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<'joined' | 'pending' | 'denied' | 'connecting' | 'not_found'>('connecting');

@@ -41,96 +41,43 @@ SyncBeats lets a group of friends join a shared room, upload audio, and hear it 
 
 ## Architecture
 
+```text
+syncbeats/
+├── dev/
+│   ├── frontend/                   # Next.js web client
+│   │   ├── app/                    # Pages, layouts, metadata and redirects
+│   │   │   └── (session)/          # Authenticated room and profile routes
+│   │   ├── components/
+│   │   │   ├── landing/            # Landing page sections
+│   │   │   ├── room/               # Queue, chat, lyrics, devices and spatial UI
+│   │   │   ├── dynamic-island/     # Persistent playback controls
+│   │   │   ├── settings/           # Settings panel, preview and shared presets
+│   │   │   └── fluid/              # WebGL background
+│   │   ├── hooks/                  # Playback, clock sync, prefetch and UI hooks
+│   │   ├── audio/                  # Spatial audio engine
+│   │   ├── context/                # Shared audio, auth, connection and room state
+│   │   └── lib/                    # APIs, cache, types and pure spatial math
+│   ├── syncbeats-server/           # Express + Socket.IO backend
+│   │   ├── src/
+│   │   │   ├── server.ts           # Entry point, routes and byte-range audio serving
+│   │   │   ├── core/               # Room, RoomQueue, RoomManager and playback state
+│   │   │   ├── handlers/           # REST routes and Socket.IO event handling
+│   │   │   ├── auth/               # Authentication and user repository
+│   │   │   ├── db/                 # Prisma and room/device repositories
+│   │   │   ├── services/           # Music sourcing
+│   │   │   ├── middleware/         # Rate limits
+│   │   │   ├── utils/              # Errors, YouTube IDs and Spotify fetching
+│   │   │   └── types/              # Server payloads and snapshots
+│   │   └── prisma/                 # Schema, migrations and seed
+│   └── db-visualizer/              # Next.js database administration app
+├── Syncbeats(apple)/               # Native Swift app
+├── .github/workflows/              # CI/CD
+├── docker-compose.yml             # Production stack
+└── docker-compose.dev.yml          # Standalone local development stack
 ```
-sync-beats/
-├── frontend/                        # Next.js 16 (React 19, Tailwind CSS 4)
-│   ├── app/
-│   │   ├── page.tsx                 # Landing page
-│   │   ├── layout.tsx               # Root layout (SEO, fonts, analytics)
-│   │   ├── login/                   # Unified auth (login + register)
-│   │   ├── forgot-password/         # Password recovery flow
-│   │   ├── reset-password/          # Password reset page
-│   │   ├── verify-email/            # Email verification
-│   │   ├── verify-email-sent/       # Verification sent confirmation
-│   │   ├── privacy-policy/          # Legal — Privacy Policy
-│   │   ├── terms-of-service/        # Legal — Terms of Service
-│   │   ├── cookie-settings/         # Cookie consent manager
-│   │   ├── not-found.tsx            # Custom 404 page
-│   │   ├── sitemap.ts               # Dynamic sitemap generation
-│   │   ├── robots.ts                # Robots.txt configuration
-│   │   └── (session)/               # Authenticated routes
-│   │       ├── layout.tsx           # Session layout + DynamicIsland
-│   │       ├── hub/                 # Room list + QR scanner
-│   │       └── room/[id]/           # Room page (sync engine)
-│   ├── components/
-│   │   ├── DynamicIsland.tsx        # Persistent floating player
-│   │   ├── SortableTrackItem.tsx    # Drag-and-drop queue item
-│   │   ├── NetworkStats.tsx         # Live latency/jitter panel
-│   │   ├── Hero.tsx                 # Landing hero section
-│   │   ├── Features.tsx             # Feature showcase
-│   │   ├── HowItWorks.tsx           # Step-by-step guide
-│   │   ├── About.tsx                # About section
-│   │   ├── Contact.tsx              # Contact form
-│   │   ├── Navbar.tsx               # Navigation bar
-│   │   ├── Footer.tsx               # Site footer
-│   │   └── ThemeToggle.tsx          # Dark/light mode switch
-│   ├── hooks/
-│   │   ├── useRoom.ts              # Socket.IO room + NTP sync + drift correction
-│   │   ├── useAudioPlayer.ts       # HTMLAudioElement wrapper with sync
-│   │   ├── useNetworkStats.ts      # Latency/jitter measurement
-│   │   └── useSpatialAudio.ts      # Web Audio API spatial positioning
-│   ├── context/
-│   │   ├── AudioContext.tsx         # Global audio state
-│   │   ├── AuthContext.tsx          # JWT + user session
-│   │   ├── UploadContext.tsx        # Drag-and-drop upload state
-│   │   ├── SyncContext.tsx          # Clock offset sharing
-│   │   └── ThemeProvider.tsx        # Theme persistence
-│   └── lib/
-│       ├── api.ts                   # Typed fetch wrapper
-│       ├── socket.ts               # Socket.IO client singleton
-│       ├── types.ts                 # Shared TypeScript interfaces
-│       └── utils.ts                 # Utility functions
-│
-├── syncbeats-server/                 # Express 5 + Socket.IO 4
-│   ├── src/
-│   │   ├── server.ts                # Entry point + route registration
-│   │   ├── core/
-│   │   │   ├── Room.ts              # Playback state machine (EventEmitter)
-│   │   │   ├── RoomManager.ts       # Singleton room registry
-│   │   │   └── PlaybackState.ts     # Playback state enum
-│   │   ├── sync/
-│   │   │   └── SyncEngine.ts        # NTP clock sync (strategy pattern)
-│   │   ├── handlers/
-│   │   │   ├── SocketHandler.ts     # WebSocket event dispatcher
-│   │   │   ├── RoomRoutes.ts        # REST: rooms, queue, reorder
-│   │   │   ├── AuthRoutes.ts        # REST: auth endpoints
-│   │   │   ├── UploadRoutes.ts      # REST: S3 file upload
-│   │   │   └── DeviceRoutes.ts      # REST: device trust
-│   │   ├── db/
-│   │   │   ├── RoomRepository.ts    # Prisma data-access
-│   │   │   └── prisma.ts            # Prisma singleton
-│   │   ├── auth/
-│   │   │   ├── AuthService.ts       # Auth business logic
-│   │   │   ├── authMiddleware.ts    # JWT middleware
-│   │   │   └── UserRepository.ts    # User data-access
-│   │   ├── store/
-│   │   │   ├── IStateStore.ts       # State store interface
-│   │   │   └── StorageService.ts    # Storage abstraction
-│   │   ├── utils/
-│   │   │   └── s3.ts                # AWS S3 client (lazy init + sanitization)
-│   │   ├── types/
-│   │   │   └── index.ts             # Server-side type definitions
-│   │   └── events/
-│   │       └── EventBus.ts          # Typed singleton observer
-│   └── prisma/
-│       └── schema.prisma            # Database schema
-│
-├── .github/workflows/
-│   └── syncbeats-CD.yml             # CI/CD pipeline (GitHub Actions)
-├── docker-compose.yml               # Production: 4 services
-├── docker-compose.dev.yml           # Development override
-└── .env                             # Environment variables
-```
+
+Clock estimation and drift correction run in the frontend hooks. The server
+responds to sync pings and schedules playback through the Room state machine.
 
 ---
 
@@ -150,7 +97,7 @@ git clone https://github.com/Smanikanta21/sync-beats.git
 cd sync-beats
 
 # Install backend dependencies
-cd syncbeats-server && npm install
+cd dev/syncbeats-server && npm install
 
 # Install frontend dependencies
 cd ../frontend && npm install
@@ -184,7 +131,7 @@ Create a `.env` file in the project root:
 ### 3. Database Setup
 
 ```bash
-cd syncbeats-server
+cd dev/syncbeats-server
 npx prisma generate
 npx prisma db push     # Development
 npx prisma migrate dev # Or run migrations
@@ -194,15 +141,25 @@ npx prisma migrate dev # Or run migrations
 
 ```bash
 # Terminal 1 — Backend (port 4000)
-cd syncbeats-server
+cd dev/syncbeats-server
 npm run dev
 
 # Terminal 2 — Frontend (port 3000)
-cd frontend
+cd dev/frontend
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Validation
+
+Run `npm run typecheck` in each application directory. The compiler rejects
+unused locals and parameters. Run `npm test` in the frontend for the existing
+lyrics parsing checks, and in the server for queue behavior checks. Both
+Next.js applications also provide `npm run lint`.
+
+For playback changes, run both development servers and create/join a room in
+two tabs. Verify play, pause, seek, queue changes and reconnects.
 
 ---
 

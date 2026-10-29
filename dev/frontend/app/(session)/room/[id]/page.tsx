@@ -7,15 +7,14 @@ import { useRoom } from "../../../../hooks/useRoom";
 import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
-import { useSpatialAudio, type SpatialMode } from "../../../../hooks/useSpatialAudio";
 
 import { useSyncInfo } from "../../../../context/SyncContext";
 import { useConnection } from "../../../../context/ConnectionContext";
+import { useLoadingTasks } from "../../../../context/LoadingContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
 import { FluidField } from "../../../../components/fluid/FluidField";
 import { getTrackThumbnailUrl } from "../../../../lib/colorExtractor";
-import { getSocket } from "../../../../lib/socket";
 import { cn } from "../../../../lib/utils";
 
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
@@ -67,6 +66,31 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const connectionError = joinStatus === "denied" || joinStatus === "not_found" || isTimedOut;
+  const { setLoadingTask } = useLoadingTasks();
+
+  useEffect(() => {
+    const task = !connectionError && !snapshot
+      ? {
+          title: authLoading
+            ? "Restoring your session"
+            : joinStatus === "pending"
+              ? "Waiting for host approval"
+              : isConnected
+                ? "Loading your room"
+                : "Connecting to your room",
+          detail: authLoading
+            ? "Checking your account before joining."
+            : joinStatus === "pending"
+              ? "The room is private. The host will see your request shortly."
+              : isConnected
+              ? "Fetching the queue, listeners, and current playback state."
+              : "Establishing the room connection and measuring this device's clock against the server.",
+          priority: 8,
+        }
+      : null;
+    setLoadingTask(`room:${roomId}`, task);
+    return () => setLoadingTask(`room:${roomId}`, null);
+  }, [authLoading, isConnected, snapshot, connectionError, roomId, setLoadingTask]);
 
   // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
   useEffect(() => {
@@ -152,43 +176,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     setPrefetch, setPlay, setPause, setSeek, setNextTrack, setPrevTrack
   ]);
 
-  // ── Spatial ───────────────────────────────────────────────────────────────
-  // "My Space" surrounds you with your own devices; "Room" uses everybody's.
-  const [spatialMode, setSpatialMode] = useState<SpatialMode>('solo');
-  const [spatialEnabled, setSpatialEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    try {
-      const stored = localStorage.getItem('syncbeats:spatialEnabled');
-      return stored === null ? true : stored === 'true';
-    } catch { return true; }
-  });
-
-  const handleSpatialEnabledChange = useCallback((enabled: boolean) => {
-    setSpatialEnabled(enabled);
-    try { localStorage.setItem('syncbeats:spatialEnabled', String(enabled)); } catch {}
-  }, []);
-
-  const {
-    layout: spatialLayout,
-    updatePosition: updateSpatialPosition,
-    previewPosition: previewSpatialPosition,
-    commitPosition: commitSpatialPosition,
-    resetLayout: resetSpatialLayout,
-  } = useSpatialAudio({
-    socket: isConnected ? getSocket() : null,
-    audioCtx: audio.audioCtx,
-    eqOutputNode: audio.eqOutputNode,
-    analyserNode: audio.analyserNode,
-    myDeviceId: currentSocketId ?? "",
-    myUserId: user?.id ?? "",
-    roomId: roomId,
-    enabled: isConnected && spatialEnabled,
-    initialDevices: snapshot?.spatial ?? [],
-    participants: participants,
-    isPlaying: snapshot?.isPlaying ?? false,
-    clockOffset: clockOffset,
-    mode: spatialMode,
-  });
   // Playback actions (wired to socket via useRoom)
   const handlePlay = useCallback(() => play(), [play]);
   const handlePause = useCallback(() => pause(), [pause]);
@@ -198,7 +185,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   const handleLeave = useCallback(() => {
     leave();
-    router.push("/");
+    router.push("/hub");
   }, [leave, router]);
 
 
@@ -319,15 +306,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           isPlaying={isPlaying}
           deviceSyncProgress={deviceSyncProgress}
           isPrivate={isPrivate}
-          spatialLayout={spatialLayout}
-          spatialMode={spatialMode}
-          onSpatialModeChange={setSpatialMode}
-          onUpdateSpatialPosition={updateSpatialPosition}
-          onPreviewSpatialPosition={previewSpatialPosition}
-          onCommitSpatialPosition={commitSpatialPosition}
-          onResetSpatialLayout={resetSpatialLayout}
-          spatialEnabled={spatialEnabled}
-          onSpatialEnabledChange={handleSpatialEnabledChange}
           audio={{
             isPlaying: audio.isPlaying,
             isReady: audio.isReady,

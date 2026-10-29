@@ -1,3 +1,6 @@
+// Copy of dev/syncbeats-server/prisma/schema.prisma, kept in a second file only
+// because this app builds from its own Docker context (`./dev/db-visualizer`),
+// which cannot reach the server's schema. Re-copy after any server migration.
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"

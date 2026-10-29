@@ -10,10 +10,9 @@ import { motion, useMotionValue, useSpring } from "framer-motion";
  * it. Only activates on fine-pointer, hover-capable devices that have not
  * asked for reduced motion.
  *
- * Uses the CSS `--foreground` variable so the cursor is always visible
- * regardless of the current theme — no mix-blend-mode tricks needed.
- * (mix-blend-difference was previously broken because each z-indexed fixed
- * element forms its own stacking context, making the blend invisible.)
+ * Both shapes live in one blending layer. `difference` inverts the surface
+ * beneath them, so the cursor naturally reads dark on a light magnetic fill
+ * and light on the page without tracking theme or card state.
  */
 
 const RING = 32;
@@ -56,7 +55,7 @@ export function CustomCursor() {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!fine || reduced) return;
 
-    setEnabled(true);
+    const enableFrame = requestAnimationFrame(() => setEnabled(true));
     document.documentElement.classList.add(TAKEOVER);
 
     // The one failure this has already hit, and which neither tsc nor eslint
@@ -95,6 +94,7 @@ export function CustomCursor() {
 
     return () => {
       document.documentElement.classList.remove(TAKEOVER);
+      cancelAnimationFrame(enableFrame);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerdown", down);
       window.removeEventListener("pointerup",   up);
@@ -105,7 +105,7 @@ export function CustomCursor() {
   if (!enabled) return null;
 
   return (
-    <>
+    <div aria-hidden="true" className="contrast-pointer-layer pointer-events-none fixed inset-0 z-99999">
       {/* Trailing ring */}
       <motion.span
         aria-hidden="true"
@@ -116,14 +116,13 @@ export function CustomCursor() {
           height:     RING,
           marginLeft: -RING / 2,
           marginTop:  -RING / 2,
-          borderColor: "var(--foreground)",
         }}
         animate={{
           scale:   pressed ? 0.72 : hovering ? 1.6 : 1,
           opacity: visible ? (hovering ? 0.85 : 0.45) : 0,
         }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        className="pointer-events-none fixed top-0 left-0 z-99999 rounded-full border-2"
+        className="contrast-pointer-ring absolute top-0 left-0 rounded-full border-2"
       />
       {/* Sharp center dot */}
       <motion.span
@@ -135,15 +134,14 @@ export function CustomCursor() {
           height:     DOT,
           marginLeft: -DOT / 2,
           marginTop:  -DOT / 2,
-          backgroundColor: "var(--foreground)",
         }}
         animate={{
           scale:   hovering ? 0 : pressed ? 0.5 : 1,
           opacity: visible ? 1 : 0,
         }}
         transition={{ type: "spring", stiffness: 700, damping: 32 }}
-        className="pointer-events-none fixed top-0 left-0 z-99999 rounded-full"
+        className="contrast-pointer-dot absolute top-0 left-0 rounded-full"
       />
-    </>
+    </div>
   );
 }

@@ -6,16 +6,15 @@ let socket: Socket | null = null;
 export function getSocket(): Socket {
   if (!socket) {
     const serverUrl = getServerUrl();
-    
-    // If we're using the /api prefix (remote VM), route through /api/socket.io
-    const isRelativeApi = serverUrl === '/api';
-    const socketUrl = isRelativeApi ? (typeof window !== 'undefined' ? window.location.origin : undefined) : serverUrl;
-    const socketPath = isRelativeApi ? '/api/socket.io' : '/socket.io';
+    const usesApiProxy = serverUrl === '/api';
+    const socketUrl = usesApiProxy
+      ? (typeof window !== 'undefined' ? window.location.origin : undefined)
+      : serverUrl;
 
     socket = io(socketUrl, {
       autoConnect: false,
       transports: ["websocket"],
-      path: socketPath,
+      path: usesApiProxy ? '/api/socket.io' : '/socket.io',
       withCredentials: true,
       reconnectionDelay: 3000,
       reconnectionDelayMax: 10000,

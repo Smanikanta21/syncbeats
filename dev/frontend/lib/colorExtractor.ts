@@ -168,36 +168,6 @@ function processImageData(imgData: Uint8ClampedArray): [string, string] | null {
   return [color1, color2];
 }
 
-/** Parse a hex color to { h, s, l } (h: 0–360, s: 0–100, l: 0–100) */
-export function hexToHsl(hex: string): { h: number; s: number; l: number } {
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.substring(0, 2), 16);
-  const g = parseInt(clean.substring(2, 4), 16);
-  const b = parseInt(clean.substring(4, 6), 16);
-  return rgbToHsl(r, g, b);
-}
-
-export function colorsToAmbientHues(primaryHex: string, accentHex: string) {
-  const { h: h1 } = hexToHsl(primaryHex);
-  const { h: h2 } = hexToHsl(accentHex);
-
-  const lerpHue = (t: number) => {
-    let diff = h2 - h1;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    return (h1 + diff * t + 360) % 360;
-  };
-
-  return {
-    subHue:      Math.round(lerpHue(0)),
-    bassHue:     Math.round(lerpHue(0.1)),
-    lowMidHue:   Math.round(lerpHue(0.33)),
-    midHue:      Math.round(lerpHue(0.5)),
-    upperMidHue: Math.round(lerpHue(0.67)),
-    highHue:     Math.round(lerpHue(1)),
-  };
-}
-
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 function extractRelaxed(imgData: Uint8ClampedArray): [string, string] | null {

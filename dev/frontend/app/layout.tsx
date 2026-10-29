@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Syne, JetBrains_Mono, Instrument_Sans } from "next/font/google";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
@@ -14,27 +14,26 @@ import SmoothScrolling from "../components/SmoothScrolling";
 import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
-import { cn } from "@/lib/utils";
-import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
+import { IOSHomeScreenPrompt } from '../components/IOSHomeScreenPrompt';
+import { MobileAppGuard } from '../components/MobileAppGuard';
 import { BeatProvider } from "../context/BeatContext";
 import { NavigationProgress } from "../components/NavigationProgress";
 import { CustomCursor } from "../components/CustomCursor";
-
+import { LoadingProvider } from "../context/LoadingContext";
 
 /**
- * Font variables are deliberately named after the typeface, not after the role
- * (`--font-sans` / `--font-mono`). Those role names are Tailwind `@theme` tokens;
- * when next/font also emitted them, both landed on <html> at equal specificity
- * and which one won came down to stylesheet order. Keeping the two layers
- * separate means globals.css maps role -> face in exactly one place.
+ * One face for the whole product. Archivo is a precise grotesque with real
+ * `wght` and `wdth` axes, so display text is the same family set wider and
+ * heavier — headings read as the same instrument as the body rather than as a
+ * second voice. The width axis is why the hero's load gesture (fontStretch
+ * 75% -> 100%, see Hero.tsx) still works: width is a display property here,
+ * not a quirk of a lettering face.
  */
-const instrumentSans = Instrument_Sans({
-  variable: "--font-instrument",
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
   preload: true,
   display: "swap",
-  // Variable font — the full 400-700 range, not pinned instances. The room runs
-  // at high density and leans on weight rather than size for hierarchy.
   axes: ["wdth"],
 });
 
@@ -46,37 +45,17 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "600", "700"],
 });
 
-/**
- * Display face. Syne's width grows with its weight — the glyphs genuinely get
- * wider as they get bolder, which no normal grotesque does. That is why it is
- * here: a heading animating `font-weight` 400 -> 800 reads as amplitude
- * swelling rather than as text turning bold, and amplitude is the product.
- *
- * Loaded variable (no `weight`) so the whole 400-800 range is animatable.
- * Replaces Bricolage Grotesque, whose `wdth` axis served the same gesture but
- * had to be driven through `font-stretch` — an axis most engines refuse to
- * interpolate smoothly, so the animation stepped.
- */
-const syne = Syne({
-  variable: "--font-syne",
-  subsets: ["latin"],
-  preload: true,
-  display: "swap",
-});
-
 const BASE_URL = "https://www.syncbeats.in";
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Pinch-zoom is deliberately left enabled. It was previously blocked with
-  // `maximumScale: 1, userScalable: false`, which Lighthouse reports as both an
-  // accessibility failure and a mobile-usability signal — and the room UI never
-  // needed it: nothing here is a map or a canvas that fights a pinch.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#f1f1ef" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e0f0f" },
   ],
 };
 
@@ -92,7 +71,7 @@ export const metadata: Metadata = {
     default: "SyncBeats | Play one song on every phone in the room",
   },
   description:
-    "Turn every phone, tablet and laptop in the room into one speaker. SyncBeats keeps them under 25 ms apart in the browser — no app, no cables, free.",
+    "Turn phones, tablets and laptops into one shared listening room. SyncBeats coordinates playback across your browser devices — no cables, no app required.",
   keywords: [
     "syncbeats",
     "play music on multiple phones at once",
@@ -106,7 +85,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SyncBeats — one song, every phone in the room",
     description:
-      "Share a six-character code and every device becomes a speaker, under 25 ms apart. Free, in the browser.",
+      "Share a six-character code and bring your devices into one listening room. Free, in the browser.",
     url: BASE_URL,
     siteName: "SyncBeats",
     images: [
@@ -124,7 +103,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SyncBeats — one song, every phone in the room",
     description:
-      "Share a six-character code and every device becomes a speaker, under 25 ms apart. Free, in the browser.",
+      "Share a six-character code and bring your devices into one listening room. Free, in the browser.",
     site: "@syncbeatsapp",
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
@@ -188,7 +167,7 @@ const jsonLd = [
     name: "SyncBeats",
     url: BASE_URL,
     description:
-      "SyncBeats plays one song across every phone, tablet and laptop in a room at the same instant — under 25 ms apart, in the browser, with no app to install.",
+      "SyncBeats coordinates shared playback across phones, tablets and laptops in a browser room, with no app to install.",
     applicationCategory: "MusicApplication",
     operatingSystem: "iOS, Android, macOS, Windows, Linux",
     browserRequirements: "Requires a modern browser with Web Audio support",
@@ -203,7 +182,7 @@ const jsonLd = [
       priceCurrency: "USD",
     },
     featureList: [
-      "Synchronized playback under 25 ms across devices",
+      "Shared playback with client-side clock estimation and drift correction",
       "Join by six-character room code or QR scan",
       "Spatial audio routing across participants",
       "Shared queue with YouTube search and Spotify playlist import",
@@ -224,9 +203,21 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${syne.variable} antialiased`}
+      className={`${archivo.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <head>
+        {/* iOS home-screen installs retain the URL used when first installed.
+            Redirect stale root/intro launch URLs before React can paint them. */}
+        <Script id="standalone-room-launch" strategy="beforeInteractive">
+          {`(() => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+              || window.navigator.standalone === true;
+            const path = window.location.pathname.replace(/\\/$/, '') || '/';
+            if (isStandalone && (path === '/' || path === '/intro')) {
+              window.location.replace('/room/default');
+            }
+          })();`}
+        </Script>
         {/* JSON-LD structured data */}
         <script
           type="application/ld+json"
@@ -245,7 +236,7 @@ export default function RootLayout({
           try {
             const isDev = window.location.hostname === 'dev.syncbeats.in' || window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
             let isAdmin = false;
-            
+
             // Read sb_token from cookies
             const match = document.cookie.match(new RegExp('(^| )sb_token=([^;]+)'));
             if (match && match[2]) {
@@ -255,13 +246,13 @@ export default function RootLayout({
                 // Decode base64url
                 const payloadStr = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
                 const payload = JSON.parse(payloadStr);
-                
+
                 if (payload.email === 'siraparapuabhinay21@gmail.com') {
                   isAdmin = true;
                 }
               }
             }
-            
+
             if (isDev || isAdmin) {
               window['ga-disable-G-9D67M1G5XC'] = true;
             }
@@ -280,33 +271,49 @@ export default function RootLayout({
         strategy="lazyOnload"
       />
 
-
-
       <body className="transition-colors duration-300 bg-background text-foreground">
         {/* Replaces the native pointer everywhere, on fine-pointer devices that
             allow motion. Mounted above the providers so it survives navigation. */}
         <CustomCursor />
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
-        <div className="fixed inset-0 pointer-events-none z-0">
-          
+        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+
+          {/* Low-contrast light sources drift across the viewport. Keep the
+              gradients stationary in size and move them on the compositor. */}
+          <div className="ambient-blob-field absolute inset-0 overflow-hidden">
+            <div
+              className="ambient-blob ambient-blob--warm"
+              style={{ background: 'radial-gradient(circle, var(--warm-tint) 0%, transparent 70%)' }}
+            />
+            <div
+              className="ambient-blob ambient-blob--cool"
+              style={{ background: 'radial-gradient(circle, var(--cool-tint) 0%, transparent 70%)' }}
+            />
+            <div
+              className="ambient-blob ambient-blob--warm-secondary"
+              style={{ background: 'radial-gradient(circle, var(--warm-tint) 0%, transparent 70%)' }}
+            />
+          </div>
+
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
           <div className="hidden md:block absolute inset-0">
 
             <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
           </div>
 
-          {/* MOBILE LAYER (Optimized, lightweight) */}
+          {/* MOBILE LAYER (Optimized, lightweight). Temperature, not hue: the
+              warm highlight and cool shadow are the two references the glass
+              sits in. Same tokens the ambient field and the fluid blobs use. */}
           <div className="block md:hidden absolute inset-0">
-            <div className="absolute top-[0%] left-[0%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-violet-600/15 dark:from-violet-900/25 to-transparent animate-pulse duration-[16000ms] will-change-transform" style={{ transform: 'translate(-15%, -15%)' }} />
-            <div className="absolute top-[20%] right-[0%] w-[80vw] h-[80vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-dye-500/15 dark:from-dye-900/25 to-transparent animate-pulse duration-[24000ms] delay-1000 will-change-transform" style={{ transform: 'translateX(15%)' }} />
-            <div className="absolute bottom-[0%] left-[20%] w-[90vw] h-[90vw] bg-[radial-gradient(circle,var(--tw-gradient-stops))] from-blue-500/15 dark:from-blue-900/25 to-transparent animate-pulse duration-[20000ms] delay-500 will-change-transform" style={{ transform: 'translateY(15%)' }} />
             <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.08]" style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
           </div>
 
         </div>
         <SmoothScrolling>
+          <LoadingProvider>
           <NavigationProgress />
           <IOSHomeScreenPrompt />
+          <MobileAppGuard />
           <ThemeProvider>
             <ConnectionProvider>
               <ConnectionStatusModal />
@@ -324,6 +331,7 @@ export default function RootLayout({
           <Toaster position="bottom-right" theme="system" richColors closeButton />
           <Analytics />
           <SpeedInsights />
+          </LoadingProvider>
         </SmoothScrolling>
       </body>
     </html>

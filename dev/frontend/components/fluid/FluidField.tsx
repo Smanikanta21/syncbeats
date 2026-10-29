@@ -19,7 +19,7 @@
  *     was written, exported, and never called by anything until now
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 
 import { useBeatEngine } from "../../context/BeatContext";
@@ -39,9 +39,9 @@ import {
   type Quality,
 } from "./sim";
 
-/** The two brand inks, used whenever album-art dye is off or unavailable. */
-const INK_DYE: [number, number, number] = hexToRgb01("#F72FD0");
-const INK_FIELD: [number, number, number] = hexToRgb01("#1FC8E8");
+/** Neutral slate idle palette, shared visually with the landing atmosphere. */
+const IDLE_DYE: [number, number, number] = hexToRgb01("#94a3b8");
+const IDLE_FIELD: [number, number, number] = hexToRgb01("#64748b");
 
 /**
  * How coarsely a beat's moment is quantised into a shared index.
@@ -80,9 +80,9 @@ type Props = {
   /** Current track's cover art, for the dye palette. */
   coverUrl?: string | null;
   /**
-   * Fires with whether the solver is actually running. The room uses it to hide
-   * SpatialBeatNodes' gradient layer, so the two ambient systems never stack —
-   * and so that component stays the fallback when the fluid can't run.
+   * Fires with whether the solver is actually running. The room uses it to
+   * soften SpatialBeatNodes beneath the fluid, and keeps that layer as a
+   * fallback when the solver can't run.
    */
   onActiveChange?: (active: boolean) => void;
   className?: string;
@@ -115,28 +115,35 @@ export function FluidField({
   // Held in a ref so a new cover never re-renders the component; the RAF loop
   // just starts reading different numbers on its next frame.
   const inkRef = useRef<{ a: [number, number, number]; b: [number, number, number] }>({
-    a: INK_DYE,
-    b: INK_FIELD,
+    a: IDLE_DYE,
+    b: IDLE_FIELD,
+  });
+  const inkTargetRef = useRef<{ a: [number, number, number]; b: [number, number, number] }>({
+    a: IDLE_DYE,
+    b: IDLE_FIELD,
   });
 
   useEffect(() => {
-    if (!settings?.dynamicBackgroundColors || !coverUrl) {
-      inkRef.current = { a: INK_DYE, b: INK_FIELD };
+    if (!isPlaying || !settings?.dynamicBackgroundColors || !coverUrl) {
+      // Keep a slate palette while idle, then let track colors enter gradually
+      // after playback starts.
+      inkRef.current = { a: IDLE_DYE, b: IDLE_FIELD };
+      inkTargetRef.current = { a: IDLE_DYE, b: IDLE_FIELD };
       return;
     }
     let live = true;
     extractTwoColorsFromImage(coverUrl)
       .then(([primary, secondary]) => {
         if (!live) return;
-        inkRef.current = { a: hexToRgb01(primary), b: hexToRgb01(secondary) };
+        inkTargetRef.current = { a: hexToRgb01(primary), b: hexToRgb01(secondary) };
       })
       // Extraction already falls back internally; this only catches a rejected
-      // promise. Staying on the brand inks is the right failure mode.
+      // promise. Staying on the slate idle palette is the right fallback.
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [coverUrl, settings?.dynamicBackgroundColors]);
+  }, [coverUrl, isPlaying, settings?.dynamicBackgroundColors]);
 
   // ── Solver + render loop ────────────────────────────────────────────────────
   // One effect owns the whole lifecycle. It deliberately does NOT depend on
@@ -144,13 +151,14 @@ export function FluidField({
   // play/pause would drop the field and cost a visible hitch. Playback state is
   // read through a ref instead.
   const playingRef = useRef(isPlaying);
-  playingRef.current = isPlaying;
-
   const epochRef = useRef(startEpoch);
-  epochRef.current = startEpoch;
-
   const offsetRef = useRef(clockOffset);
-  offsetRef.current = clockOffset;
+
+  useLayoutEffect(() => {
+    playingRef.current = isPlaying;
+    epochRef.current = startEpoch;
+    offsetRef.current = clockOffset;
+  }, [isPlaying, startEpoch, clockOffset]);
 
   /**
    * Handle onto the running loop's `wake()`. The effect below owns the solver
@@ -166,8 +174,8 @@ export function FluidField({
 
   useEffect(() => {
     if (!wantSim) {
-      setCanRun(false);
-      return;
+      const disableFrame = requestAnimationFrame(() => setCanRun(false));
+      return () => cancelAnimationFrame(disableFrame);
     }
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -272,6 +280,15 @@ export function FluidField({
       const v = visualizer?.dataRef.current;
       const energy = v ? Math.min(1, v.bassEnergy * 0.6 + v.midEnergy * 0.3 + v.trebleEnergy * 0.1) : 0;
 
+      // Album art can change at a track boundary. Ease the dye over the next
+      // couple seconds so the room blooms into the new palette instead of
+      // flashing to it on the first beat.
+      const paletteEase = 1 - Math.exp(-dt / 1.8);
+      for (let channel = 0; channel < 3; channel++) {
+        inkRef.current.a[channel] += (inkTargetRef.current.a[channel] - inkRef.current.a[channel]) * paletteEase;
+        inkRef.current.b[channel] += (inkTargetRef.current.b[channel] - inkRef.current.b[channel]) * paletteEase;
+      }
+
       const target = playingRef.current ? 0.55 + 0.45 * energy : 0;
       intensity += (target - intensity) * Math.min(1, dt * 2.2);
 
@@ -328,7 +345,6 @@ export function FluidField({
     };
     // `isPlaying` / `startEpoch` / the ink palette are all read through refs on
     // purpose — see the note above the effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantSim, tier, subscribeToBeat, visualizer]);
 
   // Resuming playback has to restart a loop that put itself to sleep while
@@ -357,8 +373,11 @@ export function FluidField({
           strictly worse and more code. */}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 h-full w-full"
-        style={{ display: canRun === true ? "block" : "none" }}
+        className="absolute inset-0 h-full w-full transition-opacity duration-[2400ms] ease-out motion-reduce:transition-none"
+        style={{
+          display: canRun === true ? "block" : "none",
+          opacity: isPlaying ? 1 : 0,
+        }}
       />
     </div>
   );

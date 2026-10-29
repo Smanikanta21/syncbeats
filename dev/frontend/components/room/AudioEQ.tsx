@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState, useMemo } from "react";
+import { useRef, useCallback, useEffect, useState, useMemo, useId } from "react";
 import { SlidersHorizontal, RotateCcw, ChevronDown, Lightbulb, Settings, Check, Mic2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSettings, AppSettings } from "../../hooks/useSettings";
@@ -194,6 +194,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
   const { settings, updateSettings } = useSettings();
   const { dataRef } = useVisualizer();
 
+  const tabsId = useId();
   const [activeTab, setActiveTab] = useState<'lyrics' | 'eq'>('lyrics');
 
   const [svgNode, setSvgNode] = useState<SVGSVGElement | null>(null);
@@ -453,14 +454,26 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
      Render
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   return (
-    <div className="w-full h-full flex flex-col relative select-none">
+    <div className="w-full h-full min-h-0 flex flex-col relative select-none">
 
-      {/* Floating Tab switcher on the right */}
-      <div className="absolute -top-2 right-1 flex items-center gap-1 bg-foreground/8 rounded-full p-1 border border-foreground/10 z-50 shadow-md">
+      {/* This header stays outside both the scroll area and the tab exit animation. */}
+      <div role="tablist" aria-label="Lyrics and equalizer"
+        className="relative shrink-0 ml-auto mb-2 flex items-center gap-1 bg-foreground/8 rounded-full p-1 border border-foreground/10 z-50"
+        onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const tab = event.key === 'Home' ? 'lyrics' : event.key === 'End' ? 'eq' : activeTab === 'lyrics' ? 'eq' : 'lyrics';
+          setActiveTab(tab);
+          document.getElementById(tabsId + '-' + tab)?.focus();
+        }}>
+
         <button
+          type="button" role="tab" id={tabsId + '-lyrics'}
+          aria-label="Lyrics" aria-controls={tabsId + '-panel'}
+          aria-selected={activeTab === 'lyrics'} tabIndex={activeTab === 'lyrics' ? 0 : -1}
           onClick={() => setActiveTab('lyrics')}
           className={cn(
-            "flex items-center justify-center w-8 h-8 rounded-full text-[10px] font-black uppercase tracking-wider transition-all",
+            "flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
             activeTab === 'lyrics'
               ? "bg-foreground text-background shadow-sm"
               : "text-foreground/50 hover:text-foreground/80"
@@ -470,9 +483,12 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
           <Mic2 className="w-4 h-4" />
         </button>
         <button
+          type="button" role="tab" id={tabsId + '-eq'}
+          aria-label="Equalizer" aria-controls={tabsId + '-panel'}
+          aria-selected={activeTab === 'eq'} tabIndex={activeTab === 'eq' ? 0 : -1}
           onClick={() => setActiveTab('eq')}
           className={cn(
-            "flex items-center justify-center w-8 h-8 rounded-full text-[10px] font-black uppercase tracking-wider transition-all",
+            "flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
             activeTab === 'eq'
               ? "bg-foreground text-background shadow-sm"
               : "text-foreground/50 hover:text-foreground/80"
@@ -484,7 +500,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
       </div>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end mb-1.5 shrink-0 gap-1.5 relative z-40 pr-24">
+      <div className={cn("items-center justify-end mb-1.5 shrink-0 gap-1.5 relative z-40", activeTab === "eq" ? "flex" : "hidden")}>
 
         {activeTab === 'eq' && (
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -493,7 +509,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
             <button
               type="button"
               onClick={() => setIsPresetOpen(!isPresetOpen)}
-              className="bg-foreground/10 border border-foreground/15 text-foreground/90 text-[10px] sm:text-xs font-bold uppercase tracking-wider px-2.5 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/20 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
+              className="bg-foreground/10 border border-foreground/15 text-foreground/90 text-[10px] sm:text-xs font-bold px-2.5 h-6 rounded-full outline-none cursor-pointer hover:bg-foreground/20 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
             >
               <span className="truncate max-w-21.25 xs:max-w-none">{currentPreset}</span>
               <ChevronDown className={cn("w-3 h-3 text-foreground/50 transition-transform duration-200", isPresetOpen && "rotate-180")} />
@@ -521,12 +537,12 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
                         className={cn(
                           "w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wider uppercase transition-all flex items-center justify-between cursor-pointer",
                           isSelected
-                            ? "bg-field-500/20 text-field-400 border border-field-500/30"
+                            ? "bg-white/15 text-white border border-white/25"
                             : "text-white/80 hover:bg-white/10 hover:text-white border border-transparent"
                         )}
                       >
                         <span className="truncate">{p}</span>
-                        {isSelected && <Check className="w-3 h-3 text-field-400 shrink-0 ml-1" />}
+                        {isSelected && <Check className="w-3 h-3 text-white shrink-0 ml-1" />}
                       </button>
                     );
                   })}
@@ -569,6 +585,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
         {activeTab === 'lyrics' ? (
           <motion.div
             key="lyrics"
+            role="tabpanel" id={tabsId + "-panel"} aria-labelledby={tabsId + "-lyrics"}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -586,6 +603,7 @@ export function AudioEQ({ eqGains, setEqBand, setAllEqBands, onOpenVisuals, trac
         ) : (
           <motion.div
             key="eq"
+            role="tabpanel" id={tabsId + "-panel"} aria-labelledby={tabsId + "-eq"}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

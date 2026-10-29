@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const fiveMinsAgo = new Date(now.getTime() - 5 * 60 * 1000);
     const fifteenMinsAgo = new Date(now.getTime() - 15 * 60 * 1000);
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const osCounts: Record<string, number> = {};

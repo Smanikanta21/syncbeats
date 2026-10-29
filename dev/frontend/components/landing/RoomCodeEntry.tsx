@@ -5,14 +5,15 @@
  *
  * The join flow, carried over verbatim from CircularJoinRing: 4+ characters,
  * upper-cased, straight to `/room/CODE`; clipboard paste while the field is
- * empty; and focus stolen only on fine-pointer devices, because `autoFocus` on
- * touch pops the on-screen keyboard on load and shoves the hero off screen.
+ * empty. The field does not auto-focus, so opening the hub never steals the
+ * pointer or opens a mobile keyboard unexpectedly.
  *
  * The four concentric spinning rings and orbiting device icons are gone — the
- * hero graphic is the WebGL field now, and the ring was competing with it.
+ * hero graphic is the WebGL field now, and the ring was competing with it. The
+ * field waits for an intentional tap instead of stealing focus on page load.
  */
 
-import { useState, useRef, useEffect, ChangeEvent, FormEvent } from "react";
+import { useState, ChangeEvent, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Clipboard } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -21,15 +22,6 @@ import { cn } from "@/lib/utils";
 export function RoomCodeEntry({ className }: { className?: string }) {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Only steal focus on devices with a real pointer. autoFocus on touch pops the
-  // on-screen keyboard the instant the page loads and shoves the hero up.
-  useEffect(() => {
-    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
-      inputRef.current?.focus();
-    }
-  }, []);
 
   const handleJoin = (e: FormEvent) => {
     e.preventDefault();
@@ -62,7 +54,7 @@ export function RoomCodeEntry({ className }: { className?: string }) {
     >
       <label
         htmlFor="room-code"
-        className="font-mono text-data font-medium uppercase tracking-[0.18em] text-foreground/40 select-none"
+        className="text-data font-semibold text-foreground/45 select-none"
       >
         Code
       </label>
@@ -70,7 +62,6 @@ export function RoomCodeEntry({ className }: { className?: string }) {
       <input
         id="room-code"
         name="syncbeats-room-join-code"
-        ref={inputRef}
         type="text"
         inputMode="text"
         maxLength={6}
@@ -84,7 +75,7 @@ export function RoomCodeEntry({ className }: { className?: string }) {
         data-1p-ignore="true"
         data-lpignore="true"
         data-form-type="other"
-        className="w-[7ch] bg-transparent font-mono text-xl font-semibold uppercase tracking-[0.2em] outline-none placeholder:text-foreground/20"
+        className="w-[7ch] bg-transparent font-mono text-xl font-semibold outline-none placeholder:text-foreground/20"
       />
 
       <AnimatePresence initial={false}>
@@ -97,7 +88,7 @@ export function RoomCodeEntry({ className }: { className?: string }) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.18 }}
-            className="ml-auto flex items-center gap-1.5 rounded-xl bg-foreground/5 px-3 py-2.5 font-mono text-data font-medium uppercase tracking-wider text-foreground/50 transition-colors hover:bg-foreground/10 hover:text-foreground/80"
+            className="ml-auto flex items-center gap-1.5 rounded-xl bg-foreground/5 px-3 py-2.5 text-data font-semibold text-foreground/50 transition-colors hover:bg-foreground/10 hover:text-foreground/80"
           >
             <Clipboard className="h-3.5 w-3.5" />
             Paste

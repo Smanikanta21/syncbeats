@@ -108,27 +108,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: err?.message || "Failed to clear logs" }, { status: 500 });
   }
 }
-
-export async function POST(req: NextRequest) {
-  const authErr = requireAdminApi(req);
-  if (authErr) return authErr;
-
-  try {
-    const { action, details, ip } = await req.json();
-    if (!action) {
-      return NextResponse.json({ error: "action is required" }, { status: 400 });
-    }
-
-    const newLog = await prisma.adminAuditLog.create({
-      data: {
-        action: action.toUpperCase(),
-        details: details || null,
-        ip: ip || req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1",
-      },
-    });
-
-    return NextResponse.json({ success: true, log: newLog });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Failed to record log" }, { status: 500 });
-  }
-}

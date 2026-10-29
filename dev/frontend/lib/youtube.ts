@@ -15,6 +15,9 @@ export function ytId(input?: string | null): string | null {
   if (str.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(str)) {
     return str;
   }
+  // Older upload clients appended Date.now() to their P2P YouTube URI.
+  const stamped = str.match(/^ws-p2p:yt:([a-zA-Z0-9_-]{11})_\d{10,13}(?=[?&#]|$)/);
+  if (stamped) return stamped[1];
   const match = str.match(YT_ID_REGEX);
   return match ? match[1] : null;
 }

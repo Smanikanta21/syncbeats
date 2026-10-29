@@ -52,22 +52,6 @@ export function qualityColor(q: NetworkStats["quality"]): string {
   }
 }
 
-export function qualityLabel(q: NetworkStats["quality"]): string {
-  switch (q) {
-    case "excellent": return "Excellent";
-    case "good":      return "Good";
-    case "fair":      return "Fair";
-    case "poor":      return "Poor";
-  }
-}
-
-export function metricColor(value: number, thresholds: [number, number, number]): string {
-  if (value <= thresholds[0]) return "#22c55e";
-  if (value <= thresholds[1]) return "#3b82f6";
-  if (value <= thresholds[2]) return "#f59e0b";
-  return "#ef4444";
-}
-
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function useNetworkStats(enabled: boolean = true, fastPing: boolean = false, roomId?: string): NetworkStats {

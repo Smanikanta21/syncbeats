@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
-import { roomsApi, historyApi, getServerUrl, getAuthToken, youtubeApi } from "../../lib/api";
+import { roomsApi, getServerUrl, getAuthToken, youtubeApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles, History, Clock } from "lucide-react";
+import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Music, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { SearchSkeleton } from "../loaders/SearchSkeleton";
 import { AppFeedback } from "../feedback/AppFeedback";
@@ -20,7 +20,7 @@ interface SearchTabProps {
   roomId: string;
   initialMode: "youtube" | "spotify" | null;
   onBack: () => void;
-  onResultsCountChange: (count: number) => void;
+  onResultsCountChange?: (count: number) => void;
   onModeChange?: (mode: "youtube" | "spotify" | null) => void;
   onLoadingStateChange?: (isLoading: boolean) => void;
   isSearchOnly?: boolean;
@@ -82,9 +82,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // Single-flight async wrappers — prevents duplicate API calls on rapid clicks
   const enqueueAsync = useAsync(async (playlistId: string, source?: string) => {
     if (!token || !roomId) throw new Error('Not authenticated');
-    
+
     let body: any = { playlistId };
-    
+
     if (source === "youtube") {
       const tracksData = await youtubeApi.getPlaylistItems(playlistId);
       if (!tracksData || tracksData.length === 0) throw new Error('Playlist is empty or private.');
@@ -102,8 +102,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
     return res.json();
   });
-
-
 
   const handleSpotifyImport = async (url: string) => {
     if (!token) return;
@@ -149,7 +147,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       let totalTracks = 0;
       let playlistId = "";
       let playlistName = "Spotify Playlist";
-      let coverUrl: string | undefined;
 
       setImportProgress(15);
       setImportStage("indexing");
@@ -179,7 +176,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             totalTracks = data.totalTracks || 0;
             playlistId = data.playlistId || "";
             playlistName = data.playlistName || "Imported Playlist";
-            coverUrl = data.coverUrl;
             setImportStats(prev => ({ ...prev, total: totalTracks }));
             setImportStage("downloading");
             upload.setActiveImport(curr => curr ? { ...curr, playlistName, playlistId, totalTracks, stage: "downloading" } : null);
@@ -244,7 +240,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   // Upload State
   const [uploadQueue, setUploadQueue] = useState<{ id: string, name: string, status: "pending" | "uploading" | "done" | "error" }[]>([]);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const handleUploadFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -268,7 +263,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       }
     }
   }, [roomId, upload, onSuccess]);
-
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
@@ -352,7 +346,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
     // The YouTube playlist fetch has been extracted to its own useEffect below
 
-
     if (!query.trim()) return;
 
     const timer = setTimeout(async () => {
@@ -415,6 +408,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   }, [activeError, onErrorStateChange]);
 
   useEffect(() => {
+    if (!onResultsCountChange) return;
     let total = 0;
     if (mode === "spotify") {
       if (selectedPlaylistId) {
@@ -492,7 +486,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       } catch (err) { console.error(err); } finally { setIsSearching(false); }
     }
   };
-
 
   const handleSpotifySearchEnqueue = async (spotifyUrl: string) => {
     setSpError(null);
@@ -648,7 +641,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       setImporting(false);
     }
   };
-
 
   // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
   const handleSpotifyEnqueue = useCallback(async (playlistId: string, source?: string) => {
@@ -913,8 +905,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           </button>
         )}
         <motion.div 
-          className={cn('flex-1', 'relative', 'h-full', isDraggingOver ? 'ring-2 ring-white/50 rounded-full' : '')}
-          animate={isDraggingOver ? { scale: 1.02, y: [0, -3, 0, 3, 0], transition: { repeat: Infinity, duration: 0.4 } } : { scale: 1, y: 0 }}
+          className="flex-1 relative h-full"
         >
           <input
             name="syncbeats-search-input"
@@ -984,7 +975,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 </label>
               </motion.div>
             )}
-            
+
             {query && mode === "youtube" && query.trim().startsWith("http") && query.includes("youtube.com/playlist") && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center">
@@ -1054,7 +1045,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 src="/demo-make-public.mp4"
               />
               <div className="absolute bottom-2 left-2 pointer-events-none">
-                 <span className="bg-black/60 text-white/80 text-[9px] px-2 py-1 rounded-md uppercase tracking-wider font-bold backdrop-blur-md">How to make public</span>
+                 <span className="bg-black/60 text-white/80 text-[9px] px-2 py-1 rounded-md font-bold backdrop-blur-md">How to make public</span>
               </div>
             </div>
           )}
@@ -1071,7 +1062,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             className="p-5 rounded-3xl bg-foreground/5 border border-foreground/15 shadow-2xl backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
           >
             {/* Ambient Pulsing Background Aura */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
+            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-foreground/5 blur-3xl pointer-events-none" />
             <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-[var(--accent-color)]/10 blur-3xl pointer-events-none" />
 
             {/* Header Info */}
@@ -1083,8 +1074,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 <div>
                   <h4 className="text-sm font-black text-foreground flex items-center gap-2">
                     <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Playlist"}"` : "Importing Playlist"}</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-foreground/10 text-foreground/80 font-bold border border-foreground/15 uppercase tracking-widest">
-                      {importStage === "done" ? "SUCCESS" : "ACTIVE"}
+                    <span className={`micro-label rounded-full border px-2 py-0.5 ${importStage === "done" ? "border-ok-500/20 bg-ok-500/10 text-ok-700 dark:text-ok-400" : "border-foreground/10 bg-foreground/5"}`}>
+                      {importStage === "done" ? "Done" : "In progress"}
                     </span>
                   </h4>
                   <p className="text-xs text-foreground/60 mt-0.5 max-w-[200px] truncate">
@@ -1096,7 +1087,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xl font-black text-foreground font-mono tracking-wider ml-2">
+                <span className="tabular text-xl font-semibold text-foreground ml-2">
                   {Math.round(importProgress)}%
                 </span>
                 {importStage !== "done" && (
@@ -1223,7 +1214,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     </div>
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="text-white text-sm font-bold truncate">{uq.name}</div>
-                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">Local Upload</div>
+                      <div className="text-white/50 text-[10px] truncate">Local Upload</div>
                     </div>
                     <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 text-white">
                       {uq.status === "uploading" ? <Loader2 className="w-4 h-4 animate-spin" /> : uq.status === "done" ? <CheckCircle2 className="w-5 h-5 text-ok-500" /> : uq.status === "error" ? <AlertCircle className="w-5 h-5 text-bad-500" /> : <Loader2 className="w-4 h-4 animate-spin opacity-50" />}
@@ -1232,7 +1223,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 ))}
 
                 {/* Spotify Results */}
-                {spResults.map((r, idx) => (
+                {spResults.map((r) => (
                   <div key={r.id}
                     className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent hover:bg-white/10 transition-all duration-300 group shrink-0">
                     <img src={r.coverUrl || "/placeholder-playlist.png"} loading="eager" decoding="sync" className="w-14 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
@@ -1241,7 +1232,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         {r.name}
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                       </div>
-                      <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.trackCount} Tracks • {r.owner}</div>
+                      <div className="text-white/50 text-[10px] truncate">{r.trackCount} Tracks • {r.owner}</div>
                     </div>
                     <button
                       onClick={() => handleSpotifySearchEnqueue(`https://open.spotify.com/playlist/${r.id}`)}
@@ -1254,7 +1245,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 ))}
 
                 {/* My Spotify Playlists */}
-                {mode === "spotify" && displayedSpotifyPlaylists.map((r, idx) => {
+                {mode === "spotify" && displayedSpotifyPlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
                     upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
@@ -1295,10 +1286,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           {r.name}
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                         </div>
-                        <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.trackCount} Tracks • {r.owner}</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.trackCount} Tracks • {r.owner}</div>
                         {isThisPlaylistImporting && (
-                          <div className="text-cyan-300 text-xs font-extrabold truncate flex items-center gap-1.5 mt-1 bg-cyan-500/20 border border-cyan-500/30 px-2 py-0.5 rounded-md w-fit max-w-full shadow-md">
-                            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-cyan-400" />
+                          <div className="text-foreground/75 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-foreground/5 border border-foreground/10 px-2 py-0.5 rounded-md w-fit max-w-full">
+                            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-foreground/60" />
                             <span>Importing & Enriching ({Math.round(upload.activeImport?.progress ?? 0)}%)</span>
                           </div>
                         )}
@@ -1350,7 +1341,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 })}
 
                 {/* My YouTube Playlists */}
-                {mode === "youtube" && displayedYoutubePlaylists.map((r, idx) => {
+                {mode === "youtube" && displayedYoutubePlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
                     upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
@@ -1391,7 +1382,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           {r.title || r.name}
                           <Play className="w-3.5 h-3.5 text-[#FF0000] shrink-0 fill-current" />
                         </div>
-                        <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.itemCount} Tracks • SyncBeats</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.itemCount} Tracks • SyncBeats</div>
                       </div>
 
                       <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
@@ -1449,7 +1440,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                             )
                           )}
                           <div className="flex-1 min-w-0 pb-1">
-                            <div className="text-white/50 text-[10px] uppercase tracking-widest mb-1 flex items-center justify-between">
+                            <div className="text-white/50 text-[10px] mb-1 flex items-center justify-between">
                               <span>{mode === "youtube" ? "YouTube Playlist" : "Playlist"}</span>
                               {!isEditingPlaylist && mode === "spotify" && (
                                 <button onClick={() => {
@@ -1554,7 +1545,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                     {song.title}
                                     {isMatch && (
                                       <span
-                                        className="text-[9px] border border-(--accent-border) px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0"
+                                        className="text-[9px] border border-(--accent-border) px-1.5 py-0.5 rounded font-bold shrink-0"
                                         style={{ color: "var(--accent-color)", background: "var(--accent-glow)" }}
                                       >
                                         Matches search
@@ -1602,7 +1593,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* Local DB Songs (from Spotify library) */}
                 {dbResults.length > 0 && (
                   <>
-                    <div className="text-[10px] text-white/40 uppercase tracking-widest font-bold px-2 mb-1.5 mt-2">From Spotify Library (DB)</div>
+                    <div className="text-[10px] text-white/40 font-bold px-2 mb-1.5 mt-2">From Spotify Library (DB)</div>
                     {dbResults.map((r, idx) => {
                       const isAdded = addedSongs.has(r.url);
                       return (
@@ -1616,7 +1607,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           </div>
                           <div className="space-y-1 min-w-0 flex-1 pl-1">
                             <div className="text-white text-sm font-bold truncate">{r.title}</div>
-                            <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.uploaderName}</div>
+                            <div className="text-white/50 text-[10px] truncate">{r.uploaderName}</div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
@@ -1631,7 +1622,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   let vId = "";
                                   if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
                                   else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
-                                  
+
                                   setTrackForPlaylistAdd({
                                     id: vId,
                                     title: r.title,
@@ -1666,7 +1657,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       </div>
                       <div className="space-y-1 min-w-0 flex-1 pl-1">
                         <div className="text-white text-sm font-bold truncate">{r.title}</div>
-                        <div className="text-white/50 text-[10px] uppercase tracking-widest truncate">{r.uploaderName}</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.uploaderName}</div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
@@ -1681,7 +1672,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                               let vId = "";
                               if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
                               else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
-                              
+
                               setTrackForPlaylistAdd({
                                 id: vId,
                                 title: r.title,
@@ -1708,7 +1699,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     <p className="mt-4 text-xs text-white/50">Checking connection...</p>
                   </div>
                 )}
-                
+
                 {mode === "youtube" && youtubeConnected === false && (
                   <div className="flex flex-col items-center justify-center text-center py-12 px-4 bg-white/5 rounded-2xl border border-white/10">
                     <div className="w-16 h-16 bg-[#FF0000]/10 rounded-full flex items-center justify-center mb-4">
@@ -1721,7 +1712,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     </a>
                   </div>
                 )}
-                
+
                 {/* Empty State when Connected but no Playlists */}
                 {mode === "youtube" && youtubeConnected === true && myYoutubePlaylists.length === 0 && !loadingPlaylists && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">

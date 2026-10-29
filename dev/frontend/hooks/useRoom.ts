@@ -1,23 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState,useMemo } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { useSyncController } from './useSyncController';
 import { useSyncTelemetry } from './useSyncTelemetry';
 import { getSocket } from '../lib/socket';
 import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
-import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload } from '../lib/types';
+import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload, type TrackActivity } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
 import { toast } from 'sonner';
 import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 import { ytId } from '../lib/youtube';
 
-function isSameTrack(u1?: string | null, u2?: string | null) {
-  if (u1 === u2) return true;
-  if (!u1 || !u2) return false;
-  return (ytId(u1) || u1) === (ytId(u2) || u2);
-}
+import { isSameTrack } from '../lib/trackIdentity';
+import { applyQueueUpdate, normalizeRoomSnapshot, type QueueUpdate } from '../lib/roomState';
+import { resolvePlayableTrack } from '../lib/trackDownload';
+import { updateTransferActivities, visibleTransferActivity } from '../lib/transferActivity';
+import { estimateClockSample } from '../lib/syncClock';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -34,7 +34,7 @@ interface UseRoomReturn {
   pendingRequests: { socketId: string, displayName: string, isNudge?: boolean, userId?: string }[];
   currentSocketId: string | null;
   clockOffset:  number;
-  
+
   allReady:     boolean;      
   play:         () => void;
   pause:        () => void;
@@ -44,7 +44,7 @@ interface UseRoomReturn {
   setReady:     (isReady: boolean) => void;
   setParticipantVolume: (targetSocketId: string, volume: number) => void;
   leave:        () => void;
-  incomingTrack: { title: string, progress: number } | null;
+  incomingTrack: TrackActivity | null;
   deviceSyncProgress: Record<string, number>;
   togglePrivate: (isPrivate: boolean) => void;
   approveJoin:  (targetSocketId: string, displayName: string) => void;
@@ -67,9 +67,9 @@ interface UseRoomReturn {
 
 export function useRoom({ roomId, displayName, userId, authLoading = false }: UseRoomOptions): UseRoomReturn {
   // ── Adaptive network-quality engine ──────────────────────────────────────
-  // paramsRef holds all 7 NTP/drift constants and updates after every burst.
+  // paramsRef holds the adaptive NTP/drift settings and updates after every burst.
   // networkQuality is a reactive string tier for UI display.
-   
+
   const socket = getSocket();
   const { paramsRef, networkQuality, reportBurst } = useAdaptiveSync(socket);
   const audio  = useAudio();
@@ -78,7 +78,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
   const syncRef = useSyncController();
   const sync = syncRef.current;
 
-  const [snapshot,     setSnapshot]     = useState<RoomSnapshot | null>(null);
+  const [snapshot,     setSnapshotState]     = useState<RoomSnapshot | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isConnected,  setIsConnected]  = useState(() => socket.connected);
   const [joinStatus,   setJoinStatus]   = useState<'joined' | 'pending' | 'denied' | 'connecting' | 'not_found'>('connecting');
@@ -86,17 +86,37 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
   const [pendingRequests, setPendingRequests] = useState<{ socketId: string, displayName: string, isNudge?: boolean, userId?: string }[]>([]);
   const [currentSocketId, setCurrentSocketId] = useState<string | null>(() => socket.id ?? null);
   const [clockOffset,  setClockOffset]  = useState(0);
-  const [allReady] = useState(true); // Default true since barrier sync is removed
-  const [incomingTrack, setIncomingTrack] = useState<{ title: string, progress: number } | null>(null);
+  const allReady = participants.length > 0 && participants.every(p => p.isReady || p.isBlocked);
+  const [incomingTrack, setIncomingTrack] = useState<TrackActivity | null>(null);
+  const incomingActivities = useRef(new Map<string, TrackActivity>());
+  const publishIncoming = useCallback((activity: TrackActivity) => {
+    incomingActivities.current = updateTransferActivities(incomingActivities.current, activity);
+    setIncomingTrack(visibleTransferActivity(incomingActivities.current));
+  }, []);
+  const clearIncoming = useCallback(() => {
+    incomingActivities.current.clear();
+    setIncomingTrack(null);
+  }, []);
   const [deviceSyncProgress, setDeviceSyncProgress] = useState<Record<string, number>>({}); 
 
   const audioRef = useRef(audio);
   useEffect(() => { audioRef.current = audio; }, [audio]);
-  
+
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const clockOffsetRef = useRef(clockOffset);
-  
-  useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
+
+  const connectionGenerationRef = useRef(0);
+  const joinedRef = useRef(false);
+  const receivedSnapshotRef = useRef(false);
+  const ntpPromiseRef = useRef<Promise<void> | null>(null);
+  const lazyLoadRef = useRef<{ key: string; controller: AbortController } | null>(null);
+  const pauseOnRejoinRef = useRef(false);
+  const lastCompletionRef = useRef<{ trackUrl: string; playbackInstanceId?: string | null } | null>(null);
+  const setSnapshot = useCallback((update: React.SetStateAction<RoomSnapshot | null>) => {
+    const next = typeof update === 'function' ? update(snapshotRef.current) : update;
+    snapshotRef.current = next;
+    setSnapshotState(next);
+  }, []);
   useEffect(() => { clockOffsetRef.current = clockOffset; }, [clockOffset]);
 
   // Bind SyncController to the audio system + refs (runs once)
@@ -126,7 +146,12 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
   const reportedBlockedRef = useRef<boolean | null>(null);
 
   const setReady = useCallback((isReady: boolean) => {
-    socket.emit('room:clientReady', { roomId, isReady });
+    const snap = snapshotRef.current;
+    if (!socket.connected || !joinedRef.current || !snap?.trackUrl) return;
+    socket.emit('room:clientReady', {
+      roomId, trackUrl: snap.trackUrl,
+      isReady: isReady && audioRef.current.isReadyForTrack(snap.trackUrl),
+    });
   }, [socket, roomId]);
 
   const getTrackTitle = useCallback((trackUrl: string | null | undefined, queue: TrackQueueItem[] = []) => {
@@ -148,12 +173,12 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         return playingId;
       }
     }
-    
+
     const currentQueueItem = queue.find((item) => item.isCurrent);
     if (currentQueueItem?.title && !currentQueueItem.title.startsWith('youtube:') && currentQueueItem.title !== 'Track') {
       return currentQueueItem.title;
     }
-    
+
     if (!trackUrl) return "Unknown Track";
     const clean = trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '');
     const fileName = clean.split('/').pop() ?? '';
@@ -169,13 +194,48 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     return "SyncBeats Track";
   }, []);
 
-  const loadAndSetTrack = useCallback(async (trackUrl: string | null | undefined, title: string) => {
+  const loadAndSetTrack = useCallback((trackUrl: string | null | undefined, title: string, artist = '') => {
     if (!trackUrl) {
+      if (lazyLoadRef.current) incomingActivities.current.delete('resolve:' + lazyLoadRef.current.key);
+      lazyLoadRef.current?.controller.abort();
+      lazyLoadRef.current = null;
+      setIncomingTrack(visibleTransferActivity(incomingActivities.current));
       audioRef.current.clearTrack();
       return;
     }
-    audioRef.current.setTrack(trackUrl, title);
-  }, []);
+    if (trackUrl.startsWith('spotify-lazy:')) {
+      const item = snapshotRef.current?.queue.find(track => track.trackUrl === trackUrl);
+      if (!item || lazyLoadRef.current?.key === item.id) return;
+      lazyLoadRef.current?.controller.abort();
+      const controller = new AbortController();
+      lazyLoadRef.current = { key: item.id, controller };
+      audioRef.current.clearTrack();
+      const operation: TrackActivity = { id: 'resolve:' + item.id, roomId, title, trackUrl, status: 'active', progress: 0, indeterminate: true };
+      publishIncoming(operation);
+      void resolvePlayableTrack(item, roomId, controller.signal).then(() => {
+        if (!controller.signal.aborted) publishIncoming({ ...operation, status: 'complete', progress: 100 });
+        if (!controller.signal.aborted && socket.connected && joinedRef.current) socket.emit('room:resync', { roomId });
+      }).catch(error => {
+        if (!controller.signal.aborted) {
+          const message = error instanceof Error ? error.message : 'Could not prepare this track';
+          publishIncoming({ ...operation, status: 'failed', error: message });
+          toast.error(message);
+        }
+      }).finally(() => {
+        if (lazyLoadRef.current?.controller === controller) {
+          lazyLoadRef.current = null;
+        }
+      });
+      return;
+    }
+    if (lazyLoadRef.current) {
+      lazyLoadRef.current.controller.abort();
+      incomingActivities.current.delete('resolve:' + lazyLoadRef.current.key);
+      lazyLoadRef.current = null;
+      setIncomingTrack(visibleTransferActivity(incomingActivities.current));
+    }
+    audioRef.current.setTrack(trackUrl, title, artist);
+  }, [roomId, socket, publishIncoming]);
 
   const applyRoomDetails = useCallback((details: RoomDetailsResponse) => {
     let snap: RoomSnapshot | null = null;
@@ -239,36 +299,44 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     if (snap) {
       setSnapshot(snap);
       setParticipants(parts);
-      const currentParticipant = parts.find(p => p.socketId === currentSocketId);
+      const currentParticipant = parts.find(p => p.socketId === socket.id);
       if (currentParticipant) audioRef.current.setVolume(currentParticipant.volume);
 
       if (snap.trackUrl) {
         loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
       }
     }
-  }, [roomId, currentSocketId, getTrackTitle]);
+  }, [roomId, socket, getTrackTitle, loadAndSetTrack, setSnapshot]);
 
-  const pingOnce = useCallback((seq: number) => new Promise<{ t0: number; t1: number; t3: number }>((resolve) => {
+  const pingOnce = useCallback((seq: number) => new Promise<{ t0: number; t1: number; t2: number; t3: number; elapsedMs: number }>((resolve) => {
     const t0 = Date.now();
+    const perf0 = performance.now();
     const timeout = window.setTimeout(() => {
       socket.off('sync:pong', onPong);
-      resolve({ t0, t1: t0, t3: Date.now() });
+      const elapsedMs = performance.now() - perf0;
+      resolve({ t0, t1: Number.NaN, t2: Number.NaN, t3: t0 + elapsedMs, elapsedMs });
     }, 1000);
 
-    const onPong = ({ t1, seq: pongSeq }: { t1: number; seq?: number }) => {
+    const onPong = ({ t1, t2, seq: pongSeq }: { t1: number; t2: number; seq?: number }) => {
       if (pongSeq !== seq) return;
       window.clearTimeout(timeout);
       socket.off('sync:pong', onPong);
-      resolve({ t0, t1, t3: Date.now() });
+      // Reconstruct receive wall-time from monotonic elapsed time. This keeps
+      // OS clock corrections during an in-flight ping out of the offset math.
+      const elapsedMs = performance.now() - perf0;
+      resolve({ t0, t1, t2, t3: t0 + elapsedMs, elapsedMs });
     };
 
     socket.on('sync:pong', onPong);
     socket.emit('sync:ping', { t0, seq });
   }), [socket]);
 
-  const runNtpBurst = useCallback(async () => {
-    if (syncInFlightRef.current) return;
+  const runNtpBurst = useCallback((): Promise<void> => {
+    if (!socket.connected) return Promise.resolve();
+    if (ntpPromiseRef.current) return ntpPromiseRef.current;
+    const generation = connectionGenerationRef.current;
     syncInFlightRef.current = true;
+    const work = (async () => {
 
     // Read adaptive params snapshot for this burst
     const p = paramsRef.current; // paramsRef is a stable ref — no dep needed
@@ -277,16 +345,19 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
     for (let i = 0; i < p.NTP_SAMPLE_COUNT; i++) {
       const seq = ++seqRef.current;
-      const { t0, t1, t3 } = await pingOnce(seq);
-      const rtt = t3 - t0;
+      const { t0, t1, t2, t3, elapsedMs } = await pingOnce(seq);
+      if (generation !== connectionGenerationRef.current || !socket.connected) return;
+      const sample = estimateClockSample({ t0, t1, t2, t3 });
+      const validServerSample = Number.isFinite(t1) && Number.isFinite(t2) && Number.isFinite(sample.rttMs) && sample.rttMs >= 0;
+      const rtt = validServerSample ? sample.rttMs : elapsedMs;
       rttSamples.push(rtt); // always collect, even noisy ones
-      if (rtt <= p.NTP_RTT_GATE_MS) {
-        const offset = t1 - (t0 + t3) / 2;
-        offsetSamples.push({ offset, rtt });
+      if (validServerSample && rtt <= p.NTP_RTT_GATE_MS) {
+        offsetSamples.push({ offset: sample.offsetMs, rtt });
       }
       await new Promise(r => setTimeout(r, p.NTP_PING_GAP_MS));
     }
 
+    if (generation !== connectionGenerationRef.current || !socket.connected) return;
     if (offsetSamples.length > 0) {
       // Sort by RTT ascending to select samples with minimum network delay/asymmetry
       const sortedByRtt = [...offsetSamples].sort((a, b) => a.rtt - b.rtt);
@@ -304,7 +375,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       const bestSamples = cleanSamples.slice(0, Math.max(1, Math.ceil(cleanSamples.length * 0.35)));
       const bestOffsets = bestSamples.map(s => s.offset).sort((a, b) => a - b);
       const median = bestOffsets[Math.floor(bestOffsets.length / 2)];
-      
+
       // EWMA blend to smooth network jitter. If we already have a sync, 
       // blend the new measurement (20% new, 80% old) unless it's a massive shift (>100ms).
       if (hasClockSync.current) {
@@ -325,20 +396,29 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     // Also store them for ML telemetry batching
     lastBurstRttsRef.current = rttSamples.slice();
 
-    syncInFlightRef.current = false;
-  }, [pingOnce, reportBurst, roomId]); // paramsRef is a stable ref, not listed
+    sync.resetClockBaseline();
+    })().finally(() => {
+      if (ntpPromiseRef.current === work) {
+        ntpPromiseRef.current = null;
+        syncInFlightRef.current = false;
+      }
+    });
+    ntpPromiseRef.current = work;
+    return work;
+  }, [pingOnce, reportBurst, roomId, socket, sync]); // paramsRef is a stable ref, not listed
 
   // NTP resync — self-scheduling so the interval dynamically follows paramsRef.
   // Each burst schedules the next one after it finishes, reading the current
   // adaptive resync delay at that point in time.
   useEffect(() => {
     let cancelled = false;
-    let timer: number;
+    let timer: number | undefined;
 
     const scheduleNext = () => {
-      if (cancelled) return;
+      if (cancelled || document.visibilityState !== 'visible') return;
       // Read delay fresh from adaptive params at scheduling time
       timer = window.setTimeout(async () => {
+        timer = undefined;
         if (!cancelled) {
           await runNtpBurst();
           scheduleNext();
@@ -346,52 +426,95 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       }, paramsRef.current.NTP_RESYNC_INTERVAL_MS);
     };
 
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') {
+        if (timer !== undefined) window.clearTimeout(timer);
+        timer = undefined;
+        return;
+      }
+      if (joinedRef.current && socket.connected) {
+        void runNtpBurst().finally(scheduleNext);
+      } else {
+        scheduleNext();
+      }
+    };
+
     scheduleNext();
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [runNtpBurst]); // paramsRef is a stable ref, safe to omit
+  }, [runNtpBurst, socket]); // paramsRef is a stable ref, safe to omit
 
   // ── Drift correction — now fully delegated to SyncController ──────────────
-  // The controller's correctDrift() implements 4-tier invisible correction:
-  //   T1: micro-rate (±0.1%, inaudible), T2: soft-seek (masked micro-jumps),
-  //   T3: crossfade (quick fade-seek), T4: emergency snap.
+  // Keep pitch fixed at 1.0; use a short crossfade for larger drift. A low-rate
+  // timer avoids waking mobile browsers 20 times per second for tiny errors.
   useEffect(() => {
-    const BASE_TICK_MS = 50;
-    let accumulated = 0;
-    const driftInterval = setInterval(() => {
-      accumulated += BASE_TICK_MS;
-      if (accumulated >= paramsRef.current.DRIFT_CHECK_INTERVAL_MS) {
-        accumulated = 0;
+    let timer: number | undefined;
+    let cancelled = false;
+    const tick = () => {
+      timer = undefined;
+      if (cancelled || document.visibilityState !== 'visible') return;
+      sync.correctDrift();
+      timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
+    };
+    const onVisibility = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      if (document.visibilityState === 'visible') {
         sync.correctDrift();
+        timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
       }
-    }, BASE_TICK_MS);
+    };
+    if (document.visibilityState === 'visible') {
+      timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
+    }
+    document.addEventListener('visibilitychange', onVisibility);
 
     const handleYtBufferEnd = () => {
-      setTimeout(() => sync.correctDrift(), 200);
+      setTimeout(() => {
+        if (document.visibilityState === 'visible') sync.correctDrift();
+      }, 200);
     };
     document.addEventListener('ytBufferEnd', handleYtBufferEnd);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        sync.resetClockBaseline();
-        runNtpBurst().then(() => sync.correctDrift()).catch(() => sync.correctDrift());
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
-      clearInterval(driftInterval);
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []); // sync is a stable ref — intentional empty dep
+  }, [sync, paramsRef]);
+
+  useEffect(() => {
+    receivedSnapshotRef.current = false;
+    joinedRef.current = false;
+    hasClockSync.current = false;
+    setSnapshot(null);
+    clearIncoming();
+    setDeviceSyncProgress({});
+    lastCompletionRef.current = null;
+    sync.updateRoom({ roomId });
+    return () => {
+      connectionGenerationRef.current++;
+      joinedRef.current = false;
+      lazyLoadRef.current?.controller.abort();
+      lazyLoadRef.current = null;
+      sync.idle();
+      audioRef.current.clearTrack();
+    };
+  }, [roomId, setSnapshot, sync, clearIncoming]);
 
   useEffect(() => {
     let cancelled = false;
 
     const handleConnect = () => {
+      connectionGenerationRef.current++;
+      ntpPromiseRef.current = null;
+      joinedRef.current = false;
+      hasClockSync.current = false;
       setIsConnected(true);
       setCurrentSocketId(socket.id ?? null);
       // If we already have a snapshot (we've been in this room before), this is a
@@ -407,119 +530,123 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         displayName, 
         userId,
         deviceId: getDeviceId(),
-        isReady: audioRef.current.isReady && !audioRef.current.isBuffering 
+        isReady: false // readiness is re-declared for the accepted snapshot's track
       });
       runNtpBurst();
     };
 
     const handleDisconnect = () => {
+      connectionGenerationRef.current++;
+      ntpPromiseRef.current = null;
+      joinedRef.current = false;
+      hasClockSync.current = false;
       setIsConnected(false);
-      setIsReconnecting(false);
-      audioRef.current.pauseAt(audioRef.current.getTruePosition());
+      setIsReconnecting(!!snapshotRef.current);
+      audioRef.current.cancelPendingStart();
+      // Cached audio can continue; shared commands are gated until the room is rejoined.
     };
-
-    if (!authLoading) {
-      if (socket.connected) handleConnect();
-      else socket.connect();
-    }
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
-    const normalizeSnapshot = (raw: any): RoomSnapshot | null => {
-      if (!raw) return null;
-      if (raw.state && typeof raw.state === 'object' && raw.state.roomId) {
-        return raw.state as RoomSnapshot;
+    const applySnapshot = (snap: RoomSnapshot, isJoin = false) => {
+      if (cancelled || snap.roomId !== roomId) return;
+      const previous = snapshotRef.current;
+      if (!isJoin && !joinedRef.current) return;
+      if (!isJoin && previous?.roomInstanceId && snap.roomInstanceId && previous.roomInstanceId !== snap.roomInstanceId) return;
+      if (!isJoin && previous?.queueVersion != null && snap.queueVersion != null && snap.queueVersion < previous.queueVersion) return;
+      const trackChanged = !isSameTrack(previous?.trackUrl, snap.trackUrl);
+      if (isJoin) {
+        receivedSnapshotRef.current = true;
+        joinedRef.current = true;
+        setJoinStatus('joined');
+        setIsReconnecting(false);
       }
-      if (raw.roomId) return raw as RoomSnapshot;
-      return null;
+      setSnapshot(snap);
+      setParticipants(snap.participants);
+      const completion = lastCompletionRef.current;
+      if (completion && (!isSameTrack(completion.trackUrl, snap.trackUrl) || completion.playbackInstanceId !== snap.playbackInstanceId || !snap.isPlaying)) {
+        lastCompletionRef.current = null;
+      } else if (isJoin && completion?.playbackInstanceId && !pauseOnRejoinRef.current) {
+        // A cached source may finish during transport loss. Report it only after
+        // the server confirms that this exact instance is still current.
+        socket.emit('playback:ended', { roomId, ...completion });
+      }
+      setDeviceSyncProgress(progress => trackChanged ? {} : Object.fromEntries(
+        snap.participants.filter(p => p.socketId in progress).map(p => [p.socketId, p.isReady || p.isBlocked ? 100 : progress[p.socketId]])
+      ));
+      const item = snap.queue.find(track => track.isCurrent || isSameTrack(track.trackUrl, snap.trackUrl));
+      loadAndSetTrack(snap.trackUrl, item?.title || getTrackTitle(snap.trackUrl, snap.queue), item?.artist || '');
+      const before = sync.getGen();
+      if (pauseOnRejoinRef.current && snap.isPlaying) {
+        sync.pause(audioRef.current.getTruePosition());
+        if (isJoin) socket.emit('playback:pause', { roomId });
+      } else {
+        pauseOnRejoinRef.current = false;
+        sync.reconcile(snap);
+      }
+      if (snap.trackUrl && audioRef.current.isReadyForTrack(snap.trackUrl)) setReady(true);
+      if (snap.isPlaying && snap.startEpoch != null && !pauseOnRejoinRef.current && (isJoin || before !== sync.getGen())) {
+        const gen = sync.getGen();
+        const connection = connectionGenerationRef.current;
+        const applyCurrentSchedule = () => {
+          if (cancelled || !joinedRef.current || !hasClockSync.current || connection !== connectionGenerationRef.current) return;
+          sync.applyScheduleIfCurrent(gen, {
+            roomId, roomInstanceId: snap.roomInstanceId,
+            playbackInstanceId: snap.playbackInstanceId,
+            startEpoch: snap.startEpoch!, fromPosition: snap.pauseOffset ?? 0,
+            atEpoch: snap.startEpoch! + (snap.pauseOffset ?? 0) * 1000,
+            trackUrl: snap.trackUrl || undefined,
+          }, clockOffsetRef.current);
+        };
+        if (hasClockSync.current) {
+          // Do not make a live playback event wait behind a new ping burst.
+          // The existing offset is enough to schedule against the epoch; a
+          // background burst then refines it and drift recovery corrects error.
+          applyCurrentSchedule();
+          void runNtpBurst().then(() => sync.correctDrift());
+        } else {
+          // On first join there is no measured offset yet, so wait for the
+          // first burst before translating server epoch to the local clock.
+          void runNtpBurst().then(applyCurrentSchedule);
+        }
+      }
+      if (!isJoin && trackChanged && snap.trackUrl && previous?.isPlaying && userId) {
+        historyApi.logListen(userId, {
+          youtubeId: ytId(snap.trackUrl) || snap.trackUrl,
+          title: item?.title || getTrackTitle(snap.trackUrl, snap.queue),
+          artist: item?.artist || '', thumbnail: item?.thumbnail || item?.coverUrl || '',
+        }).catch(() => {});
+      }
     };
 
-    const handleSnapshot = (rawSnap: RoomSnapshot) => {
-      const snap = normalizeSnapshot(rawSnap);
+    const handleSnapshot = (raw: unknown) => {
+      const snap = normalizeRoomSnapshot(raw, roomId);
       if (!snap) return;
-      setJoinStatus('joined');
-      setIsReconnecting(false); // Reconnect complete — clear the banner
-      setSnapshot(snap);
-      setParticipants(snap.participants || []);
-
-      // Dispatch welcome beat burst for local user entering room
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("syncbeats:welcome-burst"));
-      }
-
-
-      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
-        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
-        // Don't log history on snapshot join — the track may not have been played
-      } else if (!snap.trackUrl) {
-        audioRef.current.clearTrack();
-      }
+      const firstJoin = !receivedSnapshotRef.current;
+      applySnapshot(snap, true);
+      if (firstJoin) window.dispatchEvent(new CustomEvent('syncbeats:welcome-burst'));
+    };
+    const handleStateChanged = (raw: unknown) => {
+      const snap = normalizeRoomSnapshot(raw, roomId);
+      if (snap) applySnapshot(snap);
     };
     socket.on('room:snapshot', handleSnapshot);
+    socket.on('room:stateChanged', handleStateChanged);
 
-    const handleStateChanged = (rawSnap: RoomSnapshot) => {
-      const snap = normalizeSnapshot(rawSnap);
-      if (!snap) return;
-      setSnapshot(snap);
-      setParticipants(snap.participants || []);
-
-      // ── Update SyncController with every server state change ──
-      sync.updateRoom({
-        roomId: snap.roomId,
-        hostId: snap.hostId,
-        isPrivate: snap.isPrivate ?? false,
-        shuffle: snap.shuffle ?? false,
-        repeatMode: snap.repeatMode ?? 'off',
-        pendingPlay: snap.pendingPlay ?? false,
-      });
-
-      // Enforce playback intent through the controller — single authority.
-      if (snap.isPlaying && snap.startEpoch != null) {
-        // Server says playing — update controller intent (drift correction will handle audio)
-        const intent = sync.getIntent();
-        if (intent.state !== 'playing' || intent.startEpoch !== snap.startEpoch) {
-          sync.schedule(snap.startEpoch, snap.pauseOffset ?? 0, snap.trackUrl ?? null);
-        }
-      } else if (!snap.isPlaying) {
-        // Server says paused — controller immediately stops audio.
-        // Only fire on an actual change: pause() bumps `gen`, and a stray bump
-        // cancels an in-flight schedule. Queue reorders and volume changes also
-        // arrive here with isPlaying=false.
-        const intent = sync.getIntent();
-        const nextOffset = snap.pauseOffset ?? 0;
-        if (intent.state !== 'paused' || intent.pauseOffset !== nextOffset) {
-          sync.pause(nextOffset);
-        }
-      }
-
-      // Track changes
-      if (snap.trackUrl && !isSameTrack(audioRef.current.trackUrl, snap.trackUrl)) {
-        const previouslyPlaying = snapshotRef.current?.isPlaying ?? false;
-        sync.setTrack(snap.trackUrl);
-        loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
-        // Only log history when the previous track was actually playing before the switch.
-        // This prevents skips, jumpTo, and playlist enqueues from polluting listen history.
-        if (userId && snap.trackUrl && previouslyPlaying) {
-          const currentItem = snap.queue?.find(q => q.isCurrent || q.trackUrl === snap.trackUrl);
-          const title = currentItem?.title || getTrackTitle(snap.trackUrl, snap.queue);
-          const artist = currentItem?.artist || currentItem?.addedByName || '';
-          const thumbnail = currentItem?.thumbnail || currentItem?.coverUrl || '';
-          const youtubeId = snap.trackUrl.replace(/^(?:youtube:|ws-p2p:yt:)/, '').split('?')[0];
-
-          historyApi.logListen(userId, {
-            youtubeId,
-            title,
-            artist,
-            thumbnail,
-          }).catch(() => {});
-        }
-      } else if (!snap.trackUrl) {
-        sync.idle();
-        audioRef.current.clearTrack();
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      sync.resetClockBaseline();
+      if (!socket.connected) { socket.connect(); return; }
+      if (joinedRef.current) {
+        hasClockSync.current = false;
+        socket.emit('room:resync', { roomId });
+        void runNtpBurst().then(() => sync.correctDrift());
       }
     };
-    socket.on('room:stateChanged', handleStateChanged);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    window.addEventListener('pageshow', refreshOnReturn);
+    window.addEventListener('online', refreshOnReturn);
 
     const handleParticipantJoined = (p: Participant) => {
       setParticipants(prev => {
@@ -558,38 +685,48 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         delete copy[socketId];
         return copy;
       });
+      for (const activity of incomingActivities.current.values()) {
+        if (activity.socketId === socketId && activity.status === 'active') publishIncoming({ ...activity, status: 'cancelled' });
+      }
     };
     socket.on('room:participantLeft', handleParticipantLeft);
 
-    // Register OS System Media Controls (macOS Menu Bar / Control Center / iOS / Android)
-    if (typeof window !== "undefined" && "mediaSession" in navigator) {
-      const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
-        try {
-          navigator.mediaSession.setActionHandler(action, handler);
-        } catch (e) {}
-      };
-
-      setHandler("previoustrack", () => {
-        prevTrack();
-      });
-      setHandler("nexttrack", () => {
-        nextTrack();
-      });
-    }
-
-    const handleUploadProgress = ({ title, progress }: { title: string; progress: number }) => {
-      if (progress >= 100) {
-        setIncomingTrack(null);
-      } else {
-        setIncomingTrack({ title, progress });
+    const uploadExpiry = new Map<string, ReturnType<typeof setTimeout>>();
+    const handleUploadProgress = ({ roomId: progressRoom, title, progress, status, operationId, socketId, trackUrl, indeterminate, error }: {
+      roomId?: string; title: string; progress: number; status?: string; operationId?: string; socketId?: string;
+      trackUrl?: string; indeterminate?: boolean; error?: string;
+    }) => {
+      if ((progressRoom && progressRoom !== roomId) || !Number.isFinite(progress)) return;
+      if (socketId && !snapshotRef.current?.participants.some(p => p.socketId === socketId)) return;
+      const id = `${socketId || 'legacy'}:${operationId || title}`;
+      clearTimeout(uploadExpiry.get(id));
+      uploadExpiry.delete(id);
+      const activity: TrackActivity = { id, roomId, socketId, title, trackUrl, indeterminate, error,
+        progress: Math.max(0, Math.min(100, progress)),
+        status: status === 'failed' || status === 'cancelled' ? status : progress >= 100 || status === 'complete' ? 'complete' : 'active' };
+      publishIncoming(activity);
+      if (activity.status === 'active') {
+        uploadExpiry.set(id, setTimeout(() => {
+          uploadExpiry.delete(id);
+          const latest = incomingActivities.current.get(id);
+          if (latest?.status === 'active') publishIncoming({ ...latest, status: 'failed', error: 'The transfer stopped. Try adding the track again.' });
+        }, 120_000));
       }
     };
     socket.on('room:upload_progress', handleUploadProgress);
 
-    const handleSyncProgress = ({ socketId, progress }: { socketId: string; progress: number }) => {
-      setDeviceSyncProgress(prev => ({ ...prev, [socketId]: progress }));
+    const handleSyncProgress = ({ roomId: progressRoom, socketId, progress, trackUrl }: {
+      roomId?: string; socketId: string; progress: number; trackUrl?: string;
+    }) => {
+      if ((progressRoom && progressRoom !== roomId) || !Number.isFinite(progress)) return;
+      if (trackUrl && !isSameTrack(trackUrl, snapshotRef.current?.trackUrl)) return;
+      const participant = snapshotRef.current?.participants.find(p => p.socketId === socketId);
+      if (!participant) return;
+      if (participant.isReady || participant.isBlocked) progress = 100;
+      setDeviceSyncProgress(prev => ({ ...prev, [socketId]: Math.max(0, Math.min(100, progress)) }));
     };
     socket.on('room:sync_progress', handleSyncProgress);
+    socket.on('room:deviceSyncProgress', handleSyncProgress);
 
     const handleTitleResolved = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -603,52 +740,37 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       window.addEventListener("syncbeats:title-resolved", handleTitleResolved);
     }
 
-    const handleTrackSet = ({ trackUrl, title }: { trackUrl: string; title: string }) => {
-      setDeviceSyncProgress({});
-      loadAndSetTrack(trackUrl, title);
+    const handleTrackSet = ({ roomId: eventRoom, trackUrl, title }: { roomId?: string; trackUrl: string; title: string }) => {
+      if (eventRoom && eventRoom !== roomId) return;
+      if (isSameTrack(snapshotRef.current?.trackUrl, trackUrl)) loadAndSetTrack(trackUrl, title);
     };
     socket.on('room:trackSet', handleTrackSet);
 
-    const handleQueueChangedNew = ({ queue }: { queue: TrackQueueItem[] }) => {
-      setSnapshot((prev) => prev ? { ...prev, queue } : prev);
-
-      const newCurrentItem = queue.find((item) => item.isCurrent);
-
-      if (queue.length === 0) {
-        if (!snapshotRef.current?.isPlaying && !audioRef.current.isPlaying) {
-          audioRef.current.clearTrack();
-        }
-      } else if (newCurrentItem) {
-        const playingUrl = audioRef.current.trackUrl;
-        if (!playingUrl || !isSameTrack(playingUrl, newCurrentItem.trackUrl)) {
-          loadAndSetTrack(newCurrentItem.trackUrl, newCurrentItem.title);
-        }
-      }
+    const handleQueueChangedNew = (update: QueueUpdate) => {
+      if (joinedRef.current) setSnapshot(prev => applyQueueUpdate(prev, update));
     };
     socket.on('room:queueChanged', handleQueueChangedNew);
 
+    const validPlaybackEvent = (payload: { roomId?: string; roomInstanceId?: string }) =>
+      joinedRef.current && (!payload.roomId || payload.roomId === roomId) &&
+      (!payload.roomInstanceId || !snapshotRef.current?.roomInstanceId || payload.roomInstanceId === snapshotRef.current.roomInstanceId);
     const handleSchedule = (payload: PlaybackSchedulePayload) => {
-      setSnapshot(prev => prev ? { ...prev, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition, isPlaying: true, state: PlaybackState.PLAYING, trackUrl: payload.trackUrl ?? prev.trackUrl } : prev);
-      if (payload.trackUrl && !isSameTrack(audioRef.current.trackUrl, payload.trackUrl)) {
-        sync.setTrack(payload.trackUrl);
-        loadAndSetTrack(payload.trackUrl, payload.title || getTrackTitle(payload.trackUrl, snapshotRef.current?.queue ?? []));
-      }
-      // Update controller intent — it now owns the "should we be playing?" decision
-      sync.schedule(payload.startEpoch, payload.fromPosition, payload.trackUrl ?? null);
-      // Fire a fresh NTP burst, then let the controller apply the schedule
-      const genBefore = sync.getGen();
-      runNtpBurst().catch(() => {}).finally(() => {
-        sync.resetClockBaseline();
-        // Only apply if no pause/seek happened during the burst
-        sync.applyScheduleIfCurrent(genBefore, payload, clockOffsetRef.current);
+      const current = snapshotRef.current;
+      if (!current || !validPlaybackEvent(payload) || !Number.isFinite(payload.startEpoch)) return;
+      applySnapshot({
+        ...current, startEpoch: payload.startEpoch, pauseOffset: payload.fromPosition,
+        playbackInstanceId: payload.playbackInstanceId ?? null,
+        isPlaying: true, state: PlaybackState.PLAYING, pendingPlay: false,
+        trackUrl: payload.trackUrl ?? current.trackUrl,
       });
     };
     socket.on('playback:schedule', handleSchedule);
 
     const handlePause = (payload: PlaybackPausePayload) => {
-      setSnapshot(prev => prev ? { ...prev, startEpoch: null, pauseOffset: payload.pauseOffset, isPlaying: false, state: PlaybackState.PAUSED } : prev);
-      // Controller immediately stops audio — no race conditions
-      sync.pause(payload.pauseOffset);
+      const current = snapshotRef.current;
+      if (!current || !validPlaybackEvent(payload)) return;
+      applySnapshot({ ...current, startEpoch: null, pauseOffset: payload.pauseOffset,
+        playbackInstanceId: null, isPlaying: false, pendingPlay: false, state: PlaybackState.PAUSED });
     };
     socket.on('playback:pause', handlePause);
 
@@ -695,7 +817,8 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       sync.idle();
       audioRef.current.clearTrack();
       setSnapshot(prev => prev ? { ...prev, trackUrl: null, queue: [], isPlaying: false, state: PlaybackState.IDLE, startEpoch: null, pauseOffset: 0 } : prev);
-      setIncomingTrack(null);
+      clearIncoming();
+      setDeviceSyncProgress({});
     };
     socket.on('room:reset', handleRoomReset);
 
@@ -716,8 +839,13 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
+    if (!authLoading) {
+      if (socket.connected) handleConnect();
+      else socket.connect();
+    }
+    const bootstrapGeneration = connectionGenerationRef.current;
     roomsApi.get(roomId).then(details => {
-      if (!cancelled && !snapshotRef.current) applyRoomDetails(details);
+      if (!cancelled && !receivedSnapshotRef.current && bootstrapGeneration === connectionGenerationRef.current && !snapshotRef.current) applyRoomDetails(details);
     }).catch(() => {});
 
     // Note: NTP resync is owned by the dedicated self-scheduling useEffect above.
@@ -725,7 +853,17 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
     return () => {
       cancelled = true;
-      socket.emit('room:leave', { roomId });
+      joinedRef.current = false;
+      connectionGenerationRef.current++;
+      if (socket.connected) socket.emit('room:leave', { roomId });
+      for (const timer of uploadExpiry.values()) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+      window.removeEventListener('pageshow', refreshOnReturn);
+      window.removeEventListener('online', refreshOnReturn);
+      window.removeEventListener('syncbeats:title-resolved', handleTitleResolved);
+      socket.off('room:upload_progress', handleUploadProgress);
+      socket.off('room:sync_progress', handleSyncProgress);
+      socket.off('room:deviceSyncProgress', handleSyncProgress);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('room:snapshot', handleSnapshot);
@@ -747,26 +885,25 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:eqUpdate', handleEqUpdate);
       socket.off('error', handleError);
       socket.off('room:queueChanged', handleQueueChangedNew);
-      // Clear mediaSession action handlers to avoid stale callbacks after room unmount
-      if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
-        try { navigator.mediaSession.setActionHandler('previoustrack', null); } catch (_) {}
-        try { navigator.mediaSession.setActionHandler('nexttrack', null); } catch (_) {}
-      }
     };
-  }, [applyRoomDetails, roomId, displayName, userId, authLoading, socket, runNtpBurst]);
+  }, [applyRoomDetails, roomId, displayName, userId, authLoading, socket, runNtpBurst, getTrackTitle, loadAndSetTrack, setReady, setSnapshot, sync]);
 
   useEffect(() => {
-    const handleAudioEnded = () => {
-      const currentTrackUrl = snapshotRef.current?.trackUrl;
-      if (!roomId || !currentTrackUrl) return;
-      socket.emit('playback:ended', { roomId, trackUrl: currentTrackUrl });
+    const handleAudioEnded = (event: Event) => {
+      const detail = (event as CustomEvent<{ trackUrl?: string; playbackInstanceId?: string | null }>).detail;
+      if (!detail?.trackUrl || !sync.complete(detail.trackUrl, detail.playbackInstanceId)) return;
+      lastCompletionRef.current = { trackUrl: detail.trackUrl, playbackInstanceId: detail.playbackInstanceId };
+      if (socket.connected && joinedRef.current) {
+        socket.emit('playback:ended', { roomId, trackUrl: detail.trackUrl, playbackInstanceId: detail.playbackInstanceId ?? undefined });
+      }
     };
     document.addEventListener('audioEnded', handleAudioEnded);
     return () => document.removeEventListener('audioEnded', handleAudioEnded);
-  }, [roomId, socket]);
+  }, [roomId, socket, sync]);
 
   useEffect(() => {
     const checkInterval = setInterval(() => {
+      if (!socket.connected || !joinedRef.current) return;
       const snap = snapshotRef.current;
       if (!snap || !snap.trackUrl) {
         if (reportedBlockedRef.current !== false) {
@@ -801,7 +938,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const me = participants.find(p => p.socketId === currentSocketId);
     if (!me) return;
 
-    const localReady = audioRef.current?.isReady && !audioRef.current?.isBuffering;
+    const localReady = audioRef.current.isReadyForTrack(snapshotRef.current?.trackUrl ?? null);
     if (me.isReady === false && localReady) {
       setReady(true);
     }
@@ -818,55 +955,79 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     snapshot,
     currentTime: audio.currentTime,
     duration: audio.duration,
+    isCurrentReady: audio.isReady,
     roomId,
   });
 
-  const play  = useCallback(() => socket.emit('playback:play',  { roomId }), [socket, roomId]);
-  const pause = useCallback(() => {
-    const pos = audioRef.current.getTruePosition();
-    socket.emit('playback:pause', {
-      roomId,
-      positionMs: Math.round(pos * 1000)
-    });
-    // Optimistically stop audio so it halts on the click, not on the round-trip.
-    // setSnapshot alone only moves React state — sync.pause() is what actually
-    // stops the source node.
-    sync.pause(pos);
-    setSnapshot(prev => prev ? { ...prev, isPlaying: false, pauseOffset: pos } : prev);
-  }, [socket, roomId]);
-  const seek  = useCallback((p: number) => socket.emit('playback:seek', { roomId, position: p }), [socket, roomId]);
-  const nextTrack = useCallback(() => socket.emit('playback:next', { roomId }), [socket, roomId]);
-  const prevTrack = useCallback(() => socket.emit('playback:prev', { roomId }), [socket, roomId]);
+  useEffect(() => {
+    const trackUrl = snapshotRef.current?.trackUrl;
+    if (!trackUrl || !socket.connected || !joinedRef.current || !isSameTrack(trackUrl, audio.trackUrl)) return;
+    socket.emit('room:sync_progress', { roomId, trackUrl, progress: audio.isReady ? 100 : audio.downloadProgress });
+  }, [socket, roomId, audio.trackUrl, audio.isReady, audio.downloadProgress, isConnected, joinStatus]);
 
+  const emitCommand = useCallback((event: string, payload: Record<string, unknown> = {}) => {
+    if (!socket.connected || !joinedRef.current) return;
+    socket.emit(event, { roomId, ...payload });
+  }, [roomId, socket]);
+  const play = useCallback(() => {
+    if (!socket.connected || !joinedRef.current) return;
+    if (audioRef.current.error) audioRef.current.retryTrack();
+    const snap = snapshotRef.current;
+    if (snap?.trackUrl?.startsWith('spotify-lazy:')) loadAndSetTrack(snap.trackUrl, getTrackTitle(snap.trackUrl, snap.queue));
+    emitCommand('playback:play');
+  }, [socket, emitCommand, loadAndSetTrack, getTrackTitle]);
+  const pause = useCallback(() => {
+    if (!socket.connected || !joinedRef.current) {
+      pauseOnRejoinRef.current = true;
+      sync.pause(audioRef.current.getTruePosition());
+      return;
+    }
+    emitCommand('playback:pause', { positionMs: Math.round(audioRef.current.getTruePosition() * 1000) });
+  }, [socket, emitCommand, sync]);
+  const seek = useCallback((position: number) => emitCommand('playback:seek', { position }), [emitCommand]);
+  const nextTrack = useCallback(() => emitCommand('playback:next'), [emitCommand]);
+  const prevTrack = useCallback(() => emitCommand('playback:prev'), [emitCommand]);
+
+  useEffect(() => {
+    audioRef.current.setRoomCommands({ play, pause, seek, next: nextTrack, previous: prevTrack });
+    return () => audioRef.current.setRoomCommands(null);
+  }, [play, pause, seek, nextTrack, prevTrack]);
 
   const setParticipantVolume = useCallback((targetSocketId: string, volume: number) =>
-    socket.emit('room:setParticipantVolume', { roomId, targetSocketId, volume }), [socket, roomId]);
+    emitCommand('room:setParticipantVolume', { targetSocketId, volume }), [emitCommand]);
 
-  const togglePrivate = useCallback((isPrivate: boolean) => socket.emit('room:togglePrivate', { roomId, isPrivate }), [socket, roomId]);
+  const togglePrivate = useCallback((isPrivate: boolean) => emitCommand('room:togglePrivate', { isPrivate }), [emitCommand]);
   const approveJoin = useCallback((targetSocketId: string, displayName: string) => {
-    socket.emit('room:approveJoin', { roomId, targetSocketId, displayName });
+    if (!socket.connected || !joinedRef.current) return;
+    emitCommand('room:approveJoin', { targetSocketId, displayName });
     setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
-  }, [socket, roomId]);
+  }, [socket, emitCommand]);
   const denyJoin = useCallback((targetSocketId: string) => {
-    socket.emit('room:denyJoin', { roomId, targetSocketId });
+    if (!socket.connected || !joinedRef.current) return;
+    emitCommand('room:denyJoin', { targetSocketId });
     setPendingRequests(prev => prev.filter(r => r.socketId !== targetSocketId));
-  }, [socket, roomId]);
-  const notifyHost = useCallback(() => socket.emit('room:notifyHost', { roomId, displayName }), [socket, roomId, displayName]);
+  }, [socket, emitCommand]);
+  const notifyHost = useCallback(() => {
+    if (socket.connected) socket.emit('room:notifyHost', { roomId, displayName });
+  }, [socket, roomId, displayName]);
 
   const leave = useCallback(() => {
-    socket.emit('room:leave', { roomId });
+    joinedRef.current = false;
+    sync.idle();
+    audioRef.current.clearTrack();
+    if (socket.connected) socket.emit('room:leave', { roomId });
     socket.disconnect();
-  }, [socket, roomId]);
+  }, [socket, roomId, sync]);
 
   // Socket only — the REST twins do the same mutation, and firing both produced
   // two broadcasts for one user action.
   const removeFromQueue = useCallback((itemId: string) => {
-    socket.emit('room:removeFromQueue', { roomId, itemId });
-  }, [roomId, socket]);
+    emitCommand('room:removeFromQueue', { itemId });
+  }, [emitCommand]);
 
   const resetRoom = useCallback(() => {
-    socket.emit('room:reset', { roomId });
-  }, [roomId, socket]);
+    emitCommand('room:reset');
+  }, [emitCommand]);
 
   return { snapshot, participants, isConnected, joinStatus, isReconnecting, pendingRequests, currentSocketId, clockOffset, allReady, play, pause, seek, nextTrack, prevTrack, setReady, setParticipantVolume, leave, togglePrivate, approveJoin, denyJoin, notifyHost, resetRoom, removeFromQueue, syncInFlightRef, hasClockSync, incomingTrack, deviceSyncProgress, networkQuality, prefetch };
 }

@@ -16,7 +16,7 @@ function isRawYouTubeId(str: string): boolean {
   return true;
 }
 
-function cleanTitle(t: string) {
+export function cleanTitle(t: string) {
   if (!t) return "Unknown Track";
   let name = t
     .replace(/\s*\[.*?\]/g, "")
@@ -49,7 +49,7 @@ function cleanTitle(t: string) {
   return name || "Unknown Track";
 }
 
-function ytThumb(trackUrl: string | null | undefined) {
+export function ytThumb(trackUrl: string | null | undefined) {
   if (!trackUrl) return null;
 
   // Check if a custom thumbnail was appended (e.g. from Spotify import)

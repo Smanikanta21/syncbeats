@@ -80,7 +80,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
             <div className="space-y-5">
               {/* Header */}
               <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--accent-color)]">
+                <div className="flex items-center gap-2 text-xs font-bold text-[var(--accent-color)]">
                   <Sparkles className="w-4 h-4" /> Rate your experience
                 </div>
                 <h2 className="text-2xl font-black text-foreground mt-1">How are we doing?</h2>
@@ -118,7 +118,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
 
               {/* Category Pills */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-foreground/60 uppercase tracking-wider">
+                <label className="text-xs font-bold text-foreground/60 ">
                   Category
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -144,7 +144,7 @@ export function FeedbackModal({ isOpen, onClose, pageName, sessionId }: Feedback
               {/* Comment Textarea */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
+                  <label className="text-xs font-bold text-foreground/60 flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5" /> Comments (Private)
                   </label>
                   <span className="text-[10px] text-foreground/40">{comment.length}/500</span>

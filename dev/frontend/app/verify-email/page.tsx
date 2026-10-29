@@ -34,7 +34,7 @@ function VerifyEmailContent() {
         setMessage("Email verified successfully. Redirecting to your hub...");
 
         // Force a navigation that rehydrates auth state from storage immediately.
-        window.location.assign("/room/default");
+        window.location.assign("/hub");
       })
       .catch((err) => {
         if (cancelled) return;
@@ -85,7 +85,7 @@ function VerifyEmailContent() {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight text-foreground">Verify Your Email</h1>
-            <p className="text-xs uppercase tracking-[0.24em] text-foreground/50 font-semibold">SyncBeats Account Setup</p>
+            <p className="micro-label">SyncBeats account setup</p>
           </div>
         </div>
 
@@ -102,7 +102,7 @@ function VerifyEmailContent() {
 
         {status === "error" && (
           <div className="mt-6 rounded-2xl border border-foreground/10 bg-white/[0.02] p-4 sm:p-5">
-            <label className="text-xs uppercase tracking-[0.2em] text-foreground/50 font-semibold">Resend Verification Email</label>
+            <label className="text-data font-semibold text-foreground/55">Resend verification email</label>
             <div className="mt-3 flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Mail className="h-4 w-4 text-foreground/50 absolute left-3 top-1/2 -translate-y-1/2" />

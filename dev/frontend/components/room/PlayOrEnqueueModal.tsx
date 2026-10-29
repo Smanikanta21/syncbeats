@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Plus, X, Music2 } from "lucide-react";
 
@@ -58,7 +57,7 @@ export function PlayOrEnqueueModal({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--accent-color)] bg-[var(--accent-color)]/10 px-2 py-0.5 rounded-full border border-[var(--accent-color)]/20">
+              <span className="text-[10px] font-semibold text-[var(--accent-color)] bg-[var(--accent-color)]/10 px-2 py-0.5 rounded-full border border-[var(--accent-color)]/20">
                 Track Selected
               </span>
               <h3 className="text-sm font-bold text-white truncate mt-1">

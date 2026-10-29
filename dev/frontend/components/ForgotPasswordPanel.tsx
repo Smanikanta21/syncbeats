@@ -1,5 +1,5 @@
 import { FormEvent, useState, useEffect } from "react";
-import { X, KeyRound, RefreshCw, CheckCircle2 } from "lucide-react";
+import { X, KeyRound, CheckCircle2 } from "lucide-react";
 import { authApi } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -132,7 +132,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Email Address</label>
+                <label className="text-[10px] font-bold text-foreground/45 block mb-1.5">Email Address</label>
                 <input
                   type="email"
                   required
@@ -152,7 +152,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                       <button 
                         type="button" 
                         onClick={copyDevOtp} 
-                        className="rounded-lg border border-ok-400/30 px-3 py-1.5 text-[10px] font-bold uppercase text-ok-700 dark:text-ok-300 hover:bg-ok-500/20 transition shrink-0"
+                        className="rounded-lg border border-ok-400/30 px-3 py-1.5 text-[10px] font-bold text-ok-700 dark:text-ok-300 hover:bg-ok-500/20 transition shrink-0"
                       >
                         {copied ? "Copied" : "Copy"}
                       </button>
@@ -160,7 +160,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                   )}
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Verification Code</label>
+                    <label className="text-[10px] font-bold text-foreground/45 block mb-1.5">Verification Code</label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="tel"
@@ -191,7 +191,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">New Password</label>
+                    <label className="text-[10px] font-bold text-foreground/45 block mb-1.5">New Password</label>
                     <input
                       type="password"
                       required
@@ -205,7 +205,7 @@ export function ForgotPasswordPanel({ onClose, initialEmail }: ForgotPasswordPan
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/45 block mb-1.5">Confirm Password</label>
+                    <label className="text-[10px] font-bold text-foreground/45 block mb-1.5">Confirm Password</label>
                     <input
                       type="password"
                       required

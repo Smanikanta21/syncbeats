@@ -1,8 +1,9 @@
 // db/RoomRepository.ts — Prisma-based implementation
 
-import prisma, { sanitizeNullBytes } from './prisma';
+import prisma from './prisma';
 import { Prisma } from '@prisma/client';
 import { Participant } from '../types';
+import type { DurableRoomState } from '../core/RoomPersistence';
 import { sanitizeString } from '../auth/UserRepository';
 
 export interface RoomRow {
@@ -108,46 +109,17 @@ export class RoomRepository {
     });
   }
 
-  async updateState(
-    roomId: string,
-    state: string,
-    positionMs: number,
-    trackUrl?: string | null
-  ): Promise<void> {
-    const data: { playbackState: string; positionMs: bigint; trackUrl?: string | null } = {
-      playbackState: state,
-      positionMs: BigInt(Math.round(positionMs)),
-    };
-    if (trackUrl !== undefined) data.trackUrl = trackUrl;
-
-    try {
-      await prisma.room.update({
-        where: { id: roomId },
-        data
-      });
-    } catch (err: any) {
-      if (err?.code === 'P2024') {
-        console.warn(`[RoomRepository] updateState pool timeout for room ${roomId}, skipping tick`);
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  /**
-   * Persist the whole queue as one document. Called debounced from the QUEUE_CHANGED
-   * listener, so a dropped save is harmless — the next mutation rewrites it in full.
-   * updateMany (not update) so an on-the-fly room with no row yet is a no-op, not a throw.
-   */
-  async saveQueue(roomId: string, queue: unknown): Promise<void> {
-    try {
-      await prisma.room.updateMany({
-        where: { id: roomId },
-        data: { queue: queue as Prisma.InputJsonValue },
-      });
-    } catch (err: any) {
-      console.warn(`[RoomRepository] saveQueue failed for room ${roomId}:`, err?.message || err);
-    }
+  /** Queue, cursor and playback metadata commit together; failures reach the retry queue. */
+  async savePlaybackState(roomId: string, snapshot: DurableRoomState): Promise<void> {
+    await prisma.room.updateMany({
+      where: { id: roomId },
+      data: {
+        playbackState: snapshot.state,
+        positionMs: BigInt(Math.max(0, Math.round(snapshot.positionMs))),
+        trackUrl: snapshot.trackUrl,
+        queue: snapshot.queue as Prisma.InputJsonValue,
+      },
+    });
   }
 
   async markEnded(roomId: string): Promise<void> {

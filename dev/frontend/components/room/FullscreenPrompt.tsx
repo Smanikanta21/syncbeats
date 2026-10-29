@@ -134,8 +134,8 @@ export function FullscreenPrompt() {
           <div className="bg-background/90 border border-foreground/10 p-6 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] overflow-hidden">
             {promptState === "initial" && (
               <div className="flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mb-5 border border-blue-500/30">
-                  <Maximize className="w-8 h-8 text-blue-400" />
+                <div className="w-16 h-16 rounded-full bg-foreground/5 flex items-center justify-center mb-5 border border-foreground/10">
+                  <Maximize className="w-8 h-8 text-foreground/70" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground mb-3">Immersive Mode Required</h3>
                 <p className="text-sm text-foreground/60 mb-8 leading-relaxed">
@@ -143,7 +143,7 @@ export function FullscreenPrompt() {
                 </p>
                 <button
                   onClick={requestFullscreen}
-                  className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] active:scale-95 uppercase tracking-widest"
+                  className="w-full rounded-xl bg-foreground py-3.5 text-sm font-semibold text-background transition-opacity hover:opacity-85 active:scale-[0.98]"
                 >
                   Enter Fullscreen
                 </button>
@@ -152,7 +152,7 @@ export function FullscreenPrompt() {
                     hasEnteredOnce.current = true;
                     setPromptState("hidden");
                   }}
-                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all uppercase tracking-widest"
+                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all "
                 >
                   I'm already in fullscreen
                 </button>
@@ -171,13 +171,13 @@ export function FullscreenPrompt() {
                 <div className="flex gap-3 w-full">
                   <button
                     onClick={handleEscapeYes}
-                    className="flex-1 py-4 bg-foreground/10 hover:bg-foreground/20 text-foreground text-sm font-bold rounded-xl transition-all active:scale-95 uppercase tracking-widest"
+                    className="flex-1 py-4 bg-foreground/10 hover:bg-foreground/20 text-foreground text-sm font-bold rounded-xl transition-all active:scale-95 "
                   >
                     Yes
                   </button>
                   <button
                     onClick={handleEscapeNo}
-                    className="flex-1 py-4 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] active:scale-95 uppercase tracking-widest"
+                    className="flex-1 rounded-xl bg-foreground py-3.5 text-sm font-semibold text-background transition-opacity hover:opacity-85 active:scale-[0.98]"
                   >
                     No
                   </button>
@@ -196,7 +196,7 @@ export function FullscreenPrompt() {
                 </p>
                 <button
                   onClick={requestFullscreen}
-                  className="w-full py-4 bg-foreground/10 hover:bg-foreground/20 text-foreground text-sm font-bold rounded-xl transition-all active:scale-95 uppercase tracking-widest"
+                  className="w-full py-4 bg-foreground/10 hover:bg-foreground/20 text-foreground text-sm font-bold rounded-xl transition-all active:scale-95 "
                 >
                   Return to Fullscreen
                 </button>
@@ -206,7 +206,7 @@ export function FullscreenPrompt() {
                     hasEnteredOnce.current = true;
                     setPromptState("hidden");
                   }}
-                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all uppercase tracking-widest"
+                  className="w-full mt-3 py-3 text-foreground/50 hover:text-foreground text-xs font-bold transition-all "
                 >
                   Continue in Window
                 </button>

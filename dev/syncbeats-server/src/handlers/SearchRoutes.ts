@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import ytSearch from 'yt-search';
 import prisma from '../db/prisma';
+import { YT_ID_PATTERN } from '../utils/youtube';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
 
 export function createSearchRoutes(): Router {
@@ -225,14 +226,14 @@ export function createSearchRoutes(): Router {
 export function extractYoutubeIdOrSongId(input: string): string {
   if (!input) return '';
   let raw = decodeURIComponent(input).trim();
-  
+
   // 1. If it contains a youtube watch URL
   if (raw.includes('youtube.com/watch')) {
     try {
       const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
       const v = u.searchParams.get('v');
       if (v) {
-        const m = v.match(/^([a-zA-Z0-9_-]{11})/);
+        const m = v.match(new RegExp(`^(${YT_ID_PATTERN})`));
         return m ? m[1] : v;
       }
     } catch (e) {}
@@ -240,7 +241,7 @@ export function extractYoutubeIdOrSongId(input: string): string {
     const parts = raw.split('youtu.be/');
     if (parts[1]) {
       const idPart = parts[1].split('/')[0].split('?')[0];
-      const m = idPart.match(/^([a-zA-Z0-9_-]{11})/);
+      const m = idPart.match(new RegExp(`^(${YT_ID_PATTERN})`));
       if (m) return m[1];
       return idPart;
     }
@@ -256,7 +257,7 @@ export function extractYoutubeIdOrSongId(input: string): string {
   }
 
   // 3. Check if it matches a 11-character YouTube ID optionally followed by _TIMESTAMP
-  const ytIdMatch = raw.match(/^([a-zA-Z0-9_-]{11})(?:_\d+)?$/);
+  const ytIdMatch = raw.match(new RegExp(`^(${YT_ID_PATTERN})(?:_\\d+)?$`));
   if (ytIdMatch && ytIdMatch[1]) {
     return ytIdMatch[1];
   }
@@ -308,10 +309,10 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
       const child = spawn(ytDlpPath, args);
       let stdout = '';
       let stderr = '';
-      
+
       child.stdout.on('data', (d: any) => { stdout += d.toString(); });
       child.stderr.on('data', (d: any) => { stderr += d.toString(); });
-      
+
       child.on('close', (code: number) => {
         if (code === 0 && stdout.trim().startsWith('http')) {
           const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
@@ -366,7 +367,7 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
   return null;
 }
 
-export async function streamYoutubeAudio(rawInput: string, req: any, res: any): Promise<void> {
+export async function streamYoutubeAudio(rawInput: string, _req: any, res: any): Promise<void> {
   const cleanId = extractYoutubeIdOrSongId(rawInput);
   if (!cleanId || cleanId.length < 5) {
     if (!res.headersSent) res.status(400).json({ error: `Truncated YouTube ID: ${rawInput}` });
@@ -375,8 +376,6 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
 
   const path = require('path');
   const fs   = require('fs');
-  const { spawn } = require('child_process');
-
   let targetYoutubeId = cleanId;
 
   // ── DB lookup: resolve Song ID → YouTube ID ────────────────────────────────
@@ -461,7 +460,7 @@ export async function streamYoutubeAudio(rawInput: string, req: any, res: any): 
       // Write to cache
       const diskStream = fs.createWriteStream(outputFile);
       readable.pipe(diskStream);
-      
+
       // Pipe to the *first* client instantly!
       readable.pipe(res);
 

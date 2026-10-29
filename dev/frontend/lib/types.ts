@@ -8,6 +8,18 @@ export interface JoinRequest {
   userId?: string;
 }
 
+export interface TrackActivity {
+  id: string;
+  roomId: string;
+  title: string;
+  progress: number;
+  status: 'active' | 'complete' | 'failed' | 'cancelled';
+  indeterminate?: boolean;
+  trackUrl?: string;
+  socketId?: string;
+  error?: string;
+}
+
 
 export enum PlaybackState {
   IDLE    = 'IDLE',
@@ -49,6 +61,7 @@ export interface TrackQueueItem {
   coverUrl?:  string;
   createdAt:  number;
   sizeBytes?: number; // used for smart prefetch timing
+  durationSec?: number;
 }
 
 export interface DeviceSpatialState {
@@ -58,6 +71,10 @@ export interface DeviceSpatialState {
 
 export interface RoomSnapshot {
   roomId:                 string;
+  roomInstanceId?:        string;
+  playbackInstanceId?:    string | null;
+  queueVersion?:          number;
+  nextTrack?:             TrackQueueItem | null;
   trackUrl:               string | null;
   position:               number;      // ms at the time of snapshot
   state:                  PlaybackState;
@@ -79,6 +96,9 @@ export interface RoomSnapshot {
 }
 
 export interface PlaybackSchedulePayload {
+  roomId?: string;
+  roomInstanceId?: string;
+  playbackInstanceId?: string | null;
   atEpoch: number;
   startEpoch: number;
   fromPosition: number;
@@ -88,6 +108,8 @@ export interface PlaybackSchedulePayload {
 }
 
 export interface PlaybackPausePayload {
+  roomId?: string;
+  roomInstanceId?: string;
   pauseOffset: number;
 }
 

@@ -3,6 +3,16 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 
+/**
+ * The site's primary call to action.
+ *
+ * Still a motion component — the hover lift and press scale are the behaviour
+ * other pages rely on — but the chrome is now solid ink rather than a glowing
+ * glass pill. On a page full of translucent panels, an opaque button is what
+ * reads as "this is the action"; a tinted glow reads as decoration, and with no
+ * brand hue left there is nothing for it to glow in.
+ */
+
 const MotionLink = motion.create(Link);
 
 interface DynamicAuroraButtonProps {
@@ -14,6 +24,16 @@ interface DynamicAuroraButtonProps {
   disabled?: boolean;
 }
 
+const MOTION = {
+  whileHover: { y: -1 },
+  whileTap: { y: 0, scale: 0.98 },
+};
+
+const CLASSES =
+  "rounded-full bg-foreground text-background font-semibold inline-flex items-center justify-center " +
+  "transition-colors whitespace-nowrap active:opacity-90 " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground";
+
 export function DynamicAuroraButton({
   children,
   className = "",
@@ -22,28 +42,9 @@ export function DynamicAuroraButton({
   type = "button",
   disabled = false,
 }: DynamicAuroraButtonProps) {
-  const glassStyle = {
-    background: "rgba(255, 255, 255, 0.08)",
-    backdropFilter: "blur(16px) saturate(180%)",
-    WebkitBackdropFilter: "blur(16px) saturate(180%)",
-    border: "1px solid var(--accent-border, rgba(52, 211, 153, 0.4))",
-    boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.25), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2), 0 0 25px var(--accent-glow, rgba(52, 211, 153, 0.35))",
-  };
-
   if (href) {
     return (
-      <MotionLink
-        href={href}
-        onClick={onClick}
-        style={glassStyle}
-        whileHover={{ 
-          scale: 1.03, 
-          boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 0 45px var(--accent-glow, rgba(52, 211, 153, 0.6))",
-          backgroundColor: "rgba(255, 255, 255, 0.14)"
-        }}
-        whileTap={{ scale: 0.97 }}
-        className={`rounded-full text-foreground font-black tracking-widest uppercase inline-flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${className}`}
-      >
+      <MotionLink href={href} onClick={onClick} {...MOTION} className={`${CLASSES} ${className}`}>
         {children}
       </MotionLink>
     );
@@ -54,14 +55,9 @@ export function DynamicAuroraButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      style={glassStyle}
-      whileHover={disabled ? undefined : { 
-        scale: 1.03, 
-        boxShadow: "0 12px 40px 0 rgba(0, 0, 0, 0.35), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 0 45px var(--accent-glow, rgba(52, 211, 153, 0.6))",
-        backgroundColor: "rgba(255, 255, 255, 0.14)"
-      }}
-      whileTap={disabled ? undefined : { scale: 0.97 }}
-      className={`rounded-full text-foreground font-black tracking-widest uppercase flex items-center justify-center transition-all duration-700 cursor-pointer overflow-hidden whitespace-nowrap active:opacity-90 ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
+      whileHover={disabled ? undefined : MOTION.whileHover}
+      whileTap={disabled ? undefined : MOTION.whileTap}
+      className={`${CLASSES} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${className}`}
     >
       {children}
     </motion.button>

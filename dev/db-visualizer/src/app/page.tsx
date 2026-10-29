@@ -18,7 +18,7 @@ export default function Home() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [activeTable, setActiveTable] = useState<TableInfo | null>(null);
   const [tableData, setTableData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
   const [dataLoading, setDataLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -49,10 +49,7 @@ export default function Home() {
     setIsUnlocked(false);
   };
 
-
-
   const fetchTables = () => {
-    setLoading(true);
     fetch('/api/tables')
       .then(res => res.json())
       .then(data => {
@@ -62,11 +59,9 @@ export default function Home() {
             setActiveTable(data.tables[0]);
           }
         }
-        setLoading(false);
       })
       .catch(err => {
         console.error(err);
-        setLoading(false);
       });
   };
 
@@ -101,7 +96,7 @@ export default function Home() {
       fetchTableData();
     }
   }, [activeTable, viewMode]);
-  
+
   useEffect(() => {
     if (viewMode === 'recycle_bin') {
       fetchRecycleBin();
@@ -124,20 +119,20 @@ export default function Home() {
 
   const saveEdit = async () => {
     if (!editingCell || !activeTable) return;
-    
+
     // We used 'i' in map for rowIndex, which means tableData[rowIndex] might be affected by sorting!
     // We should use the row's ID instead of rowIndex to be safe.
     // Wait, the edit is triggered from the map. It's better to store rowId and find it.
     // For now, let's keep it simple: we pass the actual row object's PK to editingCell.rowId
     const { rowId, field, value } = editingCell as any;
-    
+
     try {
       const res = await fetch(`/api/data/${activeTable.name}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: rowId, data: { [field]: value } })
       });
-      
+
       if (res.ok) {
         fetchTableData();
         setEditingCell(null);
@@ -154,16 +149,16 @@ export default function Home() {
   const deleteSelected = async () => {
     if (!activeTable || selectedRows.size === 0) return;
     setDeleteLoading(true);
-    
+
     const idsToDelete = Array.from(selectedRows).map(rowId => rowId); // selectedRows now stores actual IDs!
-    
+
     try {
       const res = await fetch(`/api/data/${activeTable.name}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: idsToDelete })
       });
-      
+
       if (res.ok) {
         setShowDeleteModal(false);
         setSelectedRows(new Set());
@@ -179,8 +174,6 @@ export default function Home() {
       setDeleteLoading(false);
     }
   };
-
-
 
   if (checkingAuth) {
     return (
@@ -199,7 +192,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-background text-foreground font-sans overflow-hidden">
-      
+
       {/* Sidebar Overlay (Mobile) */}
       {sidebarOpen && (
         <div 
@@ -221,7 +214,7 @@ export default function Home() {
               SYNC<span className="text-emerald-400">DB</span>
             </h1>
           )}
-          
+
           <div className="flex items-center gap-1 mx-auto md:mx-0">
             {/* Desktop Hamburger Collapse Toggle */}
             <button
@@ -241,7 +234,7 @@ export default function Home() {
             </button>
           </div>
         </div>
-        
+
         {/* Navigation list */}
         <div className="flex flex-col flex-1 overflow-y-auto p-2 space-y-1.5">
           {/* Main Dashboard view button */}
@@ -546,7 +539,7 @@ export default function Home() {
                           <span>{field.name}</span>
                           {field.isId && <span className="text-blue-500" title="Primary Key">🔑</span>}
                           {field.kind === 'object' && <span className="text-zinc-400" title="Relation (Foreign Key)">🔗</span>}
-                          
+
                           {/* Sort Icon */}
                           <div className={cn('text-zinc-500', sortConfig?.key === field.name ? 'text-foreground' : 'opacity-50 group-hover:opacity-100')}>
                             {sortConfig?.key === field.name ? (
@@ -580,16 +573,16 @@ export default function Home() {
                       if (!sortConfig) return 0;
                       const aVal = a[sortConfig.key];
                       const bVal = b[sortConfig.key];
-                      
+
                       if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
                       if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
-                      
+
                       if (typeof aVal === 'string' && typeof bVal === 'string') {
                         return sortConfig.direction === 'asc' 
                           ? aVal.localeCompare(bVal) 
                           : bVal.localeCompare(aVal);
                       }
-                      
+
                       return sortConfig.direction === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
                     })
                     .map((row, i) => {
@@ -598,7 +591,7 @@ export default function Home() {
                       // Let's just use the 'id' field if it exists, otherwise the mapped index.
                       const rowId = row.id !== undefined ? row.id : i;
                       const isSelected = selectedRows.has(rowId);
-                      
+
                       return (
                       <tr 
                         key={i} 
@@ -625,12 +618,12 @@ export default function Home() {
                           const val = row[field.name];
                           const isNull = val === null || val === undefined;
                           let displayVal = String(val);
-                          
+
                           if (field.kind === 'object' && isNull) {
                             displayVal = '';
                           } else if (field.type === 'DateTime' && val) {
                           const date = new Date(val);
-                          
+
                           if (!isNaN(date.getTime())) {
                             const getOrdinalSuffix = (d: number) => {
                               if (d > 3 && d < 21) return 'th';
@@ -641,22 +634,22 @@ export default function Home() {
                                 default: return 'th';
                               }
                             };
-                            
+
                             const dayStr = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric' }).format(date);
                             const day = parseInt(dayStr, 10);
                             const month = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', month: 'long' }).format(date).toLowerCase();
                             const year = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' }).format(date);
                             const time = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }).format(date);
-                            
+
                             displayVal = `${day}${getOrdinalSuffix(day)} ${month} ${year}, ${time.toLowerCase()}`;
                           }
                         } else if (typeof val === 'string' && val.length > 50) {
                           // Truncate long strings
                           displayVal = val.substring(0, 50) + '...';
                         }
-                        
+
                         const isEditing = editingCell?.rowIndex === i && editingCell?.field === field.name;
-                        
+
                         return (
                           <td 
                             key={field.name} 
@@ -748,7 +741,7 @@ export default function Home() {
         </div>
       </div>
       )}
-      
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -782,7 +775,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      
+
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

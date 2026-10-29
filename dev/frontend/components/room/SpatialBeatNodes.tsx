@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useBeatEngine } from "../../context/BeatContext";
 import { useSettings } from "../../hooks/useSettings";
 import { useDevicePerf } from "../../hooks/useDevicePerf";
@@ -19,12 +20,26 @@ interface BeatNodeProps {
 }
 
 function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100px]", liquidMotion = true, index }: BeatNodeProps) {
+  const reducedMotion = useReducedMotion();
   const { subscribeToBeat } = useBeatEngine();
   const blobRef = useRef<HTMLDivElement>(null);
   const nodeContainerRef = useRef<HTMLDivElement>(null);
 
   const beatIntensityRef = useRef<number>(0);
   const targetIntensityRef = useRef<number>(0);
+  const [arrived, setArrived] = useState(false);
+
+  useEffect(() => {
+    let first = 0;
+    let second = 0;
+    first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setArrived(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, []);
 
   // 1. Listen to real-time beat hits to boost deterministic radial beat intensity
   useEffect(() => {
@@ -102,9 +117,14 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
       ref={nodeContainerRef}
       className="absolute pointer-events-none z-0"
       style={{
-        left: `${x}%`,
-        top: `${y}%`,
+        left: `${arrived ? x : 50}%`,
+        top: `${arrived ? y : 50}%`,
         willChange: "transform",
+        opacity: arrived ? 1 : 0,
+        transition: reducedMotion
+          ? "none"
+          : "left 1450ms cubic-bezier(0.16, 1, 0.3, 1), top 1450ms cubic-bezier(0.16, 1, 0.3, 1), opacity 900ms ease-out",
+        transitionDelay: arrived ? `${index * 90}ms` : "0ms",
       }}
     >
       {/* Main branch radial-gradient spatial light blob */}
@@ -198,22 +218,22 @@ export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradien
         <div className="w-[75vw] h-[75vw] max-w-[850px] max-h-[850px] rounded-full bg-foreground/15 filter blur-[100px] animate-ambient-breathing pointer-events-none" />
       </div>
 
-      {/* 2. Main Spatial Ambient Gradient Visualizer (Smooth 1.2s transition when ready) */}
-      {/* Skipped entirely — not just faded — when the fluid owns the background.
-          Each BeatNode runs its own rAF physics loop, so leaving six of them
-          animating transforms on invisible elements would cost exactly what
-          this is supposed to save. `canRun` resolves within a frame or two of
-          mount, long before audio starts, so there is nothing to cross-fade. */}
-      {!suppressGradient && (
+      {/* The saved node layout settles into place on room entry. While the fluid
+          renderer is active, keep this palette dimly present beneath it so the
+          user's positions still define the room's color composition. */}
       <div
         className={cn(
-          "fixed inset-0 overflow-hidden pointer-events-none -z-10 transition-opacity duration-1200 ease-in-out",
-          (isPlaying && !isBufferingOrDownloading) ? "opacity-100" : "opacity-0 pointer-events-none"
+          "fixed inset-0 overflow-hidden pointer-events-none -z-10 transition-opacity duration-[1800ms] ease-out",
+          isPlaying && !isBufferingOrDownloading
+            ? (suppressGradient ? "opacity-35" : "opacity-100")
+            : "opacity-60"
         )}
       >
       {activePreset.slice(0, Math.min(count, activePreset.length)).map((preset, idx) => {
         const node = nodes[idx];
-        const color = node?.color || (idx === 0 ? "#8b5cf6" : idx === 1 ? "#ec4899" : "#3b82f6");
+        const savedColor = node?.color || (idx === 0 ? "#8b5cf6" : idx === 1 ? "#ec4899" : "#3b82f6");
+        const idleSlate = ["#94a3b8", "#64748b", "#a8b3c2"][idx % 3];
+        const color = isPlaying ? savedColor : idleSlate;
         const x = node?.x ?? preset.x;
         const y = node?.y ?? preset.y;
 
@@ -231,7 +251,6 @@ export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradien
         );
       })}
       </div>
-      )}
     </>
   );
 }

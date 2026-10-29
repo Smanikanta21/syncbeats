@@ -2,11 +2,10 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Music2, Shuffle, Repeat, Repeat1, Plus, Disc, Trash2, Play, RotateCcw, Infinity, Timer, Star, MoreHorizontal } from "lucide-react";
+import { motion } from "framer-motion";
+import { Music2, Shuffle, Repeat, Repeat1, Plus, Trash2, RotateCcw, Star, MoreHorizontal } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
-import { ytId } from "../../lib/youtube";
-import { SortableTrackItem, TrackItemRow } from "../SortableTrackItem";
+import { SortableTrackItem, TrackItemRow, cleanTitle, ytThumb } from "../SortableTrackItem";
 import { ConfirmModal } from "../ConfirmModal";
 import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
 import { getSocket } from "../../lib/socket";
@@ -32,8 +31,6 @@ import { roomsApi } from "../../lib/api";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { cn } from "../../lib/utils";
 
-type RepeatMode = "off" | "track" | "all";
-
 interface RoomQueueProps {
   queue: TrackQueueItem[];
   isHost: boolean;
@@ -49,22 +46,8 @@ interface RoomQueueProps {
   jumpingTrackId?: string | null;
 }
 
-function cleanTitle(t: string) {
-  return (
-    t
-      .replace(/\s*[\[\(].*?(official|music|video|audio|lyric|hd|hq|4k|live).*?[\)\]]/gi, "")
-      .replace(/\s*-\s*.*?(official|music|video|audio).*$/gi, "")
-      .trim() || t
-  );
-}
-
-function ytThumb(trackUrl: string | null | undefined) {
-  const id = ytId(trackUrl);
-  return id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : null;
-}
-
 export function RoomQueue({
-  queue, isHost, roomId, onTrackSelect, onAddSong, onRemoveTrack, isPlaying = false,
+  queue, isHost, roomId, onTrackSelect, onAddSong, onRemoveTrack,
   shuffle, repeatMode, onToggleShuffle, onToggleRepeat, jumpingTrackId
 }: RoomQueueProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -72,10 +55,8 @@ export function RoomQueue({
   const [optimisticQueue, setOptimisticQueue] = useState(queue);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  
+
   // Track Menu Modal State
-  const [menuTrackId, setMenuTrackId] = useState<string | null>(null);
-  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -242,8 +223,6 @@ export function RoomQueue({
     });
   };
 
-  const RepeatIcon = repeatMode === "track" ? Repeat1 : Repeat;
-
   // Find the actively dragged item for overlay
   const activeDragItem = activeDragId ? draggableQueue.find(q => q.id === activeDragId) : null;
 
@@ -361,7 +340,6 @@ export function RoomQueue({
                       <Star className="w-5 h-5" />
                     </button>
                     <button 
-                      onClick={() => setMenuTrackId(currentSong.id)}
                       className="p-2 hover:text-foreground transition-colors rounded-full hover:bg-foreground/10"
                     >
                       <MoreHorizontal className="w-5 h-5" />

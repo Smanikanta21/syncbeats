@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Send, MessageSquare, X, Smile, Sparkles } from "lucide-react";
 import { getSocket } from "../../lib/socket";
-import { ThemeToggle } from "../ThemeToggle";
 import { cn } from "../../lib/utils";
 import type { Participant } from "../../lib/types";
 
@@ -50,7 +49,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
     const handleChat = (msg: ChatMessage) => {
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
-        
+
         // Replace optimistic message if it's our own
         const isFromMe = msg.socketId === socket.id || (msg.userId && myUserId && msg.userId === myUserId);
         if (isFromMe) {
@@ -62,7 +61,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
             return next;
           }
         }
-        
+
         const next = [...prev, msg];
         roomChatCache[roomId] = next;
         return next;
@@ -137,7 +136,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
       message: text,
       timestamp: Date.now()
     };
-    
+
     setMessages(prev => {
       const next = [...prev, myMsg];
       roomChatCache[roomId] = next;
@@ -219,7 +218,7 @@ export function RoomChat({ roomId, mySocketId, myUserId, participants, onClose, 
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-foreground/40">
             <Sparkles className="w-10 h-10 mb-2 opacity-30 animate-pulse" />
-            <p className="text-xs font-bold uppercase tracking-wider">No messages yet</p>
+            <p className="text-xs font-bold ">No messages yet</p>
             <p className="text-[11px] text-foreground/30 mt-1">Say hello to everyone connected to this room!</p>
           </div>
         ) : (

@@ -3,16 +3,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Radio, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import { useConnection } from "../../../context/ConnectionContext";
-import { devicesApi, roomsApi, spotifyApi, youtubeApi, type Device } from "../../../lib/api";
+import { devicesApi, roomsApi, youtubeApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/settings";
 import { ForgotPasswordPanel } from "../../../components/ForgotPasswordPanel";
 import { ThemeToggle } from "../../../components/ThemeToggle";
-import { GlobalLoadingScreen } from "../../../components/GlobalLoadingScreen";
+import { useLoadingTasks } from "../../../context/LoadingContext";
+import { MarqueeText } from "../../../components/MarqueeText";
 import { cn } from "../../../lib/utils";
 
 type TabId = 'settings' | 'devices' | 'integrations' | 'security' | 'data';
@@ -46,10 +47,19 @@ export default function ProfilePage() {
   const router = useRouter();
   const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
   const { isOnline, isServerReachable, isSocketConnected } = useConnection();
-  
+
   const [devices, setDevices] = useState<Device[]>([]);
   const [hostedSessionCount, setHostedSessionCount] = useState(0);
   const [isFetchingStats, setIsFetchingStats] = useState(true);
+  const { setLoadingTask } = useLoadingTasks();
+
+  useEffect(() => {
+    const task = (!user || isFetchingStats)
+      ? { title: "Opening your profile", detail: "Loading your account, devices, and listening settings.", priority: 4 }
+      : null;
+    setLoadingTask("profile", task);
+    return () => setLoadingTask("profile", null);
+  }, [user, isFetchingStats, setLoadingTask]);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -62,12 +72,9 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabId>('settings');
 
   // Interaction state for settings panel color picker
-  const [isInteractingWithColors, setIsInteractingWithColors] = useState(false);
-
 
   // Integrations state
   const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
-  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
 
   // Device Renaming state
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -105,7 +112,6 @@ export default function ProfilePage() {
       Promise.all([
         devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {}),
         roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0)),
-        spotifyApi.getStatus().then(res => setSpotifyConnected(res.connected)).catch(() => {}),
         youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {})
       ]).finally(() => {
         setIsFetchingStats(false);
@@ -217,6 +223,10 @@ export default function ProfilePage() {
   };
 
   const handleBackToSession = useCallback(async () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
     try {
       const res = await roomsApi.default();
       if (res?.roomId) {
@@ -227,56 +237,50 @@ export default function ProfilePage() {
     router.push('/room/default');
   }, [router]);
 
-  if (!user || isFetchingStats) {
-    return <GlobalLoadingScreen />;
-  }
+  if (!user || isFetchingStats) return null;
 
   return (
-    <div className="min-h-screen w-full bg-transparent text-foreground select-none p-4 sm:p-6 md:p-10 relative">
-      
-      {/* ── Top Header Navigation Bar (Fixed Capsule) ───────────────── */}
-      <div className="fixed top-4 sm:top-6 left-0 right-0 z-50 flex justify-center px-4 sm:px-6 pointer-events-none">
-        <header className="w-full max-w-350 flex items-center justify-between py-2.5 px-4 sm:px-6 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/20 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto transition-all">
+    <div className="min-h-screen w-full bg-transparent text-foreground select-none px-4 pb-12 sm:px-6 md:px-10 relative">
+
+      {/* ── Top header — fixed hairline bar with safe-area support ────── */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-background/85 dark:bg-black/85 backdrop-blur-2xl border-b border-foreground/10 pt-[env(safe-area-inset-top,0px)]">
+        <header className="mx-auto w-full max-w-350 flex items-center justify-between px-4 sm:px-6 h-14 sm:h-16">
           <button
             onClick={handleBackToSession}
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-background/80 dark:bg-black/80 hover:bg-foreground/10 text-foreground font-bold text-xs sm:text-sm transition-all active:scale-95 border border-foreground/15 backdrop-blur-2xl shadow-xl group cursor-pointer"
+            className="flex items-center gap-2 py-2 px-3 sm:px-3.5 -ml-1 sm:ml-0 rounded-full bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 text-foreground font-semibold text-xs sm:text-sm transition-all active:scale-95 group shadow-xs"
+            aria-label="Back to session"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            <span>Back to Session</span>
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Back<span className="hidden sm:inline"> to session</span></span>
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center border border-foreground/15">
-              <Radio className="w-4 h-4 text-foreground/80 animate-pulse" />
-            </div>
-            <span className="font-black text-xs sm:text-sm tracking-widest uppercase text-foreground/90 hidden sm:inline">
-              Your Account
-            </span>
-          </div>
+          <span className="micro-label hidden sm:inline">
+            Your account
+          </span>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle size="sm" />
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 font-bold text-xs sm:text-sm transition-all border border-bad-500/20 active:scale-95"
+              className="flex items-center gap-1.5 sm:gap-2 rounded-full px-3 py-1.5 sm:px-3.5 text-xs sm:text-sm font-semibold text-bad-700 transition-colors hover:bg-bad-500/10 dark:text-bad-400 active:scale-95"
             >
-              <LogOut className="w-4 h-4 text-bad-700 dark:text-bad-400" />
-              <span className="hidden sm:inline">Log Out</span>
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Log out</span>
             </button>
           </div>
         </header>
       </div>
 
       {/* ── Dual pane: identity + navigation on the left, active section right ── */}
-      <main className="w-full max-w-350 mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 z-10 pt-16 sm:pt-20">
+      <main className="w-full max-w-350 mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:pt-24">
 
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
-        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start z-30 rounded-[2.5rem] bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15 p-6 sm:p-8 flex flex-col items-center shadow-2xl relative overflow-hidden">
+        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start z-30 rounded-3xl bg-surface/70 backdrop-blur-2xl border border-foreground/10 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
           {/* Identity tint derived from the account id — personal to each user,
-              instead of an arbitrary brand gradient nothing else in the app uses. */}
+              and now the only hue on this page. */}
           <div
-            className="absolute -top-20 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none opacity-25"
-            style={{ background: `hsl(${identityHue} 80% 55%)` }}
+            className="absolute -top-20 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none opacity-20"
+            style={{ background: `hsl(${identityHue} 70% 55%)` }}
           />
 
           {/* Avatar */}
@@ -286,7 +290,7 @@ export default function ProfilePage() {
               style={{ background: `linear-gradient(140deg, hsl(${identityHue} 85% 62%), hsl(${(identityHue + 48) % 360} 80% 48%))` }}
             >
               <div className="w-full h-full rounded-full bg-background dark:bg-black flex items-center justify-center">
-                <span className="text-3xl sm:text-4xl font-black text-foreground tracking-wide">{initials}</span>
+                <span className="text-3xl sm:text-4xl font-semibold text-foreground tracking-wide">{initials}</span>
               </div>
             </div>
           </div>
@@ -295,7 +299,7 @@ export default function ProfilePage() {
           <div className="w-full text-center mb-5">
             {!isEditingProfile ? (
               <button type="button" className="flex flex-col items-center w-full group" onClick={() => setIsEditingProfile(true)}>
-                <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
+                <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2">
                   {displayName}
                   <Edit3 className="w-4 h-4 text-foreground/30 group-hover:text-foreground/80 transition-colors" />
                 </h2>
@@ -309,7 +313,7 @@ export default function ProfilePage() {
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && saveEditProfile()}
-                  className="w-full text-center rounded-2xl border border-foreground/20 bg-background/90 px-4 py-2.5 text-xl font-black tracking-tight text-foreground outline-none focus:border-foreground/40"
+                  className="w-full text-center rounded-2xl border border-foreground/20 bg-background/90 px-4 py-2.5 text-xl font-semibold tracking-tight text-foreground outline-none focus:border-foreground/40"
                   placeholder="Your name"
                 />
                 <div className="flex items-center gap-2 w-full justify-center">
@@ -326,18 +330,18 @@ export default function ProfilePage() {
             {/* Account Status Pills */}
             <div className="flex items-center justify-center gap-2 mt-3.5 flex-wrap">
               {emailVerified ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-ok-500/30 bg-ok-500/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-ok-700 dark:text-ok-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ok-500/30 bg-ok-500/10 px-3.5 py-1 text-[11px] font-semibold text-ok-700 dark:text-ok-400">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Verified
                 </span>
               ) : (
-                <button onClick={handleResendEmail} disabled={resendingEmail} className="inline-flex items-center gap-1.5 rounded-full border border-warn-500/30 bg-warn-500/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-warn-700 dark:text-warn-400 hover:bg-warn-500/20 transition-colors">
+                <button onClick={handleResendEmail} disabled={resendingEmail} className="inline-flex items-center gap-1.5 rounded-full border border-warn-500/30 bg-warn-500/10 px-3.5 py-1 text-[11px] font-semibold text-warn-700 dark:text-warn-400 hover:bg-warn-500/20 transition-colors">
                   <AlertTriangle className="w-3.5 h-3.5" /> Unverified (Resend)
                 </button>
               )}
 
               <button
                 onClick={copyAccountId}
-                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/15 bg-foreground/5 hover:bg-foreground/10 px-3.5 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-foreground/70 transition-all active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/15 bg-foreground/5 hover:bg-foreground/10 px-3.5 py-1 text-[11px] font-semibold text-foreground/70 transition-all active:scale-95"
               >
                 {copiedId ? <Check className="w-3 h-3 text-ok-700 dark:text-ok-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedId ? "Copied ID" : accountId}</span>
@@ -362,12 +366,12 @@ export default function ProfilePage() {
               fetched here and never rendered. */}
           <div className="w-full grid grid-cols-2 gap-3 mb-5">
             <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
-              <span className="block text-2xl font-black text-foreground leading-none">{devices.length}</span>
-              <span className="block text-[9px] font-bold uppercase tracking-widest text-foreground/50 mt-1.5">Devices</span>
+              <span className="block tabular text-2xl font-semibold text-foreground leading-none">{devices.length}</span>
+              <span className="block text-[11px] font-semibold text-foreground/50 mt-1.5">Devices</span>
             </div>
             <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
-              <span className="block text-2xl font-black text-foreground leading-none">{hostedSessionCount}</span>
-              <span className="block text-[9px] font-bold uppercase tracking-widest text-foreground/50 mt-1.5">Rooms Hosted</span>
+              <span className="block tabular text-2xl font-semibold text-foreground leading-none">{hostedSessionCount}</span>
+              <span className="block text-[11px] font-semibold text-foreground/50 mt-1.5">Rooms Hosted</span>
             </div>
           </div>
 
@@ -409,10 +413,10 @@ export default function ProfilePage() {
           </nav>
         </aside>
 
-        {/* ── Right Pane: Active Production Section (8 Cols) ─────────────── */}
-        <section className="lg:col-span-8 w-full rounded-[2.5rem] bg-background/80 dark:bg-black/80 backdrop-blur-3xl border border-foreground/15 p-6 sm:p-10 shadow-2xl min-h-162.5 relative overflow-hidden flex flex-col">
+        {/* ── Right Pane: Active Production Section (8 Cols) ────────────── */}
+        <section className="glass-panel lg:col-span-8 w-full rounded-[1.75rem] border border-foreground/10 p-4 sm:p-8 md:p-9 min-h-162.5 relative overflow-hidden flex flex-col">
           <AnimatePresence mode="wait">
-            
+
             {/* 1. App Settings & Audio Tab */}
             {activeTab === 'settings' && (
               <motion.div
@@ -424,7 +428,6 @@ export default function ProfilePage() {
               >
                 <SettingsPanel
                   isEmbedded={true}
-                  onInteractionStateChange={setIsInteractingWithColors}
                 />
               </motion.div>
             )}
@@ -440,10 +443,10 @@ export default function ProfilePage() {
               >
                 <div className="flex items-center justify-between border-b border-foreground/10 pb-4">
                   <div>
-                    <h2 className="text-2xl font-black tracking-tight text-foreground">Devices</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight text-foreground">Devices</h2>
                     <p className="text-xs sm:text-sm text-foreground/50 mt-1">Everything signed in to your account. Each one can play in sync.</p>
                   </div>
-                  <span className="px-3.5 py-1.5 rounded-full bg-foreground/10 text-foreground text-xs font-black uppercase tracking-widest border border-foreground/10 shrink-0">
+                  <span className="px-3.5 py-1.5 rounded-full bg-foreground/10 text-foreground tabular text-xs font-semibold border border-foreground/10 shrink-0">
                     {devices.length}
                   </span>
                 </div>
@@ -459,21 +462,29 @@ export default function ProfilePage() {
 
                       return (
                         <div key={savedDevice.id} className={cn(
-                          'p-5 rounded-3xl border transition-colors',
+                          'p-4 sm:p-5 rounded-2xl sm:rounded-3xl border transition-colors',
                           isCurrent
                             ? 'bg-foreground/10 border-foreground/25'
                             : 'bg-foreground/3 border-foreground/10 hover:border-foreground/25'
                         )}>
                           {!isEditingThis ? (
-                            <div className="flex items-center justify-between gap-4">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="shrink-0 text-foreground/70">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="w-10 h-10 rounded-2xl bg-foreground/5 flex items-center justify-center shrink-0 text-foreground/80">
                                   <DeviceGlyph userAgent={savedDevice.user_agent} />
                                 </div>
-                                <div className="min-w-0 flex flex-col">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="font-bold text-foreground text-base truncate">{savedDevice.name}</h4>
-                                    {isCurrent && <span className="px-2.5 py-0.5 rounded-full bg-ok-500/20 text-ok-700 dark:text-ok-400 text-[9px] font-black uppercase tracking-widest shrink-0">This one</span>}
+                                <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="min-w-0 flex-1">
+                                      <MarqueeText className="font-bold text-foreground text-base tracking-tight">
+                                        {savedDevice.name}
+                                      </MarqueeText>
+                                    </div>
+                                    {isCurrent && (
+                                      <span className="px-2.5 py-0.5 rounded-full bg-ok-500/20 text-ok-700 dark:text-ok-400 text-[10px] font-semibold shrink-0">
+                                        This one
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-foreground/25' : 'bg-ok-400 animate-pulse'}`} />
@@ -484,12 +495,18 @@ export default function ProfilePage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)} className="px-3.5 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground text-xs font-bold transition-colors">
+                              <div className="flex items-center gap-2 shrink-0 pt-2.5 sm:pt-0 border-t border-foreground/5 sm:border-0 justify-end">
+                                <button
+                                  onClick={() => openDeviceRename(savedDevice.id, savedDevice.name)}
+                                  className="px-3.5 py-1.5 sm:py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground text-xs font-bold transition-colors active:scale-95"
+                                >
                                   Rename
                                 </button>
                                 {!isCurrent && (
-                                  <button onClick={() => handleDeleteDevice(savedDevice.id)} className="px-3 py-2 rounded-xl bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 text-xs font-bold transition-colors">
+                                  <button
+                                    onClick={() => handleDeleteDevice(savedDevice.id)}
+                                    className="px-3.5 py-1.5 sm:py-2 rounded-xl bg-bad-500/10 hover:bg-bad-500/20 text-bad-700 dark:text-bad-400 text-xs font-bold transition-colors active:scale-95"
+                                  >
                                     Remove
                                   </button>
                                 )}
@@ -497,7 +514,7 @@ export default function ProfilePage() {
                             </div>
                           ) : (
                             <form onSubmit={handleDeviceRename} className="flex flex-col gap-3">
-                              <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Rename Device</label>
+                              <label className="text-[11px] font-semibold text-foreground/50">Rename Device</label>
                               <input
                                 autoFocus
                                 value={editingDeviceName}
@@ -533,7 +550,7 @@ export default function ProfilePage() {
                 className="space-y-6 max-w-2xl"
               >
                 <div className="border-b border-foreground/10 pb-4">
-                  <h2 className="text-2xl font-black tracking-tight text-foreground">Integrations</h2>
+                  <h2 className="text-2xl font-semibold tracking-tight text-foreground">Integrations</h2>
                   <p className="text-xs sm:text-sm text-foreground/50 mt-1">Connect an external account to import playlists into your queue.</p>
                 </div>
 
@@ -603,7 +620,7 @@ export default function ProfilePage() {
                 className="space-y-6 max-w-2xl"
               >
                 <div className="border-b border-foreground/10 pb-4">
-                  <h2 className="text-2xl font-black tracking-tight text-foreground">Security</h2>
+                  <h2 className="text-2xl font-semibold tracking-tight text-foreground">Security</h2>
                   <p className="text-xs sm:text-sm text-foreground/50 mt-1">Change the password you use to sign in.</p>
                 </div>
 
@@ -621,7 +638,7 @@ export default function ProfilePage() {
                 className="space-y-8"
               >
                 <div className="border-b border-foreground/10 pb-4">
-                  <h2 className="text-2xl font-black tracking-tight text-foreground">Data & privacy</h2>
+                  <h2 className="text-2xl font-semibold tracking-tight text-foreground">Data & privacy</h2>
                   <p className="text-xs sm:text-sm text-foreground/50 mt-1">Take a copy of your data, check your connection, or close your account.</p>
                 </div>
 
@@ -643,7 +660,7 @@ export default function ProfilePage() {
                 {/* Connection — read from ConnectionContext, so these reflect
                     what's actually happening rather than hardcoded "Connected". */}
                 <div className="space-y-3">
-                  <h4 className="font-bold text-sm uppercase tracking-widest text-foreground/50">Connection</h4>
+                  <h4 className="font-bold text-sm text-foreground/50">Connection</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {[
                       { label: 'Network', ok: isOnline, good: 'Online', bad: 'Offline' },
@@ -651,7 +668,7 @@ export default function ProfilePage() {
                       { label: 'Realtime', ok: isSocketConnected, good: 'Connected', bad: 'Disconnected' },
                     ].map(({ label, ok, good, bad }) => (
                       <div key={label} className="p-4 rounded-2xl bg-foreground/5 border border-foreground/10 flex flex-col gap-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">{label}</span>
+                        <span className="text-[11px] font-semibold text-foreground/50">{label}</span>
                         <span className={cn('text-sm', 'font-bold', 'flex', 'items-center', 'gap-1.5', ok ? 'text-ok-700 dark:text-ok-400' : 'text-bad-700 dark:text-bad-400')}>
                           {ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
                           {ok ? good : bad}
@@ -665,7 +682,7 @@ export default function ProfilePage() {
                 {/* Danger Zone */}
                 <div className="pt-6 border-t border-bad-500/20 space-y-4">
                   <div className="flex flex-col gap-1">
-                    <h4 className="font-black text-bad-700 dark:text-bad-400 text-base flex items-center gap-2">
+                    <h4 className="font-semibold text-bad-700 dark:text-bad-400 text-base flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4" /> Danger zone
                     </h4>
                     <p className="text-xs text-foreground/50">Request permanent deletion of your account, rooms, uploads and listening history.</p>

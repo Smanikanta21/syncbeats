@@ -10,6 +10,7 @@ import { requireAuth, optionalAuth }    from '../auth/authMiddleware';
 import { UserRepository } from '../auth/UserRepository';
 import prisma             from '../db/prisma';
 import { matchToYouTubeFallback } from './MusicBridgeRoutes';
+import { YT_ID_RE, ytId } from '../utils/youtube';
 import { Server } from 'socket.io';
 import ytSearch from 'yt-search';
 import { streamYoutubeAudio, resolveYoutubeAudioDirectUrl, findYtDlpPath } from './SearchRoutes';
@@ -27,9 +28,8 @@ declare global {
   }
 }
 
-
 // Strict YouTube video ID format — 11 alphanumeric/dash/underscore chars only
-const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/
+const YOUTUBE_ID_RE = YT_ID_RE;
 
 /** Playlists are capped so one import can't wedge a room. */
 const MAX_PLAYLIST_TRACKS = 500;
@@ -49,7 +49,6 @@ function withMeta(url: string, thumbnail?: string | null, playlistId?: string | 
 
 const repo = new RoomRepository();
 const users = new UserRepository();
-const exhaustedRapidKeys = new Set<string>();
 
 /**
  * Every `/:roomId` route must run this **after** its auth middleware. It proves the
@@ -69,7 +68,7 @@ async function loadRoom(req: Request, res: Response, next: NextFunction): Promis
 
   try {
     const row = await repo.findById(roomId);
-    
+
     if (!row) {
       fail(res, 404, `No room found with code ${roomId}. Check the code and try again.`);
       return;
@@ -121,6 +120,7 @@ function liveRoom(roomManager: RoomManager, req: Request) {
 
 export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   const router = Router();
+  const lazyResolutions = new WeakMap<ReturnType<typeof liveRoom>, Map<string, Promise<string | null>>>();
 
   // GET /rooms/:roomId/youtube-search — auth required, rate limited
   router.get('/:roomId/youtube-search', requireAuth, searchLimiter, loadRoom, async (req: Request, res: Response) => {
@@ -214,6 +214,47 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
+  // GET /rooms/online — public rooms with connected participants on this server.
+  // Private rooms are filtered from the live room snapshot before any host data
+  // is returned. This endpoint intentionally exposes only room code, host name,
+  // participant count and playback activity for the room picker.
+  router.get('/online', requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const liveRooms = roomManager.getAllRooms()
+        .map((room) => ({ room, snapshot: room.snapshot() }))
+        .filter(({ snapshot }) => !snapshot.isPrivate && snapshot.participants.length > 0);
+      if (liveRooms.length === 0) {
+        res.json({ rooms: [] });
+        return;
+      }
+
+      const rows = await prisma.room.findMany({
+        where: {
+          id: { in: liveRooms.map(({ room }) => room.roomId) },
+          endedAt: null,
+        },
+        select: {
+          id: true,
+          host: { select: { name: true } },
+        },
+      });
+      const hostByRoom = new Map(rows.map((row) => [row.id, row.host.name]));
+      res.json({
+        rooms: liveRooms
+          .filter(({ room }) => hostByRoom.has(room.roomId))
+          .map(({ room, snapshot }) => ({
+            id: room.roomId,
+            host_name: hostByRoom.get(room.roomId)!,
+            participant_count: snapshot.participants.length,
+            is_playing: snapshot.isPlaying,
+          }))
+          .sort((a, b) => b.participant_count - a.participant_count),
+      });
+    } catch (err) {
+      sendError(res, err, "We couldn't load rooms that are online. Please refresh and try again.");
+    }
+  });
+
   // GET /rooms/:roomId — auth required (room data is private)
   router.get('/:roomId', requireAuth, loadRoom, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
@@ -241,7 +282,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     try {
       const inviterId = req.user!.sub;
       const inviter = await users.findById(inviterId);
-      
+
       let finalInviteeId: string | null = null;
       let finalEmail: string | null = null;
 
@@ -274,7 +315,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const { buildRoomInviteHtml } = await import('../auth/EmailTemplates');
       const authService = new AuthService();
       const inviterName = inviter?.name || 'A friend';
-      
+
       const htmlEmail = buildRoomInviteHtml(inviterName, roomId, inviteLink);
       const textEmail = `You're invited! ${inviterName} has invited you to join SyncBeats Room #${roomId}. Join here: ${inviteLink}`;
 
@@ -387,8 +428,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-
-
   // PATCH /rooms/:roomId/host — transfer room ownership
   router.patch('/:roomId/host', requireAuth, loadRoom, async (req: Request, res: Response) => {
     const roomId = req.params['roomId'] as string;
@@ -423,12 +462,6 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
     }
   });
 
-  
-  
-  
-  
-  
-  
   // ── Queue ────────────────────────────────────────────────────────────────
   //
   // Every mutation goes through Room, which emits queueChanged + stateChanged
@@ -619,37 +652,53 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      const room = roomManager.get(roomId);
-      const item = room?.getQueue().find(q => q.id === queueItemId);
-      if (!room || !item) {
+      const room = liveRoom(roomManager, req);
+      const item = room.getQueue().find(q => q.id === queueItemId);
+      if (!item) {
         fail(res, 404, 'That track is no longer in the queue.');
         return;
       }
 
       // Already resolved by another device that got here first.
       if (!item.trackUrl.startsWith('spotify-lazy:')) {
-        res.json({ success: true, youtubeId: item.trackUrl.split('?')[0].replace('youtube:', '') });
+        res.json({ success: true, youtubeId: ytId(item.trackUrl) });
         return;
       }
 
-      const match = await matchToYouTubeFallback(title, artist || '');
-      if (!match?.youtubeId) {
-        fail(res, 404, `We couldn't find a playable version of "${title}". Try adding it from YouTube instead.`);
+      let pending = lazyResolutions.get(room);
+      if (!pending) {
+        pending = new Map();
+        lazyResolutions.set(room, pending);
+      }
+      let resolution = pending.get(queueItemId);
+      if (!resolution) {
+        resolution = (async () => {
+          const match = await matchToYouTubeFallback(item.title || title, item.artist || artist || '');
+          if (!match?.youtubeId) return null;
+          // A slow external lookup must not revive a removed item or an old room.
+          if (roomManager.get(roomId) !== room) return null;
+          const current = room.getQueue().find(q => q.id === queueItemId);
+          if (!current) return null;
+          if (current.trackUrl !== item.trackUrl) return ytId(current.trackUrl);
+          const qs = item.trackUrl.includes('?') ? `?${item.trackUrl.split('?')[1]}` : '';
+          return room.resolveQueueItem(queueItemId, `youtube:${match.youtubeId}${qs}`) ? match.youtubeId : null;
+        })().finally(() => pending!.delete(queueItemId));
+        pending.set(queueItemId, resolution);
+      }
+      const youtubeId = await resolution;
+      if (!youtubeId) {
+        fail(res, 404, 'This track was removed or no playable version was found. Try adding it from YouTube.');
         return;
       }
-
-      // Carry the `?thumb=…&pid=…` across — the client renders art from it.
-      const qs = item.trackUrl.includes('?') ? `?${item.trackUrl.split('?')[1]}` : '';
-      room.resolveQueueItem(queueItemId, `youtube:${match.youtubeId}${qs}`);
 
       if (trackId) {
         await prisma.playlistTrack.update({
           where: { id: trackId },
-          data: { youtubeId: match.youtubeId },
+          data: { youtubeId },
         }).catch(() => {});
       }
 
-      res.json({ success: true, youtubeId: match.youtubeId });
+      res.json({ success: true, youtubeId });
     } catch (err) {
       sendError(res, err, "We couldn't find a playable version of that track. Please try another.");
     }

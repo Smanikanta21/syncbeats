@@ -195,9 +195,9 @@ export function useSyncTelemetry({
       const report = sync.getLastDrift();
       driftWindowRef.current.push(report.driftMs);
 
-      // Track worst tier in this window (priority: emergency > crossfade > soft-seek > micro-rate > synced)
+      // Track the strongest correction in this window.
       const tierPriority: Record<string, number> = {
-        emergency: 4, crossfade: 3, 'soft-seek': 2, 'micro-rate': 1, synced: 0,
+        emergency: 2, crossfade: 1, synced: 0,
       };
       const currentPriority = tierPriority[correctionTierRef.current] ?? 0;
       const newPriority = tierPriority[report.tier] ?? 0;

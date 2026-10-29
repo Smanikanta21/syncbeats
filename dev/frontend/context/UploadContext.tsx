@@ -4,12 +4,14 @@
 // Shares IndexedDB cache status, upload metadata triggers, and real-time Socket.io P2P chunk transfers.
 
 import {
-  createContext, useContext, useState, useCallback, useEffect,
+  createContext, useContext, useState, useCallback, useEffect, useRef,
   type ReactNode
 } from "react";
-import { roomsApi, getRestUrl, getAuthToken } from "../lib/api";
+import { roomsApi } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { ytId } from "../lib/youtube";
+import { downloadTrack } from "../lib/trackDownload";
+import type { TrackActivity } from "../lib/types";
 
 interface UploadResult {
   trackUrl: string;
@@ -32,11 +34,11 @@ export interface PlaylistImportState {
   currentTitle?: string;
 }
 
-
 interface UploadCtx {
   isDragging:       boolean;
   isUploading:      boolean;
   uploadProgress:   number;
+  activity:         TrackActivity | null;
   activeImport:     PlaylistImportState | null;
   setActiveImport:  (state: PlaylistImportState | null | ((prev: PlaylistImportState | null) => PlaylistImportState | null)) => void;
   setIsDragging:    (v: boolean) => void;
@@ -47,120 +49,91 @@ interface UploadCtx {
 
 const Ctx = createContext<UploadCtx | null>(null);
 
-
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [isDragging,     setIsDragging]     = useState(false);
-  const [isUploading,    setIsUploading]    = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [activity, setActivity] = useState<TrackActivity | null>(null);
+  const activeOperation = useRef<string | null>(null);
+  const isUploading = activity?.status === 'active';
+  const uploadProgress = isUploading ? activity.progress : 0;
   const [activeImport,   setActiveImport]   = useState<PlaylistImportState | null>(null);
   const [activeTransfers] = useState<Record<string, TransferState>>({});
 
+  const begin = useCallback((roomId: string, title: string): TrackActivity => {
+    if (activeOperation.current) throw new Error('A transfer is already in progress. Please wait.');
+    const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    activeOperation.current = id;
+    return { id, roomId, title, progress: 0, status: 'active' };
+  }, []);
+
+  const publish = useCallback((next: TrackActivity) => {
+    setActivity(next);
+    const socket = getSocket();
+    if (socket.connected) socket.emit('room:upload_progress', {
+      ...next, operationId: next.id,
+    });
+  }, []);
+
   // 1. Seed Local File via WebSockets
   const uploadFile = useCallback(async (file: File, roomId: string, customTrackUrl?: string, artist?: string): Promise<UploadResult> => {
-    // Hard guard — prevents double-upload if caller doesn't check isUploading
-    if (isUploading) throw new Error('An upload is already in progress. Please wait.');
-    
     const title = file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
-    setIsUploading(true);
-    setUploadProgress(10);
-    getSocket().emit('room:upload_progress', { roomId, title, progress: 10 });
+    const operation = begin(roomId, title);
+    publish({ ...operation, progress: 10 });
 
     try {
       // Generate custom websocket P2P URL
       const trackUrl = customTrackUrl || `ws-p2p:${Date.now()}_${Math.random().toString(36).substring(7)}`;
-      
-      setUploadProgress(40);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 40 });
+
+      publish({ ...operation, trackUrl, progress: 40 });
 
       // Save directly to IndexedDB so we become the active "seeder"
       const { saveTrack } = await import('../lib/idb');
-      await saveTrack(trackUrl, file);
+      if (!await saveTrack(trackUrl, file, title)) {
+        throw new Error('This file could not be saved on your device. Free some storage and try again.');
+      }
 
-      setUploadProgress(80);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 80 });
+      publish({ ...operation, trackUrl, progress: 80 });
 
       // Tell the backend to enqueue the custom URL
       await roomsApi.enqueueMagnet(roomId, trackUrl, title, artist);
-      
-      setUploadProgress(100);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-      setIsUploading(false);
-      setUploadProgress(0);
-      
+
+      publish({ ...operation, trackUrl, progress: 100, status: 'complete' });
+
       return { trackUrl, title };
     } catch (err) {
       console.error("[UploadContext] uploadFile failed:", err);
-      setIsUploading(false);
-      setUploadProgress(0);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      publish({ ...operation, status: 'failed', error: err instanceof Error ? err.message : 'Upload failed' });
       throw err;
+    } finally {
+      if (activeOperation.current === operation.id) activeOperation.current = null;
     }
-  }, []);
+  }, [begin, publish]);
 
   // 2. Fetch YouTube stream from ephemeral proxy, save to Blob, and seed it via WebSockets
   const downloadYoutubeToP2P = useCallback(async (roomId: string, videoId: string, title: string, artist?: string) => {
-    // Hard guard — prevents double-download if caller doesn't check isUploading
-    if (isUploading) throw new Error('A download is already in progress. Please wait.');
-    
-    setIsUploading(true);
-    setUploadProgress(5);
-    getSocket().emit('room:upload_progress', { roomId, title, progress: 5 });
+    const operation = begin(roomId, title);
+    publish({ ...operation, indeterminate: true });
     try {
-      const baseUrl = getRestUrl();
-      const authToken = getAuthToken();
-      const proxyUrl = `${baseUrl}/rooms/${roomId}/yt-proxy?videoId=${videoId}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
-      
-      const response = await fetch(proxyUrl, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      });
-      let blob: Blob;
-
-      if (!response.ok) {
-        console.warn(`[UploadContext] YouTube Proxy returned ${response.status}. Enqueuing track directly as youtube:${videoId} for client/peer playback...`);
-        const fallbackUrl = `youtube:${videoId}`;
-        await roomsApi.enqueueMagnet(roomId, fallbackUrl, title, artist);
-        setIsUploading(false);
-        setUploadProgress(0);
-        getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-        return;
-      }
-      
-      blob = await response.blob();
-      
-      if (blob.size < 5000) {
-        console.warn(`[UploadContext] YouTube proxy returned small blob (${blob.size} bytes). Enqueuing track directly as youtube:${videoId}...`);
-        const fallbackUrl = `youtube:${videoId}`;
-        await roomsApi.enqueueMagnet(roomId, fallbackUrl, title, artist);
-        setIsUploading(false);
-        setUploadProgress(0);
-        getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
-        return;
-      }
-      
-      setUploadProgress(20);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 20 });
-      
-      setUploadProgress(50);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 50 });
-      const file = new File([blob], `${title.replace(/[^a-zA-Z0-9 ]/g, '')}.mp3`, { type: 'audio/mpeg' });
-      
-      const customTrackUrl = `ws-p2p:yt:${videoId}_${Date.now()}`;
-      
-      // Re-use the existing upload logic
-      await uploadFile(file, roomId, customTrackUrl, artist);
-
-    } catch (err: any) {
-      console.warn("[UploadContext] downloadYoutubeToP2P proxy failed, attempting direct enqueue:", err);
+      let trackUrl = `youtube:${videoId}`;
       try {
-        await roomsApi.enqueueMagnet(roomId, `youtube:${videoId}`, title, artist);
-      } catch (enqueueErr) {
-        console.error("[UploadContext] Direct enqueue failed:", enqueueErr);
+        const result = await downloadTrack(trackUrl, roomId, {
+          title, priority: 'prefetch',
+          onProgress: progress => publish({ ...operation, progress: Math.min(95, progress ?? 0), indeterminate: progress == null }),
+        });
+        // Only advertise as a seeder after persistent storage actually commits.
+        if (result.cached) trackUrl = `ws-p2p:yt:${videoId}`;
+      } catch {
+        // The foreground player can still resolve/download an enqueued YouTube track.
       }
-      setIsUploading(false);
-      setUploadProgress(0);
-      getSocket().emit('room:upload_progress', { roomId, title, progress: 100 });
+      publish({ ...operation, trackUrl, progress: 95 });
+      await roomsApi.enqueueMagnet(roomId, trackUrl, title, artist);
+      publish({ ...operation, trackUrl, progress: 100, status: 'complete' });
+    } catch (err) {
+      publish({ ...operation, status: 'failed', error: err instanceof Error ? err.message : 'Could not add this track' });
+      throw err;
+    } finally {
+      if (activeOperation.current === operation.id) activeOperation.current = null;
     }
-  }, [uploadFile]);
+  }, [begin, publish]);
 
   // 3. Listen for WebSocket P2P requests and serve chunks — optimized for speed
   useEffect(() => {
@@ -186,7 +159,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     };
 
     // ── File-request responder (seeder) ─────────────────────────────────────────
-    const handleRequestFile = async ({ requesterSocketId, roomId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
+    const handleRequestFile = async ({ requesterSocketId, trackUrl }: { requesterSocketId: string, roomId: string, trackUrl: string }) => {
       try {
         // ── Resolve the IDB key regardless of URL scheme ─────────────────────
         // Tracks are stored by videoId (e.g. 'h_VCgsWLmY4') for youtube: scheme,
@@ -254,6 +227,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       isDragging,
       isUploading,
       uploadProgress,
+      activity,
       activeImport,
       setActiveImport,
       setIsDragging,
