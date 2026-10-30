@@ -6,7 +6,7 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
   Loader2, AlertCircle, AlertTriangle, Activity,
   ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
-  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass, X
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
@@ -306,9 +306,9 @@ const RealtimeProgressBar = ({
   }, [isPlaying, duration, audio, isVisible]);
 
   return (
-    <div className="flex items-center gap-3 w-full mt-2">
-      <span ref={leftTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
-      <div className="relative flex-1 h-8 flex items-center cursor-pointer group"
+    <div className="flex items-center gap-2.5 sm:gap-3 w-full mt-0.5">
+      <span ref={leftTimeRef} className="text-[11px] sm:text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
+      <div className="relative flex-1 h-6 flex items-center cursor-pointer group"
         onClick={e => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
@@ -320,7 +320,7 @@ const RealtimeProgressBar = ({
         </div>
         <div ref={handleRef} className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: "-6px" }} />
       </div>
-      <span ref={rightTimeRef} className="text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
+      <span ref={rightTimeRef} className="text-[11px] sm:text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
     </div>
   );
 };
@@ -355,23 +355,23 @@ const PlayerTab = ({
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
-    <div className="relative w-full flex flex-col justify-evenly px-5 sm:px-8 py-8 sm:py-10 gap-6">
+    <div className="relative w-full flex flex-col justify-evenly px-4 sm:px-6 pt-3.5 pb-4 sm:pt-4 sm:pb-5 gap-3 sm:gap-4">
       {/* Track header */}
-      <div className="flex items-start gap-3 sm:gap-4 w-full">
-        <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
+      <div className="flex items-start gap-3 sm:gap-3.5 w-full">
+        <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-13 h-13 sm:w-15 sm:h-15 rounded-[12px] shadow-lg ${
           thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-white/10 border-white/10"
         }`}>
           {thumbnailUrl
             ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
-            : <span className="text-xl font-black text-white/80 select-none">{trackInitials}</span>}
+            : <span className="text-lg sm:text-xl font-black text-white/80 select-none">{trackInitials}</span>}
         </div>
 
-        <div className="flex flex-col justify-center flex-1 min-w-0 pt-1">
-          <div className="font-bold text-white text-[18px] truncate leading-tight tracking-tight">
+        <div className="flex flex-col justify-center flex-1 min-w-0 pt-0.5">
+          <div className="font-bold text-white text-[16px] sm:text-[17px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
           <div
-            className={`text-[13px] sm:text-[15px] truncate mt-0.5 transition-colors ${
+            className={`text-[12px] sm:text-[13px] truncate mt-0.5 transition-colors ${
               error ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]" : "text-white/50"
             }`}
             onClick={e => { if (error) { e.stopPropagation(); setShowErrorDetails(p => !p); } }}
@@ -414,7 +414,7 @@ const PlayerTab = ({
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0 pr-1 pt-1">
+        <div className="flex items-center gap-3 sm:gap-4 shrink-0 pr-1 pt-0.5">
           {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
             : !isReady || !isRoomReady ? (
                 <div className="w-6 h-1 bg-white/10 rounded-full overflow-hidden flex items-center shrink-0">
@@ -456,17 +456,17 @@ const PlayerTab = ({
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-6 sm:gap-10">
+        <div className="flex items-center justify-center gap-5 sm:gap-8">
           <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <SkipBack className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
+            <SkipBack className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="currentColor" />
           </button>
           <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             {effectivePlaying
-              ? <Pause className="w-9 h-9 sm:w-10 sm:h-10 text-white" fill="currentColor" />
-              : <Play className="w-9 h-9 sm:w-10 sm:h-10 ml-1 text-white" fill="currentColor" />}
+              ? <Pause className="w-8 h-8 sm:w-9 sm:h-9 text-white" fill="currentColor" />
+              : <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 text-white" fill="currentColor" />}
           </button>
           <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
-            <SkipForward className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="currentColor" />
+            <SkipForward className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="currentColor" />
           </button>
         </div>
 
@@ -966,8 +966,8 @@ export function DynamicIsland() {
     incomingTrack, pendingRequests, hostId, joinStatus, isPrivate, deviceSyncProgress,
     play, pause, seek, nextTrack, prevTrack, prefetch,
   } = useSyncInfo();
-  const isRoom = pathname.includes("/room/");
-  const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
+  const isRoom = Boolean(pathname && pathname.includes("/room/"));
+  const roomId = isRoom && pathname ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
   const { layoutWidth: windowWidth, bounds: viewportBounds } = useIslandViewport();
   const isMobile = windowWidth > 0 && windowWidth < 768;
   const isHost = hostId === user?.id;
@@ -1499,16 +1499,16 @@ export function DynamicIsland() {
   const hasPending = isHost && isPrivate && pendingRequests.length > 0;
   const extendedWidth = Math.min(hasPending ? 460 : 360, availableWidth);
   const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
-  const expandedWidth = Math.min(840, availableWidth);
+  const expandedWidth = Math.min(activeTab === "search" ? 560 : 420, availableWidth);
   const maxIslandHeight = Math.max(1, viewportBounds.height - (isMobile ? 0 : Math.max(0, 28 - viewportBounds.y)));
-  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight + 8);
+  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight);
   const dropZoneSize = Math.min(240, availableWidth, maxIslandHeight);
   const currentWidth = wiggle || isSwallowing ? dropZoneSize
     : radialSnapInfo?.isOpen ? Math.min(265, availableWidth)
     : isExpanded_room ? expandedWidth : isExtended_room ? extendedWidth : pillWidth;
   const currentHeight = Math.min(maxIslandHeight, wiggle || isSwallowing ? dropZoneSize
     : isExpanded_room ? expandedHeight : isExtended_room ? extendedHeight : COMPACT_HEIGHT);
-  const currentRadius = wiggle || isSwallowing ? 48 : isExpanded_room ? 36 : currentHeight / 2;
+  const currentRadius = wiggle || isSwallowing ? 48 : isExpanded_room ? 32 : currentHeight / 2;
   const renderedSize = useIslandSize(islandRef, isRoom && !isModalOpen && joinStatus !== 'pending' && joinStatus !== 'denied');
   const docking = useIslandDock(false,
     isExpanded_room, {
@@ -1630,7 +1630,7 @@ export function DynamicIsland() {
       />
 
       <div 
-        className="fixed z-100 flex flex-col items-center pointer-events-none left-1/2 -translate-x-1/2"
+        className="fixed z-[100] flex flex-col items-center pointer-events-none left-1/2 -translate-x-1/2"
         style={{
           top: "max(calc(1.75rem + 2px), calc(env(safe-area-inset-top, 0px) + 0.5rem + 2px))",
         }}
@@ -1834,16 +1834,6 @@ export function DynamicIsland() {
               >
                 {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
                 <div ref={contentMeasureRef}>
-                  <div className="flex items-center justify-end px-3 pt-2 text-white" onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      aria-label="Close music controls"
-                      onClick={closeIsland}
-                      className="min-h-11 min-w-11 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 focus-visible:outline-2 focus-visible:outline-white transition-colors cursor-pointer"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
                 <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
                   {activeTab === "player" && (
                     <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">

@@ -530,6 +530,7 @@ export class Room extends EventEmitter {
         this.pause(socketId);
       } else {
         this.state = PlaybackState.PAUSED;
+        this.emit('stateChanged', this.snapshot());
       }
 
       // Schedule 1-hour idle timer to clear session time if no one rejoins within 60 minutes

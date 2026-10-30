@@ -377,8 +377,8 @@ export function RoomDashboard({
       }}
     >
       <FullscreenPrompt />
-      {/* ── Desktop Layout (lg+) ───────────────────────────────────────── */}
-      <div className="hidden lg:flex flex-1 min-h-0 p-5 pt-18 gap-4">
+      {/* ── Desktop & Tablet Layout (md+) ────────────────────────────────── */}
+      <div className="hidden md:flex flex-1 min-h-0 p-5 pt-18 gap-4">
         {/* Primary workspace: Stage & Controls */}
         <div className={cn("flex-1 flex flex-col min-w-0 gap-3 min-h-0", isSidebarRight ? "order-1" : "order-2")}>
           {/* Optional pluggable Spatial Audio slot */}
@@ -396,7 +396,7 @@ export function RoomDashboard({
           </GlassCard>
 
           {/* Desktop Playback Controls */}
-          <GlassCard className="shrink-0 px-5 py-3 hidden lg:flex items-center justify-between gap-6" isPlaying={isPlaying}>
+          <GlassCard className="shrink-0 px-5 py-3 hidden md:flex items-center justify-between gap-6" isPlaying={isPlaying}>
             <div className="flex items-center gap-4">
               <button onClick={onPrev} className="p-2.5 rounded-full bg-foreground/5 hover:bg-foreground/15 text-foreground/80 transition-all">
                 <SkipBack className="w-4 h-4" />
@@ -695,7 +695,7 @@ export function RoomDashboard({
       <RoomReactions />
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
-      <div className="flex lg:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-2">
+      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-2">
         {/* Mobile Header — Single Sleek Unified Bar */}
         <div className="flex items-center justify-between gap-2 rounded-2xl border border-foreground/10 bg-background/60 px-2.5 py-2 mb-2 shrink-0 z-30 backdrop-blur-2xl">
           {/* Left: Hamburger & Room Code */}

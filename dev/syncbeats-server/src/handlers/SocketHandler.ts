@@ -59,6 +59,18 @@ export class SocketHandler {
       this.roomRepo.recordParticipantLeave(roomId, socketId).catch(err => {
         console.error(`[DB Sync] Failed to record leave for socket ${socketId} in ${roomId}:`, err);
       });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated) {
+        const snap = room.snapshot();
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+        void this.persistence.flush(roomId).catch(err => {
+          console.error(`[DB Sync] Immediate flush on participant leave failed for ${roomId}:`, err);
+        });
+      }
     });
 
     this.roomManager.on('room:hostChanged', ({ roomId, hostId }: { roomId: string; hostId: string }) => {
@@ -69,6 +81,18 @@ export class SocketHandler {
     this.roomManager.on('room:trackSet', ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
       console.log(`[Socket] Broadcasting room:trackSet to ${roomId}`);
       this.io.to(roomId).emit('room:trackSet', { roomId, roomInstanceId: this.roomManager.get(roomId)?.snapshot().roomInstanceId, trackUrl, title });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated) {
+        const snap = room.snapshot();
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+        void this.persistence.flush(roomId).catch(err => {
+          console.error(`[DB Sync] Immediate flush on trackSet failed for ${roomId}:`, err);
+        });
+      }
     });
 
     this.roomManager.on('room:queueChanged', ({ roomId, queue }: { roomId: string; queue: any[] }) => {
@@ -77,6 +101,14 @@ export class SocketHandler {
         roomId, roomInstanceId: snap?.roomInstanceId, queue, queueVersion: snap?.queueVersion,
         nextTrack: snap?.nextTrack, shuffle: snap?.shuffle, repeatMode: snap?.repeatMode,
       });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated && snap) {
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+      }
     });
 
     this.roomManager.on('playback:schedule', (payload: any) => {

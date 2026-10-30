@@ -276,11 +276,13 @@ export function findYtDlpPath(): string {
   const path = require('path');
   const fs = require('fs');
   const paths = [
+    '/opt/homebrew/bin/yt-dlp',
+    path.resolve(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp'),
     path.resolve(__dirname, '../../yt-dlp'),
     path.resolve(__dirname, '../../bin/yt-dlp'),
+    path.resolve(process.cwd(), 'bin/yt-dlp'),
     path.resolve(process.cwd(), 'yt-dlp'),
     path.resolve(process.cwd(), 'dev/syncbeats-server/yt-dlp'),
-    path.resolve(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp'),
     'yt-dlp'
   ];
   for (const p of paths) {
@@ -314,9 +316,9 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
       child.stderr.on('data', (d: any) => { stderr += d.toString(); });
 
       child.on('close', (code: number) => {
-        if (code === 0 && stdout.trim().startsWith('http')) {
-          const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-          resolve(lines[0] || null);
+        const lines = stdout.split('\n').map(l => l.trim()).filter(l => /^https?:\/\//.test(l));
+        if (code === 0 && lines.length > 0) {
+          resolve(lines[0]);
         } else {
           if (stderr.trim()) {
             console.warn(`[Search] yt-dlp attempt failed (IPv6:${useIpv6} ${extraArgs.join(' ')}): ${stderr.trim().slice(0, 150)}`);
@@ -413,11 +415,19 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
 
   // ── Cache HIT — serve instantly ───────────────────────────────────────────
   if (fs.existsSync(outputFile)) {
-    console.log(`[Search] Server-disk cache HIT for ${targetYoutubeId} — serving instantly`);
-    return res.sendFile(outputFile);
+    try {
+      const stats = fs.statSync(outputFile);
+      if (stats.size > 100 * 1024) {
+        console.log(`[Search] Server-disk cache HIT for ${targetYoutubeId} — serving instantly (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        return res.sendFile(outputFile);
+      } else {
+        console.warn(`[Search] Removing corrupted cached file for ${targetYoutubeId} (${stats.size} bytes)`);
+        fs.unlinkSync(outputFile);
+      }
+    } catch {}
   }
 
-  // ── In-flight deduplication ──────────────────────────────────────────────
+  // ── In-flight deduplication ───────────────────────────────────────────────
   let inflight = inflightStreams.get(targetYoutubeId);
   if (inflight) {
     console.log(`[Search] Piggybacking on inflight download for ${targetYoutubeId}`);
@@ -429,63 +439,108 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     }
   }
 
-  // ── Cache MISS — proxy the direct stream ──────────────────────────────────
-  console.log(`[Search] Resolving direct audio stream for: https://www.youtube.com/watch?v=${targetYoutubeId}`);
+  // ── Cache MISS — download via yt-dlp natively with RapidAPI fallback ──────
+  console.log(`[Search] Downloading audio for: https://www.youtube.com/watch?v=${targetYoutubeId}`);
 
-  const downloadPromise = (async () => {
-    let directUrl: string | null = null;
+  const downloadPromise = (async (): Promise<boolean> => {
+    const { spawn } = require('child_process');
+    const partFile = `${outputFile}.part`;
+    const rapidPartFile = `${outputFile}_rapid.m4a`;
 
-    // yt-dlp first: unmetered and higher quality than RapidAPI's 128kbps MP3 re-encode.
-    directUrl = await resolveYoutubeAudioDirectUrl(targetYoutubeId, ytDlpPath);
-
-    if (!directUrl) {
-      // RapidAPI only as last resort — the per-key quota is the scarce resource.
-      directUrl = await getRapidApiUrl(targetYoutubeId);
-    }
-
-    if (!directUrl) return false;
-
-    try {
-      const audioRes = await fetch(directUrl);
-      if (!audioRes.ok || !audioRes.body) return false;
-
-      // Pass headers for real-time progress bar in clients
-      const contentLength = audioRes.headers.get('content-length');
-      if (contentLength) res.setHeader('Content-Length', contentLength);
-      res.setHeader('Content-Type', audioRes.headers.get('content-type') || 'audio/mp4');
-
-      const { Readable } = require('stream');
-      const readable = Readable.fromWeb(audioRes.body as any);
-
-      // Write to cache
-      const diskStream = fs.createWriteStream(outputFile);
-      readable.pipe(diskStream);
-
-      // Pipe to the *first* client instantly!
-      readable.pipe(res);
-
-      return new Promise<boolean>((resolve) => {
-        diskStream.on('finish', () => resolve(true));
-        diskStream.on('error', () => resolve(false));
+    const ytDlpPromise = new Promise<boolean>((resolve) => {
+      const ytDlpArgs = [
+        '--no-warnings',
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '--concurrent-fragments', '4',
+        '-o', partFile,
+        `https://www.youtube.com/watch?v=${targetYoutubeId}`
+      ];
+      const child = spawn(ytDlpPath, ytDlpArgs);
+      child.on('close', (code: number) => {
+        if (code === 0 && fs.existsSync(partFile)) {
+          try {
+            const stats = fs.statSync(partFile);
+            if (stats.size > 100 * 1024) {
+              fs.renameSync(partFile, outputFile);
+              console.log(`[Search] Successfully downloaded ${targetYoutubeId} via yt-dlp (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+              return resolve(true);
+            }
+          } catch {}
+        }
+        try { if (fs.existsSync(partFile)) fs.unlinkSync(partFile); } catch {}
+        resolve(false);
       });
-    } catch (err) {
-      console.error(`[Search] Stream proxy error:`, err);
+      child.on('error', (err: any) => {
+        console.warn(`[Search] yt-dlp spawn error:`, err?.message || err);
+        try { if (fs.existsSync(partFile)) fs.unlinkSync(partFile); } catch {}
+        resolve(false);
+      });
+    });
+
+    const rapidPromise = (async (): Promise<boolean> => {
+      await new Promise(r => setTimeout(r, 400));
+      if (fs.existsSync(outputFile)) return true;
+      const ok = await fetchViaRapidAPI(targetYoutubeId, rapidPartFile);
+      if (ok && fs.existsSync(rapidPartFile) && !fs.existsSync(outputFile)) {
+        try {
+          const stats = fs.statSync(rapidPartFile);
+          if (stats.size > 100 * 1024) {
+            fs.renameSync(rapidPartFile, outputFile);
+            console.log(`[Search] Successfully downloaded ${targetYoutubeId} via RapidAPI (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+            return true;
+          }
+        } catch {}
+      }
+      try { if (fs.existsSync(rapidPartFile)) fs.unlinkSync(rapidPartFile); } catch {}
       return false;
-    }
+    })();
+
+    await Promise.race([
+      ytDlpPromise.then(ok => ok ? true : rapidPromise),
+      rapidPromise.then(ok => ok ? true : ytDlpPromise)
+    ]);
+
+    return fs.existsSync(outputFile);
   })();
 
   inflightStreams.set(targetYoutubeId, downloadPromise);
-  const success = await downloadPromise;
-  inflightStreams.delete(targetYoutubeId);
+  let success = false;
+  try {
+    success = await downloadPromise;
+  } finally {
+    inflightStreams.delete(targetYoutubeId);
+  }
 
-  if (!success && !res.headersSent) {
-    res.status(502).json({ error: 'Failed to stream audio from source' });
+  if (success && fs.existsSync(outputFile)) {
+    return res.sendFile(outputFile);
+  } else {
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
+    }
   }
 }
 
 const inflightStreams = new Map<string, Promise<boolean>>();
 
 const exhaustedRapidKeys = new Set<string>();
+
+async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<boolean> {
+  const fs = require('fs');
+  const downloadLink = await getRapidApiUrl(videoId);
+  if (!downloadLink) return false;
+  try {
+    const audioRes = await fetch(downloadLink);
+    if (!audioRes.ok) return false;
+    const arrayBuf = await audioRes.arrayBuffer();
+    if (arrayBuf.byteLength > 100 * 1024) {
+      fs.writeFileSync(outputFile, Buffer.from(arrayBuf));
+      return true;
+    }
+  } catch (err) {
+    console.warn(`[Proxy] RapidAPI audio download error:`, err);
+  }
+  return false;
+}
 
 async function getRapidApiUrl(videoId: string): Promise<string | null> {
   const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;

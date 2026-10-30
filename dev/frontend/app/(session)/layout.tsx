@@ -190,7 +190,6 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   return (
     <UploadProvider>
     <SyncProvider>
-      {user && !loading && !isProfile && !isHub && <DynamicIsland />}
       {user && !loading && isLocalUnverified && (
         <div className="fixed top-24 left-1/2 z-60 w-[min(92vw,720px)] -translate-x-1/2 rounded-3xl border border-warn-400/30 bg-warn-500/10 px-4 py-3 backdrop-blur-xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -291,6 +290,8 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
       <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : isHub ? "min-h-dvh w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
         {(!loading && user) ? children : null}
       </div>
+
+      {user && !loading && !isProfile && !isHub && <DynamicIsland />}
 
       {user && !loading && (
         <>

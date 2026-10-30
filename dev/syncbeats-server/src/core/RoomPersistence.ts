@@ -67,14 +67,21 @@ export class RoomPersistence {
     return run;
   }
 
-  /** Call after accepting connections/mutations stops, before disconnecting Prisma. */
-  async flush(): Promise<void> {
+  /** Immediately write pending state for a single room, or all rooms on shutdown. */
+  async flush(roomId?: string): Promise<void> {
+    if (roomId) {
+      const timer = this.timers.get(roomId);
+      if (timer) clearTimeout(timer);
+      this.timers.delete(roomId);
+      await this.drain(roomId);
+      return;
+    }
     this.closing = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     while (this.pending.size || this.inFlight.size) {
       const rooms = new Set([...this.pending.keys(), ...this.inFlight.keys()]);
-      await Promise.all([...rooms].map(roomId => this.drain(roomId)));
+      await Promise.all([...rooms].map(r => this.drain(r)));
     }
   }
 }

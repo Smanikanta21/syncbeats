@@ -97,7 +97,6 @@ export class SyncBeatsServer {
     this.setupRoutes();
     this.setupRedisAdapter();
     this.setupSocketIO();
-    this.setupRoomCleanup();
     this.setupGracefulShutdown();
   }
 
@@ -391,32 +390,6 @@ fi
     this.io.on('connection', (socket) => {
       this.socketHandler.register(socket);
     });
-  }
-
-  private setupRoomCleanup(): void {
-    // Rooms expire 60 days after their last access (timer resets on every join)
-    const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000;
-    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // run every hour
-
-    const cleanup = async () => {
-      try {
-        const cutoff = new Date(Date.now() - TWO_MONTHS_MS);
-        const candidates = await this.roomRepo.listOlderThan(cutoff);
-
-        for (const room of candidates) {
-          const liveRoom = this.roomManager.get(room.id);
-          const hasParticipants = !!liveRoom && liveRoom.getParticipantCount() > 0;
-          if (!hasParticipants) {
-            console.log(`[Cleanup] Removed stale empty room ${room.id}`);
-          }
-        }
-      } catch (err) {
-        console.error('[Cleanup] room cleanup failed:', err);
-      }
-    };
-
-    void cleanup();
-    setInterval(() => { void cleanup(); }, CLEANUP_INTERVAL_MS);
   }
 
   private setupGracefulShutdown(): void {
