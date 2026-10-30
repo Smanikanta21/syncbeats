@@ -413,13 +413,13 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  // ── Cache HIT — serve instantly ───────────────────────────────────────────
+  // ── Cache HIT — serve instantly ──────────────────────────────────────────
   if (fs.existsSync(outputFile)) {
     try {
       const stats = fs.statSync(outputFile);
       if (stats.size > 100 * 1024) {
         console.log(`[Search] Server-disk cache HIT for ${targetYoutubeId} — serving instantly (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-        return res.sendFile(outputFile);
+        return sendCachedAudio(res, outputFile);
       } else {
         console.warn(`[Search] Removing corrupted cached file for ${targetYoutubeId} (${stats.size} bytes)`);
         fs.unlinkSync(outputFile);
@@ -433,7 +433,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     console.log(`[Search] Piggybacking on inflight download for ${targetYoutubeId}`);
     const success = await inflight;
     if (success && fs.existsSync(outputFile)) {
-      return res.sendFile(outputFile);
+      return sendCachedAudio(res, outputFile);
     } else {
       return res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
     }
@@ -445,7 +445,10 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
   const downloadPromise = (async (): Promise<boolean> => {
     const { spawn } = require('child_process');
     const partFile = `${outputFile}.part`;
-    const rapidPartFile = `${outputFile}_rapid.m4a`;
+    const rapidPartFile = `${outputFile}_rapid.tmp`;
+
+    let childProcess: any = null;
+    const abortController = new AbortController();
 
     const ytDlpPromise = new Promise<boolean>((resolve) => {
       const ytDlpArgs = [
@@ -458,6 +461,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
         `https://www.youtube.com/watch?v=${targetYoutubeId}`
       ];
       const child = spawn(ytDlpPath, ytDlpArgs);
+      childProcess = child;
 
       const timer = setTimeout(() => {
         try { child.kill('SIGKILL'); } catch {}
@@ -471,8 +475,10 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
           try {
             const stats = fs.statSync(partFile);
             if (stats.size > 100 * 1024) {
-              fs.renameSync(partFile, outputFile);
-              console.log(`[Search] Successfully downloaded ${targetYoutubeId} via yt-dlp (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+              if (!fs.existsSync(outputFile)) {
+                fs.renameSync(partFile, outputFile);
+                console.log(`[Search] Successfully downloaded ${targetYoutubeId} via yt-dlp (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+              }
               return resolve(true);
             }
           } catch {}
@@ -489,18 +495,19 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     });
 
     const rapidPromise = (async (): Promise<boolean> => {
-      await new Promise(r => setTimeout(r, 150));
       if (fs.existsSync(outputFile)) return true;
-      const ok = await fetchViaRapidAPI(targetYoutubeId, rapidPartFile);
-      if (ok && fs.existsSync(rapidPartFile) && !fs.existsSync(outputFile)) {
-        try {
-          const stats = fs.statSync(rapidPartFile);
-          if (stats.size > 100 * 1024) {
-            fs.renameSync(rapidPartFile, outputFile);
-            console.log(`[Search] Successfully downloaded ${targetYoutubeId} via RapidAPI (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-            return true;
-          }
-        } catch {}
+      const ok = await fetchViaRapidAPI(targetYoutubeId, rapidPartFile, abortController.signal);
+      if (ok && fs.existsSync(rapidPartFile)) {
+        if (!fs.existsSync(outputFile)) {
+          try {
+            const stats = fs.statSync(rapidPartFile);
+            if (stats.size > 100 * 1024) {
+              fs.renameSync(rapidPartFile, outputFile);
+              console.log(`[Search] Successfully downloaded ${targetYoutubeId} via RapidAPI (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+              return true;
+            }
+          } catch {}
+        }
       }
       try { if (fs.existsSync(rapidPartFile)) fs.unlinkSync(rapidPartFile); } catch {}
       return false;
@@ -513,6 +520,10 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
         finished++;
         if (ok && !resolved) {
           resolved = true;
+          if (childProcess) {
+            try { childProcess.kill('SIGKILL'); } catch {}
+          }
+          abortController.abort();
           return resolve(true);
         }
         if (finished >= 2 && !resolved) {
@@ -536,7 +547,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
   }
 
   if (success && fs.existsSync(outputFile)) {
-    return res.sendFile(outputFile);
+    return sendCachedAudio(res, outputFile);
   } else {
     if (!res.headersSent) {
       return res.status(502).json({ error: 'YouTube track unavailable or restricted', videoId: targetYoutubeId });
@@ -544,29 +555,62 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
   }
 }
 
+function sendCachedAudio(res: any, filePath: string) {
+  const fs = require('fs');
+  try {
+    const buf = Buffer.alloc(12);
+    const fd = fs.openSync(filePath, 'r');
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    const isMp3 = (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) || (buf[0] === 0xFF && (buf[1] & 0xE0) === 0xE0);
+    if (isMp3) {
+      res.type('audio/mpeg');
+    } else {
+      res.type('audio/mp4');
+    }
+  } catch {}
+  res.setHeader('Accept-Ranges', 'bytes');
+  return res.sendFile(filePath);
+}
+
 const inflightStreams = new Map<string, Promise<boolean>>();
 
 const exhaustedRapidKeys = new Set<string>();
 
-async function fetchViaRapidAPI(videoId: string, outputFile: string): Promise<boolean> {
+async function fetchViaRapidAPI(videoId: string, outputFile: string, signal?: AbortSignal): Promise<boolean> {
   const fs = require('fs');
-  const downloadLink = await getRapidApiUrl(videoId);
-  if (!downloadLink) return false;
+  const downloadLink = await getRapidApiUrl(videoId, signal);
+  if (!downloadLink || signal?.aborted) return false;
   try {
-    const audioRes = await fetch(downloadLink);
-    if (!audioRes.ok) return false;
+    const audioRes = await fetch(downloadLink, {
+      signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Referer': 'https://youtube-mp36.p.rapidapi.com/'
+      }
+    });
+    if (!audioRes.ok) {
+      console.warn(`[Proxy] RapidAPI audio download returned status ${audioRes.status}`);
+      return false;
+    }
     const arrayBuf = await audioRes.arrayBuffer();
+    if (signal?.aborted) return false;
     if (arrayBuf.byteLength > 100 * 1024) {
       fs.writeFileSync(outputFile, Buffer.from(arrayBuf));
       return true;
+    } else {
+      console.warn(`[Proxy] RapidAPI returned too small buffer: ${arrayBuf.byteLength} bytes`);
     }
-  } catch (err) {
-    console.warn(`[Proxy] RapidAPI audio download error:`, err);
+  } catch (err: any) {
+    if (err?.name !== 'AbortError') {
+      console.warn(`[Proxy] RapidAPI audio download error:`, err?.message || err);
+    }
   }
   return false;
 }
 
-async function getRapidApiUrl(videoId: string): Promise<string | null> {
+async function getRapidApiUrl(videoId: string, signal?: AbortSignal): Promise<string | null> {
   const keysStr = process.env.RAPID_API_KEYS || process.env.RAPID_API_KEY;
   if (!keysStr) return null;
 
@@ -580,10 +624,13 @@ async function getRapidApiUrl(videoId: string): Promise<string | null> {
   const shuffledKeys = [...activeKeys].sort(() => 0.5 - Math.random());
 
   for (const key of shuffledKeys) {
+    if (signal?.aborted) return null;
     try {
       for (let poll = 0; poll < 3; poll++) {
+        if (signal?.aborted) return null;
         const apiRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
           method: 'GET',
+          signal,
           headers: {
             'x-rapidapi-key': key,
             'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com'
@@ -607,8 +654,10 @@ async function getRapidApiUrl(videoId: string): Promise<string | null> {
           break;
         }
       }
-    } catch (err) {
-      console.warn(`[Proxy] RapidAPI key evaluation error:`, (err as Error).message);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.warn(`[Proxy] RapidAPI key evaluation error:`, err?.message || err);
+      }
     }
   }
   return null;
