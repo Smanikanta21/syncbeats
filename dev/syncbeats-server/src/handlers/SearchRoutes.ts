@@ -450,13 +450,23 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     const ytDlpPromise = new Promise<boolean>((resolve) => {
       const ytDlpArgs = [
         '--no-warnings',
+        '--socket-timeout', '6',
+        '--retries', '1',
         '-f', 'bestaudio[ext=m4a]/bestaudio/best',
         '--concurrent-fragments', '4',
         '-o', partFile,
         `https://www.youtube.com/watch?v=${targetYoutubeId}`
       ];
       const child = spawn(ytDlpPath, ytDlpArgs);
+
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch {}
+        try { if (fs.existsSync(partFile)) fs.unlinkSync(partFile); } catch {}
+        resolve(false);
+      }, 10000);
+
       child.on('close', (code: number) => {
+        clearTimeout(timer);
         if (code === 0 && fs.existsSync(partFile)) {
           try {
             const stats = fs.statSync(partFile);
@@ -471,6 +481,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
         resolve(false);
       });
       child.on('error', (err: any) => {
+        clearTimeout(timer);
         console.warn(`[Search] yt-dlp spawn error:`, err?.message || err);
         try { if (fs.existsSync(partFile)) fs.unlinkSync(partFile); } catch {}
         resolve(false);
@@ -478,7 +489,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
     });
 
     const rapidPromise = (async (): Promise<boolean> => {
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 150));
       if (fs.existsSync(outputFile)) return true;
       const ok = await fetchViaRapidAPI(targetYoutubeId, rapidPartFile);
       if (ok && fs.existsSync(rapidPartFile) && !fs.existsSync(outputFile)) {
@@ -495,10 +506,23 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
       return false;
     })();
 
-    await Promise.race([
-      ytDlpPromise.then(ok => ok ? true : rapidPromise),
-      rapidPromise.then(ok => ok ? true : ytDlpPromise)
-    ]);
+    await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      let finished = 0;
+      const onDone = (ok: boolean) => {
+        finished++;
+        if (ok && !resolved) {
+          resolved = true;
+          return resolve(true);
+        }
+        if (finished >= 2 && !resolved) {
+          resolved = true;
+          return resolve(false);
+        }
+      };
+      ytDlpPromise.then(onDone);
+      rapidPromise.then(onDone);
+    });
 
     return fs.existsSync(outputFile);
   })();
