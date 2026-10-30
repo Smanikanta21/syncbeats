@@ -41,12 +41,19 @@ const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 export function getDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
 
-  const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
-  if (existing) return existing;
+  try {
+    const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (existing) return existing;
 
-  const generated = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  localStorage.setItem(DEVICE_STORAGE_KEY, generated);
-  return generated;
+    const generated = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(DEVICE_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    const memKey = '__sb_mem_device_id';
+    const fallback = (globalThis as any)[memKey] ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    (globalThis as any)[memKey] = fallback;
+    return fallback;
+  }
 }
 
 function readCookie(name: string): string | null {

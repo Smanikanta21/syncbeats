@@ -585,7 +585,8 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         pauseOnRejoinRef.current = false;
         sync.reconcile(snap);
       }
-      if (snap.trackUrl && audioRef.current.isReadyForTrack(snap.trackUrl)) setReady(true);
+      const myParticipant = snap.participants.find(p => p.socketId === socket.id);
+      if (snap.trackUrl && !myParticipant?.isReady && audioRef.current.isReadyForTrack(snap.trackUrl)) setReady(true);
       if (snap.isPlaying && snap.startEpoch != null && !pauseOnRejoinRef.current && (isJoin || before !== sync.getGen())) {
         const gen = sync.getGen();
         const connection = connectionGenerationRef.current;
@@ -786,6 +787,15 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleRoomNotFound = () => setJoinStatus('not_found');
     socket.on('room:notFound', handleRoomNotFound);
 
+    const handleRoomKicked = ({ reason }: { reason?: string } = {}) => {
+      console.warn('[Room] Kicked from room:', reason);
+      joinedRef.current = false;
+      socket.disconnect();
+      setJoinStatus('denied');
+      toast.error(reason || 'Session displaced by another tab on this device');
+    };
+    socket.on('room:kicked', handleRoomKicked);
+
     const handleHostJoinRequest = ({ socketId, userId, displayName, isNudge }: any) => {
       setPendingRequests(prev => {
         const existing = prev.find(r => (userId && r.userId === userId) || r.socketId === socketId);
@@ -878,6 +888,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:joinApproved', handleJoinApproved);
       socket.off('room:joinDenied', handleJoinDenied);
       socket.off('room:notFound', handleRoomNotFound);
+      socket.off('room:kicked', handleRoomKicked);
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
       socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);

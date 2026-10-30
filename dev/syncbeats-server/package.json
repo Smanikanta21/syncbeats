@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --watch src --ignore-watch tmp,logs,scratch,uploads,dist,node_modules src/server.ts",
     "build": "tsc",
     "test": "ts-node src/core/RoomTests.ts",
     "typecheck": "tsc --noEmit",

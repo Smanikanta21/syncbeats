@@ -199,14 +199,20 @@ export class SocketHandler {
 
         // If joining an existing room, kick any ghost sockets with the same userId AND same deviceId
         // This ensures if a user joins from two DIFFERENT devices (e.g. iPhone and Mac), they aren't kicked.
-        if (room && userId) {
+        if (room && typeof userId === 'string' && userId.trim() !== '' && typeof deviceId === 'string' && deviceId.trim() !== '') {
+          const cleanUserId = userId.trim();
+          const cleanDeviceId = deviceId.trim();
           const existingGhosts = room.snapshot().participants.filter(
-            (p: any) => p.userId === userId && p.deviceId === deviceId && p.socketId !== socket.id
+            (p: any) => p.userId === cleanUserId && p.deviceId === cleanDeviceId && p.socketId !== socket.id
           );
           for (const ghost of existingGhosts) {
-            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${userId} on device ${deviceId}`);
+            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${cleanUserId} on device ${cleanDeviceId}`);
             this.io.to(ghost.socketId).emit('room:kicked', { reason: 'Joined from another tab on this device' });
-            this.io.sockets.sockets.get(ghost.socketId)?.disconnect();
+            const ghostSocket = this.io.sockets.sockets.get(ghost.socketId);
+            if (ghostSocket) {
+              ghostSocket.data.kicked = true;
+              ghostSocket.disconnect(true);
+            }
             room.removeParticipant(ghost.socketId);
           }
         }

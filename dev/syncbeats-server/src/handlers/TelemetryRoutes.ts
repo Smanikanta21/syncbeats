@@ -147,7 +147,10 @@ export function createTelemetryRoutes(): Router {
   router.post('/log', (req: Request, res: Response) => {
     const { device, msg } = req.body;
     try {
-      const logDir = process.env.LOGS_DIR || process.cwd();
+      const logDir = process.env.LOGS_DIR || path.join(process.cwd(), 'logs');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
       const logPath = path.join(logDir, 'device_logs.txt');
       fs.appendFileSync(logPath, `[${device}] ${msg}\n`);
     } catch {
