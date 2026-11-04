@@ -1,6 +1,6 @@
 // db/RoomRepository.ts — Prisma-based implementation
 
-import prisma from './prisma';
+import prisma, { withDbRetry } from './prisma';
 import { Prisma } from '@prisma/client';
 import { Participant } from '../types';
 import type { DurableRoomState } from '../core/RoomPersistence';
@@ -23,75 +23,85 @@ export interface RoomRow {
 
 export class RoomRepository {
   async create(roomId: string, hostId: string): Promise<RoomRow> {
-    const room = await prisma.room.create({
-      data: {
-        id: roomId,
-        hostId,
-        playbackState: 'IDLE',
-      }
+    return withDbRetry(async () => {
+      const room = await prisma.room.create({
+        data: {
+          id: roomId,
+          hostId,
+          playbackState: 'IDLE',
+        }
+      });
+      return this.mapRoom(room);
     });
-    return this.mapRoom(room);
   }
 
   async findById(roomId: string): Promise<RoomRow | null> {
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
-    return room ? this.mapRoom(room) : null;
+    return withDbRetry(async () => {
+      const room = await prisma.room.findUnique({ where: { id: roomId } });
+      return room ? this.mapRoom(room) : null;
+    });
   }
 
   async findActiveByHost(hostId: string): Promise<RoomRow | null> {
-    const room = await prisma.room.findFirst({
-      where: { hostId, endedAt: null },
-      orderBy: { createdAt: 'desc' },
+    return withDbRetry(async () => {
+      const room = await prisma.room.findFirst({
+        where: { hostId, endedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      return room ? this.mapRoom(room) : null;
     });
-    return room ? this.mapRoom(room) : null;
   }
 
   async listActive(): Promise<RoomRow[]> {
-    const rooms = await prisma.room.findMany({
-      where: { endedAt: null },
-      orderBy: { createdAt: 'desc' }
+    return withDbRetry(async () => {
+      const rooms = await prisma.room.findMany({
+        where: { endedAt: null },
+        orderBy: { createdAt: 'desc' }
+      });
+      return rooms.map(r => this.mapRoom(r, false));
     });
-    return rooms.map(r => this.mapRoom(r, false));
   }
 
   async listByUser(userId: string): Promise<{ rooms: RoomRow[], invitedRooms: any[] }> {
-    const rooms = await prisma.room.findMany({
-      where: { 
-        OR: [
-          { hostId: userId },
-          { roomParticipants: { some: { userId } } }
-        ],
-        endedAt: null 
-      },
-      include: {
-        _count: {
-          select: { roomParticipants: { where: { leftAt: null } } }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
+    return withDbRetry(async () => {
+      const rooms = await prisma.room.findMany({
+        where: { 
+          OR: [
+            { hostId: userId },
+            { roomParticipants: { some: { userId } } }
+          ],
+          endedAt: null 
+        },
+        include: {
+          _count: {
+            select: { roomParticipants: { where: { leftAt: null } } }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      const mappedRooms = rooms.map(r => ({
+        ...this.mapRoom(r, false),
+        participant_count: r._count.roomParticipants
+      }));
+
+      const invited = await prisma.roomInvite.findMany({
+        where: { inviteeId: userId, status: 'PENDING' },
+        include: { 
+          room: { include: { _count: { select: { roomParticipants: { where: { leftAt: null } } } } } },
+          inviter: { select: { name: true, email: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const invitedRooms = invited.map(inv => ({
+        inviteId: inv.id,
+        inviterName: inv.inviter.name,
+        ...this.mapRoom(inv.room as any, false),
+        participant_count: inv.room._count.roomParticipants
+      }));
+
+      return { rooms: mappedRooms, invitedRooms };
     });
-    const mappedRooms = rooms.map(r => ({
-      ...this.mapRoom(r, false),
-      participant_count: r._count.roomParticipants
-    }));
-
-    const invited = await prisma.roomInvite.findMany({
-      where: { inviteeId: userId, status: 'PENDING' },
-      include: { 
-        room: { include: { _count: { select: { roomParticipants: { where: { leftAt: null } } } } } },
-        inviter: { select: { name: true, email: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const invitedRooms = invited.map(inv => ({
-      inviteId: inv.id,
-      inviterName: inv.inviter.name,
-      ...this.mapRoom(inv.room as any, false),
-      participant_count: inv.room._count.roomParticipants
-    }));
-
-    return { rooms: mappedRooms, invitedRooms };
   }
 
   async createInvite(roomId: string, inviterId: string, inviteeId: string | null, inviteeEmail: string | null) {
@@ -111,14 +121,16 @@ export class RoomRepository {
 
   /** Queue, cursor and playback metadata commit together; failures reach the retry queue. */
   async savePlaybackState(roomId: string, snapshot: DurableRoomState): Promise<void> {
-    await prisma.room.updateMany({
-      where: { id: roomId },
-      data: {
-        playbackState: snapshot.state,
-        positionMs: BigInt(Math.max(0, Math.round(snapshot.positionMs))),
-        trackUrl: snapshot.trackUrl,
-        queue: snapshot.queue as Prisma.InputJsonValue,
-      },
+    return withDbRetry(async () => {
+      await prisma.room.updateMany({
+        where: { id: roomId },
+        data: {
+          playbackState: snapshot.state,
+          positionMs: BigInt(Math.max(0, Math.round(snapshot.positionMs))),
+          trackUrl: snapshot.trackUrl,
+          queue: snapshot.queue as Prisma.InputJsonValue,
+        },
+      });
     });
   }
 
@@ -147,33 +159,35 @@ export class RoomRepository {
 
   async recordParticipantJoin(roomId: string, userId: string, socketId: string, displayName: string): Promise<void> {
     const cleanDisplayName = sanitizeString(displayName);
-    // Ensure the room exists in the DB first (since some rooms like personal_room are created on the fly)
-    await prisma.room.upsert({
-      where: { id: roomId },
-      create: {
-        id: roomId,
-        hostId: userId,
-        lastAccessedAt: new Date(),
-      },
-      update: { lastAccessedAt: new Date() } // Reset expiry timer on each visit
-    });
+    return withDbRetry(async () => {
+      // Ensure the room exists in the DB first (since some rooms like personal_room are created on the fly)
+      await prisma.room.upsert({
+        where: { id: roomId },
+        create: {
+          id: roomId,
+          hostId: userId,
+          lastAccessedAt: new Date(),
+        },
+        update: { lastAccessedAt: new Date() } // Reset expiry timer on each visit
+      });
 
-    await prisma.roomParticipant.upsert({
-      where: {
-        roomId_userId: { roomId, userId }
-      },
-      create: {
-        roomId,
-        userId,
-        socketId,
-        displayName: cleanDisplayName,
-        joinedAt: new Date(),
-      },
-      update: {
-        socketId,
-        displayName: cleanDisplayName,
-        leftAt: null,
-      }
+      await prisma.roomParticipant.upsert({
+        where: {
+          roomId_userId: { roomId, userId }
+        },
+        create: {
+          roomId,
+          userId,
+          socketId,
+          displayName: cleanDisplayName,
+          joinedAt: new Date(),
+        },
+        update: {
+          socketId,
+          displayName: cleanDisplayName,
+          leftAt: null,
+        }
+      });
     });
   }
 

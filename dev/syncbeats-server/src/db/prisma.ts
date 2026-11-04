@@ -66,6 +66,45 @@ const prisma = (globalForPrisma._prisma ?? createPrismaClient()) as unknown as P
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma._prisma = prisma;
 
+/**
+ * Automatically retry database operations if connection dropped or closed
+ * (handles Neon PostgreSQL scale-to-zero / PgBouncer idle connection drops gracefully).
+ */
+export async function withDbRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const msg = String(err?.message || err);
+      const isConnectionError =
+        msg.includes('Closed') ||
+        msg.includes('bad MAC') ||
+        msg.includes('Server has closed the connection') ||
+        msg.includes('connection reset') ||
+        msg.includes('Connection pool timeout') ||
+        msg.includes('Broken pipe') ||
+        msg.includes('ECONNRESET') ||
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('socket has been ended') ||
+        err?.code === 'P1001' ||
+        err?.code === 'P1017' ||
+        err?.code === 'P2024';
+
+      if (attempt <= maxRetries && isConnectionError) {
+        console.warn(`[DB] Transient connection error (attempt ${attempt}/${maxRetries}), reconnecting...`);
+        try {
+          await prisma.$disconnect();
+        } catch {}
+        await new Promise((r) => setTimeout(r, 150 * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // Auto-create beat_events_cache & admin_audit_logs tables if they don't exist yet
 void (async () => {
   try {

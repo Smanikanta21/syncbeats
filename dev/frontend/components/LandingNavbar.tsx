@@ -46,11 +46,12 @@ export function LandingNavbar() {
         </Link>
 
         <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-foreground/60">
-          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+          <a href="#presets" className="hover:text-foreground transition-colors">Presets</a>
           <a href="#mac-app" className="hover:text-foreground transition-colors inline-flex items-center gap-1.5">
             <span>Mac App</span>
             <span className="rounded-md border border-foreground/15 bg-foreground/5 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-foreground/75 uppercase tracking-wider">Soon</span>
           </a>
+          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
           <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
         </nav>
       </motion.div>

@@ -87,7 +87,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
   const [currentTime, setCurrentTime] = useState(74);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Playback timer
+  // Playback timer (runs only when playing)
   useEffect(() => {
     if (!isPlaying) return;
     const interval = setInterval(() => {
@@ -225,64 +225,41 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
           }}
         />
 
-        {/* Central audio pulse rings */}
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          {isPlaying && (
-            <>
-              <motion.div
-                animate={{ scale: [1, 2.4], opacity: [0.35, 0] }}
-                transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
-                className="h-32 w-32 rounded-full border border-foreground/20"
-              />
-              <motion.div
-                animate={{ scale: [1, 3.4], opacity: [0.2, 0] }}
-                transition={{ duration: 2.2, delay: 0.7, repeat: Infinity, ease: "easeOut" }}
-                className="absolute inset-0 rounded-full border border-foreground/15"
-              />
-            </>
-          )}
+        {/* Central audio pulse rings (lightweight CSS animation) */}
+        {isPlaying && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="h-32 w-32 rounded-full border border-foreground/20 animate-ping opacity-25" style={{ animationDuration: "2.4s" }} />
+          </div>
+        )}
+
+        {/* Hint banner */}
+        <div className="pointer-events-none absolute left-3 top-3 z-10 font-mono text-[10px] text-foreground/40 uppercase tracking-wider">
+          Click any speaker to control volume & pan
         </div>
 
-        {/* Draggable device nodes */}
-        {devices.map((device) => {
+        {/* Stable Interactive device nodes (Positioned smoothly with spring physics) */}
+        {devices.map((device, idx) => {
           const isSelected = selectedId === device.id;
           const DeviceIcon = device.icon;
 
           return (
             <motion.div
               key={device.id}
-              drag
-              dragConstraints={containerRef}
-              dragElastic={0.08}
-              dragMomentum={false}
-              onDrag={(_, info) => {
-                if (!containerRef.current) return;
-                const rect = containerRef.current.getBoundingClientRect();
-                const newX = Math.max(10, Math.min(90, ((info.point.x - rect.left) / rect.width) * 100));
-                
-                let channel = "Center (Lead)";
-                if (newX < 36) channel = "Left Channel";
-                else if (newX > 64) channel = "Right Channel";
-                else if (device.y < 35) channel = "Ambient Rear";
-
-                setDevices((prev) =>
-                  prev.map((d) => (d.id === device.id ? { ...d, x: newX, channel } : d))
-                );
-              }}
+              layout
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
               onClick={() => setSelectedId(device.id)}
               style={{
                 left: `${device.x}%`,
                 top: `${device.y}%`,
               }}
-              className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing flex-col items-center gap-1.5 focus:outline-none"
+              className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center gap-1.5 focus:outline-none"
             >
               {/* Speaker wave halo */}
               <div className="relative">
                 {isPlaying && !device.isMuted && (
-                  <motion.span
-                    animate={{ scale: [1, 1.4, 1], opacity: [0.4, 0.8, 0.4] }}
-                    transition={{ duration: 1.8, repeat: Infinity, delay: Math.random() }}
-                    className="absolute -inset-1 rounded-2xl bg-foreground/10 blur-xs pointer-events-none"
+                  <span
+                    className="absolute -inset-1 rounded-2xl bg-foreground/10 blur-xs pointer-events-none animate-pulse"
+                    style={{ animationDelay: `${idx * 200}ms` }}
                   />
                 )}
                 <div
@@ -291,7 +268,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
                       ? "border-foreground bg-foreground text-background shadow-lg scale-110"
                       : device.isMuted
                       ? "border-foreground/10 bg-background/50 text-foreground/30"
-                      : "border-foreground/15 bg-background/90 text-foreground hover:border-foreground/40"
+                      : "border-foreground/15 bg-background/90 text-foreground hover:border-foreground/40 hover:scale-105"
                   }`}
                 >
                   <DeviceIcon className="h-5 w-5" strokeWidth={1.8} />
@@ -343,7 +320,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
               <button
                 type="button"
                 onClick={() => toggleMute(selectedDevice.id)}
-                className="text-foreground/60 hover:text-foreground transition-colors"
+                className="text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
                 title={selectedDevice.isMuted ? "Unmute" : "Mute"}
               >
                 {selectedDevice.isMuted ? (
@@ -370,13 +347,13 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
           {/* Equalizer animation & Play button */}
           <div className="flex items-center gap-3">
             <div className="hidden h-5 items-end gap-0.5 md:flex" aria-hidden="true">
-              {[14, 22, 10, 26, 18, 12, 24, 16].map((h, i) => (
-                <motion.span
+              {[12, 20, 10, 24, 16, 12, 22, 14].map((h, i) => (
+                <span
                   key={i}
-                  animate={isPlaying ? { height: [5, h, 7, h * 0.85, 5] } : { height: 5 }}
-                  transition={{ duration: 0.85, repeat: Infinity, delay: i * 0.08, ease: "easeInOut" }}
-                  className="w-1 rounded-full bg-foreground/70"
-                  style={{ height: h }}
+                  className="w-1 rounded-full bg-foreground/70 transition-all duration-300"
+                  style={{
+                    height: isPlaying ? `${h}px` : "4px",
+                  }}
                 />
               ))}
             </div>
