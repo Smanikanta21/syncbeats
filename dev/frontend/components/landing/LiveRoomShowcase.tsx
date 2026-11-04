@@ -128,9 +128,12 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
     setSelectedId(newDev.id);
   };
 
+  const [stageVersion, setStageVersion] = useState(0);
+
   const resetStage = () => {
     setDevices(INITIAL_DEVICES);
     setSelectedId("alex-phone");
+    setStageVersion((v) => v + 1);
   };
 
   const formatTime = (secs: number) => {
@@ -233,26 +236,30 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
         )}
 
         {/* Hint banner */}
-        <div className="pointer-events-none absolute left-3 top-3 z-10 font-mono text-[10px] text-foreground/40 uppercase tracking-wider">
-          Click any speaker to control volume & pan
+        <div className="pointer-events-none absolute left-3 top-3 z-10 font-mono text-[10px] text-foreground/45 uppercase tracking-wider">
+          Drag speakers to position in space · Click to mix
         </div>
 
-        {/* Stable Interactive device nodes (Positioned smoothly with spring physics) */}
+        {/* Interactive draggable device nodes (Hardware-accelerated Framer Motion drag) */}
         {devices.map((device, idx) => {
           const isSelected = selectedId === device.id;
           const DeviceIcon = device.icon;
 
           return (
             <motion.div
-              key={device.id}
-              layout
-              transition={{ type: "spring", stiffness: 350, damping: 28 }}
-              onClick={() => setSelectedId(device.id)}
+              key={`${device.id}-${stageVersion}`}
+              drag
+              dragConstraints={containerRef}
+              dragElastic={0.06}
+              dragMomentum={false}
+              whileDrag={{ scale: 1.15, zIndex: 60 }}
+              whileHover={{ scale: 1.05 }}
+              onPointerDown={() => setSelectedId(device.id)}
               style={{
                 left: `${device.x}%`,
                 top: `${device.y}%`,
               }}
-              className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center gap-1.5 focus:outline-none"
+              className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing flex-col items-center gap-1.5 focus:outline-none touch-none select-none"
             >
               {/* Speaker wave halo */}
               <div className="relative">

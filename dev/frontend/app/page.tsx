@@ -7,7 +7,8 @@ import { ContactForm } from "../components/ContactForm";
 import { LandingFooterLinks } from "../components/LandingFooterLinks";
 import { SyncScrollProvider } from "../context/SyncScrollContext";
 import { AmbientField } from "../components/landing/AmbientField";
-import { Hero } from "../components/landing/Hero";
+import { LuxuryEditorialHero } from "../components/landing/LuxuryEditorialHero";
+import { LiveRoomShowcase } from "../components/landing/LiveRoomShowcase";
 import { RoomPresetStage } from "../components/landing/RoomPresetStage";
 import { MacAppTeaser } from "../components/landing/MacAppTeaser";
 import { Capabilities } from "../components/landing/Capabilities";
@@ -100,8 +101,22 @@ export default function LandingPage() {
         <AmbientField />
         <LandingNavbar />
 
-        {/* Hero Section: Interactive Playground & Direct Room Launcher */}
-        <Hero />
+        {/* Luxury Editorial Hero (Inspired by High-End Audio Design) */}
+        <LuxuryEditorialHero />
+
+        {/* Live Interactive Soundstage with Draggable Speakers & Room Launcher */}
+        <section id="interactive-stage" className="relative z-10 w-full px-5 pt-8 pb-16 sm:px-8 max-w-5xl mx-auto">
+          <div className="flex flex-col items-center text-center mb-8">
+            <p className="micro-label mb-2">Live Spatial Engine</p>
+            <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-5xl">
+              Drag devices. Mix the room.
+            </h2>
+            <p className="mt-3 text-sm text-foreground/55 max-w-md">
+              Drag speakers across the virtual soundstage or enter a 6-digit code to launch a live room.
+            </p>
+          </div>
+          <LiveRoomShowcase />
+        </section>
 
         {/* Preserved Presets Section */}
         <section id="presets" className="relative z-10 w-full px-5 py-16 sm:px-6 md:py-24">

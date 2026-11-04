@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   PartyPopper, 
@@ -83,6 +83,7 @@ export const PRESET_SCENARIOS: PresetScenario[] = [
  */
 export function RoomPresetStage({ className = "" }: { className?: string }) {
   const [activeScenarioId, setActiveScenarioId] = useState("party");
+  const stageContainerRef = useRef<HTMLDivElement>(null);
   const activeScenario = PRESET_SCENARIOS.find((s) => s.id === activeScenarioId) || PRESET_SCENARIOS[0];
 
   return (
@@ -137,8 +138,8 @@ export function RoomPresetStage({ className = "" }: { className?: string }) {
           </Link>
         </div>
 
-        {/* Simulated 2D Floor Plan with Smooth Morphing */}
-        <div className="relative h-64 sm:h-72 w-full overflow-hidden rounded-2xl border border-foreground/10 bg-background/50">
+        {/* Simulated 2D Floor Plan with Smooth Morphing & Draggable speakers */}
+        <div ref={stageContainerRef} className="relative h-64 sm:h-72 w-full overflow-hidden rounded-2xl border border-foreground/10 bg-background/50 select-none">
           {/* Floor grid */}
           <div 
             className="pointer-events-none absolute inset-0 opacity-15"
@@ -157,7 +158,7 @@ export function RoomPresetStage({ className = "" }: { className?: string }) {
             />
           </div>
 
-          {/* Morphing Speaker Nodes */}
+          {/* Morphing Draggable Speaker Nodes */}
           <AnimatePresence mode="popLayout">
             {activeScenario.speakers.map((sp) => {
               const Icon =
@@ -172,11 +173,17 @@ export function RoomPresetStage({ className = "" }: { className?: string }) {
               return (
                 <motion.div
                   key={`${activeScenario.id}-${sp.name}`}
+                  drag
+                  dragConstraints={stageContainerRef}
+                  dragElastic={0.06}
+                  dragMomentum={false}
+                  whileDrag={{ scale: 1.15, zIndex: 50 }}
+                  whileHover={{ scale: 1.05 }}
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1, left: `${sp.x}%`, top: `${sp.y}%` }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5"
+                  className="absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing flex-col items-center gap-1.5 touch-none select-none"
                 >
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-foreground/15 bg-background shadow-md">
                     <Icon className="h-4 w-4 text-foreground/80" strokeWidth={1.8} />
