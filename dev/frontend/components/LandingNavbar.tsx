@@ -15,8 +15,8 @@ export function LandingNavbar() {
   const { scrollY } = useScroll();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
-    if (latest > 120 && !isScrolled) setIsScrolled(true);
-    else if (latest <= 120 && isScrolled) setIsScrolled(false);
+    if (latest > 80 && !isScrolled) setIsScrolled(true);
+    else if (latest <= 80 && isScrolled) setIsScrolled(false);
   });
 
   return (
@@ -29,18 +29,15 @@ export function LandingNavbar() {
       <motion.header 
         initial={false}
         animate={{
-          opacity: isScrolled ? 1 : 0,
-          y: isScrolled ? 0 : -16,
-          pointerEvents: isScrolled ? "auto" : "none",
-          width: "min(calc(100% - 24px), 1024px)",
-          paddingLeft: "16px",
-          paddingRight: "16px",
+          width: isScrolled ? "min(calc(100% - 24px), 1024px)" : "100%",
+          paddingLeft: isScrolled ? "16px" : "24px",
+          paddingRight: isScrolled ? "16px" : "24px",
           paddingTop: "10px",
           paddingBottom: "10px",
-          borderRadius: "9999px",
+          borderRadius: isScrolled ? "9999px" : "0px",
         }}
-        transition={{ type: "spring", bounce: 0, duration: 0.35 }}
-        className="glass-panel shadow-xl flex items-center justify-between"
+        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+        className={`pointer-events-auto flex items-center justify-between transition-all duration-300 ${isScrolled ? 'glass-panel shadow-xl' : 'bg-transparent border-transparent'}`}
       >
       <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center gap-8">
         <Link href="/" className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight text-foreground group flex items-center gap-2.5">
