@@ -8,8 +8,6 @@ import { LandingFooterLinks } from "../components/LandingFooterLinks";
 import { SyncScrollProvider } from "../context/SyncScrollContext";
 import { AmbientField } from "../components/landing/AmbientField";
 import { Hero } from "../components/landing/Hero";
-import { HowItWorks } from "../components/landing/HowItWorks";
-import { UseCases } from "../components/landing/UseCases";
 import { MacAppTeaser } from "../components/landing/MacAppTeaser";
 import { Capabilities } from "../components/landing/Capabilities";
 import { FAQ } from "../components/landing/FAQ";
@@ -71,13 +69,13 @@ export default function LandingPage() {
             "@type": "HowToStep",
             position: 1,
             name: "Create a Room",
-            text: "Open SyncBeats in your web browser and click 'Start a Room' to generate a 6-digit room code or QR code.",
+            text: "Open SyncBeats in your web browser and click 'Start a Room' or 'Convert to Live Room' to generate a 6-digit room code or QR code.",
           },
           {
             "@type": "HowToStep",
             position: 2,
             name: "Join from Other Devices",
-            text: "Have friends or your other devices scan the QR code or enter the room code in their browser. No app install required.",
+            text: "Have friends or your other devices enter the 6-digit room code in their browser. No app install required.",
           },
           {
             "@type": "HowToStep",
@@ -101,14 +99,8 @@ export default function LandingPage() {
         <AmbientField />
         <LandingNavbar />
 
-        {/* Hero Section */}
+        {/* Hero Section: Interactive Playground & Direct Room Launcher */}
         <Hero />
-
-        {/* How It Works - 3 Step Frictionless Onboarding */}
-        <HowItWorks />
-
-        {/* Real-world Use Cases: Parties, Long-Distance, Spatial Desk, Silent Disco */}
-        <UseCases />
 
         {/* macOS Native App Spotlight - Coming Soon */}
         <MacAppTeaser />
@@ -119,19 +111,16 @@ export default function LandingPage() {
         {/* FAQ with Schema.org FAQPage structured data */}
         <FAQ />
 
-        {/* Contact & Feedback */}
+        {/* Contact Section */}
         <section className="relative z-10 flex w-full flex-col items-center px-5 pb-16 sm:px-6">
           <div id="contact" className="mx-auto mb-12 flex w-full max-w-6xl flex-col gap-10">
-            <div>
-              <p className="micro-label mb-2">Get in touch</p>
-              <h2 className="max-w-[20ch] font-display text-display font-semibold text-balance">
-                Have feedback or an idea for SyncBeats?
-              </h2>
-            </div>
+            <h2 className="max-w-[20ch] font-display text-display font-semibold text-balance">
+              Something broken, or an idea?
+            </h2>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="flex flex-col justify-center rounded-3xl border border-foreground/10 bg-foreground/2.5 p-7 md:p-10">
-                <h3 className="mb-8 font-display text-title font-semibold">Reach our team directly</h3>
+                <h3 className="mb-8 font-display text-title font-semibold">Reach us directly</h3>
                 <div className="space-y-6">
                   {CONTACTS.map(({ Icon, label, value, href, external }) => (
                     <div key={label} className="flex items-center gap-4">
@@ -165,12 +154,12 @@ export default function LandingPage() {
             <div className="flex items-center gap-3">
               <Image
                 src="/favicon.svg"
-                alt="SyncBeats Logo"
+                alt=""
                 width={18}
                 height={18}
                 className="block opacity-50 grayscale"
               />
-              SyncBeats © {new Date().getFullYear()} · Multi-device synchronized audio
+              SyncBeats © {new Date().getFullYear()}
             </div>
             <LandingFooterLinks />
           </footer>

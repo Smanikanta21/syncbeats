@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { 
   Play, 
@@ -14,8 +15,10 @@ import {
   Plus,
   Sliders,
   Layers,
-  RotateCcw
+  RotateCcw,
+  ArrowRight
 } from "lucide-react";
+import { RoomCodeEntry } from "./RoomCodeEntry";
 
 export interface DemoDevice {
   id: string;
@@ -240,11 +243,6 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
           )}
         </div>
 
-        {/* Hint banner */}
-        <div className="pointer-events-none absolute left-3 top-3 z-10 font-mono text-[10px] text-foreground/40 uppercase tracking-wider">
-          Drag any device to adjust spatial pan
-        </div>
-
         {/* Draggable device nodes */}
         {devices.map((device) => {
           const isSelected = selectedId === device.id;
@@ -262,7 +260,6 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const newX = Math.max(10, Math.min(90, ((info.point.x - rect.left) / rect.width) * 100));
                 
-                // Dynamically update channel name based on horizontal position
                 let channel = "Center (Lead)";
                 if (newX < 36) channel = "Left Channel";
                 else if (newX > 64) channel = "Right Channel";
@@ -406,6 +403,21 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
           </div>
           <span>3:50</span>
         </div>
+      </div>
+
+      {/* Direct Room Launcher Bar: Join via Code or Convert to Live Room */}
+      <div className="mt-5 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-foreground/10 pt-4">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <RoomCodeEntry className="w-full sm:w-auto" />
+        </div>
+
+        <Link
+          href="/hub"
+          className="group flex h-13 w-full sm:w-auto items-center justify-center gap-2.5 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground shrink-0"
+        >
+          <span>Convert to Live Room</span>
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+        </Link>
       </div>
     </div>
   );
