@@ -37,12 +37,12 @@ export function MacAppTeaser() {
   return (
     <section id="mac-app" className="relative z-10 w-full px-5 py-24 sm:px-8 md:py-32">
       <div className="mx-auto max-w-6xl">
-        {/* Top badge & header */}
+        {/* Top micro-label & header */}
         <div className="flex flex-col items-center text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-foreground/15 bg-foreground/5 px-4 py-1.5 text-xs font-semibold tracking-wide text-foreground">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="opacity-75">Coming Soon</span> · Native macOS Companion
-          </div>
+          <p className="micro-label mb-4 flex items-center justify-center gap-2 text-foreground/75 font-semibold">
+            <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            NATIVE MACOS COMPANION · COMING SOON
+          </p>
 
           <h2 className="max-w-[18ch] font-display text-display font-semibold text-balance">
             SyncBeats for Mac. Native desktop power.
@@ -87,7 +87,7 @@ export function MacAppTeaser() {
                     <p className="text-[11px] text-foreground/50">Capturing macOS output: Spotify / Ableton / Browser</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Streaming
                 </span>

@@ -104,47 +104,48 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
       <div className="pointer-events-none absolute -right-20 -top-20 -z-10 h-72 w-72 rounded-full bg-(--warm-tint)/30 blur-3xl dark:bg-amber-500/10" />
       <div className="pointer-events-none absolute -bottom-24 -left-16 -z-10 h-80 w-80 rounded-full bg-(--cool-tint)/25 blur-3xl dark:bg-cyan-500/10" />
 
-      {/* Header bar: Room ID & Active Sync badge */}
+      {/* Header bar: Room ID & Active Sync status (Clean typography, no pill capsule) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 pb-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5">
             <Radio className="h-4 w-4 text-foreground/70" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <span className="font-mono text-xs font-bold tracking-wider text-foreground">ROOM #842109</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="text-foreground/20">•</span>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                 Live Sync Locked
-              </span>
+              </div>
             </div>
-            <p className="text-[11px] text-foreground/50">4 speakers connected · Server clock sync ±0.4ms</p>
+            <p className="mt-0.5 text-[11px] text-foreground/50">4 speakers connected · Server clock sync ±0.4ms</p>
           </div>
         </div>
 
-        {/* Spatial toggle */}
-        <div className="flex items-center gap-1.5 rounded-full border border-foreground/10 bg-background/60 p-1 text-[11px]">
+        {/* Spatial toggle — sleek segmented control (clean geometric corners, no pills) */}
+        <div className="flex items-center gap-1 rounded-xl border border-foreground/10 bg-background/60 p-1 text-xs">
           <button
             type="button"
             onClick={() => setSpatialMode("surround")}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-medium transition-colors ${
               spatialMode === "surround"
                 ? "bg-foreground text-background shadow-xs"
                 : "text-foreground/60 hover:text-foreground"
             }`}
           >
-            <Layers className="h-3 w-3" /> Spatial 3D
+            <Layers className="h-3.5 w-3.5" /> Spatial 3D
           </button>
           <button
             type="button"
             onClick={() => setSpatialMode("stereo")}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-medium transition-colors ${
               spatialMode === "stereo"
                 ? "bg-foreground text-background shadow-xs"
                 : "text-foreground/60 hover:text-foreground"
             }`}
           >
-            <Sliders className="h-3 w-3" /> All Sync
+            <Sliders className="h-3.5 w-3.5" /> All Sync
           </button>
         </div>
       </div>
@@ -223,7 +224,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
 
               {/* Label & latency chip */}
               <div className="flex flex-col items-center">
-                <span className="whitespace-nowrap rounded-md bg-background/85 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-xs backdrop-blur-md">
+                <span className="whitespace-nowrap rounded-lg border border-foreground/10 bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-foreground shadow-xs backdrop-blur-md">
                   {device.name}
                 </span>
                 <span className="mt-0.5 text-[9px] font-mono text-foreground/45">
@@ -255,8 +256,8 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
                 <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
                   Starboy (feat. Daft Punk)
                 </h4>
-                <span className="hidden shrink-0 rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] font-medium text-foreground/60 sm:inline-block">
-                  Lossless Sync
+                <span className="hidden font-mono text-[10px] text-foreground/50 sm:inline-block">
+                  Lossless · 48kHz
                 </span>
               </div>
               <p className="truncate text-xs text-foreground/50">The Weeknd · YouTube Audio Master</p>

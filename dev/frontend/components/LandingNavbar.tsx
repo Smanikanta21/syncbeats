@@ -50,7 +50,7 @@ export function LandingNavbar() {
           <a href="#use-cases" className="hover:text-foreground transition-colors">Use Cases</a>
           <a href="#mac-app" className="hover:text-foreground transition-colors inline-flex items-center gap-1.5">
             <span>Mac App</span>
-            <span className="rounded-full bg-foreground/10 px-1.5 py-0.5 text-[9px] font-bold text-foreground/75">Soon</span>
+            <span className="rounded-md border border-foreground/15 bg-foreground/5 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-foreground/75 uppercase tracking-wider">Soon</span>
           </a>
           <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
         </nav>

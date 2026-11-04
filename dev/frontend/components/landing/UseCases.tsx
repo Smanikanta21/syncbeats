@@ -90,7 +90,7 @@ export function UseCases() {
 
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 bg-background/80 px-3 py-1 text-xs font-semibold text-foreground/75 backdrop-blur-md">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-background/80 px-2.5 py-1 text-xs font-semibold text-foreground/75 backdrop-blur-md">
                       <Icon className="h-3.5 w-3.5" />
                       {uc.badge}
                     </span>
