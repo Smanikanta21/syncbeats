@@ -68,24 +68,30 @@ export const metadata: Metadata = {
   },
   title: {
     template: "%s | SyncBeats",
-    default: "SyncBeats | Play one song on every phone in the room",
+    default: "SyncBeats | Turn Every Phone into a Synchronized Surround Speaker",
   },
   description:
-    "Turn phones, tablets and laptops into one shared listening room. SyncBeats coordinates playback across your browser devices — no cables, no app required.",
+    "Turn phones, tablets, and laptops into one synchronized sound system. Play music across multiple devices with sub-25ms precision without installing an app. Free in any web browser.",
   keywords: [
     "syncbeats",
     "play music on multiple phones at once",
     "sync music across devices",
     "listen to music together",
     "multi device speaker app",
+    "sync phones as speakers",
     "group listening party",
     "spatial audio from phones",
     "AmpMe alternative",
+    "AmpMe online free",
+    "silent disco web app",
+    "synchronized music player",
+    "listen to spotify with friends real time",
+    "sync youtube audio multiple devices",
   ],
   openGraph: {
-    title: "SyncBeats — one song, every phone in the room",
+    title: "SyncBeats — Turn every phone into a synchronized surround speaker",
     description:
-      "Share a six-character code and bring your devices into one listening room. Free, in the browser.",
+      "Play music across any phone, tablet, and laptop in real time with sub-25ms precision. Free in your browser with zero app installation.",
     url: BASE_URL,
     siteName: "SyncBeats",
     images: [
@@ -93,7 +99,7 @@ export const metadata: Metadata = {
         url: "/syncbeats-og.png",
         width: 1200,
         height: 630,
-        alt: "SyncBeats — synchronized music player",
+        alt: "SyncBeats — Real-time multi-device synchronized audio",
       },
     ],
     locale: "en_US",
@@ -101,9 +107,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SyncBeats — one song, every phone in the room",
+    title: "SyncBeats — Turn every phone into a synchronized surround speaker",
     description:
-      "Share a six-character code and bring your devices into one listening room. Free, in the browser.",
+      "Play music across any phone, tablet, and laptop in real time with sub-25ms precision. Free in your browser with zero app installation.",
     site: "@syncbeatsapp",
     creator: "@syncbeatsapp",
     images: ["/syncbeats-og.png"],
@@ -269,6 +275,49 @@ export default function RootLayout({
         src="https://analytics.ahrefs.com/analytics.js"
         data-key="+9fzuLLzZbLhEJcB+CsBWA"
         strategy="lazyOnload"
+      />
+
+      {/* Global Schema.org Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@graph": [
+              {
+                "@type": "WebSite",
+                "@id": "https://www.syncbeats.in/#website",
+                url: "https://www.syncbeats.in",
+                name: "SyncBeats",
+                description: "Turn every phone into a synchronized surround speaker. Free, in your browser.",
+                publisher: {
+                  "@id": "https://www.syncbeats.in/#organization",
+                },
+                potentialAction: {
+                  "@type": "SearchAction",
+                  target: "https://www.syncbeats.in/room/{search_term_string}",
+                  "query-input": "required name=search_term_string",
+                },
+              },
+              {
+                "@type": "Organization",
+                "@id": "https://www.syncbeats.in/#organization",
+                name: "SyncBeats",
+                url: "https://www.syncbeats.in",
+                logo: "https://www.syncbeats.in/icon-512.png",
+                sameAs: [
+                  "https://www.instagram.com/syncbeats.in/",
+                  "https://twitter.com/syncbeatsapp"
+                ],
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  email: "support@syncbeats.in",
+                  contactType: "customer support",
+                },
+              },
+            ],
+          }),
+        }}
       />
 
       <body className="transition-colors duration-300 bg-background text-foreground">

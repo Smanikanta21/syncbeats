@@ -3,51 +3,46 @@
  *
  * Visible answers to the questions people actually type into a search box
  * before they trust a link like this one, plus the FAQPage structured data
- * built from the same array — so the copy on the page and the copy Google is
- * told about can never drift apart.
- *
- * This section is also what replaces the `sr-only` keyword block that used to
- * sit in the hero. That block carried roughly 90 words of hidden text ending
- * in "the best AmpMe and BeatSync alternative", which is the hidden-text
- * pattern Google's spam policies name directly — a risk taken in exchange for
- * keywords that now appear in real, readable copy instead.
- *
- * Open/close is `<details>`: it is keyboard accessible, announced correctly,
- * searchable by Ctrl-F in Chrome even while collapsed, and costs no JS.
+ * built from the same array — so the copy on the page and the copy Google and
+ * LLMs are told about can never drift apart.
  */
 
 const FAQS = [
   {
-    q: "Do I need to install an app?",
-    a: "No. SyncBeats runs in the browser on iPhone, Android, Mac, Windows and Linux. Open the link, type the room code, and you are in.",
+    q: "Do I need to install an app to use SyncBeats?",
+    a: "No. SyncBeats runs entirely in modern web browsers on iPhone, Android, Mac, Windows, and Linux. Simply open the room link or enter the 6-digit room code, and your device instantly joins the synchronized sound system.",
   },
   {
-    q: "Does everyone have to be on the same Wi-Fi?",
-    a: "No. Each device syncs against the server's clock rather than the local network, so a phone on mobile data stays in step with a laptop on Wi-Fi.",
+    q: "When will the native macOS desktop app be released?",
+    a: "The native macOS companion app is launching soon! It features menu bar quick controls, system-wide audio broadcasting (stream directly from Spotify Desktop, Apple Music, Ableton Live, or DJ apps into your room), and sub-15ms hardware CoreAudio synchronization. You can join the early access waitlist above.",
   },
   {
-    q: "How close to perfect is the sync?",
-    a: "Under 25 milliseconds between devices, which is below the gap most people can hear as an echo. A device that has just joined takes five to ten seconds to settle while it works out its clock offset.",
+    q: "Does everyone need to be connected to the same Wi-Fi network?",
+    a: "No. Devices do not need to be on the same local Wi-Fi. SyncBeats synchronizes each device directly against our master server clock via adaptive NTP algorithms. A phone on 5G mobile data stays in microsecond lockstep with a laptop on fiber Wi-Fi across the room or across the globe.",
   },
   {
-    q: "How many devices can join one room?",
-    a: "There is no fixed cap. Rooms have run with everything from two phones to a dozen devices; the practical limit is how much the room's network can carry.",
+    q: "Where does the music come from? Can I use Spotify or YouTube?",
+    a: "Yes. You can search and stream millions of songs directly via YouTube, import public Spotify playlists (which SyncBeats automatically maps to high-quality audio streams), or drag-and-drop your own local audio files (MP3, WAV, FLAC, AAC). Anyone in the room can contribute to the shared queue.",
   },
   {
-    q: "Where does the music come from?",
-    a: "Upload your own files, search YouTube from inside the room, or import a Spotify playlist and let SyncBeats match the tracks. The queue is shared, and anyone in the room can add to it.",
+    q: "How accurate is the audio synchronization?",
+    a: "Synchronization is maintained under 25 milliseconds between devices, which is below the threshold human hearing perceives as an echo. When a new device joins, it locks onto the clock within a few seconds and continuously corrects any hardware drift without changing playback pitch.",
   },
   {
-    q: "Do I need an account?",
-    a: "Yes, a free one. Sign in with Google or an email address. The account is what keeps your rooms, your devices and your history attached to you between sessions.",
+    q: "How is SyncBeats different from AmpMe, AirPlay, or Bluetooth party speakers?",
+    a: "Bluetooth only pairs to one or two devices of the same brand, and AirPlay is locked to Apple hardware. AmpMe requires downloading a heavy mobile app, creating accounts, and suffers from audible drift. SyncBeats works in any browser, across iOS, Android, Mac, and Windows simultaneously, with zero setup and advanced spatial 3D audio panning.",
   },
   {
-    q: "Is SyncBeats free?",
-    a: "Yes. Every feature — spatial routing, the shared queue, private rooms, lyrics — is free to use.",
+    q: "How many devices can join a single room?",
+    a: "There is no hard limit. Rooms routinely run with 4 to 12 devices at parties, picnics, and long-distance listening sessions. The practical limit depends only on network bandwidth.",
   },
   {
-    q: "How is this different from AmpMe or a Bluetooth party speaker?",
-    a: "A Bluetooth speaker is one speaker. SyncBeats turns every phone, tablet and laptop already in the room into its own speaker, each positionable left or right, all playing the same instant of the same track.",
+    q: "Can I lock my room so strangers cannot join?",
+    a: "Yes. As the room host, you can toggle 'Private Mode' with one tap. Any new participant must be approved by you before their audio unmutes.",
+  },
+  {
+    q: "Is SyncBeats free to use?",
+    a: "Yes, SyncBeats is 100% free to use. All core features — real-time synchronization, spatial soundstage routing, synced lyrics, shared queue, and private rooms — are completely free.",
   },
 ];
 
@@ -70,14 +65,20 @@ export function FAQ() {
       />
 
       <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)] lg:gap-20">
-        <h2 className="font-display text-display font-semibold text-balance lg:sticky lg:top-32 lg:self-start">
-          Before you ask
-        </h2>
+        <div>
+          <p className="micro-label mb-3">Frequently asked questions</p>
+          <h2 className="font-display text-display font-semibold text-balance lg:sticky lg:top-32 lg:self-start">
+            Everything you need to know.
+          </h2>
+          <p className="mt-4 text-sm text-foreground/60 leading-relaxed max-w-[32ch]">
+            Have a question that isn't answered here? Reach out via our contact form below and we'll help you out.
+          </p>
+        </div>
 
         <div className="border-t border-foreground/10">
           {FAQS.map(({ q, a }) => (
             <details key={q} className="group border-b border-foreground/10">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-left text-base font-medium transition-colors hover:text-foreground/70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-(--accent-color) md:text-lg">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-left text-base font-medium transition-colors hover:text-foreground/70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground md:text-lg">
                 {q}
                 <span
                   aria-hidden

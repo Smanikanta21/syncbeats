@@ -39,11 +39,21 @@ export function LandingNavbar() {
         transition={{ type: "spring", bounce: 0, duration: 0.4 }}
         className={`pointer-events-auto flex items-center justify-between transition-all duration-300 ${isScrolled ? 'glass-panel shadow-xl' : 'bg-transparent border-transparent'}`}
       >
-      <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center">
+      <motion.div initial={{opacity:0, x:-20}} animate={{opacity:1, x:0}} className="flex items-center gap-8">
         <Link href="/" className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight text-foreground group flex items-center gap-2.5">
           <SyncBeatsMark className={`${isScrolled ? "h-[26px] w-[26px]" : "h-8 w-8"} group-hover:scale-110 block transition-all duration-300 rounded-lg overflow-hidden`} />
           <span>SyncBeats</span>
         </Link>
+
+        <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-foreground/60">
+          <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
+          <a href="#use-cases" className="hover:text-foreground transition-colors">Use Cases</a>
+          <a href="#mac-app" className="hover:text-foreground transition-colors inline-flex items-center gap-1.5">
+            <span>Mac App</span>
+            <span className="rounded-full bg-foreground/10 px-1.5 py-0.5 text-[9px] font-bold text-foreground/75">Soon</span>
+          </a>
+          <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+        </nav>
       </motion.div>
 
       <motion.div initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} className="flex items-center gap-2 sm:gap-3 md:gap-4">
