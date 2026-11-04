@@ -15,10 +15,9 @@ export function Hero() {
           initial={{ opacity: 0, y: 8 }} 
           animate={{ opacity: 1, y: 0 }} 
           transition={{ duration: 0.45 }} 
-          className="mb-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-xs font-medium tracking-wide text-foreground/60 uppercase"
+          className="mb-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-xs font-medium tracking-wide text-foreground/50 uppercase"
         >
-          <span className="flex items-center gap-2 font-semibold text-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="font-semibold text-foreground/80">
             Sub-25ms Web Audio Synchronization
           </span>
           <span className="text-foreground/20 hidden sm:inline">/</span>

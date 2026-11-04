@@ -39,8 +39,7 @@ export function MacAppTeaser() {
       <div className="mx-auto max-w-6xl">
         {/* Top micro-label & header */}
         <div className="flex flex-col items-center text-center">
-          <p className="micro-label mb-4 flex items-center justify-center gap-2 text-foreground/75 font-semibold">
-            <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <p className="micro-label mb-4 flex items-center justify-center gap-2 font-mono text-xs font-semibold text-foreground/70 tracking-wider">
             NATIVE MACOS COMPANION · COMING SOON
           </p>
 
@@ -87,8 +86,7 @@ export function MacAppTeaser() {
                     <p className="text-[11px] text-foreground/50">Capturing macOS output: Spotify / Ableton / Browser</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground/5 px-2 py-0.5 font-mono text-[11px] font-semibold text-foreground/75 uppercase tracking-wider">
                   Streaming
                 </span>
               </div>
@@ -192,7 +190,7 @@ export function MacAppTeaser() {
               </p>
 
               {isSubmitted ? (
-                <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <div className="flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-4 py-3 text-xs font-semibold text-foreground">
                   <Check className="h-4 w-4" /> You're on the list! We'll email you the macOS release candidate.
                 </div>
               ) : (

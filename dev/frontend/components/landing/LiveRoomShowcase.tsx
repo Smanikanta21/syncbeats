@@ -114,10 +114,9 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
             <div className="flex items-center gap-3">
               <span className="font-mono text-xs font-bold tracking-wider text-foreground">ROOM #842109</span>
               <span className="text-foreground/20">•</span>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                Live Sync Locked
-              </div>
+              <span className="font-mono text-[11px] font-semibold tracking-wider text-foreground/75 uppercase">
+                Lockstep Active
+              </span>
             </div>
             <p className="mt-0.5 text-[11px] text-foreground/50">4 speakers connected · Server clock sync ±0.4ms</p>
           </div>

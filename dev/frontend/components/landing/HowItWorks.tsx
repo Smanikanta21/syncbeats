@@ -206,7 +206,7 @@ export function HowItWorks() {
                       onClick={handleCopy}
                       className="mt-6 flex items-center gap-2 rounded-xl border border-foreground/15 bg-foreground/5 px-4 py-2.5 text-xs font-semibold text-foreground transition-all hover:bg-foreground/10 active:scale-95"
                     >
-                      {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      {copied ? <Check className="h-4 w-4 text-foreground" /> : <Copy className="h-4 w-4" />}
                       <span>{copied ? "Link Copied to Clipboard!" : "Copy Quick Join Link"}</span>
                     </button>
                   </motion.div>
@@ -315,10 +315,10 @@ export function HowItWorks() {
                   >
                     <div className="flex items-center justify-between border-b border-foreground/10 pb-4 mb-4">
                       <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-emerald-500 animate-pulse" />
+                        <Activity className="h-4 w-4 text-foreground/70" />
                         <span className="text-xs font-semibold text-foreground">Live Telemetry Phase Meter</span>
                       </div>
-                      <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span className="font-mono text-[11px] font-semibold text-foreground/75">
                         Δ 0.3ms AVG
                       </span>
                     </div>
@@ -341,7 +341,7 @@ export function HowItWorks() {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="font-mono font-semibold text-foreground/80">{dev.delay}</span>
-                            <span className="font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                            <span className="font-mono text-[10px] font-bold text-foreground/70">
                               {dev.status}
                             </span>
                           </div>
