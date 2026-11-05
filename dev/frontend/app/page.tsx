@@ -8,7 +8,6 @@ import { LandingFooterLinks } from "../components/LandingFooterLinks";
 import { SyncScrollProvider } from "../context/SyncScrollContext";
 import { AmbientField } from "../components/landing/AmbientField";
 import { Hero } from "../components/landing/Hero";
-import { RoomPresetStage } from "../components/landing/RoomPresetStage";
 import { MacAppTeaser } from "../components/landing/MacAppTeaser";
 import { Capabilities } from "../components/landing/Capabilities";
 import { FAQ } from "../components/landing/FAQ";
@@ -100,15 +99,8 @@ export default function LandingPage() {
         <AmbientField />
         <LandingNavbar />
 
-        {/* Hero Section: Interactive Playground & Direct Room Launcher */}
+        {/* Unified Hero Section: Interactive Presets Soundstage & Room Launcher */}
         <Hero />
-
-        {/* Preserved Presets Section */}
-        <section id="presets" className="relative z-10 w-full px-5 py-16 sm:px-6 md:py-24">
-          <div className="mx-auto max-w-5xl">
-            <RoomPresetStage />
-          </div>
-        </section>
 
         {/* macOS Native App Spotlight - Coming Soon */}
         <MacAppTeaser />

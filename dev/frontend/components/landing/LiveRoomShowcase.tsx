@@ -9,14 +9,17 @@ import {
   Smartphone, 
   Laptop, 
   Tablet, 
-  Radio, 
   Volume2, 
-  VolumeX,
-  Plus,
-  Sliders,
-  Layers,
-  RotateCcw,
-  ArrowRight
+  VolumeX, 
+  Plus, 
+  Sliders, 
+  Layers, 
+  RotateCcw, 
+  ArrowRight,
+  PartyPopper,
+  Compass,
+  Headphones,
+  Globe2
 } from "lucide-react";
 import { RoomCodeEntry } from "./RoomCodeEntry";
 
@@ -24,7 +27,7 @@ export interface DemoDevice {
   id: string;
   name: string;
   type: "phone" | "laptop" | "tablet";
-  icon: typeof Smartphone;
+  icon: typeof Smartphone | typeof Laptop | typeof Tablet;
   channel: string;
   volume: number;
   isMuted: boolean;
@@ -32,60 +35,225 @@ export interface DemoDevice {
   y: number; // percentage (0-100)
 }
 
-const INITIAL_DEVICES: DemoDevice[] = [
+export interface PresetScenario {
+  id: string;
+  name: string;
+  tagline: string;
+  icon: typeof PartyPopper;
+  devices: DemoDevice[];
+}
+
+export const PRESET_SCENARIOS: PresetScenario[] = [
   {
-    id: "alex-phone",
-    name: "Alex's iPhone",
-    type: "phone",
-    icon: Smartphone,
-    channel: "Left Channel",
-    volume: 92,
-    isMuted: false,
-    x: 22,
-    y: 38,
+    id: "party",
+    name: "House Party",
+    tagline: "Combine everyone's phones into one loud, distributed sound system.",
+    icon: PartyPopper,
+    devices: [
+      {
+        id: "party-macbook",
+        name: "Host MacBook",
+        type: "laptop",
+        icon: Laptop,
+        channel: "Master Core",
+        volume: 100,
+        isMuted: false,
+        x: 50,
+        y: 52,
+      },
+      {
+        id: "party-kitchen",
+        name: "Kitchen iPhone",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Left Fill",
+        volume: 92,
+        isMuted: false,
+        x: 20,
+        y: 30,
+      },
+      {
+        id: "party-living",
+        name: "Living Room Pixel",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Right Fill",
+        volume: 88,
+        isMuted: false,
+        x: 80,
+        y: 30,
+      },
+      {
+        id: "party-patio",
+        name: "Patio Tablet",
+        type: "tablet",
+        icon: Tablet,
+        channel: "Rear Left",
+        volume: 85,
+        isMuted: false,
+        x: 22,
+        y: 74,
+      },
+      {
+        id: "party-counter",
+        name: "Counter Phone",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Rear Right",
+        volume: 90,
+        isMuted: false,
+        x: 78,
+        y: 74,
+      },
+    ],
   },
   {
-    id: "macbook",
-    name: "MacBook Pro",
-    type: "laptop",
-    icon: Laptop,
-    channel: "Center (Lead)",
-    volume: 100,
-    isMuted: false,
-    x: 50,
-    y: 74,
+    id: "desk",
+    name: "Desk Surround",
+    tagline: "Turn your laptop, phone, and tablet into an immersive 3D desktop stage.",
+    icon: Compass,
+    devices: [
+      {
+        id: "desk-center",
+        name: "Center: MacBook",
+        type: "laptop",
+        icon: Laptop,
+        channel: "Center (Lead)",
+        volume: 100,
+        isMuted: false,
+        x: 50,
+        y: 68,
+      },
+      {
+        id: "desk-left",
+        name: "Left: iPhone",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Left Channel",
+        volume: 90,
+        isMuted: false,
+        x: 22,
+        y: 48,
+      },
+      {
+        id: "desk-right",
+        name: "Right: iPad",
+        type: "tablet",
+        icon: Tablet,
+        channel: "Right Channel",
+        volume: 90,
+        isMuted: false,
+        x: 78,
+        y: 48,
+      },
+      {
+        id: "desk-top",
+        name: "Studio Display",
+        type: "laptop",
+        icon: Laptop,
+        channel: "Ambient Top",
+        volume: 85,
+        isMuted: false,
+        x: 50,
+        y: 24,
+      },
+    ],
   },
   {
-    id: "maya-phone",
-    name: "Maya's Pixel",
-    type: "phone",
-    icon: Smartphone,
-    channel: "Right Channel",
-    volume: 88,
-    isMuted: false,
-    x: 78,
-    y: 38,
+    id: "silent-disco",
+    name: "Silent Disco",
+    tagline: "Multiple listeners on headphones, locked to the exact beat with zero bleed.",
+    icon: Headphones,
+    devices: [
+      {
+        id: "disco-host",
+        name: "DJ Host Console",
+        type: "laptop",
+        icon: Laptop,
+        channel: "DJ Master",
+        volume: 100,
+        isMuted: false,
+        x: 50,
+        y: 24,
+      },
+      {
+        id: "disco-dancer-1",
+        name: "Listener 1",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Headphones A",
+        volume: 95,
+        isMuted: false,
+        x: 25,
+        y: 45,
+      },
+      {
+        id: "disco-dancer-2",
+        name: "Listener 2",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Headphones B",
+        volume: 95,
+        isMuted: false,
+        x: 75,
+        y: 45,
+      },
+      {
+        id: "disco-dancer-3",
+        name: "Listener 3",
+        type: "phone",
+        icon: Smartphone,
+        channel: "Headphones C",
+        volume: 95,
+        isMuted: false,
+        x: 50,
+        y: 75,
+      },
+    ],
   },
   {
-    id: "ipad",
-    name: "Living Room iPad",
-    type: "tablet",
-    icon: Tablet,
-    channel: "Ambient Rear",
-    volume: 85,
-    isMuted: false,
-    x: 50,
-    y: 18,
+    id: "distance",
+    name: "Long Distance",
+    tagline: "Stream lossless audio together across the globe in microsecond lockstep.",
+    icon: Globe2,
+    devices: [
+      {
+        id: "dist-london",
+        name: "You (London)",
+        type: "laptop",
+        icon: Laptop,
+        channel: "Host Stream",
+        volume: 100,
+        isMuted: false,
+        x: 30,
+        y: 50,
+      },
+      {
+        id: "dist-tokyo",
+        name: "Friend (Tokyo)",
+        type: "phone",
+        icon: Smartphone,
+        channel: "P2P Receiver",
+        volume: 92,
+        isMuted: false,
+        x: 70,
+        y: 50,
+      },
+    ],
   },
 ];
 
 export function LiveRoomShowcase({ className = "" }: { className?: string }) {
+  const [activePresetId, setActivePresetId] = useState<string>("party");
   const [isPlaying, setIsPlaying] = useState(true);
-  const [devices, setDevices] = useState<DemoDevice[]>(INITIAL_DEVICES);
-  const [selectedId, setSelectedId] = useState<string>("alex-phone");
+  const [devices, setDevices] = useState<DemoDevice[]>(PRESET_SCENARIOS[0].devices);
+  const [selectedId, setSelectedId] = useState<string>(PRESET_SCENARIOS[0].devices[0].id);
   const [spatialMode, setSpatialMode] = useState<"surround" | "stereo">("surround");
   const [currentTime, setCurrentTime] = useState(74);
+  const [stageVersion, setStageVersion] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const activePreset = PRESET_SCENARIOS.find((p) => p.id === activePresetId) || PRESET_SCENARIOS[0];
 
   // Playback timer (runs only when playing)
   useEffect(() => {
@@ -95,6 +263,15 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
     }, 1000);
     return () => clearInterval(interval);
   }, [isPlaying]);
+
+  const selectPreset = (presetId: string) => {
+    const preset = PRESET_SCENARIOS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setActivePresetId(presetId);
+    setDevices(preset.devices);
+    setSelectedId(preset.devices[0].id);
+    setStageVersion((v) => v + 1);
+  };
 
   const selectedDevice = devices.find((d) => d.id === selectedId) || devices[0];
 
@@ -114,7 +291,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
     if (devices.length >= 6) return;
     const count = devices.length + 1;
     const newDev: DemoDevice = {
-      id: `phone-${Date.now()}`,
+      id: `custom-speaker-${Date.now()}`,
       name: `Guest Phone ${count}`,
       type: "phone",
       icon: Smartphone,
@@ -128,11 +305,10 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
     setSelectedId(newDev.id);
   };
 
-  const [stageVersion, setStageVersion] = useState(0);
-
   const resetStage = () => {
-    setDevices(INITIAL_DEVICES);
-    setSelectedId("alex-phone");
+    const currentPreset = PRESET_SCENARIOS.find((p) => p.id === activePresetId) || PRESET_SCENARIOS[0];
+    setDevices(currentPreset.devices);
+    setSelectedId(currentPreset.devices[0].id);
     setStageVersion((v) => v + 1);
   };
 
@@ -144,80 +320,105 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
 
   return (
     <div
+      id="presets"
       className={`relative isolate overflow-hidden rounded-[2.5rem] border border-foreground/10 bg-foreground/[0.025] p-5 shadow-[var(--glass-shadow)] backdrop-blur-2xl sm:p-7 ${className}`}
     >
       {/* Background ambient warmth */}
       <div className="pointer-events-none absolute -right-20 -top-20 -z-10 h-72 w-72 rounded-full bg-(--warm-tint)/30 blur-3xl dark:bg-amber-500/10" />
       <div className="pointer-events-none absolute -bottom-24 -left-16 -z-10 h-80 w-80 rounded-full bg-(--cool-tint)/25 blur-3xl dark:bg-cyan-500/10" />
 
-      {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5">
-            <Radio className="h-4 w-4 text-foreground/75" />
+      {/* Preset Scenario Selector Strip */}
+      <div className="flex flex-col gap-3 border-b border-foreground/10 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-foreground/10 bg-background/60 p-1">
+            {PRESET_SCENARIOS.map((scenario) => {
+              const Icon = scenario.icon;
+              const isActive = activePresetId === scenario.id;
+              return (
+                <button
+                  key={scenario.id}
+                  type="button"
+                  onClick={() => selectPreset(scenario.id)}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-foreground text-background shadow-xs font-semibold"
+                      : "text-foreground/60 hover:text-foreground hover:bg-foreground/5"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{scenario.name}</span>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="font-mono text-xs font-bold tracking-wider text-foreground">ROOM #842109</span>
-            <span className="text-foreground/20">•</span>
-            <span className="font-mono text-[11px] font-semibold tracking-wider text-foreground/60 uppercase">
-              {devices.length} Speakers in Sync
-            </span>
+
+          {/* Quick Room Stats & Spatial Mode */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl border border-foreground/10 bg-background/60 p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setSpatialMode("surround")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
+                  spatialMode === "surround"
+                    ? "bg-foreground text-background shadow-xs"
+                    : "text-foreground/60 hover:text-foreground"
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" /> Spatial 3D
+              </button>
+              <button
+                type="button"
+                onClick={() => setSpatialMode("stereo")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
+                  spatialMode === "stereo"
+                    ? "bg-foreground text-background shadow-xs"
+                    : "text-foreground/60 hover:text-foreground"
+                }`}
+              >
+                <Sliders className="h-3.5 w-3.5" /> All Sync
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={addDevice}
+              disabled={devices.length >= 6}
+              className="flex h-8 items-center gap-1.5 rounded-xl border border-foreground/10 bg-foreground/5 px-2.5 text-xs font-medium text-foreground transition-all hover:bg-foreground/10 disabled:opacity-40 cursor-pointer"
+              title="Add speaker"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Add Speaker</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={resetStage}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5 text-foreground/60 transition-colors hover:text-foreground cursor-pointer"
+              title="Reset positions"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Controls: Spatial Toggle & Actions */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl border border-foreground/10 bg-background/60 p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setSpatialMode("surround")}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
-                spatialMode === "surround"
-                  ? "bg-foreground text-background shadow-xs"
-                  : "text-foreground/60 hover:text-foreground"
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" /> Spatial 3D
-            </button>
-            <button
-              type="button"
-              onClick={() => setSpatialMode("stereo")}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
-                spatialMode === "stereo"
-                  ? "bg-foreground text-background shadow-xs"
-                  : "text-foreground/60 hover:text-foreground"
-              }`}
-            >
-              <Sliders className="h-3.5 w-3.5" /> All Sync
-            </button>
+        {/* Preset Description & Active Room Indicator */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+          <p className="text-foreground/60 font-medium">
+            {activePreset.tagline}
+          </p>
+          <div className="flex items-center gap-2 font-mono text-[11px] text-foreground/50">
+            <span className="font-bold text-foreground/80">ROOM #842109</span>
+            <span>•</span>
+            <span className="uppercase">{devices.length} Devices In Sync</span>
           </div>
-
-          <button
-            type="button"
-            onClick={addDevice}
-            disabled={devices.length >= 6}
-            className="flex h-8 items-center gap-1.5 rounded-xl border border-foreground/10 bg-foreground/5 px-2.5 text-xs font-medium text-foreground transition-all hover:bg-foreground/10 disabled:opacity-40"
-            title="Add speaker"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Add Speaker</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={resetStage}
-            className="flex h-8 w-8 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5 text-foreground/60 transition-colors hover:text-foreground"
-            title="Reset positions"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
 
       {/* Interactive 2D Soundstage Field */}
       <div 
         ref={containerRef}
-        className="relative my-5 h-72 w-full overflow-hidden rounded-2xl border border-foreground/10 bg-gradient-to-b from-foreground/[0.03] to-foreground/[0.01] sm:h-80 select-none"
+        className="relative my-4 h-72 w-full overflow-hidden rounded-2xl border border-foreground/10 bg-gradient-to-b from-foreground/[0.03] to-foreground/[0.01] sm:h-80 select-none"
       >
         {/* Subtle grid lines */}
         <div 
@@ -228,7 +429,7 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
           }}
         />
 
-        {/* Central audio pulse rings (lightweight CSS animation) */}
+        {/* Central audio pulse rings */}
         {isPlaying && (
           <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
             <div className="h-32 w-32 rounded-full border border-foreground/20 animate-ping opacity-25" style={{ animationDuration: "2.4s" }} />
@@ -359,7 +560,8 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
                   key={i}
                   className="w-1 rounded-full bg-foreground/70 transition-all duration-300"
                   style={{
-                    height: isPlaying ? `${h}px` : "4px",
+                    height: isPlaying ? `${h}px` : "3px",
+                    animation: isPlaying ? `equalizer 1s ease-in-out infinite ${i * 0.12}s` : "none",
                   }}
                 />
               ))}
@@ -368,20 +570,24 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
             <button
               type="button"
               onClick={() => setIsPlaying(!isPlaying)}
-              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-foreground text-background shadow-md transition-transform hover:scale-105 active:scale-95"
-              aria-label={isPlaying ? "Pause" : "Play"}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground text-background shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              aria-label={isPlaying ? "Pause demo" : "Play demo"}
             >
-              {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
+              {isPlaying ? (
+                <Pause className="h-4 w-4 fill-current" />
+              ) : (
+                <Play className="h-4 w-4 fill-current ml-0.5" />
+              )}
             </button>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="mt-3 flex items-center gap-2 font-mono text-[11px] text-foreground/45">
+        {/* Progress scrub bar */}
+        <div className="mt-3 flex items-center gap-3 text-[11px] font-mono text-foreground/50">
           <span>{formatTime(currentTime)}</span>
           <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-foreground/10">
             <div
-              className="h-full bg-foreground transition-all duration-300"
+              className="h-full bg-foreground transition-all duration-300 rounded-full"
               style={{ width: `${(currentTime / 230) * 100}%` }}
             />
           </div>
@@ -389,18 +595,18 @@ export function LiveRoomShowcase({ className = "" }: { className?: string }) {
         </div>
       </div>
 
-      {/* Direct Room Launcher Bar: Join via Code or Convert to Live Room */}
-      <div className="mt-5 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-foreground/10 pt-4">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <RoomCodeEntry className="w-full sm:w-auto" />
+      {/* Direct Room Launcher Bar: Join by Code OR Instant Launch */}
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
+        <div className="flex-1 sm:max-w-xs">
+          <RoomCodeEntry />
         </div>
 
         <Link
-          href="/hub"
-          className="group flex h-13 w-full sm:w-auto items-center justify-center gap-2.5 rounded-2xl bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground shrink-0"
+          href={`/hub?preset=${activePresetId}`}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background shadow-md transition-all hover:opacity-90 active:scale-98"
         >
           <span>Convert to Live Room</span>
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+          <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
     </div>
