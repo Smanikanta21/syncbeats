@@ -100,7 +100,7 @@ export default function LandingPage() {
         <AmbientField />
         <LandingNavbar />
 
-        {/* Master Editorial Hero with Draggable Soundstage, Floating Widgets & Scroll Parallax */}
+        {/* Hero Section: Interactive Playground & Direct Room Launcher */}
         <Hero />
 
         {/* Preserved Presets Section */}
