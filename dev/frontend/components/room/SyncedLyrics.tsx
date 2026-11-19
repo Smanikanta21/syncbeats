@@ -181,7 +181,7 @@ async function fetchLyrics(
   // Build a generic query for the 'q=' endpoint which searches all fields (artist, track, album)
   // This is much more robust for messy YouTube titles.
   const query = artist ? `${artist} ${title}` : title;
-  const url = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+  const url = `/api/lyrics?q=${encodeURIComponent(query)}`;
 
   try {
     const res = await fetch(url, {
@@ -201,8 +201,8 @@ async function fetchLyrics(
     if (!best?.syncedLyrics) return null;
 
     return parseLrc(best.syncedLyrics);
-  } catch (error) {
-    console.error("fetchLyrics error:", error);
+  } catch {
+    // A missing/offline lyrics provider must not interrupt playback.
     return null;
   }
 }

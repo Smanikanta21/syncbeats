@@ -17,6 +17,7 @@ import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes } from './handlers/DeviceRoutes';
 import { createSearchRoutes }  from './handlers/SearchRoutes';
+import { createRecommendationRoutes } from './handlers/RecommendationRoutes';
 import { createYoutubeRoutes } from './handlers/YoutubeRoutes';
 import { createHistoryRoutes } from './handlers/HistoryRoutes';
 import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
@@ -260,6 +261,7 @@ export class SyncBeatsServer {
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
     this.app.use('/search',  createSearchRoutes());
+    this.app.use('/recommendations', createRecommendationRoutes(prisma));
     this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
     this.app.use('/spotify', createSpotifyRoutes());

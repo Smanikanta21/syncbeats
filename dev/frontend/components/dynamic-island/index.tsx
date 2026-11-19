@@ -6,10 +6,11 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
   Loader2, AlertCircle, AlertTriangle, Activity,
   ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
-  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass, X
 } from "lucide-react";
+import { expandedPanelSize, EXTENDED_ACTIVITY_HEIGHT, EXTENDED_PLAYER_HEIGHT, showBackgroundProgress } from './layout';
 import Link from "next/link";
-import { useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
+import { useLayoutEffect, useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAudio } from "../../context/AudioContext";
 
@@ -81,7 +82,6 @@ const contentMorph = (reduce: boolean) =>
 const COMPACT_HEIGHT = 44;
 // Extended grows while syncing: the sync bar adds a label row that clips at 44.
 // 62 = title (14) + gap (6) + label row (13) + gap (6) + bar (4) + py-2 (16).
-const EXTENDED_SYNC_HEIGHT = 62;
 
 // Secondary island — the detached circle iOS shows beside the pill when a
 // second activity is live. Ring geometry is derived so the size is one knob.
@@ -341,21 +341,20 @@ const tabVariants = {
 
 const PlayerTab = ({
   effectivePlaying, trackTitle, trackUrl, isReady, error, downloadProgress,
-  duration, hasTrack, onToggle, onNext, onPrev, onSeek,
+  duration, onToggle, onNext, onPrev, onSeek,
   onTabChange, isRoom, roomParticipants, pendingRequestsCount, isHost, isPrivate,
-  isVisible = true, deviceSyncProgress,
+  isVisible = true,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:") || !!trackUrl?.startsWith("ws-p2p:yt:");
   const thumbnailUrl = getTrackThumbnail(trackUrl, 'hq');
   const trackInitials = cleanTrackTitle(trackTitle).substring(0, 2).toUpperCase();
   const [showErrorDetails, setShowErrorDetails] = useState(false);
-  const accent = useIslandAccent();
 
   const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
-    <div className="relative w-full flex flex-col justify-evenly px-4 sm:px-6 pt-3.5 pb-4 sm:pt-4 sm:pb-5 gap-3 sm:gap-4">
+    <div className="relative w-full flex flex-col px-4 sm:px-6 py-4 gap-3 sm:gap-4">
       {/* Track header */}
       <div className="flex items-start gap-3 sm:gap-3.5 w-full">
         <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-13 h-13 sm:w-15 sm:h-15 rounded-[12px] shadow-lg ${
@@ -380,7 +379,7 @@ const PlayerTab = ({
               <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed • Tap for info</span>
             ) : isReady && !isRoomReady ? "Syncing to peers…"
               : isReady ? "Ready to play"
-              : `Buffering… ${downloadProgress}%`}
+              : "Preparing audio…"}
           </div>
 
           <AnimatePresence>
@@ -392,41 +391,15 @@ const PlayerTab = ({
                 </div>
               </motion.div>
             )}
-            {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-2">
-                <div className="flex items-center gap-2 flex-wrap max-h-12 overflow-y-auto custom-scrollbar pr-1" data-lenis-prevent="true">
-                  {loadingParticipants.map((p: any) => {
-                    const progress = deviceSyncProgress[p.socketId] || 0;
-                    return (
-                      <div key={p.socketId} className="flex items-center gap-2 bg-white/10 rounded-full pl-2.5 pr-3 py-1.5">
-                        <Loader2 className="w-3 h-3 text-white/50 animate-spin shrink-0" />
-                        <span className="text-[10px] font-bold text-white/70 whitespace-nowrap">{p.displayName}</span>
-                        <div className="w-12 h-1 bg-black/40 rounded-full overflow-hidden shrink-0">
-                          <div className="h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${progress}%`, backgroundColor: accent }} />
-                        </div>
-                        <span className="text-[9px] font-black text-white/40 tabular-nums">{progress}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
+          {isReady && loadingParticipants.length > 0 && (
+            <p className="mt-1 text-[11px] text-white/40">{loadingParticipants.length} {loadingParticipants.length === 1 ? 'device is' : 'devices are'} preparing audio</p>
+          )}
           </AnimatePresence>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4 shrink-0 pr-1 pt-0.5">
           {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
-            : !isReady || !isRoomReady ? (
-                <div className="w-6 h-1 bg-white/10 rounded-full overflow-hidden flex items-center shrink-0">
-                  <motion.div
-                    className="h-full bg-white/40 rounded-full w-1/3"
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "300%" }}
-                    transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut", repeatType: "mirror" }}
-                  />
-                </div>
-              )
-            : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
+                        : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
             <button type="button" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
@@ -438,25 +411,32 @@ const PlayerTab = ({
         </div>
       </div>
 
+      {!error && (!isReady || !isRoomReady) && (
+        <SyncProgressBar activity={{
+          id: 'player-preparation', status: 'active',
+          label: !isReady ? 'Preparing audio' : 'Waiting for devices',
+          progress: !isReady ? (downloadProgress > 0 ? downloadProgress : null) : null,
+        }} />
+      )}
+
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
+      {isRoom && isHost && isPrivate && pendingRequestsCount > 0 && (
+        <button type="button" onClick={() => onTabChange('requests')} className="flex h-9 items-center justify-center gap-2 rounded-xl bg-white/5 px-3 text-xs text-white/70 hover:bg-white/10">
+          <Users className="h-4 w-4" /> Join requests ({pendingRequestsCount})
+        </button>
+      )}
+
       {/* Controls */}
-      <div className="flex items-center justify-between w-full gap-2">
-        <div className="flex items-center gap-1 sm:gap-2">
+      <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center w-full gap-1">
+        <div className="flex items-center justify-center">
           <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
-          {isRoom && isHost && isPrivate && (
-            <button type="button" aria-label={`Join requests${pendingRequestsCount > 0 ? ` (${pendingRequestsCount} pending)` : ""}`} onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95 relative">
-              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
-              {pendingRequestsCount > 0 && (
-                <div className="absolute top-0 right-0 w-3 h-3 bg-bad-500 rounded-full border-2 border-background animate-pulse" />
-              )}
-            </button>
-          )}
+
         </div>
 
-        <div className="flex items-center justify-center gap-5 sm:gap-8">
+        <div className="flex min-w-0 items-center justify-center gap-1 sm:gap-3">
           <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             <SkipBack className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="currentColor" />
           </button>
@@ -1130,7 +1110,7 @@ export function DynamicIsland() {
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localProgressRef = useRef(0);
   // ── Auto-sizing: measures actual rendered content height ──────────────────
-  const contentMeasureRef = useRef<HTMLDivElement>(null);
+  const [contentMeasureElement, setContentMeasureElement] = useState<HTMLDivElement | null>(null);
   const [measuredContentHeight, setMeasuredContentHeight] = useState(300);
 
   const [radialSnapInfo, setRadialSnapInfo] = useState<{
@@ -1161,21 +1141,19 @@ export function DynamicIsland() {
   }, []);
 
   // ── ResizeObserver: auto-size island to content ──────────────────────────
-  useEffect(() => {
-    const el = contentMeasureRef.current;
+  useLayoutEffect(() => {
+    const el = contentMeasureElement;
     if (!el) return;
-    // Initial measurement
-    setMeasuredContentHeight(el.scrollHeight);
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         // Use borderBoxSize if available for accuracy, fallback to scrollHeight
         const h = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).scrollHeight;
-        setMeasuredContentHeight(Math.ceil(h));
+        if (h > 0) setMeasuredContentHeight(Math.ceil(h));
       }
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [islandState]); // re-attach whenever island opens/closes
+  }, [contentMeasureElement]);
 
   const lastTapRef = useRef<number>(0);
 
@@ -1486,7 +1464,13 @@ export function DynamicIsland() {
 
   const isExpanded_room = islandState === 'expanded';
   const isExtended_room = islandState === 'extended';
-  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing && !radialSnapInfo?.isOpen;
+  const showSecondary = isRoom && showBackgroundProgress({
+    prefetching: prefetch.isPrefetching,
+    expanded: isExpanded_room,
+    foregroundBusy: activity?.status === 'active',
+    searchBusy: !!upload.activeImport?.isImporting,
+    gestureActive: !!(wiggle || isSwallowing || radialSnapInfo?.isOpen),
+  });
   const [secondaryExiting, setSecondaryExiting] = useState(false);
   useEffect(() => { if (showSecondary) setSecondaryExiting(true); }, [showSecondary]);
   useEffect(() => { if (isModalOpen || !isRoom) setSecondaryExiting(false); }, [isModalOpen, isRoom]);
@@ -1498,10 +1482,11 @@ export function DynamicIsland() {
   const pillWidth = Math.min(hasTrack ? 120 : 86, availableWidth);
   const hasPending = isHost && isPrivate && pendingRequests.length > 0;
   const extendedWidth = Math.min(hasPending ? 460 : 360, availableWidth);
-  const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
-  const expandedWidth = Math.min(activeTab === "search" ? 560 : 420, availableWidth);
-  const maxIslandHeight = Math.max(1, viewportBounds.height - (isMobile ? 0 : Math.max(0, 28 - viewportBounds.y)));
-  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight);
+  const maxIslandHeight = Math.max(1, viewportBounds.height);
+  const expandedSize = expandedPanelSize(viewportBounds, activeTab, measuredContentHeight);
+  const expandedWidth = expandedSize.width;
+  const expandedHeight = expandedSize.height;
+  const extendedHeight = Math.min((isSyncingNow || hasPending) ? EXTENDED_ACTIVITY_HEIGHT : EXTENDED_PLAYER_HEIGHT, maxIslandHeight);
   const dropZoneSize = Math.min(240, availableWidth, maxIslandHeight);
   const currentWidth = wiggle || isSwallowing ? dropZoneSize
     : radialSnapInfo?.isOpen ? Math.min(265, availableWidth)
@@ -1771,7 +1756,7 @@ export function DynamicIsland() {
           </AnimatePresence>
 
           {/* Pill content */}
-          <AnimatePresence>
+          <AnimatePresence mode="wait" initial={false}>
             {islandState === "pill" && !wiggle && (
               <motion.div
                 key="pill-content"
@@ -1792,10 +1777,9 @@ export function DynamicIsland() {
                 />
               </motion.div>
             )}
-          </AnimatePresence>
+
 
           {/* Extended content */}
-          <AnimatePresence>
             {islandState === "extended" && (
               <motion.div
                 key="extended-content"
@@ -1821,20 +1805,27 @@ export function DynamicIsland() {
                 />
               </motion.div>
             )}
-          </AnimatePresence>
+
 
           {/* Expanded content */}
-          <AnimatePresence>
             {isExpanded_room && !wiggle && (
               <motion.div
                 key="expanded-tab-container"
                 {...contentMorph(!!reduceMotion)}
-                className="w-full h-full relative pointer-events-auto overflow-y-auto overscroll-contain"
-                style={{ maxHeight: currentHeight, touchAction: 'pan-y' }}
+                className="w-full h-full relative flex flex-col pointer-events-auto overflow-hidden"
+                style={{ maxHeight: currentHeight }}
               >
-                {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
-                <div ref={contentMeasureRef}>
-                <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4" style={{ height: expandedSize.headerHeight }}>
+                  <span className="min-w-0 truncate text-sm font-medium text-white/80">
+                    {{ player: 'Now playing', search: 'Add music', network: 'Network', deviceInfo: 'Devices', requests: 'Join requests', chat: 'Room chat', invite: 'Invite friends' }[activeTab] || 'Room'}
+                  </span>
+                  <button type="button" aria-label="Close island" onClick={closeIsland} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ touchAction: 'pan-y' }}>
+                <div ref={setContentMeasureElement}>
+                <AnimatePresence custom={slideDir} initial={false} mode="wait">
                   {activeTab === "player" && (
                     <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
 
@@ -1914,7 +1905,8 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                </div>{/* /contentMeasureRef */}
+                </div>{/* measured body */}
+                </div>{/* scrolling body */}
               </motion.div>
             )}
           </AnimatePresence>

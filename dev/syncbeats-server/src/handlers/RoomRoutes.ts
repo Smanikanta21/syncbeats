@@ -1,3 +1,4 @@
+import { trackDuration } from '../utils/trackDuration';
 // handlers/RoomRoutes.ts — /rooms REST endpoints (auth-protected)
 
 import express, { Router, Request, Response, NextFunction } from 'express';
@@ -471,7 +472,8 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   // POST /rooms/:roomId/enqueue-youtube
   router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, loadRoom, async (req: Request, res: Response): Promise<void> => {
     try {
-      const { youtubeUrl, title: customTitle } = req.body as { youtubeUrl?: string; title?: string };
+      const { youtubeUrl, title: customTitle, durationSec: suppliedDuration } = req.body as { youtubeUrl?: string; title?: string; durationSec?: unknown };
+      let durationSec = trackDuration(suppliedDuration);
 
       if (!youtubeUrl) {
         fail(res, 400, 'Paste a YouTube link to add a song.');
@@ -518,6 +520,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       const { added, first } = room.addTracks([{
         trackUrl:  withMeta(`youtube:${videoId}`, `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`),
         title:     cleanTitle,
+        durationSec,
         artist,
         fileName:  `youtube_${videoId}.yt`,
       }], req.user!.sub);

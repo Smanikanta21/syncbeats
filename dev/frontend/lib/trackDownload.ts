@@ -1,6 +1,7 @@
 import { getTrack, saveTrack } from './idb';
-import { getAuthToken, getRestUrl, getServerUrl } from './api';
+import { getAuthToken, getRestUrl } from './api';
 import { trackCacheKey } from './trackIdentity';
+import { localAudioSource } from './audioSource';
 import { ytId } from './youtube';
 import type { TrackQueueItem } from './types';
 
@@ -153,13 +154,14 @@ export const trackDownloads = new TrackDownloadPool();
 
 export function downloadTrack(trackUrl: string, roomId: string, options: Omit<DownloadOptions, 'trackUrl' | 'url' | 'headers'> = {}): Promise<DownloadResult> {
   const id = ytId(trackUrl);
-  const base = getServerUrl();
+  const base = getRestUrl();
+  const source = localAudioSource(trackUrl, process.env.NODE_ENV === 'development');
   const url = id
     ? base + '/rooms/' + encodeURIComponent(roomId) + '/yt-proxy?videoId=' + id
-    : trackUrl.startsWith('/') ? base + trackUrl : trackUrl;
+    : source.startsWith('/api/') ? source : source.startsWith('/') ? base + source : source;
   const token = getAuthToken();
   // Attach room authorization only to the same API proxy, never to arbitrary uploaded URLs.
-  const headers = token && (id || trackUrl.startsWith('/')) ? { Authorization: 'Bearer ' + token } : undefined;
+  const headers = token && (id || source.startsWith('/')) ? { Authorization: 'Bearer ' + token } : undefined;
   return trackDownloads.load({ ...options, trackUrl, url, headers });
 }
 

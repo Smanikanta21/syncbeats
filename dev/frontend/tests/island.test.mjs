@@ -4,6 +4,45 @@ import { loadTypeScript } from './loadTypeScript.mjs';
 
 const { INITIAL_ISLAND, islandReducer: reduce, islandView: view } = loadTypeScript('components/dynamic-island/state.ts');
 const { usableBounds, dockPosition, expandedPosition, nearestDock, isPositionDrag } = loadTypeScript('components/dynamic-island/geometry.ts');
+const { expandedPanelSize, showBackgroundProgress, ISLAND_HEADER_HEIGHT } = loadTypeScript('components/dynamic-island/layout.ts');
+
+test('expanded panels include a fixed header and cap long content to usable phone, keyboard and desktop bounds', () => {
+  for (const bounds of [
+    usableBounds({ x: 0, y: 0, width: 320, height: 568 }, { top: 24, right: 0, bottom: 34, left: 0 }),
+    usableBounds({ x: 0, y: 0, width: 844, height: 390 }, { top: 0, right: 44, bottom: 21, left: 44 }),
+    { x: 0, y: 44, width: 390, height: 220 },
+    { x: 0, y: 0, width: 1440, height: 900 },
+  ]) {
+    for (const tab of ['player', 'search', 'requests']) {
+      const size = expandedPanelSize(bounds, tab, 1400);
+      assert.ok(size.width <= bounds.width);
+      assert.ok(size.height <= bounds.height);
+      assert.equal(size.headerHeight, ISLAND_HEADER_HEIGHT);
+      assert.ok(size.height > size.headerHeight, 'the scroll body retains usable space');
+      const collapsed = { width: 120, height: 36 };
+      const anchor = dockPosition({ edge: 'right', offset: 0.9 }, collapsed, bounds);
+      const position = expandedPosition(anchor, collapsed, size, bounds);
+      within(position, size, bounds);
+    }
+  }
+});
+
+test('expanded height accounts for natural body height rather than clipping it behind the header', () => {
+  const bounds = { x: 0, y: 0, width: 900, height: 900 };
+  assert.equal(expandedPanelSize(bounds, 'player', 200).height, 200 + ISLAND_HEADER_HEIGHT);
+  assert.equal(expandedPanelSize(bounds, 'player', 900).height, 420);
+  assert.equal(expandedPanelSize(bounds, 'search', 900).height, 620);
+  assert.equal(expandedPanelSize(bounds, 'search', NaN).height, ISLAND_HEADER_HEIGHT);
+});
+
+test('background progress yields to foreground transfer, import, expanded panels and gestures', () => {
+  const options = { prefetching: true, expanded: false, foregroundBusy: false, searchBusy: false, gestureActive: false };
+  assert.equal(showBackgroundProgress(options), true);
+  assert.equal(showBackgroundProgress({ ...options, prefetching: false }), false);
+  for (const key of ['expanded', 'foregroundBusy', 'searchBusy', 'gestureActive']) {
+    assert.equal(showBackgroundProgress({ ...options, [key]: true }), false, key);
+  }
+});
 const activity = { id: 'download-a', status: 'active', label: 'Downloading', progress: null };
 const context = (value, playing = false) => ({ type: 'context', playing, requests: false, activity: value });
 

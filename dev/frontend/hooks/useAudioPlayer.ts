@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getServerUrl } from '../lib/api';
+import { getRestUrl } from '../lib/api';
 import { getWebTorrentClient } from '../lib/webtorrent';
 import { getTrackThumbnailUrl } from '../lib/colorExtractor';
 import { ytId } from '../lib/youtube';
@@ -1354,8 +1354,8 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       }).catch(() => {});
     } else {
       const absoluteUrl = (!url.startsWith('/') && !url.startsWith('http') && !url.startsWith('ws-p2p:') && !url.startsWith('blob:') && !url.startsWith('data:'))
-        ? `${getServerUrl()}/${url}`
-        : url.startsWith('/') ? `${getServerUrl()}${url}` : url;
+        ? `${getRestUrl()}/${url}`
+        : url.startsWith('/api/') ? url : url.startsWith('/') ? `${getRestUrl()}${url}` : url;
       const roomId = window.location.pathname.split('/').pop() || '';
       void downloadTrack(absoluteUrl, roomId, { priority: 'prefetch' }).catch(() => {});
     }

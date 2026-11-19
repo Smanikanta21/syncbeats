@@ -13,6 +13,7 @@ import { MessageSquare } from "lucide-react";
 import { FeedbackModal } from "../../components/FeedbackModal";
 import { cn } from "@/lib/utils";
 import { useLoadingTasks } from "../../context/LoadingContext";
+import { MusicOnboardingGate, MusicPreferencesProvider } from "../../components/recommendations/MusicPreferencesProvider";
 
 export default function SessionLayout({ children }: { children: React.ReactNode }) {
   const { user, device, needsDeviceRename, emailVerified, loading, serverError, resendVerification, renameDevice, replaceDevice } = useAuth();
@@ -171,7 +172,7 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
   // "rendered fewer hooks than expected" instead of showing this screen.
   if (serverError) {
     return (
-      <div className="flex h-dvh w-full flex-col items-center justify-center bg-background px-6 text-center text-foreground">
+      <div className={cn("flex h-dvh w-full flex-col items-center justify-center px-6 text-center text-foreground", isHub ? "site-gradient-page" : "bg-background")}>
         <p className="micro-label mb-3">Offline</p>
         <h1 className="mb-3 font-display text-display font-semibold">Cannot connect to server</h1>
         <p className="mb-8 max-w-md text-lead text-foreground/55 text-pretty">
@@ -287,8 +288,10 @@ export default function SessionLayout({ children }: { children: React.ReactNode 
         </div>
       )}
 
-      <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : isHub ? "min-h-dvh w-full relative z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
-        {(!loading && user) ? children : null}
+      <div className={isRoom ? "h-dvh overflow-hidden flex justify-center w-full" : isProfile ? "min-h-screen w-full relative z-10" : isHub ? "site-gradient-page w-full z-10" : "pt-[calc(max(6.5rem,env(safe-area-inset-top,0px)+5rem))] pb-12"}>
+        {(!loading && user) ? <MusicPreferencesProvider key={user.id} enabled={!needsDeviceRename}>
+          <MusicOnboardingGate enabled={!needsDeviceRename}>{children}</MusicOnboardingGate>
+        </MusicPreferencesProvider> : null}
       </div>
 
       {user && !loading && !isProfile && !isHub && <DynamicIsland />}

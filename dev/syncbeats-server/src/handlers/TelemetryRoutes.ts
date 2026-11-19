@@ -63,6 +63,7 @@ interface SyncTelemetryPayload {
 
 function isValidPayload(b: any): b is SyncTelemetryPayload {
   return (
+    b !== null && typeof b === 'object' &&
     typeof b.sessionId        === 'string' && b.sessionId.length > 0 &&
     typeof b.roomId           === 'string' && b.roomId.length > 0 &&
     typeof b.networkQuality   === 'string' &&

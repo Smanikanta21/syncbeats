@@ -9,7 +9,6 @@ import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/a
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload, type TrackActivity } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
 import { useTrackPrefetcher, type PrefetchState } from './useTrackPrefetcher';
-import { toast } from 'sonner';
 import { getYoutubeTrackTitle } from '../lib/colorExtractor';
 import { ytId } from '../lib/youtube';
 
@@ -219,7 +218,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
         if (!controller.signal.aborted) {
           const message = error instanceof Error ? error.message : 'Could not prepare this track';
           publishIncoming({ ...operation, status: 'failed', error: message });
-          toast.error(message);
+
         }
       }).finally(() => {
         if (lazyLoadRef.current?.controller === controller) {
@@ -792,7 +791,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       joinedRef.current = false;
       socket.disconnect();
       setJoinStatus('denied');
-      toast.error(reason || 'Session displaced by another tab on this device');
+
     };
     socket.on('room:kicked', handleRoomKicked);
 
@@ -832,12 +831,6 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     };
     socket.on('room:reset', handleRoomReset);
 
-    const handleDevicePing = ({ message }: { message: string, from: string }) => {
-      if (typeof window !== 'undefined') {
-        toast.info(message);
-      }
-    };
-    socket.on('device:ping', handleDevicePing);
 
     const handleEqUpdate = ({ gains }: { gains: number[] }) => {
       if (gains && Array.isArray(gains) && audioRef.current?.setAllEqBands) {
@@ -892,7 +885,6 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:hostJoinRequest', handleHostJoinRequest);
       socket.off('room:joinRequestResolved', handleJoinRequestResolved);
       socket.off('room:hostChanged', handleHostChanged);
-      socket.off('device:ping', handleDevicePing);
       socket.off('room:eqUpdate', handleEqUpdate);
       socket.off('error', handleError);
       socket.off('room:queueChanged', handleQueueChangedNew);

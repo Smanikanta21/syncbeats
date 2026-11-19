@@ -7,7 +7,7 @@ import { ArrowRight, Headphones, LoaderCircle, Music2, Plus, Radio, Sparkles } f
 import { useAuth } from "../../../context/AuthContext";
 import { roomsApi, type OnlineRoomRecord, type RoomRecord } from "../../../lib/api";
 import { RoomCodeEntry } from "../../../components/landing/RoomCodeEntry";
-import { AmbientField } from "../../../components/landing/AmbientField";
+import { MusicRecommendations } from "../../../components/recommendations/MusicRecommendations";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import { SyncBeatsLogo } from "../../../components/brand/SyncBeatsLogo";
 
@@ -69,8 +69,7 @@ export default function HubPage() {
   const greeting = user?.name?.trim().split(/\s+/)[0] || "there";
 
   return (
-    <main className="relative isolate min-h-dvh overflow-hidden bg-background px-5 pb-[max(2rem,env(safe-area-inset-bottom,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] text-foreground sm:px-8 lg:px-12">
-      <AmbientField />
+    <main className="relative min-h-dvh overflow-hidden px-5 pb-[max(2rem,env(safe-area-inset-bottom,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] text-foreground sm:px-8 lg:px-12">
       <header className="relative z-10 mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between border-b border-foreground/[0.08]">
         <Link href="/" className="flex items-center gap-3 text-sm font-semibold tracking-tight">
           <SyncBeatsLogo markClassName="h-9 w-9" />
@@ -83,6 +82,7 @@ export default function HubPage() {
         </div>
       </header>
 
+      {user?.id && <div className="relative z-10 mx-auto w-full max-w-[1440px] border-b border-foreground/10"><MusicRecommendations key={user.id} setupOnly /></div>}
       <div className="relative z-10 mx-auto grid w-full max-w-[1440px] gap-12 py-10 sm:py-14 xl:min-h-[calc(100dvh-7rem)] xl:grid-cols-[minmax(0,1.08fr)_minmax(27rem,0.82fr)] xl:items-center xl:gap-20 xl:py-12">
         <section className="flex flex-col justify-center">
           <p className="micro-label mb-5 flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" />Your listening space</p>

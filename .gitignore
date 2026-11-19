@@ -17,6 +17,13 @@
 
 # Node / JS
 node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+# This repository has separate package manifests under dev/, no root package.
+/package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -47,6 +54,7 @@ dev/syncbeats-server/tmp/
 CLAUDE.md
 snapshots/
 *.sql
+!dev/syncbeats-server/prisma/migrations/**/migration.sql
 
 # Xcode / Swift / macOS
 *.xcuserdata/
@@ -64,8 +72,6 @@ build/
 *.dSYM.zip
 *.dSYM
 Pods/
-docs/*
-!docs/GLOBAL_SYNC_DESIGN.md
 
 # Cookies & Cache
 cookies.txt
@@ -74,9 +80,7 @@ dev/syncbeats-server/cookies.txt
 dev/syncbeats-server/*-player-script.js
 yt-dlp-cache/
 docker-compose.build.yml
-scripts/
 device_logs.txt
-dev/syncbeats-server/tests/
 cli/
 
 # Sentry Config File
@@ -84,7 +88,6 @@ cli/
 
 # Sentry auto-generated demo pages (not real app code)
 pages/
-AGENTS.md
 AGENTS.md
 implementation_plan.md
 
@@ -98,3 +101,8 @@ skills-lock.json
 
 # /brag render scratch (probe frames, scene html, share copy)
 brag-output*/
+
+# Local investigations and database backups
+/scratch/
+*.dump
+*.backup

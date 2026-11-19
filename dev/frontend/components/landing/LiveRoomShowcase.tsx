@@ -1,613 +1,297 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { 
-  Play, 
-  Pause, 
-  Smartphone, 
-  Laptop, 
-  Tablet, 
-  Volume2, 
-  VolumeX, 
-  Plus, 
-  Sliders, 
-  Layers, 
-  RotateCcw, 
+import {
   ArrowRight,
-  PartyPopper,
-  Compass,
   Headphones,
-  Globe2
+  Laptop,
+  Music2,
+  Pause,
+  Play,
+  Smartphone,
+  Tablet,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
-import { RoomCodeEntry } from "./RoomCodeEntry";
 
-export interface DemoDevice {
-  id: string;
-  name: string;
-  type: "phone" | "laptop" | "tablet";
-  icon: typeof Smartphone | typeof Laptop | typeof Tablet;
-  channel: string;
-  volume: number;
-  isMuted: boolean;
-  x: number; // percentage (0-100)
-  y: number; // percentage (0-100)
-}
-
-export interface PresetScenario {
-  id: string;
-  name: string;
-  tagline: string;
-  icon: typeof PartyPopper;
-  devices: DemoDevice[];
-}
-
-export const PRESET_SCENARIOS: PresetScenario[] = [
+const tracks = [
   {
-    id: "party",
-    name: "House Party",
-    tagline: "Combine everyone's phones into one loud, distributed sound system.",
-    icon: PartyPopper,
-    devices: [
-      {
-        id: "party-macbook",
-        name: "Host MacBook",
-        type: "laptop",
-        icon: Laptop,
-        channel: "Master Core",
-        volume: 100,
-        isMuted: false,
-        x: 50,
-        y: 52,
-      },
-      {
-        id: "party-kitchen",
-        name: "Kitchen iPhone",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Left Fill",
-        volume: 92,
-        isMuted: false,
-        x: 20,
-        y: 30,
-      },
-      {
-        id: "party-living",
-        name: "Living Room Pixel",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Right Fill",
-        volume: 88,
-        isMuted: false,
-        x: 80,
-        y: 30,
-      },
-      {
-        id: "party-patio",
-        name: "Patio Tablet",
-        type: "tablet",
-        icon: Tablet,
-        channel: "Rear Left",
-        volume: 85,
-        isMuted: false,
-        x: 22,
-        y: 74,
-      },
-      {
-        id: "party-counter",
-        name: "Counter Phone",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Rear Right",
-        volume: 90,
-        isMuted: false,
-        x: 78,
-        y: 74,
-      },
-    ],
+    title: "A little closer",
+    mood: "Slow evenings",
+    art: "closer",
+    src: "/audio/demo-closer.mp3",
   },
   {
-    id: "desk",
-    name: "Desk Surround",
-    tagline: "Turn your laptop, phone, and tablet into an immersive 3D desktop stage.",
-    icon: Compass,
-    devices: [
-      {
-        id: "desk-center",
-        name: "Center: MacBook",
-        type: "laptop",
-        icon: Laptop,
-        channel: "Center (Lead)",
-        volume: 100,
-        isMuted: false,
-        x: 50,
-        y: 68,
-      },
-      {
-        id: "desk-left",
-        name: "Left: iPhone",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Left Channel",
-        volume: 90,
-        isMuted: false,
-        x: 22,
-        y: 48,
-      },
-      {
-        id: "desk-right",
-        name: "Right: iPad",
-        type: "tablet",
-        icon: Tablet,
-        channel: "Right Channel",
-        volume: 90,
-        isMuted: false,
-        x: 78,
-        y: 48,
-      },
-      {
-        id: "desk-top",
-        name: "Studio Display",
-        type: "laptop",
-        icon: Laptop,
-        channel: "Ambient Top",
-        volume: 85,
-        isMuted: false,
-        x: 50,
-        y: 24,
-      },
-    ],
+    title: "First light",
+    mood: "A fresh start",
+    art: "daylight",
+    src: "/audio/demo-daylight.mp3",
   },
   {
-    id: "silent-disco",
-    name: "Silent Disco",
-    tagline: "Multiple listeners on headphones, locked to the exact beat with zero bleed.",
-    icon: Headphones,
-    devices: [
-      {
-        id: "disco-host",
-        name: "DJ Host Console",
-        type: "laptop",
-        icon: Laptop,
-        channel: "DJ Master",
-        volume: 100,
-        isMuted: false,
-        x: 50,
-        y: 24,
-      },
-      {
-        id: "disco-dancer-1",
-        name: "Listener 1",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Headphones A",
-        volume: 95,
-        isMuted: false,
-        x: 25,
-        y: 45,
-      },
-      {
-        id: "disco-dancer-2",
-        name: "Listener 2",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Headphones B",
-        volume: 95,
-        isMuted: false,
-        x: 75,
-        y: 45,
-      },
-      {
-        id: "disco-dancer-3",
-        name: "Listener 3",
-        type: "phone",
-        icon: Smartphone,
-        channel: "Headphones C",
-        volume: 95,
-        isMuted: false,
-        x: 50,
-        y: 75,
-      },
-    ],
-  },
-  {
-    id: "distance",
-    name: "Long Distance",
-    tagline: "Stream lossless audio together across the globe in microsecond lockstep.",
-    icon: Globe2,
-    devices: [
-      {
-        id: "dist-london",
-        name: "You (London)",
-        type: "laptop",
-        icon: Laptop,
-        channel: "Host Stream",
-        volume: 100,
-        isMuted: false,
-        x: 30,
-        y: 50,
-      },
-      {
-        id: "dist-tokyo",
-        name: "Friend (Tokyo)",
-        type: "phone",
-        icon: Smartphone,
-        channel: "P2P Receiver",
-        volume: 92,
-        isMuted: false,
-        x: 70,
-        y: 50,
-      },
-    ],
+    title: "After hours",
+    mood: "Find your focus",
+    art: "afterhours",
+    src: "/audio/demo-afterhours.mp3",
   },
 ];
+const devices = [
+  { name: "Your laptop", icon: Laptop },
+  { name: "A friend’s phone", icon: Smartphone },
+  { name: "Another tablet", icon: Tablet },
+];
+const time = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
-export function LiveRoomShowcase({ className = "" }: { className?: string }) {
-  const [activePresetId, setActivePresetId] = useState<string>("party");
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [devices, setDevices] = useState<DemoDevice[]>(PRESET_SCENARIOS[0].devices);
-  const [selectedId, setSelectedId] = useState<string>(PRESET_SCENARIOS[0].devices[0].id);
-  const [spatialMode, setSpatialMode] = useState<"surround" | "stereo">("surround");
-  const [currentTime, setCurrentTime] = useState(74);
-  const [stageVersion, setStageVersion] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+export function LiveRoomShowcase() {
+  const audio = useRef<HTMLAudioElement>(null);
+  const playRequest = useRef(0);
+  const [selected, setSelected] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [duration, setDuration] = useState(16);
+  const [muted, setMuted] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const track = tracks[selected];
 
-  const activePreset = PRESET_SCENARIOS.find((p) => p.id === activePresetId) || PRESET_SCENARIOS[0];
-
-  // Playback timer (runs only when playing)
   useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      setCurrentTime((prev) => (prev >= 230 ? 0 : prev + 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  const selectPreset = (presetId: string) => {
-    const preset = PRESET_SCENARIOS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setActivePresetId(presetId);
-    setDevices(preset.devices);
-    setSelectedId(preset.devices[0].id);
-    setStageVersion((v) => v + 1);
-  };
-
-  const selectedDevice = devices.find((d) => d.id === selectedId) || devices[0];
-
-  const updateDeviceVolume = (id: string, vol: number) => {
-    setDevices((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, volume: vol, isMuted: vol === 0 } : d))
-    );
-  };
-
-  const toggleMute = (id: string) => {
-    setDevices((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, isMuted: !d.isMuted } : d))
-    );
-  };
-
-  const addDevice = () => {
-    if (devices.length >= 6) return;
-    const count = devices.length + 1;
-    const newDev: DemoDevice = {
-      id: `custom-speaker-${Date.now()}`,
-      name: `Guest Phone ${count}`,
-      type: "phone",
-      icon: Smartphone,
-      channel: count % 2 === 0 ? "Right Fill" : "Left Fill",
-      volume: 85,
-      isMuted: false,
-      x: count % 2 === 0 ? 82 : 18,
-      y: 65,
+    const player = audio.current;
+    if (!player) return;
+    player.volume = 0.35;
+    // A demo must not keep playing when its tab is put away.
+    const onVisibility = () => {
+      if (document.hidden) {
+        playRequest.current += 1;
+        player.pause();
+      }
     };
-    setDevices((prev) => [...prev, newDev]);
-    setSelectedId(newDev.id);
-  };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      playRequest.current += 1;
+      player.pause();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
-  const resetStage = () => {
-    const currentPreset = PRESET_SCENARIOS.find((p) => p.id === activePresetId) || PRESET_SCENARIOS[0];
-    setDevices(currentPreset.devices);
-    setSelectedId(currentPreset.devices[0].id);
-    setStageVersion((v) => v + 1);
-  };
+  async function play() {
+    const request = ++playRequest.current;
+    setError("");
+    try {
+      if (audio.current?.error) audio.current.load();
+      await audio.current?.play();
+    } catch {
+      if (request === playRequest.current)
+        setError(
+          "The sample couldn’t play. Check your connection and try again.",
+        );
+    }
+  }
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s < 10 ? "0" : ""}${s}`;
-  };
+  function togglePlay() {
+    if (!audio.current) return;
+    if (audio.current.paused) void play();
+    else {
+      playRequest.current += 1;
+      audio.current.pause();
+    }
+  }
+
+  function chooseTrack(index: number) {
+    const player = audio.current;
+    if (!player || index === selected) return;
+    const resume = !player.paused;
+    playRequest.current += 1;
+    player.pause();
+    // Set the source inside the gesture so Safari can preserve play permission.
+    player.src = tracks[index].src;
+    setSelected(index);
+    setElapsed(0);
+    setReady(false);
+    setError("");
+    if (resume) void play();
+  }
 
   return (
     <div
-      id="presets"
-      className={`relative isolate overflow-hidden rounded-[2.5rem] border border-foreground/10 bg-foreground/[0.025] p-5 shadow-[var(--glass-shadow)] backdrop-blur-2xl sm:p-7 ${className}`}
+      id="room-demo"
+      className="landing-room-scene"
+      role="region"
+      aria-label="Interactive listening demo"
     >
-      {/* Background ambient warmth */}
-      <div className="pointer-events-none absolute -right-20 -top-20 -z-10 h-72 w-72 rounded-full bg-(--warm-tint)/30 blur-3xl dark:bg-amber-500/10" />
-      <div className="pointer-events-none absolute -bottom-24 -left-16 -z-10 h-80 w-80 rounded-full bg-(--cool-tint)/25 blur-3xl dark:bg-cyan-500/10" />
-
-      {/* Preset Scenario Selector Strip */}
-      <div className="flex flex-col gap-3 border-b border-foreground/10 pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Preset Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-foreground/10 bg-background/60 p-1">
-            {PRESET_SCENARIOS.map((scenario) => {
-              const Icon = scenario.icon;
-              const isActive = activePresetId === scenario.id;
-              return (
-                <button
-                  key={scenario.id}
-                  type="button"
-                  onClick={() => selectPreset(scenario.id)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-foreground text-background shadow-xs font-semibold"
-                      : "text-foreground/60 hover:text-foreground hover:bg-foreground/5"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{scenario.name}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Quick Room Stats & Spatial Mode */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 rounded-xl border border-foreground/10 bg-background/60 p-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setSpatialMode("surround")}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
-                  spatialMode === "surround"
-                    ? "bg-foreground text-background shadow-xs"
-                    : "text-foreground/60 hover:text-foreground"
-                }`}
-              >
-                <Layers className="h-3.5 w-3.5" /> Spatial 3D
-              </button>
-              <button
-                type="button"
-                onClick={() => setSpatialMode("stereo")}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium transition-colors ${
-                  spatialMode === "stereo"
-                    ? "bg-foreground text-background shadow-xs"
-                    : "text-foreground/60 hover:text-foreground"
-                }`}
-              >
-                <Sliders className="h-3.5 w-3.5" /> All Sync
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={addDevice}
-              disabled={devices.length >= 6}
-              className="flex h-8 items-center gap-1.5 rounded-xl border border-foreground/10 bg-foreground/5 px-2.5 text-xs font-medium text-foreground transition-all hover:bg-foreground/10 disabled:opacity-40 cursor-pointer"
-              title="Add speaker"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Add Speaker</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={resetStage}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5 text-foreground/60 transition-colors hover:text-foreground cursor-pointer"
-              title="Reset positions"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Preset Description & Active Room Indicator */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
-          <p className="text-foreground/60 font-medium">
-            {activePreset.tagline}
-          </p>
-          <div className="flex items-center gap-2 font-mono text-[11px] text-foreground/50">
-            <span className="font-bold text-foreground/80">ROOM #842109</span>
-            <span>•</span>
-            <span className="uppercase">{devices.length} Devices In Sync</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive 2D Soundstage Field */}
-      <div 
-        ref={containerRef}
-        className="relative my-4 h-72 w-full overflow-hidden rounded-2xl border border-foreground/10 bg-gradient-to-b from-foreground/[0.03] to-foreground/[0.01] sm:h-80 select-none"
-      >
-        {/* Subtle grid lines */}
-        <div 
-          className="pointer-events-none absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `radial-gradient(circle at center, currentColor 1px, transparent 1px)`,
-            backgroundSize: "28px 28px",
-          }}
-        />
-
-        {/* Central audio pulse rings */}
-        {isPlaying && (
-          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-            <div className="h-32 w-32 rounded-full border border-foreground/20 animate-ping opacity-25" style={{ animationDuration: "2.4s" }} />
-          </div>
-        )}
-
-        {/* Hint banner */}
-        <div className="pointer-events-none absolute left-3 top-3 z-10 font-mono text-[10px] text-foreground/45 uppercase tracking-wider">
-          Drag speakers to position in space · Click to mix
-        </div>
-
-        {/* Interactive draggable device nodes (Hardware-accelerated Framer Motion drag) */}
-        {devices.map((device, idx) => {
-          const isSelected = selectedId === device.id;
-          const DeviceIcon = device.icon;
-
-          return (
-            <motion.div
-              key={`${device.id}-${stageVersion}`}
-              drag
-              dragConstraints={containerRef}
-              dragElastic={0.06}
-              dragMomentum={false}
-              whileDrag={{ scale: 1.15, zIndex: 60 }}
-              whileHover={{ scale: 1.05 }}
-              onPointerDown={() => setSelectedId(device.id)}
-              style={{
-                left: `${device.x}%`,
-                top: `${device.y}%`,
-              }}
-              className="absolute z-20 flex -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing flex-col items-center gap-1.5 focus:outline-none touch-none select-none"
-            >
-              {/* Speaker wave halo */}
-              <div className="relative">
-                {isPlaying && !device.isMuted && (
-                  <span
-                    className="absolute -inset-1 rounded-2xl bg-foreground/10 blur-xs pointer-events-none animate-pulse"
-                    style={{ animationDelay: `${idx * 200}ms` }}
-                  />
-                )}
-                <div
-                  className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 sm:h-13 sm:w-13 ${
-                    isSelected
-                      ? "border-foreground bg-foreground text-background shadow-lg scale-110"
-                      : device.isMuted
-                      ? "border-foreground/10 bg-background/50 text-foreground/30"
-                      : "border-foreground/15 bg-background/90 text-foreground hover:border-foreground/40 hover:scale-105"
-                  }`}
-                >
-                  <DeviceIcon className="h-5 w-5" strokeWidth={1.8} />
-                </div>
-              </div>
-
-              {/* Device label chip */}
-              <div className="flex flex-col items-center pointer-events-none">
-                <span className="whitespace-nowrap rounded-lg border border-foreground/10 bg-background/95 px-2 py-0.5 text-[10px] font-semibold text-foreground shadow-xs">
-                  {device.name}
-                </span>
-                <span className="mt-0.5 font-mono text-[9px] text-foreground/50">
-                  {device.isMuted ? "MUTED" : spatialMode === "surround" ? device.channel : `${device.volume}%`}
-                </span>
-              </div>
-            </motion.div>
+      <audio
+        ref={audio}
+        src={tracks[0].src}
+        preload="none"
+        loop
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onTimeUpdate={() => setElapsed(audio.current?.currentTime ?? 0)}
+        onLoadedMetadata={() => {
+          const value = audio.current?.duration;
+          if (value && Number.isFinite(value)) setDuration(value);
+          setReady(true);
+        }}
+        onError={() => {
+          setPlaying(false);
+          setReady(false);
+          setError(
+            "The sample couldn’t load. Check your connection and try again.",
           );
-        })}
-      </div>
-
-      {/* Mini Controller & Mixer for Selected Device */}
-      <div className="rounded-2xl border border-foreground/10 bg-background/70 p-3.5 shadow-sm backdrop-blur-xl sm:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Track info & Vinyl */}
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-foreground/10 bg-gradient-to-br from-amber-500/20 via-rose-500/20 to-violet-500/20">
-              <motion.div
-                animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
-                transition={isPlaying ? { duration: 8, repeat: Infinity, ease: "linear" } : { duration: 0 }}
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-foreground/20 bg-background/80"
-              >
-                <div className="h-1.5 w-1.5 rounded-full bg-foreground/60" />
-              </motion.div>
-            </div>
-
-            <div className="min-w-0">
-              <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
-                Starboy (feat. Daft Punk)
-              </h4>
-              <p className="truncate text-xs text-foreground/50">The Weeknd · 48kHz Web Audio</p>
-            </div>
+        }}
+      />
+      <div className="landing-room-halo" aria-hidden="true" />
+      <div className="landing-room-card landing-demo-card">
+        <div className="landing-room-topbar">
+          <span className="landing-room-mark">
+            <Headphones size={17} aria-hidden="true" /> Try a listening room
+          </span>
+          <span className="landing-preview-label">INTERACTIVE DEMO</span>
+        </div>
+        <div className="landing-demo-intro">
+          <h2>One queue. Everyone together.</h2>
+          <p>Play a sample, switch tracks, or skip ahead.</p>
+        </div>
+        <div
+          className={`landing-track-art landing-demo-art ${track.art}`}
+          aria-hidden="true"
+        >
+          <div className="landing-art-orb landing-art-orb-one" />
+          <div className="landing-art-orb landing-art-orb-two" />
+          <div className="landing-art-orb landing-art-orb-three" />
+          <div className="landing-demo-art-title">{track.title}</div>
+          <span className="landing-art-caption">
+            SYNCBEATS SESSIONS / 0{selected + 1}
+          </span>
+          <div className="landing-art-disc">
+            <Music2 size={24} />
           </div>
-
-          {/* Device Mixer Controls */}
-          {selectedDevice && (
-            <div className="flex items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3 py-1.5 text-xs">
-              <span className="font-medium text-foreground/80 hidden sm:inline">{selectedDevice.name}:</span>
-              
-              <button
-                type="button"
-                onClick={() => toggleMute(selectedDevice.id)}
-                className="text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
-                title={selectedDevice.isMuted ? "Unmute" : "Mute"}
-              >
-                {selectedDevice.isMuted ? (
-                  <VolumeX className="h-4 w-4 text-bad-500" />
-                ) : (
-                  <Volume2 className="h-4 w-4" />
-                )}
-              </button>
-
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={selectedDevice.isMuted ? 0 : selectedDevice.volume}
-                onChange={(e) => updateDeviceVolume(selectedDevice.id, Number(e.target.value))}
-                className="h-1.5 w-20 sm:w-24 cursor-pointer accent-foreground bg-foreground/20 rounded-full"
-              />
-              <span className="font-mono text-[10px] w-7 text-right text-foreground/60">
-                {selectedDevice.isMuted ? "0%" : `${selectedDevice.volume}%`}
-              </span>
-            </div>
-          )}
-
-          {/* Equalizer animation & Play button */}
-          <div className="flex items-center gap-3">
-            <div className="hidden h-5 items-end gap-0.5 md:flex" aria-hidden="true">
-              {[12, 20, 10, 24, 16, 12, 22, 14].map((h, i) => (
-                <span
-                  key={i}
-                  className="w-1 rounded-full bg-foreground/70 transition-all duration-300"
-                  style={{
-                    height: isPlaying ? `${h}px` : "3px",
-                    animation: isPlaying ? `equalizer 1s ease-in-out infinite ${i * 0.12}s` : "none",
-                  }}
-                />
-              ))}
-            </div>
-
+        </div>
+        <div className="landing-player-meta">
+          <div>
+            <h3>{track.title}</h3>
+            <p>{track.mood} · Original sample loop</p>
+          </div>
+          <div className="landing-demo-controls">
             <button
               type="button"
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground text-background shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-              aria-label={isPlaying ? "Pause demo" : "Play demo"}
+              className="landing-demo-mute"
+              aria-label={muted ? "Unmute demo" : "Mute demo"}
+              aria-pressed={muted}
+              onClick={() => {
+                if (audio.current) audio.current.muted = !muted;
+                setMuted(!muted);
+              }}
             >
-              {isPlaying ? (
-                <Pause className="h-4 w-4 fill-current" />
+              {muted ? (
+                <VolumeX size={17} aria-hidden="true" />
               ) : (
-                <Play className="h-4 w-4 fill-current ml-0.5" />
+                <Volume2 size={17} aria-hidden="true" />
+              )}
+            </button>
+            <button
+              id="landing-demo-play"
+              type="button"
+              className="landing-play-button"
+              aria-label={playing ? "Pause demo" : "Play demo"}
+              aria-pressed={playing}
+              onClick={togglePlay}
+            >
+              {playing ? (
+                <Pause size={19} fill="currentColor" aria-hidden="true" />
+              ) : (
+                <Play size={19} fill="currentColor" aria-hidden="true" />
               )}
             </button>
           </div>
         </div>
-
-        {/* Progress scrub bar */}
-        <div className="mt-3 flex items-center gap-3 text-[11px] font-mono text-foreground/50">
-          <span>{formatTime(currentTime)}</span>
-          <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-foreground/10">
-            <div
-              className="h-full bg-foreground transition-all duration-300 rounded-full"
-              style={{ width: `${(currentTime / 230) * 100}%` }}
-            />
-          </div>
-          <span>3:50</span>
+        <input
+          type="range"
+          className="landing-demo-seek"
+          aria-label="Seek demo track"
+          aria-valuetext={`${time(elapsed)} of ${time(duration)}`}
+          min={0}
+          max={duration}
+          step={0.1}
+          value={elapsed}
+          disabled={!ready}
+          title={
+            ready
+              ? "Skip to a moment in the sample"
+              : "Play a sample to enable seeking"
+          }
+          style={
+            {
+              "--demo-progress": `${(elapsed / duration) * 100}%`,
+            } as CSSProperties
+          }
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (audio.current?.readyState) {
+              audio.current.currentTime = value;
+              setElapsed(value);
+            }
+          }}
+        />
+        <div className="landing-time">
+          <span>{time(elapsed)}</span>
+          <span>{time(duration)}</span>
         </div>
-      </div>
-
-      {/* Direct Room Launcher Bar: Join by Code OR Instant Launch */}
-      <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-foreground/10 bg-foreground/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
-        <div className="flex-1 sm:max-w-xs">
-          <RoomCodeEntry />
-        </div>
-
-        <Link
-          href={`/hub?preset=${activePresetId}`}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background shadow-md transition-all hover:opacity-90 active:scale-98"
+        {error && (
+          <p className="landing-demo-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div
+          className="landing-demo-queue"
+          role="group"
+          aria-label="Choose a sample track"
         >
-          <span>Convert to Live Room</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+          {tracks.map((item, index) => (
+            <button
+              type="button"
+              key={item.src}
+              aria-pressed={selected === index}
+              onClick={() => chooseTrack(index)}
+            >
+              <span className="landing-demo-track-number">0{index + 1}</span>
+              <span>{item.title}</span>
+              {selected === index && (
+                <span className="landing-demo-selected" aria-hidden="true" />
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="landing-connected-title">
+          <span>3 DEMO DEVICES</span>
+          <span className="landing-sync-status" aria-live="polite">
+            {playing ? "One timeline. All together." : "Press play to try it"}
+          </span>
+        </div>
+        <div className="landing-demo-devices">
+          {devices.map(({ name, icon: Icon }) => (
+            <div className="landing-demo-device" key={name}>
+              <Icon size={19} aria-hidden="true" />
+              <span>{name}</span>
+              <strong>{time(elapsed)}</strong>
+              <span
+                className={`landing-equalizer ${playing ? "is-playing" : ""}`}
+                aria-hidden="true"
+              >
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="landing-room-bottom">
+          <span>Simulated devices. Audio plays here.</span>
+          <Link href="/room/default">
+            Open a real room <ArrowRight size={13} aria-hidden="true" />
+          </Link>
+        </div>
       </div>
     </div>
   );

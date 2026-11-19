@@ -33,6 +33,8 @@ model User {
   rooms                      Room[]
   searchHistory              SearchHistory[]
   listenHistory              ListenHistory[]
+  musicTaste                 MusicTasteProfile?
+  recommendationEvents       RecommendationEvent[]
   playlists                  Playlist[]
   invitesSent                RoomInvite[]      @relation("InvitesSent")
   invitesReceived            RoomInvite[]      @relation("InvitesReceived")
@@ -151,6 +153,38 @@ model Playlist {
 }
 
 // Global Song Catalog — shared across all users, like Spotify/Apple Music's internal DB
+// Only interests and first-party SyncBeats actions feed the recommendation model.
+model MusicTasteProfile {
+  userId            String   @id @map("user_id")
+  onboardingStatus  String   @default("NEW") @map("onboarding_status")
+  languages         String[] @default([])
+  genres            String[] @default([])
+  favoriteArtistIds String[] @default([]) @map("favorite_artist_ids")
+  customArtists     String[] @default([]) @map("custom_artists")
+  useActivity       Boolean  @default(false) @map("use_activity")
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("music_taste_profiles")
+}
+
+model RecommendationEvent {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  eventId         String   @map("event_id")
+  artistId        String   @map("artist_id")
+  kind            String
+  context         String   @default("PERSONAL")
+  secondsListened Int      @default(0) @map("seconds_listened")
+  modelVersion    String   @default("rules-v1") @map("model_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+  @@map("recommendation_events")
+}
+
 model Song {
   id String @id @default(cuid())
 

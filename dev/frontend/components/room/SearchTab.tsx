@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
-import { roomsApi, getServerUrl, getAuthToken, youtubeApi } from "../../lib/api";
+import { roomsApi, getServerUrl, getAuthToken, youtubeApi, historyApi } from "../../lib/api";
+import { MusicRecommendations } from "../recommendations/MusicRecommendations";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Music, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -430,7 +431,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     if (!q.trim()) return;
     setIsSearching(true); setShowSuggestions(false); setDownloadError(null); setSpError(null); setSelectedIndex(0);
 
-    // Search logging removed
+    // Only text typed/chosen in SyncBeats becomes a first-party taste signal.
+    if (user?.id && !/^https?:\/\//i.test(q) && mode !== "spotify") void historyApi.logSearch(user.id, q.slice(0, 200)).catch(() => {});
+
+    // Playlist links should work from either source's search box.
+    const spotifyPlaylistUrl = q.trim().match(/^https?:\/\/open\.spotify\.com\/(?:intl-[^/]+\/)?playlist\/([a-zA-Z0-9]+)(?:[/?#]|$)/i);
+    if (spotifyPlaylistUrl) {
+      setMode("spotify");
+      setIsSearching(false);
+      handleSpotifyImport(`https://open.spotify.com/playlist/${spotifyPlaylistUrl[1]}`);
+      return;
+    }
 
     if (mode === "youtube") {
       const isUrl = q.trim().startsWith("http") && q.includes("youtube.com/playlist");
@@ -884,6 +895,28 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       className={`relative flex flex-col w-full h-auto ${containerPadding}`}
       style={{ maxHeight: isSearchOnly ? undefined : 'calc(100vh - 80px)' }}
     >
+      {!isSearchOnly && user?.id && !query.trim() && !selectedPlaylistId && mode !== "spotify" && <MusicRecommendations key={user.id} onSearch={q => { setQuery(q); void performSearch(q); }} />}
+      <div role="group" aria-label="Music source" className="flex gap-2 mb-3">
+        {(["youtube", "spotify"] as const).map(source => (
+          <button
+            key={source}
+            type="button"
+            aria-pressed={mode === source}
+            disabled={importing}
+            onClick={() => {
+              setMode(source);
+              setQuery("");
+              setSelectedPlaylistId(null);
+              setSelectedPlaylistData(null);
+              setDownloadError(null);
+              setSpError(null);
+            }}
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors disabled:opacity-40 ${mode === source ? "bg-white/15 text-white" : "text-white/50 hover:bg-white/10 hover:text-white"}`}
+          >
+            {source === "youtube" ? "YouTube" : "Spotify"}
+          </button>
+        ))}
+      </div>
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
           <button 
@@ -1055,116 +1088,55 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       <AnimatePresence>
         {importing && (
           <motion.div
-            initial={{ opacity: 0, y: 15, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -15, scale: 0.95 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="p-5 rounded-3xl bg-foreground/5 border border-foreground/15 shadow-2xl backdrop-blur-2xl relative overflow-hidden my-3 shrink-0"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="my-3 shrink-0 rounded-2xl border border-foreground/15 bg-foreground/5 p-4"
+            aria-label="Playlist import"
           >
-            {/* Ambient Pulsing Background Aura */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-foreground/5 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-[var(--accent-color)]/10 blur-3xl pointer-events-none" />
-
-            {/* Header Info */}
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-foreground/10 border border-foreground/15 flex items-center justify-center text-foreground shrink-0 shadow-md">
-                  {importStage === "done" ? <CheckCircle2 className="w-6 h-6 text-ok-400" /> : <Loader2 className="w-5 h-5 animate-spin text-foreground/80" />}
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-foreground flex items-center gap-2">
-                    <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Playlist"}"` : "Importing Playlist"}</span>
-                    <span className={`micro-label rounded-full border px-2 py-0.5 ${importStage === "done" ? "border-ok-500/20 bg-ok-500/10 text-ok-700 dark:text-ok-400" : "border-foreground/10 bg-foreground/5"}`}>
-                      {importStage === "done" ? "Done" : "In progress"}
-                    </span>
-                  </h4>
-                  <p className="text-xs text-foreground/60 mt-0.5 max-w-[200px] truncate">
-                    {importStage === "scraping" && "Fetching playlist from YouTube..."}
-                    {importStage === "indexing" && "Reading playlist..."}
-                    {importStage === "enriching" && (upload.activeImport?.currentTitle || (importStats.total > 0 ? `${importStats.total} / ${upload.activeImport?.totalTracks || '?'} songs` : "Importing songs..."))}
-                    {importStage === "done" && `${importStats.total} songs imported!`}
-                  </p>
-                </div>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{importStats.playlistName || 'Importing playlist'}</p>
+                <p className="mt-1 truncate text-xs text-foreground/60" aria-live="polite">
+                  {importStage === 'scraping' ? `Fetching ${mode === 'spotify' ? 'Spotify' : 'YouTube'} playlist…`
+                    : importStage === 'indexing' ? 'Reading tracks…'
+                    : importStage === 'enriching' ? 'Matching tracks…'
+                    : importStage === 'downloading' ? 'Saving playlist…'
+                    : 'Playlist ready'}
+                </p>
+                {importStats.total > 0 && <p className="mt-1 text-xs tabular-nums text-foreground/45">
+                  {importStats.total}{upload.activeImport?.totalTracks ? ` / ${upload.activeImport.totalTracks}` : ''} tracks
+                </p>}
               </div>
-              <div className="flex items-center gap-3">
-                <span className="tabular text-xl font-semibold text-foreground ml-2">
-                  {Math.round(importProgress)}%
-                </span>
-                {importStage !== "done" && (
-                  <button 
-                    onClick={() => {
-                      if (importAbortController) importAbortController.abort();
-                      setImporting(false);
-                      upload.setActiveImport(null);
-                    }}
-                    className="w-7 h-7 rounded-full bg-foreground/10 hover:bg-bad-500/20 hover:text-bad-400 flex items-center justify-center transition-colors ml-2"
-                    title="Cancel Import"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+              {importStage !== 'done' && (
+                <button type="button" aria-label="Cancel playlist import" onClick={() => {
+                  importAbortController?.abort();
+                  setImporting(false);
+                  upload.setActiveImport(null);
+                }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/10 hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
-
-            {/* Animated Progress Bar in Pure White */}
-            <div className="w-full h-3.5 rounded-full bg-white/10 overflow-hidden relative border border-white/15 p-0.5 z-10 shadow-inner">
-              <motion.div
-                className="h-full rounded-full bg-white relative shadow-[0_0_12px_rgba(255,255,255,0.6)]"
-                initial={{ width: "0%" }}
-                animate={{ width: `${importProgress}%` }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                {/* Subtle glowing head light */}
-                <div className="absolute top-0 right-0 w-3 h-full bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.9)] opacity-100" />
-              </motion.div>
-            </div>
-
-            {/* Completion Actions or Stage Footer */}
-            {importStage === "done" && importStats.playlistId ? (
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-foreground/10 relative z-10">
-                <button
-                  onClick={() => {
-                    if (importStats.playlistId) {
-                      handlePlaylistClick(importStats.playlistId);
-                      setImporting(false);
-                    }
-                  }}
-                  className="px-4 py-2 rounded-xl bg-foreground hover:bg-foreground/90 text-background font-extrabold text-xs transition-all active:scale-95 flex items-center gap-1.5 shadow-lg"
-                >
-                  <Music className="w-4 h-4" /> View Playlist ({importStats.total} Tracks)
-                </button>
-                <button
-                  onClick={() => {
-                    if (importStats.playlistId) {
-                      handleSpotifyEnqueue(importStats.playlistId);
-                      setImporting(false);
-                    }
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-foreground/10 hover:bg-foreground/20 text-foreground font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 border border-foreground/10"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" /> Play All
-                </button>
-                <button
-                  onClick={() => setImporting(false)}
-                  className="ml-auto px-3 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/60 hover:text-foreground text-xs font-bold transition-all"
-                >
-                  Dismiss
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1 mt-3 relative z-10">
-                {upload.activeImport?.currentTitle && (
-                  <p className="text-[11px] text-foreground/50 truncate italic">
-                    ♪ {upload.activeImport.currentTitle}
-                  </p>
-                )}
-                <div className="flex items-center justify-between text-[11px] text-foreground/60">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Sparkles className="w-3.5 h-3.5 text-foreground/70 animate-spin" />
-                    <span>{importStats.total > 0 ? `${importStats.total} of ${upload.activeImport?.totalTracks || '?'} tracks` : "Scanning playlist..."}</span>
-                  </div>
-                  <span className="text-foreground/40 italic">~2s per 20 songs</span>
+            {importStage !== 'done' && (
+              <div className="mt-3 flex items-center gap-3">
+                <div role="progressbar" aria-label="Playlist import progress" aria-valuemin={0} aria-valuemax={100}
+                  aria-valuenow={importStage === 'scraping' || importStage === 'indexing' ? undefined : Math.round(importProgress)}
+                  className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/10">
+                  <div className={`h-full rounded-full bg-foreground/70 transition-[width] duration-300 ${importStage === 'scraping' || importStage === 'indexing' ? 'w-1/3 motion-safe:animate-pulse' : ''}`}
+                    style={importStage === 'scraping' || importStage === 'indexing' ? undefined : { width: `${Math.min(100, Math.max(0, importProgress))}%` }} />
                 </div>
+                {importStage !== 'scraping' && importStage !== 'indexing' && <span className="text-xs tabular-nums text-foreground/60">{Math.round(importProgress)}%</span>}
+              </div>
+            )}
+            {importStage === 'done' && (
+              <div className="mt-3 flex items-center gap-2">
+                <button type="button" onClick={async () => {
+                  if (importStats.playlistId) { handlePlaylistClick(importStats.playlistId); setImporting(false); }
+                }} className="flex h-9 items-center gap-2 rounded-xl bg-foreground/10 px-3 text-xs font-medium text-foreground hover:bg-foreground/20">
+                  <Play className="h-3.5 w-3.5 fill-current" /> Play all
+                </button>
+                <button type="button" onClick={() => setImporting(false)} className="h-9 rounded-xl px-3 text-xs text-foreground/60 hover:bg-foreground/5">Dismiss</button>
               </div>
             )}
           </motion.div>
@@ -1190,7 +1162,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               <AppFeedback message={downloadError} severity="error" onDismiss={() => setDownloadError(null)} className="mb-2" />
             )}
 
-            {loadingPlaylists && !isSearching ? (
+            {loadingPlaylists && !isSearching && !importing ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-white/30" />
               </div>
@@ -1247,7 +1219,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* My Spotify Playlists */}
                 {mode === "spotify" && displayedSpotifyPlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
-                    upload.activeImport?.isImporting && (
+                    !importing && upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
                       upload.activeImport?.playlistName?.toLowerCase() === r.name?.toLowerCase()
                     )
@@ -1343,7 +1315,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* My YouTube Playlists */}
                 {mode === "youtube" && displayedYoutubePlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
-                    upload.activeImport?.isImporting && (
+                    !importing && upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
                       upload.activeImport?.playlistName?.toLowerCase() === r.title?.toLowerCase()
                     )

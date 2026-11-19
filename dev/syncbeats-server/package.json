@@ -14,8 +14,8 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
     "send-announcement": "ts-node scripts/send-announcement.ts",
-    "sync-db": "bash ../../scripts/sync-db.sh",
-    "db:start": "bash ../../scripts/start-db.sh"
+    "test:recommendations": "ts-node src/recommendations/engine.tests.ts",
+    "test:recommendation-api": "ts-node src/recommendations/routes.tests.ts"
   },
   "keywords": [],
   "author": "",

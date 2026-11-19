@@ -17,6 +17,7 @@ interface AuthContextType {
   emailVerified: boolean;
   token:    string | null;
   loading:  boolean;
+  retrySession: () => void;
   serverError: boolean;
   login:    (email: string, password: string) => Promise<string>;
   register: (name: string, email: string, password: string) => Promise<void>;
@@ -41,6 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [emailVerified, setEmailVerified] = useState(false);
   const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [sessionCheck, setSessionCheck] = useState(0);
+  const retrySession = useCallback(() => { setLoading(true); setSessionCheck(n => n + 1); }, []);
   const [serverError, setServerError] = useState<boolean>(false);
 
   // Hydration-safe bootstrap: read browser token only after mount.
@@ -58,26 +61,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) return;
     setServerError(false);
 
+    let cancelled = false;
     authApi.me()
       .then(({ user, device, needsDeviceRename }) => {
+        if (cancelled) return;
         setUser(user);
         setDevice(device);
         setNeedsDeviceRename(needsDeviceRename);
         setEmailVerified(!!user.email_verified_at);
       })
       .catch((err) => {
-        // Only clear token if we get a definitive authentication failure.
-        // If the server is restarting (502, 503) or network fails, do NOT log out the user!
+        if (cancelled) return;
+        // A network interruption cannot invalidate a saved login.
         if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404)) {
           clearAuthToken();
           setToken(null);
+          setUser(null);
+          setDevice(null);
           setEmailVerified(false);
         } else {
           setServerError(true);
         }
       })
-      .finally(() => setLoading(false));
-  }, [token]);
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, sessionCheck]);
 
   // ── Global Socket Connection for Device Management ───────────────────────
   useEffect(() => {
@@ -236,10 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(() => ({
-    user, device, needsDeviceRename, emailVerified, token, loading, serverError,
+    user, device, needsDeviceRename, emailVerified, token, loading, serverError, retrySession,
     login, register, googleLogin, resendVerification,
     renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout,
-  }), [user, device, needsDeviceRename, emailVerified, token, loading, serverError,
+  }), [user, device, needsDeviceRename, emailVerified, token, loading, serverError, retrySession,
     login, register, googleLogin, resendVerification,
     renameDevice, replaceDevice, updateProfile, updateSettings, patchUserSettings, logout]);
 

@@ -1,52 +1,30 @@
 # SyncBeats
 
-> Turn every phone, tablet, and laptop in the room into a synchronized surround sound system. Free, ultra-low latency, running entirely in your browser with zero app installation.
+> SyncBeats is a free web app for synchronized music playback across phones, tablets, and computers. People sign in, join a shared listening room, and play the same track together in their browsers.
 
-## Overview
+## Product
+- [Homepage](https://www.syncbeats.in/): Product overview, listening scenarios, FAQs, and Mac app status.
+- [Listening guide](https://www.syncbeats.in/how-it-works): Setup steps, supported device categories, music sources, and practical synchronization advice.
+- [Detailed product information](https://www.syncbeats.in/llms-full.txt): A plain-text product reference.
 
-SyncBeats (https://www.syncbeats.in) is a web-based multi-device audio synchronization platform. It coordinates audio playback across multiple hardware devices in real time with sub-25 millisecond precision. By synchronizing each device's Web Audio buffer against an adaptive Network Time Protocol (NTP) master clock, SyncBeats turns ordinary smartphones, tablets, and computers into a unified multi-speaker sound system.
+## Getting started
+Create an account, open the room hub, and create a room. Share its six-digit room code, link, or QR code. Friends sign in and join from their own devices. Add a track, wait for audio readiness, and press play. Any participant can play, pause, or seek.
 
-## Primary Use Cases
+## Availability and limitations
+- The web app is available now and is free to use.
+- A native Mac app is in development and coming soon. No release date or public Mac download has been announced.
+- The web app requires internet access. Listeners can use different networks.
+- Audio uploads and in-room music search are supported. Source availability varies; paid music catalogs are not unlocked by SyncBeats.
+- Playback alignment depends on network, browser, and audio hardware. Bluetooth adds output delay. No fixed latency is guaranteed.
+- Keep the listening room open; background and battery-saving behavior may interrupt playback.
 
-- **Pocket Sound System (House Parties & Outdoor Gatherings)**: Place multiple smartphones on tables, counters, or across the room to create a wide, balanced soundstage that is louder and clearer than a single portable Bluetooth speaker.
-- **Long-Distance Listening Parties**: Friends, couples, or study groups stream music together in real-time. Audio plays directly from each user's local hardware without the severe lossy compression or delay of Discord, Zoom, or FaceTime screenshares.
-- **Desktop Spatial Audio Stage**: Arrange personal devices (MacBook in center, iPhone on the left, iPad on the right) and pan audio channels on the 3D spatial stage for an immersive surround sound workstation.
-- **Silent Discos & Dance Rehearsals**: Dancers and listeners connect their own headphones or earbuds, hearing the exact same microsecond count without expensive RF headphone transmitter gear.
+## Support and policies
+- [Contact](https://www.syncbeats.in/contact)
+- [Privacy policy](https://www.syncbeats.in/privacy-policy)
+- [Terms of service](https://www.syncbeats.in/terms-of-service)
 
-## Key Features
+## Optional
+- [Start or join a room](https://www.syncbeats.in/hub): Account required; not a public content page.
+- [Sitemap](https://www.syncbeats.in/sitemap.xml): Canonical public pages.
 
-- **Sub-25ms Precision Synchronization**: Uses an adaptive 4-timestamp NTP burst algorithm combined with continuous Web Audio API hardware drift compensation.
-- **Zero App Installation**: Runs seamlessly in Safari (iOS / macOS), Chrome (Android / Desktop), Edge, and Firefox. No app store downloads or complicated Bluetooth pairing required.
-- **Multi-Source Audio**:
-  - Direct YouTube search and streaming within rooms.
-  - Spotify public playlist import and automatic high-fidelity matching.
-  - Peer-to-peer WebRTC and local file drag-and-drop (MP3, WAV, FLAC, AAC).
-- **3D Spatial Soundstage**: Drag-and-drop speaker nodes to distribute left, center, right, and ambient channels across devices.
-- **Real-Time Synced Lyrics**: Millisecond-accurate word and line highlighting synchronized to the beat.
-- **Dynamic Island Control Interface**: Floating room controller for queue management, volume sliders, device latency readouts, and track search.
-- **Private Rooms & Host Controls**: Lock rooms with one tap to require host approval before new participants can join.
-- **Upcoming Native macOS Companion**: A native macOS app with menu bar quick controls, system-wide audio broadcasting (stream directly from Spotify Desktop, Apple Music, Ableton Live, or DJ software), and sub-15ms CoreAudio synchronization.
-
-## How to Join or Create a Room
-
-1. Visit https://www.syncbeats.in
-2. Click "Start a Free Room" or enter a 6-digit room code in the join box.
-3. Share the room link or QR code with nearby friends or remote listeners.
-4. Search a song or import a playlist, press play, and all speakers play in synchronized harmony.
-
-## Technology Stack
-
-- **Frontend**: Next.js (App Router), React, Web Audio API, Framer Motion, Tailwind CSS.
-- **Backend**: Node.js, Socket.IO, Express, Redis Adapter for multi-node scaling.
-- **Clock Engine**: Adaptive NTP (Network Time Protocol) client-server burst measurement with exponential moving average (EWMA) drift correction.
-- **Data & Storage**: PostgreSQL (Lakebase / Neon) with Prisma ORM.
-
-## Links & Resources
-
-- Homepage: https://www.syncbeats.in
-- Room Hub: https://www.syncbeats.in/hub
-- Contact & Support: https://www.syncbeats.in/contact
-- Privacy Policy: https://www.syncbeats.in/privacy-policy
-- Terms of Service: https://www.syncbeats.in/terms-of-service
-- Instagram: https://www.instagram.com/syncbeats.in/
-- Email Support: support@syncbeats.in
+Canonical origin: https://www.syncbeats.in

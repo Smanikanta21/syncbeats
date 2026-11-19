@@ -27,7 +27,7 @@ const item: Variants = {
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const router  = useRouter();
-  const { user, loading: authLoading, login, register, googleLogin } = useAuth();
+  const { user, loading: authLoading, serverError, token, retrySession, login, register, googleLogin } = useAuth();
 
   // Authenticated users begin at the hub, where they can choose or create a room.
   useEffect(() => {
@@ -118,7 +118,8 @@ export default function AuthPage() {
           throw new Error("Password and confirm password must match");
         }
         await register(name, email, password);
-        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}`);
+        const roomReturn = /^\/room\/(default|\d{6})$/.test(returnTo) ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}${roomReturn}`);
       }
     } catch (err) {
       const message = (err as Error).message;
@@ -131,7 +132,9 @@ export default function AuthPage() {
       }
 
       if (message.includes("UNVERIFIED_EMAIL")) {
-        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}&resent=true`);
+        const returnTo = new URLSearchParams(window.location.search).get('returnTo') || '';
+        const roomReturn = /^\/room\/(default|\d{6})$/.test(returnTo) ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}&resent=true${roomReturn}`);
         return;
       }
 
@@ -260,6 +263,20 @@ export default function AuthPage() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [googleLogin, router]);
+
+  if (authLoading || user || (serverError && token)) {
+    const failed = !authLoading && !user && serverError;
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-background px-6 text-foreground">
+        <div className="flex max-w-sm flex-col items-center gap-4 text-center" role="status" aria-live="polite" aria-busy={!failed}>
+          <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
+          {!failed && <span className="h-6 w-6 motion-safe:animate-spin rounded-full border-2 border-foreground/15 border-t-foreground/70" aria-hidden="true" />}
+          <p className="text-sm text-foreground/65">{failed ? 'Couldn’t check your saved session. Check your connection and try again.' : user ? 'Opening your room hub…' : 'Checking your session…'}</p>
+          {failed && <button type="button" onClick={retrySession} className="rounded-xl bg-foreground/10 px-4 py-2 text-sm font-medium hover:bg-foreground/15">Try again</button>}
+        </div>
+      </main>
+    );
+  }
 
   return (
     // reducedMotion="user" drops framer's transform animations for viewers who

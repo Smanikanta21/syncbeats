@@ -1,16 +1,21 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAuth } from '../auth/authMiddleware';
+import { loadTaste, recordTextSignal } from '../recommendations/store';
 
 export function createHistoryRoutes(prisma: PrismaClient): Router {
   const router = Router();
+  router.use(requireAuth);
+  router.use((_req, res, next) => { res.setHeader('Cache-Control', 'private, no-store'); next(); });
 
   const cleanStr = (s: any): string => (typeof s === 'string' ? s.replace(/\0/g, '').replace(/\u0000/g, '').trim() : '');
 
   // POST /history/listen
   router.post('/listen', async (req, res) => {
-    const { userId, youtubeId, title, artist, thumbnail } = req.body;
+    const { youtubeId, title, artist, thumbnail } = req.body ?? {};
+    const userId = req.user!.sub;
     
-    if (!userId || !youtubeId || !title) {
+    if (!cleanStr(youtubeId) || !cleanStr(title) || cleanStr(title).length > 300 || cleanStr(youtubeId).length > 2048) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -33,19 +38,25 @@ export function createHistoryRoutes(prisma: PrismaClient): Router {
 
   // POST /history/search
   router.post('/search', async (req, res) => {
-    const { userId, query } = req.body;
+    const { query } = req.body ?? {};
+    const userId = req.user!.sub;
     
-    if (!userId || !query) {
+    if (!cleanStr(query) || cleanStr(query).length > 200) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     try {
+      if (!(await loadTaste(prisma, userId)).useActivity) {
+        res.json({ success: true, entry: null });
+        return;
+      }
       const entry = await prisma.searchHistory.create({
         data: {
           userId: cleanStr(userId),
           query: cleanStr(query)
         }
       });
+      void recordTextSignal(prisma, userId, cleanStr(query), 'SEARCH', entry.id).catch(() => {});
       res.json({ success: true, entry });
     } catch (error) {
       console.error('[History] Failed to log search history:', error);
@@ -55,7 +66,7 @@ export function createHistoryRoutes(prisma: PrismaClient): Router {
 
   // GET /history/recent
   router.get('/recent', async (req, res) => {
-    const userId = req.query.userId as string;
+    const userId = req.user!.sub;
     if (!userId) {
       return res.status(400).json({ error: 'Missing userId' });
     }

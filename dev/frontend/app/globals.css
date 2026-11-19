@@ -31,6 +31,10 @@
     --warm-tint: #fff6e8;
     --cool-tint: #dce4ec;
 
+    /* Shared atmosphere for the website, account entry, and room dashboard. */
+    --page-glow-core: rgba(143, 127, 164, 0.08);
+    --page-glow-mid: rgba(143, 127, 164, 0.025);
+
     /* Ink accent, resolved per theme for both SSR and client rendering. */
     --accent-color: var(--foreground);
     --accent-glow: rgba(17, 17, 17, 0.08);
@@ -50,6 +54,8 @@
     --glass-bg: rgba(24, 26, 27, 0.62);
     --glass-bg-hover: rgba(38, 40, 42, 0.78);
     --glass-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7);
+    --page-glow-core: rgba(188, 166, 211, 0.14);
+    --page-glow-mid: rgba(188, 166, 211, 0.055);
 
     --accent-glow: rgba(234, 234, 232, 0.10);
     --accent-border: rgba(234, 234, 232, 0.22);
@@ -136,6 +142,28 @@
   }
 }
 
+
+/* One viewport-sized field keeps the glow continuous across scrolling and
+   page changes. The opaque base covers the legacy global noise/blobs. */
+.site-gradient-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  background: var(--background);
+}
+.site-gradient-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 65% 70% at 50% 65%,
+    var(--page-glow-core) 0%,
+    var(--page-glow-mid) 40%,
+    transparent 78%
+  );
+}
 
 @layer utilities {
   .gpu-accelerated {
@@ -467,34 +495,6 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  /* Set by CustomCursor once it has decided to take over (fine pointer, motion
-     allowed). Never applied from markup, so a visitor without JS keeps theirs.
-     Anything that declares its own cursor keeps it — a grab handle, a resize
-     edge, a caret and a slider all say something the dot can't — except
-     cursor-pointer, which says nothing the ring doesn't already show.
-     CustomCursor fades itself out over those, so only one pointer is ever up.
-     The name must not contain "cursor-" anywhere: the opt-out selectors below
-     and in CustomCursor match that as a *substring*, not a prefix, so a class
-     like `native-cursor-off` on <html> matches itself and every closest()
-     lookup walks up to it — which hid the cursor permanently. */
-  .native-pointer-off,
-  .native-pointer-off *:not([class*="cursor-"]):not(input):not(textarea):not([contenteditable="true"]),
-  .native-pointer-off [class*="cursor-pointer"] {
-    cursor: none !important;
-  }
-
-  /* Blend a white cursor source against whatever is under it: difference
-     produces black over the magnetic light fill and white over the dark page. */
-  .contrast-pointer-layer {
-    mix-blend-mode: difference;
-  }
-  .contrast-pointer-ring {
-    border-color: #fff;
-  }
-  .contrast-pointer-dot {
-    background-color: #fff;
-  }
-
   .no-touch-select {
     -webkit-user-select: none !important;
     -moz-user-select: none !important;
@@ -697,5 +697,88 @@
   .magnetic-fill-card,
   .magnetic-fill-card::before {
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Shared cursor set for website, account entry, and dashboard. Route-level
+   scope also covers dialogs and controls rendered outside the page wrapper. */
+@media (hover: hover) and (pointer: fine) {
+  body:has(.site-gradient-page) {
+    cursor:
+      url("/cursors/syncbeats.svg") 3 2,
+      default;
+  }
+  body:has(.site-gradient-page)
+    :is(
+      a,
+      button,
+      summary,
+      select,
+      label[for],
+      [role="button"],
+      input[type="checkbox"],
+      input[type="radio"]
+    ) {
+    cursor:
+      url("/cursors/syncbeats-hand.svg") 12 3,
+      pointer;
+  }
+  body:has(.site-gradient-page)
+    :is(
+      a,
+      button,
+      summary,
+      select,
+      label[for],
+      [role="button"],
+      input[type="checkbox"],
+      input[type="radio"]
+    ):active {
+    cursor:
+      url("/cursors/syncbeats-pressed.svg") 12 3,
+      pointer;
+  }
+  body:has(.site-gradient-page)
+    :is(
+      input:not([type]),
+      input[type="text"],
+      input[type="email"],
+      input[type="password"],
+      input[type="search"],
+      input[type="tel"],
+      input[type="url"],
+      input[type="number"],
+      textarea,
+      [contenteditable="true"]
+    ) {
+    cursor:
+      url("/cursors/syncbeats-text.svg") 16 16,
+      text;
+  }
+  body:has(.site-gradient-page)
+    :is(input[type="range"], [draggable="true"], [data-cursor="grab"]) {
+    cursor:
+      url("/cursors/syncbeats-grab.svg") 16 16,
+      grab;
+  }
+  body:has(.site-gradient-page)
+    :is(input[type="range"], [draggable="true"], [data-cursor="grab"]):active {
+    cursor:
+      url("/cursors/syncbeats-grabbing.svg") 16 16,
+      grabbing;
+  }
+  body:has(.site-gradient-page)
+    :is(
+      button:disabled,
+      input:disabled,
+      select:disabled,
+      textarea:disabled,
+      [aria-disabled="true"]
+    ) {
+    cursor: not-allowed !important;
+  }
+  body:has(.site-gradient-page)
+    :is([aria-busy="true"], [class~="disabled:cursor-wait"]:disabled) {
+    cursor: wait !important;
   }
 }

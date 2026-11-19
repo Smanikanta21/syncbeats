@@ -1,52 +1,46 @@
-"use client";
-
-import { motion } from "framer-motion";
+import { ArrowUpRight, Monitor, Smartphone, Tablet } from "lucide-react";
 import { LiveRoomShowcase } from "./LiveRoomShowcase";
+import { RoomEntry } from "./RoomEntry";
 
 export function Hero() {
   return (
-    <section className="relative z-10 flex w-full flex-col items-center px-5 pb-12 pt-24 sm:px-8 sm:pb-16 sm:pt-28 lg:px-12 lg:pt-32">
-      <div className="mx-auto flex w-full max-w-4xl flex-col items-center text-center">
-        {/* Subtle Eyebrow */}
-        <motion.p 
-          initial={{ opacity: 0, y: 8 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.4 }} 
-          className="mb-3 font-mono text-xs font-semibold tracking-widest text-foreground/50 uppercase"
+    <section
+      className="landing-hero landing-container"
+      aria-labelledby="hero-title"
+    >
+      <div className="landing-hero-copy">
+        <a href="#mac-app" className="landing-announcement">
+          <span className="landing-status-dot" /> Made for the browser. Coming
+          to Mac. <ArrowUpRight size={14} aria-hidden="true" />
+        </a>
+        <p className="landing-eyebrow">MUSIC IS BETTER TOGETHER</p>
+        <h1 id="hero-title">
+          Your music.
+          <br />
+          <span className="landing-emphasis-text">Together, in sync.</span>
+        </h1>
+        <p className="landing-hero-description">
+          Play the same music on every phone, tablet, and laptop. Open a room,
+          share the code, and listen together—from the same sofa or different
+          cities.
+        </p>
+        <RoomEntry />
+        <div
+          className="landing-device-list"
+          aria-label="Available in modern browsers on phones, tablets, and computers"
         >
-          Shared Listening in Lockstep
-        </motion.p>
-
-        {/* Master Heading */}
-        <motion.h1 
-          initial={{ opacity: 0, y: 14 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }} 
-          className="font-display text-4xl font-semibold tracking-tight leading-[1.04] text-balance sm:text-6xl md:text-7xl lg:text-[4.75rem]"
-        >
-          Turn every phone into a speaker.
-        </motion.h1>
-
-        {/* Short, Punchy Subtitle */}
-        <motion.p 
-          initial={{ opacity: 0, y: 10 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          transition={{ duration: 0.45, delay: 0.1 }} 
-          className="mt-3.5 max-w-md text-base text-foreground/60 text-pretty"
-        >
-          Instant multi-device surround sound in your browser. Zero downloads, zero accounts.
-        </motion.p>
+          <span>
+            <Smartphone size={16} aria-hidden="true" /> Phones
+          </span>
+          <span>
+            <Tablet size={16} aria-hidden="true" /> Tablets
+          </span>
+          <span>
+            <Monitor size={16} aria-hidden="true" /> Computers
+          </span>
+        </div>
       </div>
-
-      {/* The Interactive Playground & Direct Room Launcher */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20, scale: 0.985 }} 
-        animate={{ opacity: 1, y: 0, scale: 1 }} 
-        transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }} 
-        className="mx-auto mt-8 w-full max-w-5xl"
-      >
-        <LiveRoomShowcase />
-      </motion.div>
+      <LiveRoomShowcase />
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { trackDuration } from '../utils/trackDuration';
 import assert from 'assert';
 import { Room } from './Room';
 import { PlaybackState } from './PlaybackState';
@@ -15,6 +16,9 @@ function ready(room: Room) {
 }
 
 export function testPlayback(): void {
+  assert.equal(trackDuration(218.25), 218.25);
+  for (const value of [undefined, null, '218', NaN, Infinity, -1, 0, 86401]) assert.equal(trackDuration(value), undefined);
+
   const room = roomWithTracks();
   const schedules: { playbackInstanceId: string; startEpoch: number }[] = [];
   room.on('schedule', payload => schedules.push(payload));

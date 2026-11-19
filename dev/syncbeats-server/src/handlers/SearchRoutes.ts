@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import { requireAuth } from '../auth/authMiddleware';
+import { buildFeed } from '../recommendations/engine';
+import { loadTaste, loadSignals } from '../recommendations/store';
 import ytSearch from 'yt-search';
 import prisma from '../db/prisma';
 import { YT_ID_PATTERN } from '../utils/youtube';
@@ -70,84 +73,15 @@ export function createSearchRoutes(): Router {
     }
   });
 
-  router.get('/recommendations', async (req, res) => {
+  // Deprecated discovery endpoint: authenticated interests, never a provider feed.
+  router.get('/recommendations', requireAuth, async (req, res) => {
     try {
-      const userId = req.query.userId as string | undefined;
-      const sections: any[] = [];
-
-      // 1. Recently Played — this user's own listen history.
-      if (userId) {
-        const recent = await prisma.listenHistory.findMany({
-          where: { userId },
-          orderBy: { playedAt: 'desc' },
-          take: 20,
-        });
-        // De-dupe by youtubeId, preserving most-recent order.
-        const seen = new Set<string>();
-        const tracks = [];
-        for (const h of recent) {
-          if (seen.has(h.youtubeId)) continue;
-          seen.add(h.youtubeId);
-          tracks.push({
-            youtubeId: h.youtubeId,
-            title: h.title,
-            artist: h.artist || 'Unknown',
-            thumbnail: h.thumbnail || (h.youtubeId ? `https://i.ytimg.com/vi/${h.youtubeId}/hqdefault.jpg` : ''),
-            duration: 0,
-          });
-        }
-        if (tracks.length > 0) sections.push({ title: 'Recently Played', tracks });
-      }
-
-      // 2. Trending — most-played tracks across all users.
-      const grouped = await prisma.listenHistory.groupBy({
-        by: ['youtubeId'],
-        _count: { youtubeId: true },
-        orderBy: { _count: { youtubeId: 'desc' } },
-        take: 20,
-      });
-
-      let trending: any[] = [];
-      if (grouped.length >= 5) {
-        for (const g of grouped) {
-          const row = await prisma.listenHistory.findFirst({
-            where: { youtubeId: g.youtubeId },
-            orderBy: { playedAt: 'desc' },
-          });
-          if (!row) continue;
-          trending.push({
-            youtubeId: row.youtubeId,
-            title: row.title,
-            artist: row.artist || 'Unknown',
-            thumbnail: row.thumbnail || (row.youtubeId ? `https://i.ytimg.com/vi/${row.youtubeId}/hqdefault.jpg` : ''),
-            duration: 0,
-          });
-        }
-      }
-
-      // Fallback when history is too sparse to fill a trending row.
-      if (trending.length < 5) {
-        try {
-          const r = await ytSearch('top hits this week');
-          trending = r.videos.slice(0, 20).map(v => ({
-            youtubeId: v.videoId,
-            title: v.title,
-            artist: v.author.name,
-            thumbnail: v.thumbnail,
-            duration: v.seconds || 0,
-          }));
-        } catch (e) {
-          console.error('[Search] Trending fallback (ytSearch) failed:', e);
-        }
-      }
-
-      if (trending.length > 0) sections.push({ title: 'Trending', tracks: trending });
-
-      res.json({ sections });
-    } catch (err) {
-      console.error('[Search] Recommendations failed:', err);
-      res.status(500).json({ error: 'Failed to fetch recommendations' });
-    }
+      const userId = req.user!.sub;
+      const profile = await loadTaste(prisma, userId);
+      const events = await loadSignals(prisma, userId);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json(buildFeed(profile, events));
+    } catch { res.status(503).json({ error: 'Suggestions are temporarily unavailable. Please try again.' }); }
   });
 
   router.get('/youtube', async (req, res) => {
@@ -304,7 +238,7 @@ export async function resolveYoutubeAudioDirectUrl(youtubeId: string, ytDlpPath:
         '-g',
         '--no-warnings',
         // m4a/AAC, not Opus: AVAudioEngine (Swift app) and Safari can't decode Opus-in-webm.
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '-f', 'bestaudio[ext=m4a]',
         ...extraArgs,
         watchUrl
       ];
@@ -455,7 +389,7 @@ export async function streamYoutubeAudio(rawInput: string, _req: any, res: any):
         '--no-warnings',
         '--socket-timeout', '6',
         '--retries', '1',
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '-f', 'bestaudio[ext=m4a]',
         '--concurrent-fragments', '4',
         '-o', partFile,
         `https://www.youtube.com/watch?v=${targetYoutubeId}`

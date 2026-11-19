@@ -1,6 +1,5 @@
 import type { RoomSnapshot, Participant, TrackQueueItem } from './types';
 export type { Participant, TrackQueueItem } from './types';
-import { toast } from 'sonner';
 
 export function getRestUrl(): string {
   if (typeof window !== 'undefined') {
@@ -10,6 +9,10 @@ export function getRestUrl(): string {
 }
 
 export function getServerUrl(): string {
+  // Next dev proxies HTTP; Socket.IO uses the backend on the current LAN host.
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
   if (typeof window !== 'undefined' && window.location.hostname) {
     if (window.location.hostname.includes('dev.syncbeats.in')) {
       return 'https://dev-api.syncbeats.in';
@@ -104,7 +107,8 @@ function notifyServerError(message: string) {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  auth = false
+  auth = false,
+  timeoutMs?: number
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -126,7 +130,7 @@ async function request<T>(
       cache: 'no-store',
       ...options,
       headers,
-      signal: AbortSignal.timeout(30000), // 30s timeout — prevents requests from hanging indefinitely but allows slow connections/db
+      signal: options.signal ?? AbortSignal.timeout(timeoutMs ?? 30000),
     });
   } catch (err: any) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
@@ -148,11 +152,6 @@ async function request<T>(
       notifyServerError("SyncBeats Server is temporarily unavailable");
     }
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
-    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
-      if (typeof window !== 'undefined') {
-        toast.error(`API Error: ${errorMsg}`);
-      }
-    }
     throw new ApiError(errorMsg, res.status);
   }
   return data as T;
@@ -260,7 +259,7 @@ export const authApi = {
       body: JSON.stringify({ settings }),
     }, true),
 
-  me: () => request<AuthResponse>('/auth/me', {}, true),
+  me: () => request<AuthResponse>('/auth/me', {}, true, 10_000),
 };
 
 // ── Rooms ─────────────────────────────────────────────────────────────────
@@ -493,6 +492,22 @@ export const devicesApi = {
       method: 'POST',
       body: JSON.stringify({ targetDeviceId }),
     }, true),
+};
+
+export interface MusicTaste {
+  onboardingStatus: 'NEW' | 'COMPLETE' | 'SKIPPED';
+  languages: string[]; genres: string[]; favoriteArtistIds: string[]; customArtists: string[]; useActivity: boolean;
+}
+export interface RecommendationArtist { id: string; name: string; languages: string[]; genres: string[] }
+export interface RecommendationCatalog { languages: string[]; genres: string[]; artists: RecommendationArtist[] }
+export interface RecommendationPick extends RecommendationArtist { query: string; reason: string; score: number }
+export interface RecommendationFeed { modelVersion: string; profile: MusicTaste; sections: { id: string; title: string; picks: RecommendationPick[] }[] }
+export const recommendationApi = {
+  catalog: () => request<RecommendationCatalog>('/recommendations/catalog', {}, true),
+  feed: () => request<RecommendationFeed>('/recommendations/feed', {}, true),
+  save: (profile: MusicTaste) => request<MusicTaste>('/recommendations/profile', { method: 'PUT', body: JSON.stringify(profile) }, true),
+  reset: () => request<{ ok: boolean }>('/recommendations/profile', { method: 'DELETE' }, true),
+  event: (event: { artistId: string; kind: 'LIKE' | 'DISLIKE' | 'OPEN'; eventId: string }) => request<{ ok: boolean }>('/recommendations/events', { method: 'POST', body: JSON.stringify(event) }, true),
 };
 
 export const historyApi = {

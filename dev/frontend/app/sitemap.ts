@@ -1,39 +1,26 @@
-import { MetadataRoute } from 'next';
-
-const BASE_URL = 'https://www.syncbeats.in';
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date();
+  // Include canonical, indexable public pages only. Do not generate a new
+  // lastModified date on every request: it would misrepresent content updates.
   return [
+    { url: SITE_URL, changeFrequency: "weekly", priority: 1 },
     {
-      url: `${BASE_URL}`,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 1.0,
-    },
-    {
-      url: `${BASE_URL}/contact`,
-      lastModified: now,
-      changeFrequency: 'weekly',
+      url: `${SITE_URL}/how-it-works`,
+      changeFrequency: "monthly",
       priority: 0.8,
     },
+    { url: `${SITE_URL}/contact`, changeFrequency: "yearly", priority: 0.4 },
     {
-      url: `${BASE_URL}/sponsor`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.7,
+      url: `${SITE_URL}/privacy-policy`,
+      changeFrequency: "yearly",
+      priority: 0.2,
     },
     {
-      url: `${BASE_URL}/privacy-policy`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${BASE_URL}/terms-of-service`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
+      url: `${SITE_URL}/terms-of-service`,
+      changeFrequency: "yearly",
+      priority: 0.2,
     },
   ];
 }

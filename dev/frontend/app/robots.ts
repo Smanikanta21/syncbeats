@@ -1,64 +1,17 @@
-import { MetadataRoute } from 'next';
-
-const BASE_URL = 'https://www.syncbeats.in';
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
-  const disallowedRoutes = [
-    '/room/',
-    '/api/',
-    '/login',
-    '/cookie-settings',
-    '/verify-email',
-    '/verify-email-sent',
-    '/reset-password',
-    '/forgot-password',
-    '/profile',
-    '/spotify-import',
-  ];
-
-  const allowedPublicRoutes = [
-    '/',
-    '/contact',
-    '/privacy-policy',
-    '/terms-of-service',
-    '/sponsor',
-    '/llms.txt',
-    '/llms-full.txt',
-    '/manifest.json',
-  ];
-
   return {
-    rules: [
-      {
-        userAgent: '*',
-        allow: allowedPublicRoutes,
-        disallow: disallowedRoutes,
-      },
-      // Search engine specific rules
-      {
-        userAgent: ['Googlebot', 'Bingbot', 'Applebot', 'DuckDuckBot'],
-        allow: allowedPublicRoutes,
-        disallow: disallowedRoutes,
-      },
-      // LLM & AI Agents: Explicitly allow crawling public knowledge base, use cases & llms.txt
-      {
-        userAgent: [
-          'GPTBot',
-          'ChatGPT-User',
-          'ClaudeBot',
-          'anthropic-ai',
-          'PerplexityBot',
-          'Google-Extended',
-          'Applebot-Extended',
-          'CCBot',
-          'cohere-ai',
-          'Meta-ExternalAgent',
-        ],
-        allow: allowedPublicRoutes,
-        disallow: disallowedRoutes,
-      },
-    ],
-    sitemap: `${BASE_URL}/sitemap.xml`,
-    host: BASE_URL,
+    // Public pages, assets, and llms.txt are available to search and AI crawlers.
+    // Account and session pages use noindex so crawlers can see that directive.
+    // Authentication, rather than robots.txt, protects private room data.
+    rules: {
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/api/", "/files/", "/admin/", "/socket.io/"],
+    },
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }

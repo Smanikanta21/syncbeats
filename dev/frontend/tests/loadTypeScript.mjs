@@ -9,13 +9,14 @@ const modules = new Map();
 
 // Compile the real modules with the project's existing compiler. No copied logic,
 // generated files, browser globals, or additional test framework are required.
-export function loadTypeScript(path) {
+export function loadTypeScript(path, overrides = {}) {
   const filename = resolve(root, path);
   if (modules.has(filename)) return modules.get(filename).exports;
   const module = { exports: {} };
   modules.set(filename, module);
   const nodeRequire = createRequire(filename);
   const require = specifier => {
+    if (Object.hasOwn(overrides, specifier)) return overrides[specifier];
     if (specifier.startsWith('.')) {
       const target = resolve(dirname(filename), specifier);
       for (const extension of ['', '.ts', '.tsx', '/index.ts']) {
