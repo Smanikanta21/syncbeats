@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { recommendationApi, type RecommendationCatalog, type RecommendationFeed } from '../../lib/api';
-import { SyncBeatsLoader } from '../SyncBeatsLoader';
+import { LoadingPage } from '../LoadingPage';
 import { MusicPreferencesContext, useMusicPreferences } from './MusicPreferencesContext';
 import { MusicInterestsModal } from './MusicInterestsModal';
 import styles from './MusicRecommendations.module.css';
@@ -66,11 +66,9 @@ export function MusicOnboardingGate({ children, enabled = true }: { children: Re
   const { loading, feed, error, reload } = useMusicPreferences();
   const [bypassed, setBypassed] = useState(false);
   if (!enabled || bypassed || (feed && feed.profile.onboardingStatus !== 'NEW')) return children;
+  if (!error || feed) return <LoadingPage title={loading ? 'Loading your music interests' : 'Make room for your music'} detail="Preparing your music recommendations." />;
   return <div className={`${styles.panel} ${styles.welcome}`}>
-    <p className={styles.wordmark}>SyncBeats</p>
-    {error && !feed ? <>
       <p role="alert">{error}</p>
       <div className={styles.actions}><button type="button" onClick={() => void reload()}>Try again</button><button type="button" onClick={() => setBypassed(true)}>Continue to dashboard</button></div>
-    </> : <SyncBeatsLoader title={loading ? 'Loading your music interests' : 'Make room for your music'} compact />}
   </div>;
 }

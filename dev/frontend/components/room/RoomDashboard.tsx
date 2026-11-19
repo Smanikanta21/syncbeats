@@ -11,6 +11,7 @@ import {
   LayoutGrid, Check, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Menu, Radio, PanelLeft, PanelRight
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
+import { RoomSideRail } from "./RoomSideRail";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
@@ -452,7 +453,8 @@ export function RoomDashboard({
         </div>
 
         {/* Desktop Sidebar: Room Details + Queue */}
-        <GlassCard className={cn("w-80 2xl:w-88 shrink-0 flex flex-col min-h-0 p-3 gap-3", isSidebarRight ? "order-2" : "order-1")} isPlaying={isPlaying}>
+        <RoomSideRail side={isSidebarRight ? "right" : "left"} tab={desktopRightTab} onTabChange={setDesktopRightTab} participants={participants} queueCount={queue.length} unreadCount={unreadChatCount}>
+        <GlassCard className="w-full h-full flex flex-col min-h-0 p-3 gap-3 !border-0 !bg-transparent !shadow-none" isPlaying={isPlaying}>
 
           {/* Room Details Header — Ultra Clean 2-Row Card */}
           <div className="shrink-0 flex flex-col gap-2.5 bg-foreground/3 p-2.5 rounded-2xl border border-foreground/8">
@@ -689,6 +691,7 @@ export function RoomDashboard({
             )}
           </div>
         </GlassCard>
+        </RoomSideRail>
       </div>
 
       {/* Global Emoji Reactions Layer */}
