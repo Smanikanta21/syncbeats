@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "@/lib/utils";
 import { SyncBeatsLogo } from "../../components/brand/SyncBeatsLogo";
+import { SyncBeatsLoader } from "../../components/SyncBeatsLoader";
 
 /**
  * The panel composes as one piece. This used to stagger each field in with a
@@ -268,11 +269,12 @@ export default function AuthPage() {
     const failed = !authLoading && !user && serverError;
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background px-6 text-foreground">
-        <div className="flex max-w-sm flex-col items-center gap-4 text-center" role="status" aria-live="polite" aria-busy={!failed}>
-          <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
-          {!failed && <span className="h-6 w-6 motion-safe:animate-spin rounded-full border-2 border-foreground/15 border-t-foreground/70" aria-hidden="true" />}
-          <p className="text-sm text-foreground/65">{failed ? 'Couldn’t check your saved session. Check your connection and try again.' : user ? 'Opening your room hub…' : 'Checking your session…'}</p>
-          {failed && <button type="button" onClick={retrySession} className="rounded-xl bg-foreground/10 px-4 py-2 text-sm font-medium hover:bg-foreground/15">Try again</button>}
+        <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
+          {failed ? <>
+            <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
+            <p className="text-sm text-foreground/65" role="status">Couldn’t check your saved session. Check your connection and try again.</p>
+            <button type="button" onClick={retrySession} className="rounded-xl bg-foreground/10 px-4 py-2 text-sm font-medium hover:bg-foreground/15">Try again</button>
+          </> : <SyncBeatsLoader title={user ? 'Opening your room hub…' : 'Checking your session…'} />}
         </div>
       </main>
     );
@@ -467,7 +469,7 @@ export default function AuthPage() {
                 className="group mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold transition-opacity hover:opacity-85 disabled:opacity-60 disabled:cursor-wait"
               >
                 {loading
-                  ? (isLogin ? "Signing in…" : "Creating account…")
+                  ? <SyncBeatsLoader inline title={isLogin ? "Signing in…" : "Creating account…"} />
                   : (
                     <>
                       <span>{isLogin ? "Sign in" : "Create account"}</span>
