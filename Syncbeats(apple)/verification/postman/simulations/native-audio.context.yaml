@@ -1,0 +1,16 @@
+purpose:
+  stands_in_for: Downloaded audio responses, including synthetic WAV, malformed data and HTTP 503.
+  unblocks: Native AVAudioEngine preparation and authoritative room playback/readiness recovery.
+assumptions:
+  - id: local-native-audio-and-room-recovery
+    status: supported
+    claim: The native client renders the synthetic audio and preserves server readiness across loaded snapshots, pause and reconnect in the exercised local room.
+    reason: Real URLSession and AVAudioEngine ran against the audio fixture, and real Socket.IO traffic used the production backend Room state object.
+    verification: On 2026-11-19, 41 checks passed with native-playback-room.cjs on port 4190 forwarding downloads to the simulation on port 4189. Loaded players remained ready and unblocked after snapshots settled, on pause and after reconnect. Failure/retry, seek, timing probes and stereo energy checks also passed. Real YouTube extraction, authenticated persistence, hardware latency and audible multi-device synchronization were not exercised.
+    source: NativeAudioVerification.swift; native-playback-room.cjs; NativeRoomAudio.swift; RoomSession.swift; /tmp/syncbeats-push-native-playback-checks.log; /tmp/syncbeats-push-native-audio.ndjson. Earlier evidence remains in native-audio.context.md.
+    updated_at: "2026-11-19"
+fingerprints:
+  - id: macos-native-push-review
+    date: "2026-11-19"
+    commit: 4dc9a09c plus the staged native rebuild
+    cli: "1.80.0"

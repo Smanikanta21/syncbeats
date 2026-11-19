@@ -14,28 +14,14 @@
     {
       "layers": [
         {
-          "image-name": "bars.svg",
-          "name": "Beats"
+          "image-name": "linked-play.svg",
+          "name": "Linked Play"
         }
       ],
       "lighting": "individual",
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.45
-      },
-      "specular": "inside"
-    },
-    {
-      "layers": [
-        {
-          "image-name": "beam.svg",
-          "name": "Sync beam"
-        }
-      ],
-      "lighting": "individual",
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.35
+        "opacity": 0.2
       },
       "specular": "inside"
     }

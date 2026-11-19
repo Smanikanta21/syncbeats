@@ -1,0 +1,55 @@
+purpose:
+  stands_in_for: Source-inspected SyncBeats room/history HTTP endpoints and controlled music metadata responses.
+  unblocks: Native home/player API serialization, failure handling, original-cover matching and caching.
+assumptions:
+  - id: room-home-http-contract
+    status: supported
+    claim: The native client preserves bearer/device headers, encodes room search/history requests and sends numeric queue reorder positions.
+    reason: The checked-in routes and the real Swift URLSession caller agree in the exercised local scenarios.
+    verification: On 2026-11-19, 13 NativeHomeVerification checks passed; the simulation received search, history, enqueue and PUT reorder plus 401, 503, malformed-response and removed-track cases. Live account/Socket.IO behavior was not exercised.
+    source: NativeHomeVerification.swift; ../Syncbeats/Syncbeats/Features/Room/RoomHomeAPI.swift; postman/mocks/native-room/default.js; /tmp/syncbeats-native-home-cover-verification.log
+    updated_at: "2026-11-19"
+  - id: album-cover-client-behavior
+    status: supported
+    claim: Artist/title matching rejects unrelated artists and live/remix variants while shared caches retain covers across player modes and enqueue metadata loss.
+    reason: The real resolver selected the expected album response, decoded concurrently requested images and reused one metadata request in the local scenarios.
+    verification: On 2026-11-19, AlbumArtworkVerification passed 21 checks including mismatches, missing metadata, public video identity recovery, malformed/503/no-result responses and credential isolation. Provider identity responses were controlled fixtures.
+    source: AlbumArtworkVerification.swift; ../Syncbeats/Syncbeats/Features/Room/AlbumArtworkResolver.swift; postman/mocks/native-room/default.js
+    updated_at: "2026-11-19"
+  - id: live-apple-cover
+    status: supported
+    claim: Apple's public song search and CDN provided the original After Hours artwork for The Weeknd's Blinding Lights in the exercised request.
+    reason: The live Swift resolver returned a mzstatic.com URL and its image decoded at 600 pixels.
+    verification: On 2026-11-19, the --live harness looked up The Weeknd Blinding Lights and fetched the cover successfully. One song does not establish catalog-wide availability or continued provider service.
+    source: AlbumArtworkVerification.swift --live; /tmp/syncbeats-native-home-cover-verification.log
+    updated_at: "2026-11-19"
+  - id: provider-identity-availability
+    status: unknown
+    claim: Public YouTube oEmbed can recover usable artist/title metadata for every existing queue item.
+    reason: Video metadata is tested with a fixture; real videos can be unavailable or authored by channels without usable performer metadata.
+    verification: On 2026-11-19, a controlled official-video title recovered the expected album; no live oEmbed request was made. Failure keeps the placeholder.
+    source: AlbumArtworkVerification.swift; ../Syncbeats/Syncbeats/Features/Room/AlbumArtworkResolver.swift
+    updated_at: "2026-11-19"
+  - id: first-party-music-interests
+    status: supported
+    claim: The native client serializes and reloads the shared rules-v1 music profile and rejects unauthorized or malformed feed responses in the local scenarios.
+    reason: The real Swift RoomHomeAPI sent catalog/feed, profile PUT/DELETE and feedback requests through URLSession; the simulation log records the exercised paths.
+    verification: On 2026-11-19, the extended harness passed 20 home API checks and 19 local artwork checks. Separate real PostgreSQL API tests covered persistence, authenticated ownership, event idempotency, opt-in cleanup and reset. This mock does not establish production data, provider eligibility, full native UI interaction or live room playback.
+    source: NativeHomeVerification.swift; ../Syncbeats/Syncbeats/Features/Room/RoomHomeAPI.swift; postman/mocks/native-room/default.js; ../../dev/syncbeats-server/src/recommendations/routes.tests.ts; /tmp/syncbeats-recommendations-native-checks.log; /tmp/syncbeats-native-home-simulation.ndjson
+    updated_at: "2026-11-19"
+  - id: native-request-diagnostics
+    status: supported
+    claim: The real native home API emits operation, status and timing diagnostics for successful and failed HTTP responses without printing credentials or room identifiers in the exercised local scenarios.
+    reason: The Debug Swift caller ran against the existing source-derived local mock; stderr contained startup and HTTP 200, 401, 503 and 404 entries with room IDs redacted.
+    verification: On 2026-11-19, 21 native home API checks and 19 artwork checks passed. Simulation request records confirmed catalog/feed, profile writes, feedback, search/history, enqueue and reorder calls. A separate live localhost backend check returned 200 for catalog and feed after the pending recommendation migration was applied. Xcode debugger attachment and full UI interaction were not exercised.
+    source: NativeHomeVerification.swift; ../Syncbeats/Syncbeats/Infrastructure/NativeDiagnostics.swift; /tmp/syncbeats-diagnostics-native-checks.log; /tmp/syncbeats-diagnostics-simulation.ndjson
+    updated_at: "2026-11-19"
+fingerprints:
+  - id: native-home-macos-push-review
+    date: "2026-11-19"
+    commit: 4dc9a09c plus the staged native rebuild
+    cli: "1.80.0"
+  - id: native-home-20261119
+    date: "2026-11-19"
+    commit: 4dc9a09cb9b97a10719449ed6aaacb7b52c250c9
+    cli: Postman CLI 1.80.0; macos-dev working tree contains uncommitted native implementation and pre-existing changes.
