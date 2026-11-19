@@ -7,7 +7,7 @@
  * had already drifted apart on their fallback labels.
  */
 
-import { Headphones, Laptop, Monitor, Smartphone, type LucideIcon } from "lucide-react";
+import { Headphones, Laptop, Monitor, Smartphone, Tablet, type LucideIcon } from "lucide-react";
 import type { Participant } from "./types";
 
 export function getDeviceIcon(name: string, type?: string): LucideIcon {
@@ -17,6 +17,7 @@ export function getDeviceIcon(name: string, type?: string): LucideIcon {
   if (n.includes("mac") || n.includes("windows") || n.includes("linux") || n.includes("laptop")) return Laptop;
 
   switch (type) {
+    case "tablet":     return Tablet;
     case "mobile":     return Smartphone;
     case "speakers":   return Monitor;
     case "headphones": return Headphones;

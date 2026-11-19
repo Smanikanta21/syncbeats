@@ -1,5 +1,6 @@
 // handlers/AuthRoutes.ts — /auth REST endpoints
 
+import { deviceUserAgent } from '../utils/clientDevice';
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../auth/AuthService';
 import { requireAuth } from '../auth/authMiddleware';
@@ -23,7 +24,7 @@ function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: 
   const deviceId = req.header('x-device-id');
   return {
     deviceKey: deviceId?.trim() || null,
-    userAgent: req.header('user-agent') || null,
+    userAgent: deviceUserAgent(req.header('user-agent'), req.header('x-client-device')),
     ip: getClientIp(req),
   };
 }

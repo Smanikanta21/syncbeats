@@ -80,7 +80,7 @@ export class SyncBeatsServer {
       },
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range']
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'x-client-device', 'Accept', 'Range']
     },
     transports: ['polling', 'websocket'],
   });
@@ -133,7 +133,7 @@ export class SyncBeatsServer {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'x-client-device', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
     };
 

@@ -1,3 +1,4 @@
+import { currentBrowserDevice } from "./browserDevice";
 import type { RoomSnapshot, Participant, TrackQueueItem } from './types';
 export type { Participant, TrackQueueItem } from './types';
 
@@ -116,6 +117,7 @@ async function request<T>(
   };
   const deviceId = getDeviceId();
   if (deviceId) headers['X-Device-Id'] = deviceId;
+  if (currentBrowserDevice().name === 'iPad') headers['x-client-device'] = 'ipad';
   if (auth) {
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;

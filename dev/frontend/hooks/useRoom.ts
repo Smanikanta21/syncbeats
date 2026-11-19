@@ -1,5 +1,7 @@
 "use client";
 
+import { currentBrowserDevice } from "../lib/browserDevice";
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { useSyncController } from './useSyncController';
@@ -625,6 +627,11 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       if (!snap) return;
       const firstJoin = !receivedSnapshotRef.current;
       applySnapshot(snap, true);
+      const browserDevice = currentBrowserDevice();
+      const ownDevice = snap.participants.find(p => p.socketId === socket.id);
+      if (browserDevice.name === 'iPad' && (!ownDevice?.outputDeviceName || /^(Mac|Macintosh|Default|Default Output)$/i.test(ownDevice.outputDeviceName))) {
+        socket.emit('room:updateDevice', { roomId, deviceName: 'iPad', deviceType: 'tablet' });
+      }
       if (firstJoin) window.dispatchEvent(new CustomEvent('syncbeats:welcome-burst'));
     };
     const handleStateChanged = (raw: unknown) => {

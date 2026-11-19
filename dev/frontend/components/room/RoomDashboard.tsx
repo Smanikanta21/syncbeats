@@ -8,7 +8,7 @@ import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Check, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Menu, Radio, PanelLeft, PanelRight
+  Check, Clock, Copy, Disc3, SkipBack, SkipForward, Play, Pause, Menu
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
 import { RoomSideRail } from "./RoomSideRail";
@@ -21,9 +21,7 @@ import { SpatialAudioModule } from "./SpatialAudioModule";
 
 import { useSettings } from "../../hooks/useSettings";
 import { SettingsPanel } from "../settings";
-import { ThemeToggle } from "../ThemeToggle";
 
-import { HoverExpandPill } from "../HoverExpandPill";
 import { MobileDrawerMenu } from "./MobileDrawerMenu";
 import type { RoomSnapshot, Participant } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
@@ -186,7 +184,7 @@ export function RoomDashboard({
 }: RoomDashboardProps) {
   const router = useRouter();
   const { logout } = useAuth();
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const isSidebarRight = settings.sidebarPosition === "right";
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
@@ -456,201 +454,8 @@ export function RoomDashboard({
         <RoomSideRail side={isSidebarRight ? "right" : "left"} tab={desktopRightTab} onTabChange={setDesktopRightTab} participants={participants} queueCount={queue.length} unreadCount={unreadChatCount}>
         <GlassCard className="w-full h-full flex flex-col min-h-0 p-3 gap-3 !border-0 !bg-transparent !shadow-none" isPlaying={isPlaying}>
 
-          {/* Room Details Header — Ultra Clean 2-Row Card */}
-          <div className="shrink-0 flex flex-col gap-2.5 bg-foreground/3 p-2.5 rounded-2xl border border-foreground/8">
-            {/* Row 1: Room Code + Copy/QR on left, Privacy Status on right */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 bg-foreground/5 border border-foreground/10 p-1 rounded-xl">
-                <span className="tabular text-xs font-bold text-foreground/90 px-1 select-text cursor-text">
-                  {roomId}
-                </span>
-                {/* Copy Code */}
-                <button
-                  onClick={async () => {
-                    if (copied) return;
-                    try {
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        await navigator.clipboard.writeText(roomId);
-                      } else {
-                        const textArea = document.createElement("textarea");
-                        textArea.value = roomId;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand("copy");
-                        document.body.removeChild(textArea);
-                      }
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    } catch (err) {
-                      console.error("Failed to copy room code.", err);
-                    }
-                  }}
-                  className={`p-1 rounded-lg transition-colors cursor-pointer ${copied ? "text-ok-700 dark:text-ok-400 bg-ok-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                  title="Copy 6-Digit Room Code"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-ok-700 dark:text-ok-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-                {/* Copy Link URL */}
-                <button
-                  onClick={async () => {
-                    if (copiedLink) return;
-                    const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                    try {
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        await navigator.clipboard.writeText(link);
-                      } else {
-                        const textArea = document.createElement("textarea");
-                        textArea.value = link;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand("copy");
-                        document.body.removeChild(textArea);
-                      }
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2000);
-                    } catch (err) {
-                      console.error("Failed to copy link.", err);
-                    }
-                  }}
-                  className={`p-1 rounded-lg transition-colors cursor-pointer ${copiedLink ? "text-ok-700 dark:text-ok-400 bg-ok-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                  title="Copy Room Link URL"
-                >
-                  {copiedLink ? <Check className="w-3.5 h-3.5 text-ok-700 dark:text-ok-400" /> : <Link2 className="w-3.5 h-3.5" />}
-                </button>
-                {/* QR Code */}
-                <button
-                  onClick={() => setShowQR(true)}
-                  className="p-1 rounded-lg text-foreground/50 hover:text-foreground active:bg-foreground/10 transition-colors cursor-pointer"
-                  title="Show QR Code"
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                </button>
-                {/* Scan QR */}
-                <button
-                  onClick={() => setShowScanner(true)}
-                  className="p-1 rounded-lg text-foreground/50 hover:text-foreground active:bg-foreground/10 transition-colors cursor-pointer"
-                  title="Scan QR or Enter Code"
-                >
-                  <ScanLine className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Privacy Badge */}
-              {isHost ? (
-                <button
-                  onClick={handleTogglePrivate}
-                  className={`text-[10px] font-semibold transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-80 px-2 py-1 rounded-xl shrink-0 ${isPrivate ? 'text-bad-700 dark:text-bad-400 bg-bad-500/10 border border-bad-500/20' : 'text-ok-700 dark:text-ok-400 bg-ok-500/10 border border-ok-500/20'}`}
-                  title={isPrivate ? "Click to make room public" : "Click to make room private"}
-                >
-                  <span>{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-1 tabular text-[9px] font-bold text-ok-700 dark:text-ok-400 bg-ok-500/10 px-2 py-1 rounded-xl border border-ok-500/20">
-                  {/* <span className="w-1.5 h-1.5 rounded-full bg-ok-400" /> */}
-                  <span>PUBLIC</span>
-                </div>
-              )}
-            </div>
-
-            {/* Row 2: Live Session Time on left, Ghost Actions on right */}
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-foreground/5">
-              <div className="flex items-center gap-1.5 tabular text-xs font-extrabold text-foreground/80">
-                <Clock className="w-3.5 h-3.5 text-ok-700 dark:text-ok-400 shrink-0" />
-                <span>{formattedSessionTime}</span>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0">
-                <HoverExpandPill
-                  icon={isSidebarRight ? PanelLeft : PanelRight}
-                  label={isSidebarRight ? "Dock Left" : "Dock Right"}
-                  onClick={() => updateSettings({ sidebarPosition: isSidebarRight ? "left" : "right" })}
-                  title={isSidebarRight ? "Dock sidebar to the left" : "Dock sidebar to the right"}
-                />
-                <HoverExpandPill
-                  icon={User}
-                  label="Profile"
-                  onClick={openProfilePage}
-                  title="View Profile"
-                />
-                <HoverExpandPill
-                  icon={LogOut}
-                  label="Logout"
-                  onClick={logout}
-                  title="Logout"
-                />
-                <ThemeToggle size="sm" />
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Right Sidebar Segment Selector */}
-          <div className="flex items-center bg-foreground/5 p-1 rounded-xl border border-foreground/10 shrink-0 relative">
-            <button
-              onClick={() => setDesktopRightTab("devices")}
-              className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative z-10", desktopRightTab === "devices" ? "text-background" : "text-foreground/60 hover:text-foreground")}
-            >
-              {desktopRightTab === "devices" && <motion.div layoutId="desktopRightTabPill" transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }} className="absolute inset-0 bg-foreground rounded-lg shadow-md -z-10" />}
-              <Radio className="w-3.5 h-3.5 relative z-10" />
-              <span className="relative z-10">Devices ({participants.length})</span>
-            </button>
-            <button
-              onClick={() => setDesktopRightTab("queue")}
-              className={cn(
-                "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative z-10 cursor-pointer",
-                desktopRightTab === "queue"
-                  ? "text-background"
-                  : "text-foreground/60 hover:text-foreground"
-              )}
-            >
-              {desktopRightTab === "queue" && (
-                <motion.div
-                  layoutId="desktopRightTabPill"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-                  className="absolute inset-0 bg-foreground rounded-lg shadow-md -z-10"
-                />
-              )}
-              <LayoutGrid className="w-3.5 h-3.5 relative z-10" />
-              <span className="relative z-10">Queue ({queue.length})</span>
-            </button>
-            <motion.button
-              onClick={() => {
-                setDesktopRightTab("chat");
-                setUnreadChatCount(0);
-              }}
-              animate={unreadChatCount > 0 && desktopRightTab !== "chat" ? {
-                rotate: [0, -10, 10, -8, 8, -4, 4, 0],
-                scale: [1, 1.1, 0.96, 1.06, 1],
-                transition: { duration: 0.75, repeat: Infinity, repeatDelay: 2 }
-              } : { rotate: 0, scale: 1 }}
-              className={cn(
-                "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative overflow-visible cursor-pointer z-10",
-                desktopRightTab === "chat"
-                  ? "text-background"
-                    : unreadChatCount > 0
-                    ? "text-foreground bg-foreground/5 border border-foreground/15"
-                    : "text-foreground/60 hover:text-foreground"
-              )}
-            >
-              {desktopRightTab === "chat" && (
-                <motion.div
-                  layoutId="desktopRightTabPill"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-                  className="absolute inset-0 bg-foreground rounded-lg shadow-md -z-10"
-                />
-              )}
-              <MessageSquare className="w-3.5 h-3.5 relative z-10" />
-              <span className="relative z-10">Chat</span>
-              {unreadChatCount > 0 && desktopRightTab !== "chat" && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: [1, 1.25, 1] }}
-                  transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
-                  className="ml-1 rounded-full bg-foreground px-1.5 py-0.5 text-[10px] font-semibold text-background relative z-10"
-                >
-                  {unreadChatCount}
-                </motion.span>
-              )}
-            </motion.button>
+          <div className="px-2 py-2 border-b border-foreground/10 shrink-0">
+            <h2 className="text-sm font-semibold">{desktopRightTab === "devices" ? "Devices" : desktopRightTab === "queue" ? "Queue" : "Chat"}</h2>
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col">

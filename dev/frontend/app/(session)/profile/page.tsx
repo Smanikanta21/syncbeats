@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, Tablet, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
+import { savedDeviceKind, currentBrowserDevice } from "../../../lib/browserDevice";
 import { useConnection } from "../../../context/ConnectionContext";
 import { devicesApi, roomsApi, youtubeApi, type Device } from "../../../lib/api";
 import { SettingsPanel } from "../../../components/settings";
@@ -27,11 +28,13 @@ const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
 ];
 
 function DeviceGlyph({ userAgent }: { userAgent: string | null }) {
+  if (savedDeviceKind(userAgent) === "Tablet") return <Tablet size={20} />;
   if (userAgent?.includes("iPhone") || userAgent?.includes("Android")) return <Smartphone className="w-5 h-5 text-foreground/80" />;
   return <Laptop className="w-5 h-5 text-foreground/80" />;
 }
 
 function getPlatformLabel(userAgent: string | null): string {
+  if (savedDeviceKind(userAgent) === "Tablet") return /iPad/i.test(userAgent || "") ? "iPad" : "Android tablet";
   if (!userAgent) return "Unknown";
   const ua = userAgent.toLowerCase();
   if (ua.includes("iphone")) return "iPhone";
@@ -49,7 +52,6 @@ export default function ProfilePage() {
   const { isOnline, isServerReachable, isSocketConnected } = useConnection();
 
   const [devices, setDevices] = useState<Device[]>([]);
-  const [hostedSessionCount, setHostedSessionCount] = useState(0);
   const [isFetchingStats, setIsFetchingStats] = useState(true);
   const { setLoadingTask } = useLoadingTasks();
 
@@ -111,7 +113,6 @@ export default function ProfilePage() {
       setIsFetchingStats(true);
       Promise.all([
         devicesApi.mine().then(({ devices }) => setDevices(devices.filter(d => !d.device_key.startsWith('NATIVE-')))).catch(() => {}),
-        roomsApi.mine().then(({ rooms }) => setHostedSessionCount(rooms.length)).catch(() => setHostedSessionCount(0)),
         youtubeApi.getStatus().then(res => setYoutubeConnected(res.connected)).catch(() => {})
       ]).finally(() => {
         setIsFetchingStats(false);
@@ -179,7 +180,6 @@ export default function ProfilePage() {
       settings: user.settings,
       devicesCount: devices.length,
       exportedAt: new Date().toISOString(),
-      appVersion: "SyncBeats v1.4.0",
     };
     const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -275,7 +275,7 @@ export default function ProfilePage() {
       <main className="w-full max-w-350 mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:pt-24">
 
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
-        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start z-30 rounded-3xl bg-surface/70 backdrop-blur-2xl border border-foreground/10 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
+        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start min-w-0 rounded-3xl bg-surface/70 backdrop-blur-2xl border border-foreground/10 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
           {/* Identity tint derived from the account id — personal to each user,
               and now the only hue on this page. */}
           <div
@@ -344,7 +344,7 @@ export default function ProfilePage() {
                 className="inline-flex items-center gap-1.5 rounded-full border border-foreground/15 bg-foreground/5 hover:bg-foreground/10 px-3.5 py-1 text-[11px] font-semibold text-foreground/70 transition-all active:scale-95"
               >
                 {copiedId ? <Check className="w-3 h-3 text-ok-700 dark:text-ok-400" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedId ? "Copied ID" : accountId}</span>
+                <span className="truncate">{copiedId ? "Copied ID" : accountId}</span>
               </button>
             </div>
             {emailNotice && (
@@ -360,19 +360,6 @@ export default function ProfilePage() {
                 {emailNotice.text}
               </p>
             )}
-          </div>
-
-          {/* Two numbers worth showing. hostedSessionCount was already being
-              fetched here and never rendered. */}
-          <div className="w-full grid grid-cols-2 gap-3 mb-5">
-            <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
-              <span className="block tabular text-2xl font-semibold text-foreground leading-none">{devices.length}</span>
-              <span className="block text-[11px] font-semibold text-foreground/50 mt-1.5">Devices</span>
-            </div>
-            <div className="rounded-2xl border border-foreground/10 bg-foreground/5 px-3 py-3.5 text-center">
-              <span className="block tabular text-2xl font-semibold text-foreground leading-none">{hostedSessionCount}</span>
-              <span className="block text-[11px] font-semibold text-foreground/50 mt-1.5">Rooms Hosted</span>
-            </div>
           </div>
 
           {/* Navigation Dock */}
@@ -414,7 +401,7 @@ export default function ProfilePage() {
         </aside>
 
         {/* ── Right Pane: Active Production Section (8 Cols) ────────────── */}
-        <section className="glass-panel lg:col-span-8 w-full rounded-[1.75rem] border border-foreground/10 p-4 sm:p-8 md:p-9 min-h-162.5 relative overflow-hidden flex flex-col">
+        <section className="glass-panel lg:col-span-8 w-full rounded-[1.75rem] border border-foreground/10 p-4 sm:p-8 md:p-9 min-h-0 relative min-w-0 flex flex-col">
           <AnimatePresence mode="wait">
 
             {/* 1. App Settings & Audio Tab */}
@@ -471,10 +458,10 @@ export default function ProfilePage() {
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                               <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <div className="w-10 h-10 rounded-2xl bg-foreground/5 flex items-center justify-center shrink-0 text-foreground/80">
-                                  <DeviceGlyph userAgent={savedDevice.user_agent} />
+                                  <DeviceGlyph userAgent={isCurrent && currentBrowserDevice().name === "iPad" ? "iPad" : savedDevice.user_agent} />
                                 </div>
                                 <div className="min-w-0 flex-1 flex flex-col justify-center">
-                                  <div className="flex items-center gap-2 min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2 min-w-0">
                                     <div className="min-w-0 flex-1">
                                       <MarqueeText className="font-bold text-foreground text-base tracking-tight">
                                         {savedDevice.name}
@@ -489,7 +476,7 @@ export default function ProfilePage() {
                                   <div className="flex items-center gap-2 mt-1">
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${isOffline ? 'bg-foreground/25' : 'bg-ok-400 animate-pulse'}`} />
                                     <span className="text-xs text-foreground/50 truncate">
-                                      {getPlatformLabel(savedDevice.user_agent)} · {isOffline ? 'Offline' : 'Online'}
+                                      {isCurrent && currentBrowserDevice().name === 'iPad' ? 'iPad' : getPlatformLabel(savedDevice.user_agent)} · {isOffline ? 'Last seen over 5 minutes ago' : 'Seen recently'}
                                     </span>
                                   </div>
                                 </div>

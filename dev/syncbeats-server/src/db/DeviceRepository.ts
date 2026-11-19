@@ -31,9 +31,13 @@ export class DeviceRepository {
       
       // Auto-upgrade legacy or generic numbered names (e.g., 'Mac 1', 'iPhone 2', or just 'Mac')
       // to the new smart naming convention when the user logs in or loads the app.
-      const isGeneric = /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(existing.name);
+      const isGeneric = userAgent?.includes('SyncBeatsDevice/iPad')
+        ? /^(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(existing.name)
+        : /(Mac|iPhone|iPad|Android|Windows|Linux|Device)(\s+\d+)?$/i.test(existing.name);
       
-      if (isGeneric && userAgent) {
+      const isCorrectedIPadDefault = !!userAgent?.includes('SyncBeatsDevice/iPad') &&
+        existing.name === this.buildDefaultDeviceName(ownerName, existing.userAgent);
+      if ((isGeneric || isCorrectedIPadDefault) && userAgent) {
         const smartName = this.buildDefaultDeviceName(ownerName, userAgent);
         if (smartName && smartName !== existing.name) {
           newName = smartName;
@@ -231,7 +235,9 @@ export class DeviceRepository {
     let platformLabel = "Device";
     
     // Prioritize exact device model if available (e.g. Android models)
-    if (device.model) {
+    if (/iPad/i.test(userAgent)) {
+      platformLabel = "iPad";
+    } else if (device.model) {
       platformLabel = device.model;
       if (platformLabel.toLowerCase() === "macintosh" || platformLabel.toLowerCase() === "macbook") {
         platformLabel = "Mac";
