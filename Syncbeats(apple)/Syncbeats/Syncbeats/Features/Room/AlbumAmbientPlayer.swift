@@ -139,49 +139,6 @@ struct AlbumAmbientBackground: View {
     }
 }
 
-struct FullScreenRoomPlayer: View {
-    @Bindable var room: RoomSession
-    var onClose: () -> Void
-    private let palette = NativePalette(light: false)
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                RoomAlbumAmbient(room: room)
-                VStack(spacing: 0) {
-                    HStack {
-                        BrandMark().frame(width: 22, height: 22)
-                        Text("SyncBeats").font(.system(size: 14, weight: .medium))
-                        Spacer()
-                        Text(room.roomID.map { "Room \($0)" } ?? "Your room").font(.system(size: 12)).foregroundStyle(.white.opacity(0.65))
-                        Button(action: onClose) { Image(systemName: "arrow.down.right.and.arrow.up.left").frame(width: 40, height: 40) }
-                            .buttonStyle(.plain).accessibilityLabel("Close full-screen player").keyboardShortcut(.escape, modifiers: [])
-                    }.padding(.horizontal, 28).padding(.top, 18)
-                    Spacer(minLength: 12)
-                    RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette)
-                        .frame(width: coverSize(geometry.size), height: coverSize(geometry.size))
-                        .shadow(color: .black.opacity(0.18), radius: 35, y: 18)
-                    VStack(spacing: 8) {
-                        Text(room.currentTrack?.title ?? "Choose a track").font(.system(size: geometry.size.height < 650 ? 23 : 32, weight: .medium)).lineLimit(2).multilineTextAlignment(.center)
-                        Text(room.currentTrack?.artistLabel ?? "Music for your room").font(.system(size: 15)).foregroundStyle(.white.opacity(0.72))
-                    }.padding(.top, 24).padding(.horizontal, 24)
-                    RoomProgress(room: room, palette: palette).frame(maxWidth: 520).padding(.horizontal, 30).padding(.top, 28)
-                    RoomTransport(room: room, palette: palette).padding(.top, 18)
-                    if room.audio.loading {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparing audio on this Mac…") }.font(.system(size: 12)).padding(.top, 14)
-                    } else if let error = room.audio.error {
-                        HStack { Text(error).lineLimit(2); Button("Retry") { room.retryAudio() } }.font(.system(size: 12)).frame(maxWidth: 580).padding(.top, 14)
-                    } else {
-                        Text(room.pendingPlay ? "Waiting for the room to be ready" : room.isPlaying ? "Playing together" : "Paused")
-                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6)).padding(.top, 14)
-                    }
-                    Spacer(minLength: 20)
-                }
-            }.foregroundStyle(.white)
-        }
-    }
-    private func coverSize(_ size: CGSize) -> CGFloat { max(100, min(size.width * 0.6, size.height * 0.39, 470)) }
-}
-
 #if os(macOS)
 @MainActor final class FullScreenPlayerController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
@@ -192,11 +149,21 @@ struct FullScreenRoomPlayer: View {
         window.title = "SyncBeats full-screen player"; window.isReleasedWhenClosed = false
         window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
         window.collectionBehavior = [.fullScreenPrimary]; window.delegate = self
+        window.styleMask.insert(.fullSizeContentView)
+        window.toolbar = nil
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.contentView = NSHostingView(rootView: FullScreenRoomPlayer(room: room, onClose: { [weak self] in self?.close() }))
         window.appearance = NSAppearance(named: .darkAqua)
         self.window = window; window.makeKeyAndOrderFront(nil); window.toggleFullScreen(nil)
     }
     func close() { window?.close(); window = nil }
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        window?.standardWindowButton(.closeButton)?.isHidden = true
+        window?.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window?.standardWindowButton(.zoomButton)?.isHidden = true
+    }
     func windowWillClose(_ notification: Notification) { window = nil }
 }
 #endif

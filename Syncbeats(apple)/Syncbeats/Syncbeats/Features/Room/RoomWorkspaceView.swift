@@ -28,7 +28,7 @@ struct RoomWorkspaceView: View {
                 if model.isLoadingRoom || model.roomID == nil { openingRoom }
                 else {
                     HStack(spacing: 0) {
-                        RoomHomeView(room: room, palette: palette, onOpenPlayer: { showsPlayer = true })
+                        RoomHomeView(room: room, palette: palette, onOpenPlayer: openListeningPlayer)
                         if showsDevices && presentation == .docked { deviceRail.frame(width: 270) }
                     }.overlay(alignment: .trailing) {
                         if showsDevices && presentation == .drawer {
@@ -40,7 +40,7 @@ struct RoomWorkspaceView: View {
                     }
                 }
                 if !showsPlayer && !isFloating {
-                    RoomMiniPlayer(room: room, palette: palette, onExpand: { showsPlayerQueue = false; showsPlayer = true },
+                    RoomMiniPlayer(room: room, palette: palette, onExpand: openListeningPlayer,
                                    onQueue: { showsPlayerQueue = true; showsPlayer = true }, onFloat: floatPlayer)
                 }
             }.overlay {
@@ -163,11 +163,21 @@ struct RoomWorkspaceView: View {
         #endif
         copied = true
     }
+    private func openListeningPlayer() {
+        #if os(macOS)
+        fullScreenPlayer.show(room: room)
+        #else
+        showsPlayerQueue = false
+        showsPlayer = true
+        #endif
+    }
     private func floatPlayer() {
         #if os(macOS)
         showsPlayer = false; isFloating = true
         floatingPlayer.show(room: room, palette: palette, onExpand: { queue in
-            closeFloatingPlayer(); showsPlayerQueue = queue; showsPlayer = true
+            closeFloatingPlayer()
+            if queue { showsPlayerQueue = true; showsPlayer = true }
+            else { openListeningPlayer() }
         }, onClose: { isFloating = false })
         #endif
     }
@@ -179,7 +189,7 @@ struct RoomWorkspaceView: View {
     }
 }
 
-private struct RoomDeviceVolume: View {
+struct RoomDeviceVolume: View {
     let participant: RoomParticipant
     let room: RoomSession
     let palette: NativePalette

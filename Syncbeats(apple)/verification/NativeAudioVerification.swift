@@ -8,6 +8,54 @@ import Foundation
         func check(_ value: @autoclosure () -> Bool, _ message: String) {
             precondition(value(), message); checks += 1; print("PASS: \(message)")
         }
+        let spectrumFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        let tone = AVAudioPCMBuffer(pcmFormat: spectrumFormat, frameCapacity: 1024)!
+        tone.frameLength = 1024
+        for channel in 0..<2 {
+            for frame in 0..<1024 { tone.floatChannelData![channel][frame] = Float(0.2 * sin(2 * Double.pi * 3_000 * Double(frame) / 48_000)) }
+        }
+        let analyzer = AudioSpectrumAnalyzer()
+        var spectrum: [Double] = []
+        for _ in 0..<8 { spectrum = analyzer.consume(tone) }
+        let peak = spectrum.indices.max(by: { spectrum[$0] < spectrum[$1] })!
+        check((15...17).contains(peak) && spectrum[peak] > 0.7, "Live FFT identifies a 3 kHz tone in its frequency band")
+        analyzer.reset()
+        for channel in 0..<2 { for frame in 0..<1024 { tone.floatChannelData![channel][frame] = 0 } }
+        check(analyzer.consume(tone).allSatisfy { $0 == 0 }, "Silence produces a flat spectrum without fabricated motion")
+        let spectrumMeter = AudioEnergyMeter()
+        spectrumMeter.consume(tone); spectrumMeter.reset()
+        check(spectrumMeter.read().spectrum.allSatisfy { $0 == 0 }, "Pause clears all live spectrum bands")
+        let lateTone = AVAudioPCMBuffer(pcmFormat: spectrumFormat, frameCapacity: 2048)!
+        lateTone.frameLength = 2048
+        for channel in 0..<2 {
+            for frame in 0..<2048 {
+                lateTone.floatChannelData![channel][frame] = frame < 1024 ? 0 : Float(0.2 * sin(2 * Double.pi * 3_000 * Double(frame) / 48_000))
+            }
+        }
+        analyzer.reset()
+        let lateSpectrum = analyzer.consume(lateTone)
+        check((lateSpectrum[15...17].max() ?? 0) > 0.3, "FFT captures transients in the second half of the audio tap")
+        var smooth = SpectrumMotion()
+        let fullSpectrum = [Double](repeating: 1, count: AudioSpectrumAnalyzer.bandCount)
+        smooth.update(target: fullSpectrum, time: 0, playing: true)
+        smooth.update(target: fullSpectrum, time: 1.0 / 60, playing: true)
+        let attack = smooth.bands[0]
+        check(attack > 0 && attack < 0.5, "Display spectrum interpolates attacks rather than jumping between tap samples")
+        smooth.update(target: [Double](repeating: 0, count: 24), time: 2.0 / 60, playing: true)
+        check(smooth.bands[0] > 0 && smooth.bands[0] < attack, "Display spectrum decays smoothly between frames")
+        smooth.update(target: fullSpectrum, time: 3.0 / 60, playing: false)
+        check(smooth.bands.allSatisfy { $0 == 0 }, "Pausing immediately clears display spectrum")
+        let safe = NativeEqualizer(enabled: true, gains: [.nan, 30, -30])
+        check(safe.gains == [0, 12, -12, 0, 0], "Equalizer repairs invalid persisted gains and clamps boosts")
+        check(safe.preamp == -12 && NativeEqualizer().preamp == 0, "Equalizer reserves boost headroom and defaults to bypass")
+        let flatBass = try equalizerRMS(frequency: 60, settings: NativeEqualizer())
+        let warm = NativeEqualizer(enabled: true, gains: NativeEqualizer.Preset.warm.gains)
+        let warmBass = try equalizerRMS(frequency: 60, settings: warm)
+        let flatTreble = try equalizerRMS(frequency: 4_000, settings: NativeEqualizer())
+        let warmTreble = try equalizerRMS(frequency: 4_000, settings: warm)
+        check(warmBass / flatBass > warmTreble / flatTreble * 1.3, "Rendered Warm equalizer raises bass relative to treble")
+        let bypassBass = try equalizerRMS(frequency: 60, settings: NativeEqualizer(enabled: false, gains: warm.gains))
+        check(abs(bypassBass - flatBass) < flatBass * 0.01, "Bypassing equalizer restores unprocessed audio")
         let base = URL(string: ProcessInfo.processInfo.environment["SYNCBEATS_AUDIO_TEST_URL"] ?? "http://127.0.0.1:4189/syncbeats-native-audio")!
         let audio = NativeRoomAudio()
         var loaded = 0, failed = 0, ended = 0
@@ -43,7 +91,11 @@ import Foundation
         try await Task.sleep(for: .milliseconds(180))
         check((audio.renderedPosition() ?? 0) > 1.25, "Resume schedules the authoritative offset")
         audio.follow(playing: true, position: 2.1, delay: 0, force: true)
-        try await Task.sleep(for: .milliseconds(180))
+        // Wait for the asynchronous renderer's position publication under build load.
+        for _ in 0..<28 {
+            if (audio.renderedPosition() ?? 0) > 2.15 { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
         check((audio.renderedPosition() ?? 0) > 2.15, "Seek corrects the sample position")
         audio.pause(); try await Task.sleep(for: .milliseconds(100))
         check(ended == 0, "Cancelled schedules do not emit ended")
@@ -132,4 +184,40 @@ import Foundation
         }
         print("\(checks) native audio checks passed")
     }
+    @MainActor static func equalizerRMS(frequency: Double, settings: NativeEqualizer) throws -> Double {
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        let eq = AVAudioUnitEQ(numberOfBands: NativeEqualizer.frequencies.count)
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        engine.attach(player); engine.attach(eq)
+        engine.connect(player, to: eq, format: format)
+        engine.connect(eq, to: engine.mainMixerNode, format: format)
+        settings.apply(to: eq)
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 1024)
+        let source = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000)!
+        source.frameLength = 48_000
+        for channel in 0..<2 {
+            for frame in 0..<48_000 {
+                source.floatChannelData![channel][frame] = Float(0.1 * sin(2 * Double.pi * frequency * Double(frame) / 48_000))
+            }
+        }
+        player.scheduleBuffer(source)
+        try engine.start(); player.play()
+        defer { player.stop(); engine.stop() }
+        let output = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 1024)!
+        var sum = 0.0, count = 0
+        for block in 0..<40 {
+            let status = try engine.renderOffline(1024, to: output)
+            guard status == .success else { continue }
+            if block > 5 {
+                for frame in 0..<Int(output.frameLength) {
+                    let value = Double(output.floatChannelData![0][frame])
+                    sum += value * value; count += 1
+                }
+            }
+        }
+        precondition(count > 0, "Offline equalizer produced samples")
+        return sqrt(sum / Double(count))
+    }
+
 }

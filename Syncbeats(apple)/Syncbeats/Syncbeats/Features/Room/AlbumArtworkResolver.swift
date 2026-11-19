@@ -200,4 +200,12 @@ actor AlbumArtworkResolver {
         if let data { images[url] = data }
         return data
     }
+
+    func resolvedIdentity(for request: AlbumArtworkRequest) async -> AlbumArtworkRequest? {
+        guard request.artist.isEmpty, let source = request.sourceID else { return request }
+        if let cached = sources[source] { return cached }
+        guard let enriched = await videoIdentity(source: source) else { return request }
+        sources[source] = enriched
+        return enriched
+    }
 }

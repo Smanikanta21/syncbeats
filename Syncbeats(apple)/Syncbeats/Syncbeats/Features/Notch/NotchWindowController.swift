@@ -41,6 +41,9 @@ private final class IslandHostingView<Content: View>: NSHostingView<Content> {
 final class NotchWindowController: NSObject {
     private(set) var expanded = false
     private(set) var expansion: Double = 0
+    private(set) var hoverExpansion: Double = 0
+    private(set) var pointerInside = false
+    var equalizerPresented = false
     private(set) var geometry = NotchGeometry.preview
     @ObservationIgnored private var panel: IslandPanel?
     @ObservationIgnored private var screenObserver: NSObjectProtocol?
@@ -50,12 +53,12 @@ final class NotchWindowController: NSObject {
     @ObservationIgnored private var hoverTask: Task<Void, Never>?
     @ObservationIgnored private var openRoomAction: (() -> Void)?
     @ObservationIgnored private var motion = NotchMotion()
+    @ObservationIgnored private var hoverMotion = NotchMotion()
     @ObservationIgnored private var displayLink: CADisplayLink?
     @ObservationIgnored private var lastFrameTime: CFTimeInterval = 0
     @ObservationIgnored private var screen: NSScreen?
     @ObservationIgnored private var globalPointerMonitor: Any?
     @ObservationIgnored private var localPointerMonitor: Any?
-    @ObservationIgnored private var pointerInside = false
 
     func show(room: RoomSession, openRoom: @escaping () -> Void) {
         openRoomAction = openRoom
@@ -151,8 +154,14 @@ final class NotchWindowController: NSObject {
     func pointerMoved(to location: CGPoint) {
         guard let panel, panel.isVisible else { return }
         let inside = panel.frame.contains(location)
-        guard pointerInside != inside else { return }
-        pointerInside = inside
+        let wasInside = pointerInside
+        if inside != pointerInside {
+            pointerInside = inside
+            hoverMotion.move(to: inside ? 1 : 0, immediately: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { applyPresentation() }
+            else { startAnimation() }
+        }
+        guard wasInside != inside else { return }
         scheduleHover(inside)
     }
 
@@ -160,7 +169,7 @@ final class NotchWindowController: NSObject {
         hoverTask?.cancel()
         // A short exit delay lets the pointer cross into the expanding player.
         // Re-entering cancels the pending close; hover alone never opens it.
-        guard !inside, expanded else { return }
+        guard !inside, expanded, !equalizerPresented else { return }
         hoverTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(240))
             guard !Task.isCancelled else { return }
@@ -200,13 +209,13 @@ final class NotchWindowController: NSObject {
         let location = NSEvent.mouseLocation
         pointerMoved(to: location)
         if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type),
-           expanded, let panel, !panel.frame.contains(location) {
+           expanded, !equalizerPresented, let panel, !panel.frame.contains(location) {
             collapse()
         }
     }
 
     private func focusLost() {
-        guard expanded else { return }
+        guard expanded, !equalizerPresented else { return }
         collapse()
     }
 
@@ -214,6 +223,10 @@ final class NotchWindowController: NSObject {
         hoverTask?.cancel()
         setExpanded(false)
         panel?.resignKey()
+    }
+    func equalizerDismissed() {
+        equalizerPresented = false
+        scheduleHover(panel?.frame.contains(NSEvent.mouseLocation) ?? false)
     }
 
     func openRoom() { openRoomAction?(); collapse() }
@@ -243,11 +256,15 @@ final class NotchWindowController: NSObject {
         let now = CACurrentMediaTime()
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             motion.move(to: expanded ? 1 : 0, immediately: true)
-        } else { motion.advance(by: now - lastFrameTime) }
+            hoverMotion.move(to: pointerInside ? 1 : 0, immediately: true)
+        } else {
+            motion.advance(by: now - lastFrameTime)
+            hoverMotion.advance(by: now - lastFrameTime)
+        }
         lastFrameTime = now
         applyPresentation()
         updatePointer()
-        if motion.isSettled { stopAnimation() }
+        if motion.isSettled && hoverMotion.isSettled { stopAnimation() }
     }
 
     private func applyPresentation() {
@@ -256,7 +273,9 @@ final class NotchWindowController: NSObject {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             expansion = motion.value
-            panel?.setFrame(geometry.panelFrame(expansion: expansion), display: true)
+            hoverExpansion = min(1, hoverMotion.value)
+            panel?.capHeight = geometry.closedHeight + (geometry.hoveredHeight - geometry.closedHeight) * CGFloat(hoverExpansion) * CGFloat(1 - min(1, expansion))
+            panel?.setFrame(geometry.panelFrame(expansion: expansion, hover: hoverExpansion), display: true)
         }
     }
 
@@ -272,8 +291,7 @@ final class NotchWindowController: NSObject {
         self.screen = screen
         geometry = NotchGeometry(frame: screen.frame, visibleFrame: screen.visibleFrame, safeTop: screen.safeAreaInsets.top,
                                  leftArea: screen.auxiliaryTopLeftArea ?? .zero, rightArea: screen.auxiliaryTopRightArea ?? .zero)
-        panel?.capHeight = geometry.closedHeight
-        panel?.setFrame(geometry.panelFrame(expansion: expansion), display: true)
+        applyPresentation()
         if wasAnimating { startAnimation() }
     }
 }

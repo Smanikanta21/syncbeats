@@ -59,7 +59,10 @@ struct RoomStateVerification {
 
         let notch = NotchGeometry.preview
         check(notch.cameraWidth == 192, "Camera gap derived from unobscured screen areas")
-        check(notch.closedWidth == 304 && notch.closedHeight == 42, "Compact island extends past the camera with a clickable bottom lip")
+        check(notch.closedWidth == 236 && notch.closedHeight == 34, "Resting island hugs camera with a small clickable lip")
+        let hovered = notch.panelFrame(expansion: 0, hover: 1)
+        check(abs(hovered.width / notch.closedWidth - 1.025) < 0.0001 && abs(hovered.height / notch.closedHeight - 1.025) < 0.0001, "Hover scales the same cap by only 2.5 percent in both dimensions")
+        check(hovered.maxY == notch.panelFrame(expanded: false).maxY && hovered.midX == notch.centerX, "Hover grows symmetrically below the menu bar")
         check(notch.panelFrame(expanded: false).maxY == notch.panelFrame(expanded: true).maxY, "Expansion stays anchored to screen top")
         let external = NotchGeometry(frame: CGRect(x: -1920, y: 0, width: 1920, height: 1080),
                                      visibleFrame: CGRect(x: -1920, y: 24, width: 1920, height: 1032),
@@ -115,6 +118,18 @@ struct RoomStateVerification {
         check(panels.count == 1 && panels.first === firstPanel, "Theme updates reuse the same floating panel")
         floating.close()
         check(closeCount == 1 && !firstPanel!.isVisible, "Closing the floating player restores its owning view once")
+        let parsed = NativeLRC.parse("[offset:-100]\n[00:12.50][00:34.750]One line\n[00:40.00]\n[ar:Artist]")
+        let fillLine = NativeLyricLine(id: 0, time: 10, text: "Live ink")
+        check(NativeLRC.fillProgress(line: fillLine, nextTime: 20, position: 15, duration: nil) == 0.5, "Lyric fill uses room timeline between line timestamps")
+        check(NativeLRC.fillProgress(line: fillLine, nextTime: 20, position: 0, duration: nil) == 0 && NativeLRC.fillProgress(line: fillLine, nextTime: 20, position: 30, duration: nil) == 1, "Lyric fill clamps across seeks")
+        check(NativeLRC.fillProgress(line: fillLine, nextTime: nil, position: 15, duration: 20) == 0.5, "Final lyric uses measured duration")
+        check(parsed.count == 3 && abs(parsed[0].time - 12.4) < 0.001 && parsed[1].time == 34.65, "Lyrics parse multiple timestamps and signed offsets")
+        check(parsed[2].text.isEmpty, "Timed instrumental passages remain in lyrics")
+        let exact = NativeLyricsResult(trackName: "F1", artistName: "Hans Zimmer", duration: 194, instrumental: true, plainLyrics: nil, syncedLyrics: nil)
+        let unrelated = NativeLyricsResult(trackName: "Another Track", artistName: "Other Artist", duration: 194, instrumental: false, plainLyrics: "wrong", syncedLyrics: "[00:00]wrong")
+        let wrongVersion = NativeLyricsResult(trackName: "F1", artistName: "Hans Zimmer", duration: 634, instrumental: true, plainLyrics: nil, syncedLyrics: nil)
+        check(NativeLyricsChoice.best([unrelated, wrongVersion, exact], title: "F1", artist: "Hans Zimmer", duration: 193.65)?.instrumental == true, "Lyrics match track identity and duration instead of the first search result")
+        check(NativeLyricsChoice.best([unrelated, wrongVersion], title: "F1", artist: "Hans Zimmer", duration: 193.65) == nil, "Lyrics reject wrong artists and different versions")
         print("\(checks) room and notch checks passed")
     }
 }

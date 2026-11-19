@@ -4,9 +4,13 @@ import SwiftUI
 struct NotchIslandView: View {
     let room: RoomSession
     let controller: NotchWindowController
+    @State private var showsEqualizer = false
     private let palette = NativePalette(light: false)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var reveal: Double { min(1, max(0, (controller.expansion - 0.18) / 0.72)) }
+    private var capHeight: CGFloat { controller.geometry.closedHeight + (controller.geometry.hoveredHeight - controller.geometry.closedHeight) * CGFloat(controller.hoverExpansion) * CGFloat(1 - min(1, controller.expansion)) }
+    private var capScale: CGFloat { 1 + (NotchGeometry.hoverScale - 1) * CGFloat(controller.hoverExpansion) * CGFloat(1 - min(1, controller.expansion)) }
+    private var capBaseWidth: CGFloat { controller.geometry.closedWidth + (controller.geometry.expandedWidth - controller.geometry.closedWidth) * CGFloat(min(1, controller.expansion)) }
     private var shape: IslandShape { IslandShape(attached: controller.geometry.hasCameraCutout, expansion: controller.expansion) }
 
     var body: some View {
@@ -38,6 +42,10 @@ struct NotchIslandView: View {
         .ignoresSafeArea(.container, edges: .all)
         .onHover(perform: controller.hover)
         .onExitCommand(perform: controller.collapse)
+        .onChange(of: showsEqualizer) { _, visible in
+            controller.equalizerPresented = visible
+            if !visible { controller.equalizerDismissed() }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("SyncBeats notch player")
     }
@@ -48,7 +56,7 @@ struct NotchIslandView: View {
         Button(action: controller.toggleFromClick) {
             HStack(spacing: 0) {
                 RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette)
-                    .frame(width: 23, height: 23).frame(maxWidth: .infinity)
+                    .frame(width: 16, height: 16).frame(maxWidth: .infinity)
                 if controller.geometry.hasCameraCutout {
                     Color.clear.frame(width: controller.geometry.cameraWidth)
                 }
@@ -56,9 +64,11 @@ struct NotchIslandView: View {
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(palette.gold)
                     .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, controller.geometry.hasCameraCutout ? 10 : 16)
+            .padding(.horizontal, controller.geometry.hasCameraCutout ? 3 : 12)
+            .frame(width: capBaseWidth, height: controller.geometry.closedHeight)
+            .scaleEffect(capScale, anchor: .top)
             .frame(maxWidth: .infinity)
-            .frame(height: controller.geometry.closedHeight)
+            .frame(height: capHeight, alignment: .top)
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityLabel(controller.expanded ? "Close SyncBeats notch player" : "Open SyncBeats notch player")
@@ -83,6 +93,15 @@ struct NotchIslandView: View {
             }
             RoomProgress(room: room, palette: palette)
             RoomTransport(room: room, palette: palette, compact: true)
+            Button { controller.equalizerPresented = true; showsEqualizer = true } label: {
+                HStack {
+                    Label("Equalizer", systemImage: "slider.horizontal.3").font(.system(size: 11))
+                    Spacer()
+                    AudioSpectrumView(audio: room.audio).frame(width: 100, height: 24)
+                }
+            }.buttonStyle(.plain).accessibilityLabel("Open equalizer for this Mac")
+                .popover(isPresented: $showsEqualizer) { RoomEqualizerView(audio: room.audio) }
+
             Rectangle().fill(palette.line.opacity(0.8)).frame(height: 1)
             HStack(spacing: 9) {
                 Image(systemName: "text.line.first.and.arrowtriangle.forward").font(.system(size: 11)).foregroundStyle(palette.gold)

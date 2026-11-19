@@ -16,6 +16,25 @@ struct RenderNativeLayouts {
             NSApplication.shared.setActivationPolicy(.accessory)
             verifyAmbient(); return
         }
+        if CommandLine.arguments.contains("--equalizer-only") {
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            let output = URL(fileURLWithPath: "/tmp/syncbeats-native-layouts", isDirectory: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            let audio = NativeRoomAudio()
+            try render(RoomEqualizerView(audio: audio), name: "equalizer-spectrum", width: 390, height: 380, output: output)
+            return
+        }
+        if CommandLine.arguments.contains("--fullscreen-only") {
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            let output = URL(fileURLWithPath: "/tmp/syncbeats-native-layouts", isDirectory: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            for (width, height) in [(720,560),(960,720),(1512,982),(2560,1440)] {
+                let session = RoomSession(); session.apply(try RoomFixtures.snapshot(playing: false, originalArtwork: true))
+                try render(FullScreenRoomPlayer(room: session, onClose: {}),
+                           name: "fullscreen-native-\(width)-\(height)", width: CGFloat(width), height: CGFloat(height), output: output)
+            }
+            return
+        }
         NSApplication.shared.setActivationPolicy(.prohibited)
         let output = URL(fileURLWithPath: "/tmp/syncbeats-native-layouts", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)

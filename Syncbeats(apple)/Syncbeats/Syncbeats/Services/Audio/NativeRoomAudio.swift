@@ -20,6 +20,7 @@ nonisolated struct NativeSyncParameters: Sendable {
 }
 
 nonisolated struct AudioEnergy: Sendable {
+    var spectrum = [Double](repeating: 0, count: AudioSpectrumAnalyzer.bandCount)
     var level: Double = 0
     var bass: Double = 0
     var transient: Double = 0
@@ -27,15 +28,20 @@ nonisolated struct AudioEnergy: Sendable {
 
 /// A bounded, thread-safe handoff from the Core Audio render callback to the UI.
 nonisolated final class AudioEnergyMeter: @unchecked Sendable {
-    private struct State { var energy = AudioEnergy(); var lowPass: Float = 0; var previousRMS: Float = 0; var reference = 0.03 }
+    private struct State { var energy = AudioEnergy(); var lowPass: Float = 0; var previousRMS: Float = 0; var reference = 0.03; let analyzer = AudioSpectrumAnalyzer() }
     private let state = OSAllocatedUnfairLock(initialState: State())
-    func reset() { state.withLock { $0 = State() } }
-    func read() -> AudioEnergy { state.withLock { $0.energy } }
+    private let published = OSAllocatedUnfairLock(initialState: AudioEnergy())
+    func reset() { state.withLockUnchecked { value in
+        value.energy = AudioEnergy(); value.lowPass = 0; value.previousRMS = 0; value.reference = 0.03; value.analyzer.reset()
+        published.withLock { $0 = AudioEnergy() }
+    } }
+    func read() -> AudioEnergy { published.withLock { $0 } }
     func consume(_ buffer: AVAudioPCMBuffer) {
         guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
         let count = Int(buffer.frameLength), channelCount = Int(buffer.format.channelCount)
         let alpha = Float(1 - exp(-2 * Double.pi * 160 / buffer.format.sampleRate))
         state.withLockUnchecked { value in
+            value.energy.spectrum = value.analyzer.consume(buffer)
             var sum: Float = 0, lowSum: Float = 0
             for i in 0..<count {
                 var sample: Float = 0, square: Float = 0
@@ -53,6 +59,10 @@ nonisolated final class AudioEnergyMeter: @unchecked Sendable {
             value.energy.level += (level - value.energy.level) * (level > value.energy.level ? 0.35 : 0.09)
             value.energy.bass += (low - value.energy.bass) * (low > value.energy.bass ? 0.3 : 0.08)
             value.energy.transient = max(value.energy.transient * 0.83, min(1, onset))
+            // UI reads never hold the FFT workspace lock. The render callback
+            // skips a publication rather than waiting if a reader owns it.
+            let energy = value.energy
+            published.withLockIfAvailable { $0 = energy }
         }
     }
 }
@@ -60,9 +70,13 @@ nonisolated final class AudioEnergyMeter: @unchecked Sendable {
 /// Core Audio graph operations stay on one serial worker. The UI never waits on
 /// AVAudioEngine's internal threads (including stop/reset and render-time queries).
 nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "in.syncbeats.audio-renderer", qos: .userInitiated)
+    // Engine start/stop wait on Core Audio's Default-QoS control threads. Match
+    // that priority here; this asynchronous worker never blocks the UI or render tap.
+    private let queue = DispatchQueue(label: "in.syncbeats.audio-renderer", qos: .default)
     private lazy var engine = AVAudioEngine()
     private lazy var player = AVAudioPlayerNode()
+    private lazy var equalizerNode = AVAudioUnitEQ(numberOfBands: NativeEqualizer.frequencies.count)
+    private var equalizerSettings = NativeEqualizer()
     private var file: AVAudioFile?
     private var generation = UUID()
     private var scheduleID = UUID()
@@ -93,8 +107,12 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
                     try data.write(to: url, options: .atomic)
                     let decoded = try AVAudioFile(forReading: url)
                     if player.engine == nil { engine.attach(player) }
+                    if equalizerNode.engine == nil { engine.attach(equalizerNode) }
                     engine.disconnectNodeOutput(player)
-                    engine.connect(player, to: engine.mainMixerNode, format: decoded.processingFormat)
+                    engine.disconnectNodeOutput(equalizerNode)
+                    engine.connect(player, to: equalizerNode, format: decoded.processingFormat)
+                    engine.connect(equalizerNode, to: engine.mainMixerNode, format: decoded.processingFormat)
+                    applyEqualizer()
                     file = decoded
                     if !tapInstalled {
                         let meter = self.meter
@@ -149,6 +167,12 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
     }
     func volume(_ value: Double) { queue.async { [self] in engine.mainMixerNode.outputVolume = Float(min(100, max(0, value)) / 100) } }
     func fade(_ value: Float, generation: UUID) { queue.async { [self] in if self.generation == generation { player.volume = value } } }
+    func equalizer(_ settings: NativeEqualizer) {
+        queue.async { [self] in equalizerSettings = settings; applyEqualizer() }
+    }
+    private func applyEqualizer() {
+        equalizerSettings.apply(to: equalizerNode)
+    }
     func pause(generation: UUID) {
         queue.async { [self] in
             guard self.generation == generation else { return }
@@ -160,6 +184,7 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
 
 @MainActor @Observable
 final class NativeRoomAudio {
+    private(set) var equalizer: NativeEqualizer
     private(set) var loadedKey: String?
     private(set) var failedKey: String?
     private(set) var duration: Double?
@@ -178,7 +203,27 @@ final class NativeRoomAudio {
     var onFailure: ((String) -> Void)?
     var onEnded: (() -> Void)?
 
-    init(http: URLSession = .shared) { self.http = http }
+    init(http: URLSession = .shared) {
+        self.http = http
+        let gains = (UserDefaults.standard.array(forKey: "nativeEqualizerGains") as? [NSNumber])?.map(\.floatValue) ?? []
+        equalizer = NativeEqualizer(enabled: UserDefaults.standard.bool(forKey: "nativeEqualizerEnabled"), gains: gains)
+        renderer.equalizer(equalizer)
+    }
+    func setEqualizerEnabled(_ enabled: Bool) { equalizer.enabled = enabled; updateEqualizer() }
+    func setEqualizerGain(_ value: Double, band: Int) {
+        guard equalizer.gains.indices.contains(band), value.isFinite else { return }
+        equalizer.gains[band] = Float(min(12, max(-12, value)))
+        updateEqualizer()
+    }
+    func applyEqualizerPreset(_ preset: NativeEqualizer.Preset) {
+        equalizer = NativeEqualizer(enabled: true, gains: preset.gains); updateEqualizer()
+    }
+    func resetEqualizer() { equalizer.gains = NativeEqualizer.Preset.flat.gains; updateEqualizer() }
+    private func updateEqualizer() {
+        UserDefaults.standard.set(equalizer.enabled, forKey: "nativeEqualizerEnabled")
+        UserDefaults.standard.set(equalizer.gains, forKey: "nativeEqualizerGains")
+        renderer.equalizer(equalizer)
+    }
 
     func prepare(track: RoomTrack, baseURL: URL) {
         let key = YouTubeIdentity.key(for: track.trackUrl)

@@ -18,7 +18,12 @@ struct RoomMiniPlayer: View {
                             Text(room.currentTrack?.artistLabel ?? "Your shared room is ready").font(.system(size: 11)).foregroundStyle(palette.quiet).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.contentShape(Rectangle())
-                }.buttonStyle(NativeButtonStyle(palette: palette)).accessibilityLabel("Open full player")
+                }.buttonStyle(NativeButtonStyle(palette: palette))
+                    #if os(macOS)
+                    .accessibilityLabel("Open full-screen player")
+                    #else
+                    .accessibilityLabel("Open full player")
+                    #endif
                 if floating {
                     Button(action: room.togglePlayback) { Image(systemName: room.pendingPlay ? "stop.fill" : room.isPlaying ? "pause.fill" : "play.fill").frame(width: 32, height: 32) }
                         .buttonStyle(NativeButtonStyle(palette: palette)).foregroundStyle(palette.gold).disabled(!room.canControl || room.currentTrack == nil)
