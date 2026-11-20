@@ -7,6 +7,7 @@ import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { useSyncController } from './useSyncController';
 import { useSyncTelemetry } from './useSyncTelemetry';
 import { getSocket } from '../lib/socket';
+import { roomJoinRetry } from '../lib/roomJoinRetry';
 import { roomsApi, historyApi, RoomDetailsResponse, getDeviceId } from '../lib/api';
 import { RoomSnapshot, PlaybackState, Participant, TrackQueueItem, DeviceSpatialState, PlaybackSchedulePayload, PlaybackPausePayload, type TrackActivity } from '../lib/types';
 import { useAudio } from '../context/AudioContext';
@@ -25,6 +26,7 @@ interface UseRoomOptions {
   displayName: string;
   userId?:     string;
   authLoading?: boolean;
+  connectionAttempt?: number;
 }
 
 interface UseRoomReturn {
@@ -66,7 +68,7 @@ interface UseRoomReturn {
 // NTP / drift parameters are now dynamically adjusted per-device by useAdaptiveSync.
 // See hooks/useAdaptiveSync.ts for the tier table and EWMA blending logic.
 
-export function useRoom({ roomId, displayName, userId, authLoading = false }: UseRoomOptions): UseRoomReturn {
+export function useRoom({ roomId, displayName, userId, authLoading = false, connectionAttempt = 0 }: UseRoomOptions): UseRoomReturn {
   // ── Adaptive network-quality engine ──────────────────────────────────────
   // paramsRef holds the adaptive NTP/drift settings and updates after every burst.
   // networkQuality is a reactive string tier for UI display.
@@ -510,6 +512,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
 
   useEffect(() => {
     let cancelled = false;
+    let stopJoinRetries: (() => void) | undefined;
 
     const handleConnect = () => {
       connectionGenerationRef.current++;
@@ -526,17 +529,20 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       } else {
         setJoinStatus('connecting');
       }
-      socket.emit('room:join', { 
-        roomId, 
-        displayName, 
-        userId,
-        deviceId: getDeviceId(),
-        isReady: false // readiness is re-declared for the accepted snapshot's track
+      stopJoinRetries?.();
+      if (authLoading) return;
+      stopJoinRetries = roomJoinRetry(() => {
+        if (!cancelled && socket.connected && !joinedRef.current) {
+          socket.emit('room:join', {
+            roomId, displayName, userId, deviceId: getDeviceId(), isReady: false,
+          });
+        }
       });
       runNtpBurst();
     };
 
     const handleDisconnect = () => {
+      stopJoinRetries?.();
       connectionGenerationRef.current++;
       ntpPromiseRef.current = null;
       joinedRef.current = false;
@@ -625,6 +631,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleSnapshot = (raw: unknown) => {
       const snap = normalizeRoomSnapshot(raw, roomId);
       if (!snap) return;
+      stopJoinRetries?.();
       const firstJoin = !receivedSnapshotRef.current;
       applySnapshot(snap, true);
       const browserDevice = currentBrowserDevice();
@@ -781,16 +788,16 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     };
     socket.on('playback:pause', handlePause);
 
-    const handlePendingApproval = () => setJoinStatus('pending');
+    const handlePendingApproval = () => { stopJoinRetries?.(); setJoinStatus('pending'); };
     socket.on('room:joinPendingApproval', handlePendingApproval);
 
     const handleJoinApproved = () => setJoinStatus('joined');
     socket.on('room:joinApproved', handleJoinApproved);
 
-    const handleJoinDenied = () => setJoinStatus('denied');
+    const handleJoinDenied = () => { stopJoinRetries?.(); setJoinStatus('denied'); };
     socket.on('room:joinDenied', handleJoinDenied);
 
-    const handleRoomNotFound = () => setJoinStatus('not_found');
+    const handleRoomNotFound = () => { stopJoinRetries?.(); setJoinStatus('not_found'); };
     socket.on('room:notFound', handleRoomNotFound);
 
     const handleRoomKicked = ({ reason }: { reason?: string } = {}) => {
@@ -849,6 +856,13 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
     const handleError = ({ message }: { message: string }) => console.warn('[syncbeats]', message);
     socket.on('error', handleError);
 
+    const handleOnline = () => {
+      if (authLoading || cancelled) return;
+      if (socket.connected) handleConnect();
+      else socket.connect();
+    };
+    window.addEventListener('online', handleOnline);
+
     if (!authLoading) {
       if (socket.connected) handleConnect();
       else socket.connect();
@@ -874,6 +888,8 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('room:upload_progress', handleUploadProgress);
       socket.off('room:sync_progress', handleSyncProgress);
       socket.off('room:deviceSyncProgress', handleSyncProgress);
+      stopJoinRetries?.();
+      window.removeEventListener('online', handleOnline);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('room:snapshot', handleSnapshot);
@@ -896,7 +912,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       socket.off('error', handleError);
       socket.off('room:queueChanged', handleQueueChangedNew);
     };
-  }, [applyRoomDetails, roomId, displayName, userId, authLoading, socket, runNtpBurst, getTrackTitle, loadAndSetTrack, setReady, setSnapshot, sync]);
+  }, [applyRoomDetails, roomId, connectionAttempt, displayName, userId, authLoading, socket, runNtpBurst, getTrackTitle, loadAndSetTrack, setReady, setSnapshot, sync]);
 
   useEffect(() => {
     const handleAudioEnded = (event: Event) => {

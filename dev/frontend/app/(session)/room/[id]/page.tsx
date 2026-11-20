@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useCallback, useState } from "react";
 import { use } from "react";
 import { useRoom } from "../../../../hooks/useRoom";
+import { roomJoinTimedOut } from "../../../../lib/roomJoinRetry";
 import { useAudio } from "../../../../context/AudioContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { useWakeLock } from "../../../../hooks/useWakeLock";
@@ -26,6 +27,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const roomId = resolvedParams.id;
 
   const [isTimedOut, setIsTimedOut] = useState(false);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
 
   // True once the fluid solver is actually running, which stands down
   // SpatialBeatNodes' gradient layer so the two ambient systems never stack.
@@ -63,6 +65,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     displayName: user?.name ? `${user.name}::${device?.name || "Device"}` : "Guest",
     userId: user?.id,
     authLoading: authLoading,
+    connectionAttempt,
   });
 
   const connectionError = joinStatus === "denied" || joinStatus === "not_found" || isTimedOut;
@@ -92,21 +95,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     return () => setLoadingTask(`room:${roomId}`, null);
   }, [authLoading, isConnected, snapshot, connectionError, roomId, setLoadingTask]);
 
-  // Safeguard: 8-second loading timeout to prevent infinite "Loading..." spinner
+  // Allow the join retry window; session loading and host approval are separate.
   useEffect(() => {
-    if (isConnected || (joinStatus as string) === "joined" || joinStatus === "denied") {
-      setIsTimedOut(false);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      if (!isConnected && (joinStatus as string) !== "joined") {
-        setIsTimedOut(true);
-      }
-    }, 8000);
-
+    setIsTimedOut(false);
+    if (!roomJoinTimedOut(joinStatus, authLoading)) return;
+    const timer = setTimeout(() => setIsTimedOut(true), 20000);
     return () => clearTimeout(timer);
-  }, [isConnected, joinStatus]);
+  }, [joinStatus, authLoading, roomId, connectionAttempt]);
 
   // Auto-redirect if not logged in
   useEffect(() => {
@@ -242,6 +237,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
                 onClick={() => {
                   setIsTimedOut(false);
                   retryNow();
+                  setConnectionAttempt(attempt => attempt + 1);
                 }}
                 className="px-6 py-3 bg-foreground text-background rounded-2xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all shadow-lg"
               >

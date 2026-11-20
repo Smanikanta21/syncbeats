@@ -13,7 +13,10 @@ export function getSocket(): Socket {
 
     socket = io(socketUrl, {
       autoConnect: false,
-      transports: ["websocket"],
+      // Prefer a direct WebSocket, but recover when a proxy/network blocks upgrades.
+      transports: ["websocket", "polling"],
+      tryAllTransports: true,
+      timeout: 8000,
       path: usesApiProxy ? '/api/socket.io' : '/socket.io',
       withCredentials: true,
       reconnectionDelay: 3000,
