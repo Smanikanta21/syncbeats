@@ -11,6 +11,7 @@ import {
   Check, Clock, Copy, Disc3, SkipBack, SkipForward, Play, Pause, Menu
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
+import { RoomConnectionPanel } from "./RoomConnectionPanel";
 import { RoomSideRail } from "./RoomSideRail";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
@@ -76,7 +77,7 @@ interface RoomDashboardProps {
   showSpatialAudio?: boolean;
 }
 
-type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
+type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat" | "connection";
 
 // Glass card wrapper
 function GlassCard({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
@@ -191,7 +192,7 @@ export function RoomDashboard({
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [desktopRightTab, setDesktopRightTab] = useState<"devices" | "queue" | "chat">("devices");
+  const [desktopRightTab, setDesktopRightTab] = useState<"devices" | "queue" | "chat" | "connection">("devices");
   const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
@@ -455,11 +456,13 @@ export function RoomDashboard({
         <GlassCard className="w-full h-full flex flex-col min-h-0 p-3 gap-3 !border-0 !bg-transparent !shadow-none" isPlaying={isPlaying}>
 
           <div className="px-2 py-2 border-b border-foreground/10 shrink-0">
-            <h2 className="text-sm font-semibold">{desktopRightTab === "devices" ? "Devices" : desktopRightTab === "queue" ? "Queue" : "Chat"}</h2>
+            <h2 className="text-sm font-semibold">{desktopRightTab === "devices" ? "Devices" : desktopRightTab === "queue" ? "Queue" : desktopRightTab === "connection" ? "Connection" : "Chat"}</h2>
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col">
-              {desktopRightTab === "devices" ? (
+              {desktopRightTab === "connection" ? (
+              <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />
+            ) : desktopRightTab === "devices" ? (
               <DevicesPane
                 participants={participants}
                 mySocketId={mySocketId}
@@ -712,6 +715,8 @@ export function RoomDashboard({
               </GlassCard>
             </motion.div>
           )}
+          {mobileTab === "connection" && <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />}
+
           {mobileTab === "chat" && (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 min-h-0 px-2 flex flex-col">
@@ -763,7 +768,7 @@ export function RoomDashboard({
 
             <div className="flex justify-center items-center mb-6 relative z-10 p-4 rounded-2xl bg-foreground/5 shadow-inner">
               <QRCode
-                value={typeof window !== 'undefined' ? window.location.href : `https://syncbeats.app/room/${roomId}`}
+                value={`${typeof window !== 'undefined' ? window.location.origin : 'https://syncbeats.in'}/room/${roomId}`}
                 size={220}
                 bgColor="#ffffff"
                 fgColor="#000000"

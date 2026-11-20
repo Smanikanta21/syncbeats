@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ListMusic, MessageSquare, Pin, UserRound, Users, X } from "lucide-react";
+import { ListMusic, MessageSquare, Pin, Radio, UserRound, Users, X } from "lucide-react";
 import styles from "./RoomSideRail.module.css";
 
-type PanelTab = "devices" | "queue" | "chat";
+type PanelTab = "devices" | "queue" | "chat" | "connection";
 interface Props {
   side: "left" | "right";
   tab: PanelTab;
@@ -102,6 +102,7 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
         ["devices", Users, `Devices, ${participants.length} connected`, participants.length],
         ["queue", ListMusic, `Queue, ${queueCount} tracks`, queueCount],
         ["chat", MessageSquare, "Chat", unreadCount],
+        ["connection", Radio, "Connection", 0],
       ] as const).map(([value, Icon, label, count]) => <button key={value} ref={value === tab ? trigger : undefined}
         type="button" aria-label={label} aria-controls="room-side-panel" aria-expanded={expanded && value === tab}
         className={tab === value ? styles.active : ""}

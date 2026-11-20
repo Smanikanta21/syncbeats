@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "./SettingsPanel.module.css";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Sliders, Palette, Zap, Save, RefreshCw, Check, Sun, Radio, Sparkles, Plus, Trash2, Loader2, PanelLeft, PanelRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -104,12 +105,12 @@ export function SettingsPanel({
   };
 
   return (
-    <div className="flex flex-col h-full w-full min-h-0 relative">
+    <div className={cn("flex flex-col h-full w-full min-h-0 relative", styles.panel, isEmbedded && styles.embedded)}>
       {/* ── App Settings Header Bar with Floating Dialogue Box ── */}
       <div className="shrink-0 w-full pb-3 mb-4 border-b border-foreground/10 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
-          <h2 className="text-lg sm:text-2xl font-black text-foreground truncate">{onlyVisuals ? 'Room Visuals' : 'App Settings'}</h2>
+          <h2 className="text-lg sm:text-2xl font-semibold text-foreground truncate">{onlyVisuals ? 'Room visuals' : isEmbedded ? 'Settings & audio' : 'App settings'}</h2>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -141,7 +142,7 @@ export function SettingsPanel({
                 <button
                   onClick={handleSaveToCloud}
                   disabled={isSaving}
-                  className="px-3 py-1.5 rounded-xl text-white font-black text-xs transition-all active:scale-95 border border-(--accent-border) flex items-center gap-1.5 shadow-lg shrink-0 hover:opacity-90"
+                  className="px-3 py-1.5 rounded-xl text-white font-semibold text-xs transition-all active:scale-95 border border-(--accent-border) flex items-center gap-1.5 shadow-lg shrink-0 hover:opacity-90"
                   style={{
                     background: "var(--accent-gradient)",
                     boxShadow: "0 8px 24px var(--accent-glow)",
@@ -177,6 +178,7 @@ export function SettingsPanel({
       <div
         className={cn(
           'space-y-6',
+          styles.body,
           isEmbedded
             ? 'w-full'
             : 'flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar pb-10 overscroll-contain'
@@ -195,7 +197,7 @@ export function SettingsPanel({
             {!onlyVisuals && (
               <div className="flex items-center gap-2">
                 <Palette className="w-4 sm:w-5 h-4 sm:h-5 text-foreground/70" />
-                <h3 className="text-base sm:text-lg font-bold text-foreground">Theme & Gradient Editor</h3>
+                <h3 className="text-base sm:text-lg font-bold text-foreground">Room appearance</h3>
               </div>
             )}
             <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-foreground/10 text-foreground/70 border border-foreground/10">
@@ -204,7 +206,7 @@ export function SettingsPanel({
           </div>
 
           <p className="text-xs text-foreground/60 mb-4">
-            Select a pro palette preset or customize gradient color stops to dynamically style your room's ambient lighting and visualizer background.
+            Choose a palette, adjust the room lighting, and preview your changes.
           </p>
 
           {/* Interactive Demo Room Canvas with Draggable 2D Light Nodes (Development or Static Node Mode Only) */}
@@ -212,7 +214,7 @@ export function SettingsPanel({
             <div className="mb-5">
               <div className="text-[10px] font-semibold text-foreground/40 mb-1.5 flex items-center justify-between">
                 <span>Interactive Demo Room Screen (Spatial Lighting)</span>
-                <span className="text-[9px] text-foreground/50 font-bold ">Drag Nodes to Reposition</span>
+                <p className={styles.previewHint}>Drag a point to move its light.</p>
               </div>
               <RoomPreview
                 onInteractionStateChange={onInteractionStateChange}
@@ -246,7 +248,7 @@ export function SettingsPanel({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-foreground flex items-center gap-1.5">
-                  <Sun className="w-3.5 h-3.5 text-[var(--accent-color)]" /> Ambient Light Brightness
+                  <Sun className="w-3.5 h-3.5 text-[var(--accent-color)]" /> Room brightness
                 </span>
                 <span className="font-mono text-[10px] text-foreground/50">{settings.ambientBrightness || 100}%</span>
               </div>
@@ -266,7 +268,7 @@ export function SettingsPanel({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-foreground flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-purple-400" /> Color Contrast & Saturation
+                  <Sliders className="w-3.5 h-3.5 text-foreground/60" /> Color intensity
                 </span>
                 <span className="font-mono text-[10px] text-foreground/50">{settings.ambientContrast || 100}%</span>
               </div>
@@ -285,7 +287,7 @@ export function SettingsPanel({
           </div>
 
           {/* Audio Visualizer Debug Overlay (HUD) Toggle Switch (Dev Only) */}
-          {process.env.NEXT_PUBLIC_ENV !== "production" && process.env.NODE_ENV === "development" && (
+          {!isEmbedded && process.env.NEXT_PUBLIC_ENV !== "production" && process.env.NODE_ENV === "development" && (
             <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 mb-5">
               <div className="space-y-0.5 pr-2">
                 <div className="flex items-center gap-2">
@@ -314,15 +316,15 @@ export function SettingsPanel({
             </div>
           )}
 
-          {/* Auto Liquid Motion Drift Toggle */}
+          {/* Animate room lighting Toggle */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-foreground/3 border border-foreground/10 mb-5">
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[var(--accent-color)]" />
-                <span className="text-xs font-bold text-foreground">Auto Liquid Motion Drift</span>
+                <span className="text-xs font-bold text-foreground">Animate room lighting</span>
               </div>
               <span className="text-[10px] text-foreground/50 mt-0.5 max-w-70">
-                Nodes smoothly glide and flow across the room like liquid lava in sync with the track's beat.
+                Move the lights gently with the music.
               </span>
             </div>
             <button
@@ -385,7 +387,7 @@ export function SettingsPanel({
                     className={cn(
                       'py-2 px-3 rounded-xl text-center transition-all border font-bold text-xs',
                       isActive
-                        ? 'bg-foreground text-background border-foreground shadow-md scale-[1.02]'
+                        ? 'bg-foreground text-background border-foreground shadow-none'
                         : 'bg-foreground/3 text-foreground/70 border-foreground/10 hover:bg-foreground/10'
                     )}
                   >
@@ -428,7 +430,7 @@ export function SettingsPanel({
                       }}
                       className={cn(
                         'p-2.5 rounded-2xl border transition-all flex flex-col gap-2 text-left relative overflow-hidden group',
-                        isActive ? 'bg-foreground/10 border-foreground shadow-md scale-[1.02]' : 'bg-foreground/5 border-foreground/10 hover:border-foreground/20'
+                        isActive ? 'bg-foreground/10 border-foreground shadow-none' : 'bg-foreground/5 border-foreground/10 hover:border-foreground/20'
                       )}
                     >
                       <div className="w-full h-5 rounded-lg border border-foreground/10 shadow-sm" style={{ background: gradientStr }} />
@@ -715,7 +717,7 @@ export function SettingsPanel({
             {/* Dynamic Island Customizer Section */}
             <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
               <div className="flex items-center gap-2 mb-3">
-                <Radio className="w-5 h-5 text-purple-400" />
+                <Radio className="w-5 h-5 text-foreground/60" />
                 <h3 className="text-lg font-bold text-foreground">Dynamic Island Customizer</h3>
               </div>
               <p className="text-xs text-foreground/60 mb-4">

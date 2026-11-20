@@ -1,5 +1,6 @@
 "use client";
 
+import profileStyles from "./Profile.module.css";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -240,7 +241,7 @@ export default function ProfilePage() {
   if (!user || isFetchingStats) return null;
 
   return (
-    <div className="min-h-screen w-full bg-transparent text-foreground select-none px-4 pb-12 sm:px-6 md:px-10 relative">
+    <div className={`${profileStyles.page} min-h-screen w-full bg-transparent text-foreground px-4 pb-12 sm:px-6 md:px-10 relative`}>
 
       {/* ── Top header — fixed hairline bar with safe-area support ────── */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/85 dark:bg-black/85 backdrop-blur-2xl border-b border-foreground/10 pt-[env(safe-area-inset-top,0px)]">
@@ -275,7 +276,7 @@ export default function ProfilePage() {
       <main className="w-full max-w-350 mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 pt-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:pt-24">
 
         {/* ── Left Pane: Identity & Navigation (4 Cols) (Sticky) ──────────── */}
-        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start min-w-0 rounded-3xl bg-surface/70 backdrop-blur-2xl border border-foreground/10 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
+        <aside className="lg:col-span-4 w-full lg:sticky lg:top-24 self-start min-w-0 rounded-3xl bg-surface/70 backdrop-blur-2xl border border-foreground/10 p-5 sm:p-6 flex flex-col items-center relative overflow-hidden">
           {/* Identity tint derived from the account id — personal to each user,
               and now the only hue on this page. */}
           <div
