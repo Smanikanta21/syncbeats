@@ -1,7 +1,7 @@
 .page {
-  --sync-loader-ink: #272c28;
-  --sync-loader-secondary: #5d665e;
-  --sync-loader-surface: #f7f5ef;
+  --sync-loader-ink: var(--foreground);
+  --sync-loader-secondary: color-mix(in srgb, var(--foreground) 55%, transparent);
+  --sync-loader-surface: var(--background);
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -11,12 +11,6 @@
   padding: 24px;
   background: var(--sync-loader-surface);
   color: var(--sync-loader-ink);
-}
-
-:global([data-theme="dark"]) .page {
-  --sync-loader-ink: #f4f5ef;
-  --sync-loader-secondary: #b7bab5;
-  --sync-loader-surface: #171c1a;
 }
 
 .loader {

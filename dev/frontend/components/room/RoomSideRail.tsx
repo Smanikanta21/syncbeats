@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ListMusic, MessageSquare, Pin, Users, X } from "lucide-react";
+import Link from "next/link";
+import { ListMusic, MessageSquare, Pin, UserRound, Users, X } from "lucide-react";
 import styles from "./RoomSideRail.module.css";
 
 type PanelTab = "devices" | "queue" | "chat";
@@ -119,6 +120,7 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
         <small>{users.length} {users.length === 1 ? "user" : "users"}</small>
       </div>
       <button className={styles.pin} type="button" aria-label={pinned ? "Unpin room panel" : "Pin room panel"} aria-pressed={pinned} onClick={togglePin}><Pin size={17} aria-hidden="true" /></button>
+      <Link href="/profile" className={styles.profile} aria-label="Profile" title="Profile"><UserRound size={19} aria-hidden="true" /></Link>
     </nav>
     <div id="room-side-panel" ref={panel} tabIndex={-1} inert={!expanded} role="region" aria-label={`${tab} panel`}
       className={`${styles.panel} ${expanded ? styles.expanded : ""}`}
