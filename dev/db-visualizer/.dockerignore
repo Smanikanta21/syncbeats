@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+coverage/
+.git
+.env
+.env.*
+*.log
+*.tsbuildinfo
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store

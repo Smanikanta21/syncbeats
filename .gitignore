@@ -1,7 +1,3 @@
-/dev/frontend/node_modules
-/dev/syncbeats-server/node_modules
-/dev/syncbeats-server/dist
-
 # Environment variables
 .env
 .env.*
@@ -29,8 +25,29 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Python tooling environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Keys
 *.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.p8
+*.mobileprovision
+*.provisionprofile
+
+# User uploads, local logs and packaged builds
+/dev/syncbeats-server/uploads/
+*.log
+*.dmg
+*.app/
 
 # Project specific
 dev/syncbeats-server/src/scripts/sendUiUpdateEmail.ts
@@ -43,13 +60,11 @@ NATIVE_CLIENTS_ARCHITECTURE.md
 dev/syncbeats-server/scripts/
 dev/db-visualizer/data/
 
-# Next.js
-.next/
-out/
-
 # SyncBeats Backend
 dev/syncbeats-server/yt-dlp
 dev/syncbeats-server/yt-dlp_linux
+/dev/syncbeats-server/bin/yt-dlp
+/dev/syncbeats-server/bin/yt-dlp.exe
 dev/syncbeats-server/tmp/
 CLAUDE.md
 snapshots/
@@ -104,5 +119,7 @@ brag-output*/
 
 # Local investigations and database backups
 /scratch/
+/rerank_example.py
+/GOOGLE_AUTH_SETUP.md
 *.dump
 *.backup

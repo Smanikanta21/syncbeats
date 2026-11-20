@@ -1,4 +1,17 @@
 node_modules
 dist
 .env
+.env.*
 bin/
+tmp/
+logs/
+uploads/
+cookies*.txt
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.tsbuildinfo
+.git
+coverage/

@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-syncbeats}
     ports:
-      - "5439:5432"
+      - "127.0.0.1:5439:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
@@ -20,7 +20,6 @@ services:
 
 
   visualizer:
-    container_name: visualizer-1
     build:
       context: ./dev/db-visualizer
       dockerfile: Dockerfile
@@ -29,10 +28,10 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${STUDIO_PORT:-5555}:5555"
+      - "127.0.0.1:${STUDIO_PORT:-5555}:5555"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-syncbeats}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
 
 volumes:
   pgdata:
-  uploads:

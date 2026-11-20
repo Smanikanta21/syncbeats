@@ -51,7 +51,7 @@ docker compose up -d
 
 ### Testing
 
-**No test suite exists.** Verify changes manually: run both dev servers, create/join a room from two browser tabs (or devices), and watch Socket.IO events in DevTools and server logs. `GET /health` reports live room count.
+Use the current package scripts for automated checks; see `dev/LOCAL_DEVELOPMENT.md`. Frontend and backend tests exist. Playback changes also need manual verification: run both dev servers, create/join a room from two browser tabs (or devices), and watch Socket.IO events in DevTools and server logs. `GET /health` reports live room count.
 
 ## Environment
 
@@ -137,4 +137,4 @@ The desktop application (`dev/syncbeats-desktop`) wraps the Next.js frontend usi
 9. **Readiness Gate on Pause/Resume**: The server's `allReady()` logic must be checked *first* when `play()` is called so same-track pause/resumes skip the 10-second readiness timeout. Additionally, socket reconnects (`addParticipant`) wipe the server's `isReady` flags; native clients must listen for `room:snapshot` and immediately re-declare `room:clientReady` if their file is already loaded.
 
 ## Active Tasks
-Please refer to [implementation_plan.md](./implementation_plan.md) for the active list of bugs and UI features being tracked.
+Please refer to [docs/ROADMAP.md](./docs/ROADMAP.md) and GitHub issues for the active contribution areas. Local startup and package checks are documented in [dev/LOCAL_DEVELOPMENT.md](./dev/LOCAL_DEVELOPMENT.md).
