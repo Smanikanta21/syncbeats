@@ -1,14 +1,17 @@
-import { MetadataRoute } from 'next';
-
-const BASE_URL = 'https://www.syncbeats.in';
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
   return {
+    // Public pages, assets, and llms.txt are available to search and AI crawlers.
+    // Account and session pages use noindex so crawlers can see that directive.
+    // Authentication, rather than robots.txt, protects private room data.
     rules: {
-      userAgent: '*',
-      allow: '/',
-      disallow: ['/room/', '/api/', '/login', '/cookie-settings', '/verify-email', '/verify-email-sent', '/reset-password', '/forgot-password', '/profile', '/spotify-import'],
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/api/", "/files/", "/admin/", "/socket.io/"],
     },
-    sitemap: `${BASE_URL}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }

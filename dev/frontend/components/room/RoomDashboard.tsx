@@ -2,34 +2,29 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBeatScheduler } from "../../hooks/useBeatScheduler";
 import { cn } from "../../lib/utils";
 import { getTrackThumbnailUrl } from "../../lib/colorExtractor";
 import {
-  LayoutGrid, Radio, Activity, Check, UserPlus, User, MessageSquare, Clock, Copy, Link2, QrCode, Disc3, SkipBack, SkipForward, Play, Pause, LogOut, ScanLine, Home, Menu
+  Check, Clock, Copy, Disc3, SkipBack, SkipForward, Play, Pause, Menu
 } from "lucide-react";
 import { DevicesPane } from "./DevicesPane";
-import { SpatialPanel } from "./SpatialPanel";
+import { RoomConnectionPanel } from "./RoomConnectionPanel";
+import { RoomSideRail } from "./RoomSideRail";
 import { AudioEQ } from "./AudioEQ";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
 import { RoomReactions } from "./RoomReactions";
 import { FullscreenPrompt } from "./FullscreenPrompt";
+import { SpatialAudioModule } from "./SpatialAudioModule";
 
+import { useSettings } from "../../hooks/useSettings";
 import { SettingsPanel } from "../settings";
-import { ThemeToggle } from "../ThemeToggle";
 
-import { HoverExpandPill } from "../HoverExpandPill";
-import Magnetic from "../Magnetic";
 import { MobileDrawerMenu } from "./MobileDrawerMenu";
-import type { RoomSnapshot, Participant, TrackQueueItem, PlaybackState } from "../../lib/types";
-import type { SpatialPosition } from "../../lib/spatial/geometry";
-import type { SpatialLayout } from "../../lib/spatial/layout";
-import type { SpatialMode } from "../../hooks/useSpatialAudio";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
+import type { RoomSnapshot, Participant } from "../../lib/types";
 import { roomsApi } from "../../lib/api";
 import { getSocket } from "../../lib/socket";
 import { QRCode } from 'react-qrcode-logo';
@@ -46,18 +41,6 @@ interface RoomDashboardProps {
   isPlaying: boolean;
   deviceSyncProgress: Record<string, number>;
   isPrivate: boolean;
-
-  // Spatial — the resolved layout; positions handed in and out are
-  // origin-relative (see lib/spatial/layout.ts). Motion lives in SpatialPanel.
-  spatialLayout: SpatialLayout;
-  spatialMode: SpatialMode;
-  onSpatialModeChange: (mode: SpatialMode) => void;
-  onUpdateSpatialPosition: (key: string, pos: SpatialPosition) => void;
-  onPreviewSpatialPosition: (key: string, pos: SpatialPosition) => void;
-  onCommitSpatialPosition: (key: string, pos: SpatialPosition) => void;
-  onResetSpatialLayout: () => void;
-  spatialEnabled: boolean;
-  onSpatialEnabledChange: (enabled: boolean) => void;
 
   // Playback
   audio: {
@@ -88,24 +71,30 @@ interface RoomDashboardProps {
   onLeave?: () => void;
   onSetParticipantVolume?: (socketId: string, vol: number) => void;
   onAddSong?: () => void;
+
+  // Pluggable Spatial Audio (componentized)
+  spatialSlot?: React.ReactNode;
+  showSpatialAudio?: boolean;
 }
 
-type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat";
+type MobileTab = "spatial" | "playing" | "devices" | "queue" | "chat" | "connection";
 
 // Glass card wrapper
-function GlassCard({ children, className = "", style, isPlaying }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
+function GlassCard({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties; isPlaying?: boolean }) {
   return (
     <div
-      className={`rounded-3xl border border-foreground/[0.07] backdrop-blur-2xl transition-opacity duration-700 bg-foreground/5 ${className}`}
+      // Translucent, not opaque: the fluid field behind is the room's colour.
+      // Depth comes from the shared glass tokens so light and dark themes both
+      // get the right shadow instead of one hard-coded rgba(0,0,0,.15).
+      className={`rounded-3xl border border-foreground/10 backdrop-blur-2xl bg-foreground/5 ${className}`}
       style={{
-        boxShadow: "0 4px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(128,128,128,0.06)",
+        boxShadow: "inset 0 1px 1px rgba(255,255,255,0.12), var(--glass-shadow)",
         ...style,
       }}
     >
       {children}
     </div>
   );
-
 }
 
 // VisualsModal: separate component so useEffect + useRef can attach non-passive
@@ -165,7 +154,7 @@ function VisualsModal({
         exit={{ opacity: 0, scale: 0.92, y: 15 }}
         transition={{ type: "spring", damping: 24, stiffness: 220 }}
         className={cn(
-          "w-full max-w-2xl md:max-w-3xl h-dvh sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-195 p-4 sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-4xl relative z-10 pointer-events-auto overflow-hidden transition-colors duration-300 border-0 sm:border",
+          "w-full max-w-2xl md:max-w-3xl h-dvh sm:h-[85vh] md:h-[82vh] max-h-none sm:max-h-195 px-4 pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-[calc(env(safe-area-inset-bottom,0px)+14px)] sm:p-6 flex flex-col shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-none sm:rounded-4xl relative z-10 pointer-events-auto overflow-hidden transition-colors duration-300 border-0 sm:border",
           isVisualsInteracting
             ? "bg-background/5 dark:bg-black/10 backdrop-blur-[2px] border-foreground/5 dark:border-white/5"
             : "bg-background dark:bg-black border-foreground/8 dark:border-white/10"
@@ -179,7 +168,7 @@ function VisualsModal({
       </motion.div>
       {/* Click outside to close */}
       <div
-        className={cn('absolute', 'inset-0', 'z-0', 'cursor-pointer', 'pointer-events-auto')}
+        className="absolute inset-0 z-0 cursor-pointer pointer-events-auto"
         onClick={onClose}
       />
     </motion.div>
@@ -189,30 +178,27 @@ function VisualsModal({
 export function RoomDashboard({
   roomId, snapshot, participants, mySocketId, isHost, hostId, myUserId,
   isPlaying, deviceSyncProgress, isPrivate,
-  spatialLayout, spatialMode, onSpatialModeChange,
-  onUpdateSpatialPosition, onPreviewSpatialPosition, onCommitSpatialPosition, onResetSpatialLayout,
-  spatialEnabled, onSpatialEnabledChange,
+  spatialSlot, showSpatialAudio = false,
   audio,
-  onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate, onLeave,
+  onPlay, onPause, onNext, onPrev, onSeek, onTogglePrivate,
   onSetParticipantVolume, onAddSong,
 }: RoomDashboardProps) {
   const router = useRouter();
   const { logout } = useAuth();
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
+  const isSidebarRight = settings.sidebarPosition === "right";
   const [showVisualsPanel, setShowVisualsPanel] = useState(false);
   const openProfilePage = useCallback(() => router.push('/profile'), [router]);
   const [isVisualsInteracting, setIsVisualsInteracting] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("playing");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [desktopRightTab, setDesktopRightTab] = useState<"queue" | "chat">("queue");
+  const [desktopRightTab, setDesktopRightTab] = useState<"devices" | "queue" | "chat" | "connection">("devices");
   const [jumpingTrackId, setJumpingTrackId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [showQR, setShowQR] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  /** Mirrors the `md:` breakpoint the two layouts below are split on. */
-  const isDesktopLayout = useMediaQuery("(min-width: 768px)");
   const [copied, setCopied] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+
   const [seekValue, setSeekValue] = useState<number | null>(null);
 
   const handleSeekChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,7 +266,6 @@ export function RoomDashboard({
 
   const queue = snapshot?.queue ?? [];
   const currentQueueItem = queue.find(q => q.isCurrent) ?? null;
-  const isRoomReady = (participants ?? []).every(p => p.isReady);
 
   useBeatScheduler(currentQueueItem?.trackUrl);
   // Live Session Uptime State (updates every second when room is active)
@@ -301,7 +286,6 @@ export function RoomDashboard({
   })();
 
   const [liveSessionSec, setLiveSessionSec] = useState(initialSessionSec);
-
 
   const accumTime = snapshot?.accumulatedSessionTime;
   const sessDurationMs = snapshot?.sessionDurationMs;
@@ -337,19 +321,15 @@ export function RoomDashboard({
     return `${pad(mins)}:${pad(secs)}`;
   })();
 
-  const lastExtractedTrackRef = useRef<string | null>(null);
-
   // Dynamically extract colors from album artwork when active track changes
   // NOTE: Use only STABLE primitives in deps — avoid object refs (audio, currentQueueItem)
   // which change on every render and cause constant re-fires (glitch).
   const audioCoverUrl = audio.coverUrl;
   const audioTrackTitle = audio.trackTitle;
-  const currentTrackId = currentQueueItem?.id ?? null;
+
   const currentThumbnail = currentQueueItem
     ? getTrackThumbnailUrl(currentQueueItem)
     : getTrackThumbnailUrl({ coverUrl: audioCoverUrl || undefined });
-
-
 
   // Clear jump loading state when the queue actually updates from server
   const prevQueueRef = useRef(queue);
@@ -390,68 +370,47 @@ export function RoomDashboard({
 
   return (
     <div
-      className={cn('fixed', 'inset-0', 'flex', 'flex-col', 'overflow-hidden', 'select-none', 'w-full', 'h-full', 'relative', 'z-10')}
+      className="fixed inset-0 flex flex-col overflow-hidden select-none w-full h-full relative z-10"
       style={{
-        paddingTop: "max(env(safe-area-inset-top), 4px)",
-        paddingBottom: "max(env(safe-area-inset-bottom), 4px)"
+        paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 14px), 18px)",
+        paddingBottom: "max(calc(env(safe-area-inset-bottom, 0px) + 12px), 16px)"
       }}
     >
       <FullscreenPrompt />
-      {/* ── Desktop Layout (md+) ───────────────────────────────────────────── */}
-      <div className={cn('hidden', 'md:flex', 'flex-1', 'min-h-0', 'p-4', 'pt-20', 'gap-3')}>
-        {/* Left Column: Devices (Full Height) */}
-        <GlassCard className={cn('w-80', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-          <DevicesPane
-            participants={participants}
-            mySocketId={mySocketId}
-            hostId={hostId}
-            myUserId={myUserId}
-            isHost={isHost}
-            isPlaying={isPlaying}
-            deviceSyncProgress={deviceSyncProgress}
-            onVolumeChange={onSetParticipantVolume}
-          />
-        </GlassCard>
+      {/* ── Desktop & Tablet Layout (md+) ────────────────────────────────── */}
+      <div className="hidden md:flex flex-1 min-h-0 p-5 pt-18 gap-4">
+        {/* Primary workspace: Stage & Controls */}
+        <div className={cn("flex-1 flex flex-col min-w-0 gap-3 min-h-0", isSidebarRight ? "order-1" : "order-2")}>
+          {/* Optional pluggable Spatial Audio slot */}
+          {spatialSlot ? (
+            <div className="shrink-0">{spatialSlot}</div>
+          ) : showSpatialAudio ? (
+            <div className="shrink-0">
+              <SpatialAudioModule compact />
+            </div>
+          ) : null}
 
-        {/* Center Column: Spatial (Top) + EQ/Visualizer (Bottom) */}
-        <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'gap-3', 'min-h-0')}>
-          {/* Top: Spatial Audio */}
-          <GlassCard className={cn('flex-1', 'min-h-0', 'p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
-            {/* Both layouts below mount a SpatialPanel. `hidden md:flex` keeps
-                the wrong one in the DOM, where its WebGL canvas goes on
-                rendering — so gate on the same breakpoint in JS. */}
-            {isDesktopLayout && (
-              <SpatialPanel
-                layout={spatialLayout}
-                mode={spatialMode}
-                onModeChange={onSpatialModeChange}
-                onPreviewPosition={onPreviewSpatialPosition}
-                onCommitPosition={onCommitSpatialPosition}
-                onUpdatePosition={onUpdateSpatialPosition}
-                onReset={onResetSpatialLayout}
-                isPlaying={isPlaying}
-                enabled={spatialEnabled}
-                onEnabledChange={onSpatialEnabledChange}
-              />
-            )}
+          {/* Equalizer, Ambient Visualizer & Synced Lyrics Stage */}
+          <GlassCard className="flex-1 min-h-0 p-4 flex flex-col" isPlaying={isPlaying}>
+            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
           </GlassCard>
 
           {/* Desktop Playback Controls */}
-          <GlassCard className={cn('shrink-0', 'px-5', 'py-3', 'hidden', 'items-center', 'justify-between', 'gap-6')} isPlaying={isPlaying}>
-            <div className={cn('flex', 'items-center', 'gap-4')}>
-              <button onClick={onPrev} className={cn('p-2.5', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'transition-all')}>
-                <SkipBack className={cn('w-4', 'h-4')} />
+          <GlassCard className="shrink-0 px-5 py-3 hidden md:flex items-center justify-between gap-6" isPlaying={isPlaying}>
+            <div className="flex items-center gap-4">
+              <button onClick={onPrev} className="p-2.5 rounded-full bg-foreground/5 hover:bg-foreground/15 text-foreground/80 transition-all">
+                <SkipBack className="w-4 h-4" />
               </button>
-              <button onClick={isPlaying ? onPause : onPlay} className={cn('p-3.5', 'rounded-full', 'bg-foreground', 'text-background', 'shadow-lg', 'hover:scale-105', 'transition-all')}>
-                {isPlaying ? <Pause className={cn('w-5', 'h-5', 'fill-background')} /> : <Play className={cn('w-5', 'h-5', 'fill-background', 'ml-0.5')} />}
+              <button onClick={isPlaying ? onPause : onPlay} className="p-3.5 rounded-full bg-foreground text-background shadow-lg hover:scale-105 transition-all">
+                {isPlaying ? <Pause className="w-5 h-5 fill-background" /> : <Play className="w-5 h-5 fill-background ml-0.5" />}
               </button>
-              <button onClick={onNext} className={cn('p-2.5', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'transition-all')}>
-                <SkipForward className={cn('w-4', 'h-4')} />
+              <button onClick={onNext} className="p-2.5 rounded-full bg-foreground/5 hover:bg-foreground/15 text-foreground/80 transition-all">
+                <SkipForward className="w-4 h-4" />
               </button>
             </div>
 
-            <div className={cn('flex-1', 'flex', 'items-center', 'gap-4')}>
-              <span className={cn('text-xs', 'font-mono', 'text-foreground/60', 'w-10', 'text-right')}>
+            <div className="flex-1 flex items-center gap-4">
+              <span className="tabular text-xs text-foreground/60 w-10 text-right">
                 {(() => {
                   const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
                   const m = Math.floor(cur / 60);
@@ -459,7 +418,7 @@ export function RoomDashboard({
                   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
                 })()}
               </span>
-              <div className={cn('flex-1', 'relative', 'flex', 'items-center')}>
+              <div className="flex-1 relative flex items-center">
                 <input
                   type="range"
                   min={0}
@@ -470,12 +429,12 @@ export function RoomDashboard({
                   onMouseUp={handleSeekCommit}
                   onTouchEnd={handleSeekCommit}
                   style={{
-                    background: `linear-gradient(to right, #34d399 0%, #34d399 ${((seekValue !== null ? seekValue : (audio.currentTime || 0)) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) ${((seekValue !== null ? seekValue : (audio.currentTime || 0)) / (audio.duration || 1)) * 100}%, rgba(255, 255, 255, 0.15) 100%)`
+                    ['--pct' as string]: `${((seekValue !== null ? seekValue : (audio.currentTime || 0)) / (audio.duration || 1)) * 100}%`
                   }}
-                  className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]')}
+                  className="sb-range w-full h-1.5 rounded-full outline-none cursor-pointer"
                 />
               </div>
-              <span className={cn('text-xs', 'font-mono', 'text-foreground/60', 'w-10')}>
+              <span className="tabular text-xs text-foreground/60 w-10">
                 {(() => {
                   const dur = audio.duration || 0;
                   const m = Math.floor(dur / 60);
@@ -485,215 +444,36 @@ export function RoomDashboard({
               </span>
             </div>
 
-            <div className={cn('w-48', 'text-right', 'truncate')}>
-              <div className={cn('text-sm', 'font-bold', 'truncate')}>{currentQueueItem?.title || audioTrackTitle || "SyncBeats Session"}</div>
-              <div className={cn('text-xs', 'text-foreground/50', 'truncate')}>{currentQueueItem?.artist || "Live Stream"}</div>
+            <div className="w-48 text-right truncate">
+              <div className="text-sm font-bold truncate">{currentQueueItem?.title || audioTrackTitle || "SyncBeats Session"}</div>
+              <div className="text-xs text-foreground/50 truncate">{currentQueueItem?.artist || "Live Stream"}</div>
             </div>
-          </GlassCard>
-
-          {/* Bottom: EQ (visualizer is integrated inside EQ component) */}
-          <GlassCard className={cn('h-65', 'shrink-0', 'p-4', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-            <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
           </GlassCard>
         </div>
 
-        {/* Right Sidebar: Room Details + Queue */}
-        <GlassCard className={cn('w-80', 'shrink-0', 'flex', 'flex-col', 'min-h-0', 'p-3', 'gap-3')} isPlaying={isPlaying}>
+        {/* Desktop Sidebar: Room Details + Queue */}
+        <RoomSideRail side={isSidebarRight ? "right" : "left"} tab={desktopRightTab} onTabChange={setDesktopRightTab} participants={participants} queueCount={queue.length} unreadCount={unreadChatCount}>
+        <GlassCard className="w-full h-full flex flex-col min-h-0 p-3 gap-3 !border-0 !bg-transparent !shadow-none" isPlaying={isPlaying}>
 
-          {/* Room Details Header — Ultra Clean 2-Row Card */}
-          <div className={cn('shrink-0', 'flex', 'flex-col', 'gap-2.5', 'bg-foreground/3', 'p-2.5', 'rounded-2xl', 'border', 'border-foreground/8')}>
-            {/* Row 1: Room Code + Copy/QR on left, Privacy Status on right */}
-            <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
-              <div className={cn('flex', 'items-center', 'gap-1', 'bg-foreground/5', 'border', 'border-foreground/10', 'p-1', 'rounded-xl')}>
-                <span className={cn('font-mono', 'text-xs', 'font-bold', 'text-foreground/90', 'px-1', 'select-text', 'cursor-text')}>
-                  {roomId}
-                </span>
-                {/* Copy Code */}
-                <button
-                  onClick={async () => {
-                    if (copied) return;
-                    try {
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        await navigator.clipboard.writeText(roomId);
-                      } else {
-                        const textArea = document.createElement("textarea");
-                        textArea.value = roomId;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand("copy");
-                        document.body.removeChild(textArea);
-                      }
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    } catch (err) {
-                      console.error("Failed to copy room code.", err);
-                    }
-                  }}
-                  className={`p-1 rounded-lg transition-colors cursor-pointer ${copied ? "text-emerald-400 bg-emerald-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                  title="Copy 6-Digit Room Code"
-                >
-                  {copied ? <Check className={cn('w-3.5', 'h-3.5', 'text-emerald-400')} /> : <Copy className={cn('w-3.5', 'h-3.5')} />}
-                </button>
-                {/* Copy Link URL */}
-                <button
-                  onClick={async () => {
-                    if (copiedLink) return;
-                    const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                    try {
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        await navigator.clipboard.writeText(link);
-                      } else {
-                        const textArea = document.createElement("textarea");
-                        textArea.value = link;
-                        document.body.appendChild(textArea);
-                        textArea.select();
-                        document.execCommand("copy");
-                        document.body.removeChild(textArea);
-                      }
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2000);
-                    } catch (err) {
-                      console.error("Failed to copy link.", err);
-                    }
-                  }}
-                  className={`p-1 rounded-lg transition-colors cursor-pointer ${copiedLink ? "text-blue-400 bg-blue-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                  title="Copy Room Link URL"
-                >
-                  {copiedLink ? <Check className={cn('w-3.5', 'h-3.5', 'text-blue-400')} /> : <Link2 className={cn('w-3.5', 'h-3.5')} />}
-                </button>
-                {/* QR Code */}
-                <button
-                  onClick={() => setShowQR(true)}
-                  className={cn('p-1', 'rounded-lg', 'text-foreground/50', 'hover:text-foreground', 'active:bg-foreground/10', 'transition-colors', 'cursor-pointer')}
-                  title="Show QR Code"
-                >
-                  <QrCode className={cn('w-3.5', 'h-3.5')} />
-                </button>
-                {/* Scan QR */}
-                <button
-                  onClick={() => setShowScanner(true)}
-                  className={cn('p-1', 'rounded-lg', 'text-foreground/50', 'hover:text-foreground', 'active:bg-foreground/10', 'transition-colors', 'cursor-pointer')}
-                  title="Scan QR or Enter Code"
-                >
-                  <ScanLine className={cn('w-3.5', 'h-3.5')} />
-                </button>
-              </div>
-
-              {/* Privacy Badge */}
-              {isHost ? (
-                <button
-                  onClick={handleTogglePrivate}
-                  className={`text-[9px] font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-80 px-2 py-1 rounded-xl shrink-0 ${isPrivate ? 'text-red-400 bg-red-500/10 border border-red-500/20' : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'}`}
-                  title={isPrivate ? "Click to make room public" : "Click to make room private"}
-                >
-                  <span>{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
-                </button>
-              ) : (
-                <div className={cn('flex', 'items-center', 'gap-1', 'text-[9px]', 'font-mono', 'font-bold', 'text-emerald-400', 'bg-emerald-500/10', 'px-2', 'py-1', 'rounded-xl', 'border', 'border-emerald-500/20')}>
-                  {/* <span className={cn('w-1.5', 'h-1.5', 'rounded-full', 'bg-emerald-400')} /> */}
-                  <span>PUBLIC</span>
-                </div>
-              )}
-            </div>
-
-            {/* Row 2: Live Session Time on left, Ghost Actions on right */}
-            <div className={cn('flex', 'items-center', 'justify-between', 'gap-2', 'pt-1', 'border-t', 'border-foreground/5')}>
-              <div className={cn('flex', 'items-center', 'gap-1.5', 'text-xs', 'font-mono', 'font-extrabold', 'text-foreground/80')}>
-                <Clock className={cn('w-3.5', 'h-3.5', 'text-emerald-400', 'shrink-0')} />
-                <span>{formattedSessionTime}</span>
-              </div>
-
-              <div className={cn('flex', 'items-center', 'gap-1', 'shrink-0')}>
-                {/* <HoverExpandPill
-                    icon={UserPlus}
-                    label="Invite"
-                    onClick={() => document.dispatchEvent(new CustomEvent("island:expand-invite"))}
-                    active
-                    activeColor="bg-blue-500/10 text-blue-400 border-blue-500/25"
-                    title="Invite Friends"
-                  /> */}
-
-                <HoverExpandPill
-                  icon={User}
-                  label="Profile"
-                  onClick={openProfilePage}
-                  title="View Profile"
-                />
-                <HoverExpandPill
-                  icon={LogOut}
-                  label="Logout"
-                  onClick={logout}
-                  title="Logout"
-                />
-                <ThemeToggle size="sm" />
-              </div>
-            </div>
+          <div className="px-2 py-2 border-b border-foreground/10 shrink-0">
+            <h2 className="text-sm font-semibold">{desktopRightTab === "devices" ? "Devices" : desktopRightTab === "queue" ? "Queue" : desktopRightTab === "connection" ? "Connection" : "Chat"}</h2>
           </div>
 
-          {/* Desktop Right Sidebar Segment Selector */}
-          <div className={cn('flex', 'items-center', 'bg-foreground/5', 'p-1', 'rounded-xl', 'border', 'border-foreground/10', 'shrink-0', 'relative')}>
-            <button
-              onClick={() => setDesktopRightTab("queue")}
-              className={cn(
-                "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative z-10 cursor-pointer",
-                desktopRightTab === "queue"
-                  ? "text-background"
-                  : "text-foreground/60 hover:text-foreground"
-              )}
-            >
-              {desktopRightTab === "queue" && (
-                <motion.div
-                  layoutId="desktopRightTabPill"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-                  className={cn('absolute', 'inset-0', 'bg-foreground', 'rounded-lg', 'shadow-md', '-z-10')}
-                />
-              )}
-              <LayoutGrid className={cn('w-3.5', 'h-3.5', 'relative', 'z-10')} />
-              <span className={cn('relative', 'z-10')}>Queue ({queue.length})</span>
-            </button>
-            <motion.button
-              onClick={() => {
-                setDesktopRightTab("chat");
-                setUnreadChatCount(0);
-              }}
-              animate={unreadChatCount > 0 && desktopRightTab !== "chat" ? {
-                rotate: [0, -10, 10, -8, 8, -4, 4, 0],
-                scale: [1, 1.1, 0.96, 1.06, 1],
-                transition: { duration: 0.75, repeat: Infinity, repeatDelay: 2 }
-              } : { rotate: 0, scale: 1 }}
-              className={cn(
-                "flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 relative overflow-visible cursor-pointer z-10",
-                desktopRightTab === "chat"
-                  ? "text-background"
-                  : unreadChatCount > 0
-                    ? "text-pink-500 hover:text-pink-400 bg-pink-500/10 border border-pink-500/30"
-                    : "text-foreground/60 hover:text-foreground"
-              )}
-            >
-              {desktopRightTab === "chat" && (
-                <motion.div
-                  layoutId="desktopRightTabPill"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.8 }}
-                  className={cn('absolute', 'inset-0', 'bg-foreground', 'rounded-lg', 'shadow-md', '-z-10')}
-                />
-              )}
-              <MessageSquare className={cn('w-3.5', 'h-3.5', 'relative', 'z-10')} />
-              <span className={cn('relative', 'z-10')}>Chat</span>
-              {unreadChatCount > 0 && desktopRightTab !== "chat" && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: [1, 1.25, 1] }}
-                  transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1 }}
-                  className={cn('ml-1', 'px-1.5', 'py-0.2', 'text-[10px]', 'font-black', 'bg-pink-500', 'text-white', 'rounded-full', 'shadow-sm', 'relative', 'z-10')}
-                >
-                  {unreadChatCount}
-                </motion.span>
-              )}
-            </motion.button>
-          </div>
-
-          <div className={cn('flex-1', 'min-h-0', 'flex', 'flex-col')}>
-            {desktopRightTab === "queue" ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+              {desktopRightTab === "connection" ? (
+              <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />
+            ) : desktopRightTab === "devices" ? (
+              <DevicesPane
+                participants={participants}
+                mySocketId={mySocketId}
+                hostId={hostId}
+                myUserId={myUserId}
+                isHost={isHost}
+                isPlaying={isPlaying}
+                deviceSyncProgress={deviceSyncProgress}
+                onVolumeChange={onSetParticipantVolume}
+              />
+            ) : desktopRightTab === "queue" ? (
               <RoomQueue
                 queue={queue}
                 isHost={isHost}
@@ -714,31 +494,33 @@ export function RoomDashboard({
                 mySocketId={mySocketId}
                 myUserId={myUserId}
                 participants={participants}
-                className={cn('h-full', 'w-full', 'border-none', 'shadow-none', 'bg-transparent')}
+                className="h-full w-full border-none shadow-none bg-transparent"
               />
             )}
           </div>
         </GlassCard>
+        </RoomSideRail>
       </div>
 
       {/* Global Emoji Reactions Layer */}
       <RoomReactions />
 
       {/* ── Mobile Layout ─────────────────────────────────────────────────── */}
-      <div className={cn('flex', 'md:hidden', 'flex-col', 'flex-1', 'min-h-0', 'pt-16', 'pb-2', 'px-1')}>
+      <div className="flex md:hidden flex-col flex-1 min-h-0 pt-16 pb-2 px-2">
         {/* Mobile Header — Single Sleek Unified Bar */}
-        <div className={cn('flex', 'items-center', 'justify-between', 'gap-2', 'px-3', 'pb-2', 'border-b', 'border-foreground/10', 'mb-2', 'shrink-0', 'z-30')}>
+        <div className="flex items-center justify-between gap-2 rounded-2xl border border-foreground/10 bg-background/60 px-2.5 py-2 mb-2 shrink-0 z-30 backdrop-blur-2xl">
           {/* Left: Hamburger & Room Code */}
-          <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0')}>
-            <button 
+          <div className="flex items-center gap-2 min-w-0">
+            <button
               onClick={() => setIsMobileNavOpen(true)}
-              className={cn('p-1.5', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'hover:bg-foreground/10', 'text-foreground/80')}
+              aria-label="Open room menu"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5 text-foreground/75 transition-colors hover:bg-foreground/10"
               title="Open Navigation Menu"
             >
-              <Menu className={cn('w-5', 'h-5')} />
+              <Menu className="w-5 h-5" />
             </button>
-            <div className={cn('flex', 'items-center', 'gap-1', 'bg-foreground/5', 'border', 'border-foreground/10', 'px-2', 'py-1', 'rounded-xl', 'shrink-0')}>
-              <span className={cn('font-mono', 'text-xs', 'font-bold', 'text-foreground/80')}>{roomId}</span>
+            <div className="flex min-h-10 items-center gap-1 rounded-xl border border-foreground/10 bg-foreground/5 px-2">
+              <span className="tabular px-1 text-xs font-semibold text-foreground/80">{roomId}</span>
               {/* Copy Code */}
               <button
                 onClick={async () => {
@@ -760,81 +542,29 @@ export function RoomDashboard({
                     console.error("Failed to copy code.", err);
                   }
                 }}
-                className={`transition-colors p-1 rounded-md ${copied ? "text-emerald-400 bg-emerald-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
+                aria-label="Copy room code"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${copied ? "text-ok-700 dark:text-ok-400 bg-ok-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
                 title="Copy 6-Digit Room Code"
               >
-                {copied ? <Check className={cn('w-3', 'h-3', 'text-emerald-400')} /> : <Copy className={cn('w-3', 'h-3')} />}
+                {copied ? <Check className="w-3 h-3 text-ok-700 dark:text-ok-400" /> : <Copy className="w-3 h-3" />}
               </button>
-              {/* Copy Link URL */}
-              <button
-                onClick={async () => {
-                  if (copiedLink) return;
-                  const link = typeof window !== 'undefined' ? window.location.href : roomId;
-                  try {
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                      await navigator.clipboard.writeText(link);
-                    } else {
-                      const textArea = document.createElement("textarea");
-                      textArea.value = link;
-                      document.body.appendChild(textArea);
-                      textArea.select();
-                      document.execCommand("copy");
-                      document.body.removeChild(textArea);
-                    }
-                    setCopiedLink(true);
-                    setTimeout(() => setCopiedLink(false), 2000);
-                  } catch (err) {
-                    console.error("Failed to copy link.", err);
-                  }
-                }}
-                className={`transition-colors p-1 rounded-md ${copiedLink ? "text-blue-400 bg-blue-500/10" : "text-foreground/50 hover:text-foreground active:bg-foreground/10"}`}
-                title="Copy Room Link URL"
-              >
-                {copiedLink ? <Check className={cn('w-3', 'h-3', 'text-blue-400')} /> : <Link2 className={cn('w-3', 'h-3')} />}
-              </button>
-              {/* QR Code */}
-              <button
-                onClick={() => setShowQR(true)}
-                className={cn('p-1', 'rounded-md', 'text-foreground/50', 'hover:text-foreground', 'active:bg-foreground/10', 'transition-colors')}
-                title="Show QR Code"
-              >
-                <QrCode className={cn('w-3', 'h-3')} />
-              </button>
-              {/* Scan QR */}
-              <button
-                onClick={() => setShowScanner(true)}
-                className={cn('p-1', 'rounded-md', 'text-foreground/50', 'hover:text-foreground', 'active:bg-foreground/10', 'transition-colors')}
-                title="Scan QR Code"
-              >
-                <ScanLine className={cn('w-3', 'h-3')} />
-              </button>
-              {/* Return to My Room */}
-              {!isHost && (
-                <button
-                  onClick={() => router.push('/room/default')}
-                  className={cn('p-1', 'rounded-md', 'text-emerald-500', 'hover:text-emerald-400', 'active:bg-emerald-500/10', 'transition-colors')}
-                  title="Return to My Room"
-                >
-                  <Home className={cn('w-3', 'h-3')} />
-                </button>
-              )}
             </div>
 
             {isHost && (
               <button
                 onClick={handleTogglePrivate}
-                className={`text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer hover:opacity-80 shrink-0 ${isPrivate ? 'text-red-400' : 'text-emerald-400'}`}
+                className={`text-[10px] font-semibold transition-all flex items-center gap-1 cursor-pointer hover:opacity-80 shrink-0 ${isPrivate ? 'text-bad-700 dark:text-bad-400' : 'text-ok-700 dark:text-ok-400'}`}
                 title={isPrivate ? "Click to make room public" : "Click to make room private"}
               >
-                <span className={cn('hidden', 'xs:inline')}>{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
+                <span className="hidden xs:inline">{isPrivate ? 'PRIVATE' : 'PUBLIC'}</span>
               </button>
             )}
           </div>
 
-          {/* Right: Timer & Hover-Expand Ghost Actions (Invite, Join, Theme, Profile) */}
-          <div className={cn('flex', 'items-center', 'gap-1.5', 'shrink-0')}>
-            <div className={cn('flex', 'items-center', 'gap-1', 'font-mono', 'text-[10px]', 'sm:text-xs', 'font-bold', 'text-foreground/70', 'bg-foreground/5', 'px-2', 'py-1', 'rounded-lg', 'border', 'border-foreground/10')}>
-              <Clock className={cn('w-3', 'h-3', 'text-emerald-400', 'shrink-0')} />
+          {/* Keep the mobile header focused on the room code and session time. */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 tabular text-[10px] sm:text-xs font-bold text-foreground/70 bg-foreground/5 px-2 py-1 rounded-lg border border-foreground/10">
+              <Clock className="w-3 h-3 text-ok-700 dark:text-ok-400 shrink-0" />
               <span>{formattedSessionTime}</span>
             </div>
 
@@ -847,110 +577,52 @@ export function RoomDashboard({
               title="Invite Friends"
             /> */}
 
-            <HoverExpandPill
-              icon={LogOut}
-              label="Logout"
-              onClick={logout}
-              className={cn('text-red-800', 'border-red-800')}
-
-              title="Logout"
-            />
-            <ThemeToggle size="sm" />
-            <HoverExpandPill
-              icon={User}
-              label="Profile"
-              onClick={openProfilePage}
-              title="Profile"
-            />
           </div>
         </div>
         <AnimatePresence mode="wait">
           {mobileTab === "spatial" && (
             <motion.div key="spatial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
-              <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
-                {!isDesktopLayout && (
-                  <SpatialPanel
-                    layout={spatialLayout}
-                    mode={spatialMode}
-                    onModeChange={onSpatialModeChange}
-                    onPreviewPosition={onPreviewSpatialPosition}
-                    onCommitPosition={onCommitSpatialPosition}
-                    onUpdatePosition={onUpdateSpatialPosition}
-                    onReset={onResetSpatialLayout}
-                    isPlaying={isPlaying}
-                    enabled={spatialEnabled}
-                    onEnabledChange={onSpatialEnabledChange}
-                  />
-                )}
-              </GlassCard>
+              className="flex-1 min-h-0 px-2 flex flex-col">
+              {spatialSlot || <SpatialAudioModule />}
             </motion.div>
           )}
           {mobileTab === "playing" && (
             <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col', 'justify-between', 'py-1', 'gap-2')}>
+              className="flex-1 min-h-0 px-2 grid grid-rows-[auto_minmax(0,1fr)] gap-2 py-1 landscape:grid-cols-2 landscape:grid-rows-1">
 
-              {/* Top Section: Equalizer & Frequency Visualizer (Lyrics) */}
-              <GlassCard className={cn('w-full', 'flex-1', 'min-h-0', 'p-3', 'sm:p-4', 'flex', 'flex-col')} isPlaying={isPlaying}>
-                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
-              </GlassCard>
 
-              {/* Bottom Hero Stage: Spinning Vinyl Record Player & Track Info */}
-              <GlassCard className={cn('w-full', 'h-[280px]', 'sm:h-[320px]', 'shrink-0', 'p-3', 'sm:p-4', 'flex', 'flex-col', 'items-center', 'justify-between', 'relative', 'overflow-hidden', 'group')} isPlaying={isPlaying}>
+              {/* Compact player first; lyrics use the remaining reading space. */}
+              <GlassCard className="w-full min-h-0 p-3 flex flex-col justify-center gap-1 relative overflow-x-hidden overflow-y-auto group" isPlaying={isPlaying}>
                 {/* Subtle Ambient Glow Aura */}
-                <div className={cn('absolute', 'inset-0', 'bg-linear-to-b', 'from-purple-500/10', 'via-transparent', 'to-emerald-500/10', 'pointer-events-none')} />
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: `linear-gradient(to bottom, var(--accent-glow), transparent 45%, var(--accent-glow))`, opacity: 0.35 }}
+                />
 
-                {/* Spinning Vinyl Disc */}
-                <div className={cn('relative', 'flex', 'items-center', 'justify-center', 'my-auto')}>
-                  {isPlaying && (
-                    <>
-                      <div className={cn('absolute', 'w-32', 'h-32', 'sm:w-40', 'sm:h-40', 'rounded-full', 'border', 'border-emerald-500/20', 'animate-ping', 'pointer-events-none')} />
-                      <div className={cn('absolute', 'w-40', 'h-40', 'sm:w-48', 'sm:h-48', 'rounded-full', 'border', 'border-purple-500/15', 'animate-[pulse_3s_ease-in-out_infinite]', 'pointer-events-none')} />
-                    </>
-                  )}
-
-                  <div className={cn(
-                    "w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-zinc-950 border-4 border-zinc-800/80 shadow-[0_15px_40px_rgba(0,0,0,0.6)] flex items-center justify-center relative overflow-hidden transition-all duration-700",
-                    isPlaying ? "animate-[spin_20s_linear_infinite]" : "scale-95 opacity-80"
-                  )}>
-                    <div className={cn('absolute', 'inset-2', 'rounded-full', 'border', 'border-zinc-800/60', 'pointer-events-none')} />
-                    <div className={cn('absolute', 'inset-4', 'rounded-full', 'border', 'border-zinc-800/40', 'pointer-events-none')} />
-                    <div className={cn('absolute', 'inset-6', 'rounded-full', 'border', 'border-zinc-800/30', 'pointer-events-none')} />
-
-                    <div className={cn('w-12', 'h-12', 'sm:w-16', 'sm:h-16', 'rounded-full', 'overflow-hidden', 'border-2', 'border-zinc-900', 'shadow-inner', 'relative', 'z-10')}>
-                      {currentThumbnail ? (
-                        <img src={currentThumbnail} alt="Album Art" className={cn('w-full', 'h-full', 'object-cover')} />
-                      ) : (
-                        <div className={cn('w-full', 'h-full', 'bg-linear-to-tr', 'from-purple-600', 'to-indigo-600', 'flex', 'items-center', 'justify-center')}>
-                          <Disc3 className={cn('w-6', 'h-6', 'text-white', 'animate-spin')} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={cn('w-2', 'h-2', 'rounded-full', 'bg-zinc-900', 'border', 'border-zinc-700', 'absolute', 'z-20', 'pointer-events-none')} />
+                <div className="flex w-full items-center gap-3 min-w-0 relative z-10">
+                  <div className="w-11 h-11 shrink-0 rounded-full overflow-hidden border border-foreground/15 bg-foreground/5">
+                    {currentThumbnail ? <img src={currentThumbnail} alt="" className="w-full h-full object-cover" /> :
+                      <Disc3 className="w-full h-full p-2 text-foreground/60" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-foreground truncate">
+                      {currentQueueItem?.title || audioTrackTitle || "SyncBeats Session"}
+                    </h3>
+                    <p className="text-xs text-foreground/50 truncate">{currentQueueItem?.artist || "Live Stream"}</p>
                   </div>
                 </div>
 
-                {/* Track Title & Artist */}
-                <div className={cn('w-full', 'text-center', 'space-y-0.5', 'z-10', 'mt-1')}>
-                  <h3 className={cn('text-xs', 'sm:text-sm', 'font-black', 'tracking-tight', 'text-foreground', 'truncate', 'px-2')}>
-                    {currentQueueItem?.title || audioTrackTitle || "SyncBeats Session"}
-                  </h3>
-                  <p className={cn('text-[10px]', 'sm:text-xs', 'font-semibold', 'text-foreground/50', 'truncate')}>
-                    {currentQueueItem?.artist || "Live Stream"}
-                  </p>
-                </div>
-
                 {/* Interactive Seek Bar & Duration */}
-                <div className={cn('w-full', 'space-y-1', 'px-3', 'sm:px-6', 'z-10', 'pt-1')}>
+                <div className="w-full space-y-1 px-3 sm:px-6 z-10 pt-1">
                   {(() => {
                     const dur = audio.duration && audio.duration > 0 ? audio.duration : 1;
                     const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
                     const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
                     return (
-                      <div className={cn('relative', 'flex', 'items-center', 'group/seek', 'cursor-pointer')}>
+                      <div className="relative flex items-center group/seek cursor-pointer">
                         <input
                           type="range"
+                          aria-label="Playback position"
                           min={0}
                           max={dur}
                           step={0.1}
@@ -959,14 +631,14 @@ export function RoomDashboard({
                           onMouseUp={handleSeekCommit}
                           onTouchEnd={handleSeekCommit}
                           style={{
-                            background: `linear-gradient(to right, #34d399 0%, #34d399 ${pct}%, rgba(255, 255, 255, 0.15) ${pct}%, rgba(255, 255, 255, 0.15) 100%)`
+                            ['--pct' as string]: `${pct}%`
                           }}
-                          className={cn('w-full', 'h-1.5', 'rounded-full', 'appearance-none', 'outline-none', 'cursor-pointer', '[&::-webkit-slider-thumb]:appearance-none', '[&::-webkit-slider-thumb]:w-3.5', '[&::-webkit-slider-thumb]:h-3.5', '[&::-webkit-slider-thumb]:rounded-full', '[&::-webkit-slider-thumb]:bg-emerald-400', '[&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(52,211,153,0.9)]')}
+                          className="sb-range w-full h-1.5 rounded-full outline-none cursor-pointer"
                         />
                       </div>
                     );
                   })()}
-                  <div className={cn('flex', 'items-center', 'justify-between', 'text-[9px]', 'font-mono', 'font-bold', 'text-foreground/60', 'px-0.5')}>
+                  <div className="flex items-center justify-between tabular text-[9px] font-bold text-foreground/60 px-0.5">
                     <span>
                       {(() => {
                         const cur = seekValue !== null ? seekValue : (audio.currentTime || 0);
@@ -987,24 +659,28 @@ export function RoomDashboard({
                 </div>
 
                 {/* Playback Actions */}
-                <div className={cn('w-full', 'flex', 'items-center', 'justify-center', 'gap-5', 'z-10', 'pt-1', 'pb-1')}>
-                  <button onClick={onPrev} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'active:scale-95', 'transition-all')}>
-                    <SkipBack className={cn('w-3.5', 'h-3.5')} />
+                <div className="w-full flex items-center justify-center gap-5 z-10 pt-1 pb-1">
+                  <button aria-label="Previous track" onClick={onPrev} className="min-w-11 min-h-11 flex items-center justify-center p-2 rounded-full bg-foreground/5 hover:bg-foreground/15 text-foreground/80 active:scale-95 transition-all">
+                    <SkipBack className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={isPlaying ? onPause : onPlay} className={cn('p-3', 'rounded-full', 'bg-foreground', 'text-background', 'shadow-lg', 'hover:scale-105', 'active:scale-95', 'transition-all')}>
-                    {isPlaying ? <Pause className={cn('w-4', 'h-4', 'fill-background')} /> : <Play className={cn('w-4', 'h-4', 'fill-background', 'ml-0.5')} />}
+                  <button aria-label={isPlaying ? "Pause" : "Play"} onClick={isPlaying ? onPause : onPlay} className="min-w-11 min-h-11 flex items-center justify-center p-3 rounded-full bg-foreground text-background shadow-lg hover:scale-105 active:scale-95 transition-all">
+                    {isPlaying ? <Pause className="w-4 h-4 fill-background" /> : <Play className="w-4 h-4 fill-background ml-0.5" />}
                   </button>
-                  <button onClick={onNext} className={cn('p-2', 'rounded-full', 'bg-foreground/5', 'hover:bg-foreground/15', 'text-foreground/80', 'active:scale-95', 'transition-all')}>
-                    <SkipForward className={cn('w-3.5', 'h-3.5')} />
+                  <button aria-label="Next track" onClick={onNext} className="min-w-11 min-h-11 flex items-center justify-center p-2 rounded-full bg-foreground/5 hover:bg-foreground/15 text-foreground/80 active:scale-95 transition-all">
+                    <SkipForward className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </GlassCard>
+              {/* Lyrics/EQ owns its scroll area and keeps the toolbar in view. */}
+              <GlassCard className="w-full flex-1 min-h-0 p-3 sm:p-4 flex flex-col" isPlaying={isPlaying}>
+                <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
               </GlassCard>
             </motion.div>
           )}
           {mobileTab === "devices" && (
             <motion.div key="devices" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
-              <GlassCard className={cn('h-full', 'p-3', 'flex', 'flex-col', 'min-h-0')} isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2 flex flex-col">
+              <GlassCard className="h-full p-3 flex flex-col min-h-0" isPlaying={isPlaying}>
                 <DevicesPane
                   participants={participants}
                   mySocketId={mySocketId}
@@ -1020,8 +696,8 @@ export function RoomDashboard({
           )}
           {mobileTab === "queue" && (
             <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
-              <GlassCard className={cn('flex-1', 'min-h-0', 'p-3', 'flex', 'flex-col')} isPlaying={isPlaying}>
+              className="flex-1 min-h-0 px-2 flex flex-col">
+              <GlassCard className="flex-1 min-h-0 p-3 flex flex-col" isPlaying={isPlaying}>
                 <RoomQueue
                   queue={queue}
                   isHost={isHost}
@@ -1039,15 +715,17 @@ export function RoomDashboard({
               </GlassCard>
             </motion.div>
           )}
+          {mobileTab === "connection" && <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />}
+
           {mobileTab === "chat" && (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className={cn('flex-1', 'min-h-0', 'px-2', 'flex', 'flex-col')}>
+              className="flex-1 min-h-0 px-2 flex flex-col">
               <RoomChat
                 roomId={roomId}
                 mySocketId={mySocketId}
                 myUserId={myUserId}
                 participants={participants}
-                className={cn('h-full', 'w-full')}
+                className="h-full w-full"
               />
             </motion.div>
           )}
@@ -1059,29 +737,44 @@ export function RoomDashboard({
           onClose={() => setIsMobileNavOpen(false)}
           activeTab={mobileTab}
           onChangeTab={setMobileTab}
+          onShowQR={() => setShowQR(true)}
+          onScanQR={() => setShowScanner(true)}
+          onCopyLink={async () => {
+            if (copiedLink) return;
+            try {
+              await navigator.clipboard.writeText(window.location.href);
+              setCopiedLink(true);
+              setTimeout(() => setCopiedLink(false), 2000);
+            } catch (err) {
+              console.error("Failed to copy room link.", err);
+            }
+          }}
+          onProfile={openProfilePage}
+          onLogout={logout}
+          onGoToHub={() => router.push("/hub")}
+          showSpatialTab={showSpatialAudio || !!spatialSlot}
         />
       </div>
 
-
       {showQR && (
         <div
-          className={cn('fixed', 'inset-0', 'z-9999', 'flex', 'items-center', 'justify-center', 'bg-black/50', 'backdrop-blur-sm', 'cursor-pointer')}
+          className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm cursor-pointer"
           onClick={() => setShowQR(false)}
         >
-          <div className={cn('glass-panel', 'border', 'border-foreground/10', 'p-8', 'rounded-4xl', 'shadow-[0_0_50px_rgba(0,0,0,0.5)]', 'text-center', 'relative', 'overflow-hidden')} onClick={e => e.stopPropagation()}>
-            <div className={cn('absolute', 'inset-0', 'bg-linear-to-br', 'from-foreground/5', 'to-transparent', 'pointer-events-none')} />
+          <div className="glass-panel border border-foreground/10 p-8 rounded-4xl shadow-[0_0_50px_rgba(0,0,0,0.5)] text-center relative overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="absolute inset-0 bg-linear-to-br from-foreground/5 to-transparent pointer-events-none" />
 
-            <h3 className={cn('text-xs', 'font-black', 'uppercase', 'tracking-[0.25em]', 'text-foreground/60', 'mb-6', 'relative', 'z-10')}>Room QR Code</h3>
+            <h3 className="micro-label mb-6 relative z-10">Room QR code</h3>
 
-            <div className={cn('flex', 'justify-center', 'items-center', 'mb-6', 'relative', 'z-10', 'p-4', 'rounded-2xl', 'bg-foreground/5', 'shadow-inner')}>
+            <div className="flex justify-center items-center mb-6 relative z-10 p-4 rounded-2xl bg-foreground/5 shadow-inner">
               <QRCode
-                value={typeof window !== 'undefined' ? window.location.href : `https://syncbeats.app/room/${roomId}`}
+                value={`${typeof window !== 'undefined' ? window.location.origin : 'https://syncbeats.in'}/room/${roomId}`}
                 size={220}
                 bgColor="#ffffff"
                 fgColor="#000000"
                 qrStyle="dots"
                 eyeRadius={12}
-                logoImage="/syncbeats-icon.svg"
+                logoImage="/favicon.svg"
                 logoWidth={50}
                 logoHeight={50}
                 logoPadding={5}
@@ -1089,9 +782,9 @@ export function RoomDashboard({
               />
             </div>
 
-            <p className={cn('text-sm', 'font-mono', 'tracking-[0.3em]', 'text-foreground', 'font-bold', 'mb-6', 'relative', 'z-10')}>{roomId}</p>
+            <p className="tabular text-sm text-foreground font-bold tracking-[0.3em] mb-6 relative z-10">{roomId}</p>
             <button
-              className={cn('px-6', 'py-2', 'bg-foreground/10', 'hover:bg-foreground/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors')}
+              className="px-6 py-2 bg-foreground/10 hover:bg-foreground/20 rounded-full text-xs font-bold transition-colors"
               onClick={() => setShowQR(false)}
             >
               Close
@@ -1123,21 +816,20 @@ export function RoomDashboard({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 350, damping: 25 }}
-            className={cn('fixed', 'top-20', 'left-1/2', '-translate-x-1/2', 'z-9999', 'pointer-events-none')}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-9999 pointer-events-none"
           >
-            <div className={cn('flex', 'items-center', 'gap-2.5', 'px-4', 'py-2', 'rounded-full', 'bg-background/90', 'dark:bg-black/90', 'backdrop-blur-xl', 'border', 'border-foreground/15', 'shadow-2xl', 'text-xs', 'font-semibold', 'text-foreground')}>
+            <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-background/90 dark:bg-black/90 backdrop-blur-xl border border-foreground/15 shadow-2xl text-xs font-semibold text-foreground">
               <span
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",
-                  activityNotification.type === "join" ? "bg-emerald-500 animate-pulse" : "bg-foreground/40"
+                  activityNotification.type === "join" ? "bg-ok-500 animate-pulse" : "bg-foreground/40"
                 )}
               />
-              <span className={cn('truncate', 'max-w-xs')}>{activityNotification.text}</span>
+              <span className="truncate max-w-xs">{activityNotification.text}</span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
 
     </div>
   );

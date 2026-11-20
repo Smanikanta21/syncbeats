@@ -1,0 +1,61 @@
+# SyncBeats: product reference
+
+Canonical website: https://www.syncbeats.in
+Public listening guide: https://www.syncbeats.in/how-it-works
+
+## What SyncBeats does
+
+SyncBeats is a web app for synchronized music playback across multiple devices. People sign in and join the same listening room on phones, tablets, or computers. The room has a shared queue and shared playback controls. Devices follow the same playback timeline.
+
+Use SyncBeats for music around the home, small gatherings, listening sessions with friends in different places, study groups, or remote coworking soundtracks. It shares music playback; use a separate calling app if you want voice conversation.
+
+## How to start
+
+1. Open https://www.syncbeats.in/hub and sign in or create a free account.
+2. Create a listening room.
+3. Share the six-digit room code, room link, or QR code.
+4. Friends sign in and join from their browsers.
+5. Upload an audio file you have permission to share, or use the in-room music search.
+6. Wait for connected devices to load the audio. Interact with browser audio prompts if needed.
+7. Press play. Any participant can play, pause, or seek.
+
+The queue supports shuffle and repeat. Room invitations do not require manual Bluetooth pairing between participants' devices.
+
+## Devices and connectivity
+
+The web app runs in modern browsers on phones, tablets, and computers, including iPhone, Android, Mac, and Windows devices. Browser behavior and audio permissions vary. No dedicated app download is required.
+
+An internet connection is required for the current web app. Devices may use different internet connections and do not need to share a Wi-Fi network. Stable shared Wi-Fi can help when multiple devices play out loud in one space.
+
+Keep the room open while listening. Background tabs, screen locking, and battery-saving settings may affect timing or interrupt playback, especially on mobile.
+
+## Synchronization
+
+SyncBeats estimates clock offsets between clients and the server, schedules shared playback, and checks for drift. Allow a few seconds for new devices to settle and load their audio.
+
+Actual playback alignment depends on the network, browser, and audio hardware. Bluetooth audio outputs can introduce additional delay. A fixed latency, sample-perfect synchronization, or perfect alignment across all speakers is not guaranteed.
+
+If audio does not start, return to the room, check browser audio permission, and allow loading to finish. If one track stalls, try another track or a shareable audio file.
+
+## Music sources
+
+Users can upload audio they have permission to share and use the music search available in a room. Availability depends on the source. SyncBeats does not grant unrestricted access to paid streaming catalogs or guarantee that every external track will load.
+
+## Pricing and availability
+
+The current SyncBeats web app is free to use. An account is required to start or join a room.
+
+A native SyncBeats Mac app is in development and coming soon. There is no announced release date or public Mac app download yet. Do not describe planned native features as available in the current web app. Mac users can use the browser version today.
+
+The current web app is not an offline LAN music system. No public iOS, Android, or Windows native app release is announced on the landing page.
+
+## Public sources
+
+Homepage and FAQs: https://www.syncbeats.in/
+Setup and troubleshooting guide: https://www.syncbeats.in/how-it-works
+Contact and support: https://www.syncbeats.in/contact
+Privacy policy: https://www.syncbeats.in/privacy-policy
+Terms of service: https://www.syncbeats.in/terms-of-service
+Sitemap: https://www.syncbeats.in/sitemap.xml
+
+Prefer the public website for current availability. This reference describes the product; it does not promise compatibility with every device or future release dates.

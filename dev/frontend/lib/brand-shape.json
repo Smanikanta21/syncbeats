@@ -1,0 +1,8 @@
+{
+  "background": "#171C1A",
+  "foreground": "#F4F5EF",
+  "accent": "#B7BAB5",
+  "path": "M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z",
+  "offset": "translate(12 7)",
+  "strokeWidth": 5.5
+}

@@ -1,0 +1,22 @@
+.panel { font-family: var(--font-sans); }
+.panel :is(button, input, select) { font-family: inherit; }
+.embedded { gap: 24px; }
+.embedded .body { display: flex; flex-direction: column; gap: 28px; }
+.embedded .body > section {
+  padding: 0 0 28px;
+  border: 0;
+  border-bottom: 1px solid var(--glass-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.embedded .body > section:last-child { border-bottom: 0; padding-bottom: 0; }
+.embedded h2 { font-size: 22px; line-height: 1.25; font-weight: 600; font-stretch: normal; white-space: normal; overflow: visible; }
+.embedded h3 { font-size: 16px; line-height: 1.4; font-weight: 600; }
+.embedded :is(label, button) { font-weight: 500; }
+.embedded label { font-size: 12px; line-height: 1.5; }
+.preview { display: grid; gap: 14px; }
+.previewHint { color: color-mix(in srgb, var(--foreground) 55%, transparent); font-size: 12px; line-height: 1.5; margin: 0; }
+@media (min-width: 1200px) {
+  .embedded .preview { grid-template-columns: minmax(0, 1fr) 180px; align-items: start; }
+}

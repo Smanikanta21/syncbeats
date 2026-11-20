@@ -2,10 +2,11 @@
   "name": "SyncBeats",
   "short_name": "SyncBeats",
   "description": "Synchronize music across multiple devices seamlessly.",
-  "start_url": "/",
+  "start_url": "/room/default",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "orientation": "portrait",
+  "background_color": "#f1f1ef",
+  "theme_color": "#f1f1ef",
   "icons": [
     {
       "src": "/apple-touch-icon.png",

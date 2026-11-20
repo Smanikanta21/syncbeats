@@ -1,3 +1,6 @@
+import { trackCacheKey } from './trackIdentity';
+import { ytId } from './youtube';
+
 let dbInstance: IDBDatabase | null = null;
 
 export interface TrackMeta {
@@ -31,10 +34,12 @@ export const initDB = (): Promise<IDBDatabase> => {
 
     req.onsuccess = () => {
       dbInstance = req.result;
+      dbInstance.onversionchange = () => { dbInstance?.close(); dbInstance = null; };
       resolve(req.result);
     };
 
     req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('Audio cache is unavailable'));
   });
 };
 
@@ -84,48 +89,31 @@ export const evictLRU = async (targetFreeBytes: number = 200 * 1024 * 1024): Pro
   }
 };
 
-export const cacheYouTubeTrack = async (key: string, blob: Blob, title?: string): Promise<void> => {
+function cacheAliases(key: string): string[] {
+  const id = ytId(key);
+  return [...new Set([trackCacheKey(key), key, ...(id ? ['youtube:' + id, 'ws-p2p:yt:' + id] : [])])];
+}
+
+export const cacheYouTubeTrack = async (key: string, blob: Blob, title?: string): Promise<boolean> => {
   try {
-    if (!key || !blob || blob.size < 1000) return;
-
-    // Quota check: if < 50MB free, trigger LRU eviction targeting 200MB free
-    if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.estimate) {
-      const estimate = await navigator.storage.estimate();
-      const quota = estimate.quota || 0;
-      const usage = estimate.usage || 0;
-      if (quota - usage < 50 * 1024 * 1024) {
-        await evictLRU(200 * 1024 * 1024);
-      }
+    if (!key || !blob.size) return false;
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+      const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+      if (quota > 0 && quota - usage < 50 * 1024 * 1024) await evictLRU(200 * 1024 * 1024);
     }
-
     const db = await initDB();
-    
-    // Write blob
+    const canonical = trackCacheKey(key);
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("tracks", "readwrite");
-      const store = tx.objectStore("tracks");
-      const req = store.put(blob, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      const tx = db.transaction(['tracks', 'trackMeta'], 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Audio cache write failed'));
+      tx.objectStore('tracks').put(blob, canonical);
+      tx.objectStore('trackMeta').put({ size: blob.size, lastAccessed: Date.now(), title } satisfies TrackMeta, canonical);
     });
-
-    // Write metadata
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("trackMeta", "readwrite");
-      const store = tx.objectStore("trackMeta");
-      const meta: TrackMeta = {
-        size: blob.size,
-        lastAccessed: Date.now(),
-        title,
-      };
-      const req = store.put(meta, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-
-    console.log(`[IDB] Successfully cached track '${key}' (${Math.round(blob.size / 1024)} KB)`);
-  } catch (err) {
-    console.error("[IDB] Failed to cache track:", err);
+    return true;
+  } catch (error) {
+    console.warn('[IDB] Audio cache unavailable:', error);
+    return false;
   }
 };
 
@@ -133,65 +121,41 @@ export const getCachedYouTubeTrack = async (key: string): Promise<Blob | null> =
   try {
     if (!key) return null;
     const db = await initDB();
-
-    const blob: Blob | null = await new Promise((resolve, reject) => {
-      const tx = db.transaction("tracks", "readonly");
-      const store = tx.objectStore("tracks");
-      const req = store.get(key);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-
-    if (blob) {
-      // Asynchronously update lastAccessed timestamp
-      (async () => {
-        try {
-          const tx = db.transaction("trackMeta", "readwrite");
-          const store = tx.objectStore("trackMeta");
-          const getReq = store.get(key);
-          getReq.onsuccess = () => {
-            const existing = getReq.result || {};
-            store.put({ ...existing, lastAccessed: Date.now() }, key);
-          };
-        } catch (e) {}
-      })();
+    for (const candidate of cacheAliases(key)) {
+      const blob = await new Promise<Blob | null>((resolve, reject) => {
+        const request = db.transaction('tracks', 'readonly').objectStore('tracks').get(candidate);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+      if (!blob) continue;
+      // Older transport-specific entries remain readable without re-downloading.
+      const tx = db.transaction('trackMeta', 'readwrite');
+      tx.objectStore('trackMeta').put({ size: blob.size, lastAccessed: Date.now() } satisfies TrackMeta, candidate);
+      return blob;
     }
-
-    return blob;
-  } catch (err) {
-    console.error("[IDB] Failed to get cached track:", err);
+    return null;
+  } catch (error) {
+    console.warn('[IDB] Audio cache read unavailable:', error);
     return null;
   }
 };
 
-// Aliases & backwards-compatibility helpers for magnet and legacy calls
-export const saveTrack = async (key: string, blob: Blob): Promise<void> => {
-  return cacheYouTubeTrack(key, blob);
-};
-
-export const getTrack = async (key: string): Promise<Blob | null> => {
-  return getCachedYouTubeTrack(key);
-};
+export const saveTrack = cacheYouTubeTrack;
+export const getTrack = getCachedYouTubeTrack;
 
 export const removeTrack = async (key: string): Promise<void> => {
   try {
     const db = await initDB();
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("tracks", "readwrite");
-      const store = tx.objectStore("tracks");
-      const req = store.delete(key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      const tx = db.transaction(['tracks', 'trackMeta'], 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      for (const candidate of cacheAliases(key)) {
+        tx.objectStore('tracks').delete(candidate);
+        tx.objectStore('trackMeta').delete(candidate);
+      }
     });
-
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("trackMeta", "readwrite");
-      const store = tx.objectStore("trackMeta");
-      const req = store.delete(key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch (err) {
-    console.error("[IDB] Failed to remove track:", err);
+  } catch (error) {
+    console.warn('[IDB] Could not remove cached audio:', error);
   }
 };

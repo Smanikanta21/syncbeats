@@ -1,10 +1,11 @@
 // handlers/AuthRoutes.ts — /auth REST endpoints
 
+import { deviceUserAgent } from '../utils/clientDevice';
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../auth/AuthService';
 import { requireAuth } from '../auth/authMiddleware';
 import { loginLimiter, registerLimiter, forgotPasswordLimiter, verificationResendLimiter } from '../middleware/rateLimiter';
-import { AuditLogger } from '../services/AuditLogger';
+import { sendError, isInternalError } from '../utils/errorHandler';
 
 const authService = new AuthService();
 
@@ -23,7 +24,7 @@ function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: 
   const deviceId = req.header('x-device-id');
   return {
     deviceKey: deviceId?.trim() || null,
-    userAgent: req.header('user-agent') || null,
+    userAgent: deviceUserAgent(req.header('user-agent'), req.header('x-client-device')),
     ip: getClientIp(req),
   };
 }
@@ -43,15 +44,15 @@ export function createAuthRoutes(): Router {
     if (email.trim().length > 254) { res.status(400).json({ error: 'Email too long' }); return; }
     if (password.length > 128) { res.status(400).json({ error: 'Password too long (max 128 chars)' }); return; }
     if (password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
-    const { ip } = getDeviceContext(req);
     try {
       await authService.register(name.trim(), email.trim().toLowerCase(), password);
-      void AuditLogger.info('USER_REGISTER', `User ${name.trim()} (${email.trim()}) registered successfully`, ip || undefined);
       res.status(201).json({ ok: true });
     } catch (err) {
-      console.error('[Auth] register error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
-      void AuditLogger.warn('REGISTER_FAILED', `Failed registration attempt for ${email}: ${msg}`, ip || undefined);
       res.status(409).json({ error: msg });
     }
   });
@@ -67,8 +68,7 @@ export function createAuthRoutes(): Router {
       const exists = await authService.checkEmail(email);
       res.json({ exists });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      sendError(res, err, 'Unable to check email at this time.', 500);
     }
   });
 
@@ -86,12 +86,13 @@ export function createAuthRoutes(): Router {
     const { deviceKey, userAgent, ip } = getDeviceContext(req);
     try {
       const result = await authService.login(email.trim().toLowerCase(), password, deviceKey, userAgent, ip);
-      void AuditLogger.info('USER_LOGIN', `User ${email.trim()} logged in successfully`, ip || undefined);
       res.json(result);
     } catch (err) {
-      console.error('[Auth] login error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
-      void AuditLogger.warn('AUTH_FAILED', `Failed login for ${email}: ${msg}`, ip || undefined);
       res.status(401).json({ error: msg });
     }
   });
@@ -106,12 +107,13 @@ export function createAuthRoutes(): Router {
     const { deviceKey, userAgent, ip } = getDeviceContext(req);
     try {
       const result = await authService.googleLogin(credential, deviceKey, userAgent, ip);
-      void AuditLogger.info('GOOGLE_LOGIN', `Google OAuth login for ${result.user.email}`, ip || undefined);
       res.json(result);
     } catch (err) {
-      console.error('[Auth] google error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
-      void AuditLogger.warn('GOOGLE_AUTH_FAILED', `Failed Google OAuth login: ${msg}`, ip || undefined);
       res.status(401).json({ error: msg });
     }
   });
@@ -128,9 +130,7 @@ export function createAuthRoutes(): Router {
       await authService.resendVerification(email.trim().toLowerCase());
       res.json({ ok: true });
     } catch (err) {
-      console.error('[Auth] resend verification error:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
+      sendError(res, err, 'Failed to resend verification email.', 500);
     }
   });
 
@@ -146,7 +146,10 @@ export function createAuthRoutes(): Router {
       const result = await authService.verifyEmail(token, deviceKey, userAgent);
       res.json(result);
     } catch (err) {
-      console.error('[Auth] verify email error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: msg });
     }
@@ -165,13 +168,16 @@ export function createAuthRoutes(): Router {
       // Always return ok to avoid account enumeration.
       res.json({ ok: true, ...result });
     } catch (err) {
-      console.error('[Auth] forgot password error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes('account not found')) {
         res.status(404).json({ error: msg });
         return;
       }
-      res.status(500).json({ error: msg });
+      res.status(400).json({ error: msg });
     }
   });
 
@@ -198,7 +204,10 @@ export function createAuthRoutes(): Router {
       }
       res.json({ ok: true });
     } catch (err) {
-      console.error('[Auth] reset password error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: msg });
     }
@@ -215,7 +224,10 @@ export function createAuthRoutes(): Router {
       await authService.verifyPasswordResetOtp(email, otp);
       res.json({ ok: true });
     } catch (err) {
-      console.error('[Auth] verify reset otp error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: msg });
     }
@@ -228,7 +240,10 @@ export function createAuthRoutes(): Router {
       const result = await authService.me(req.user!.sub, deviceKey, userAgent);
       res.json(result);
     } catch (err) {
-      console.error('[Auth] me error:', err);
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       if (msg === 'User not found') {
         res.status(404).json({ error: msg });
@@ -263,6 +278,10 @@ export function createAuthRoutes(): Router {
 
       res.json({ user: updatedUser });
     } catch (err) {
+      if (isInternalError(err)) {
+        sendError(res, err, undefined, 500);
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ error: msg });
     }

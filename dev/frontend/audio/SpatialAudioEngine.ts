@@ -178,7 +178,6 @@ export class SpatialAudioEngine {
   private speakersRelative: Speaker[] = [];
   private ringAngles: number[] = [];
   private originVec: Vec3 = { x: 0, y: 0, z: 0 };
-  private origin: SpatialPosition = ORIGIN_POSITION;
 
   private motion: MotionConfig = { ...DEFAULT_MOTION };
   private beat: BeatState | null = null;
@@ -346,7 +345,6 @@ export class SpatialAudioEngine {
    */
   setField(speakers: Speaker[], origin: SpatialPosition = ORIGIN_POSITION): void {
     this.speakers = speakers;
-    this.origin = origin;
     this.originVec = polarToCartesian(origin);
     this.speakersRelative = speakers.map(s => ({
       id: s.id,

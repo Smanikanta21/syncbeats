@@ -1,174 +1,110 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Outfit, JetBrains_Mono } from "next/font/google";
+import { SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "@/lib/site";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { AudioProvider } from "../context/AudioContext";
 import { ThemeProvider } from "../context/ThemeProvider";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import { Toaster } from "sonner";
+import { PrivacyAnalytics } from "../components/PrivacyAnalytics";
+
 import SmoothScrolling from "../components/SmoothScrolling";
-import { ToastProvider } from "../components/ToastProvider";
+
+import { RoomSearchProvider } from "../context/RoomSearchContext";
 import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
-import { cn } from "@/lib/utils";
-import {IOSHomeScreenPrompt} from '../components/IOSHomeScreenPrompt'
+import { IOSHomeScreenPrompt } from "../components/IOSHomeScreenPrompt";
+import { MobileAppGuard } from "../components/MobileAppGuard";
 import { BeatProvider } from "../context/BeatContext";
 import { NavigationProgress } from "../components/NavigationProgress";
-import { CustomCursor } from "../components/CustomCursor";
-import "../lib/logger";
+import { LoadingProvider } from "../context/LoadingContext";
 
-const outfitFont = Outfit({
-  variable: "--font-sans",
+/**
+ * One face for the whole product. Archivo is a precise grotesque with real
+ * `wght` and `wdth` axes, so display text is the same family set wider and
+ * heavier — headings read as the same instrument as the body rather than as a
+ * second voice. The width axis is why the hero's load gesture (fontStretch
+ * 75% -> 100%, see Hero.tsx) still works: width is a display property here,
+ * not a quirk of a lettering face.
+ */
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
   preload: true,
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  axes: ["wdth"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
+  variable: "--font-jetbrains",
   subsets: ["latin"],
   preload: true,
   display: "swap",
   weight: ["400", "600", "700"],
 });
 
-const BASE_URL = "https://www.syncbeats.in";
-
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#f1f1ef" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e0f0f" },
   ],
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "SyncBeats",
-  },
-  title: {
-    template: "%s | SyncBeats",
-    default: "SyncBeats | One track. Every phone. Zero lag.",
-  },
-  description:
-    "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience. Turn your room into a surround sound system for free.",
-  keywords: [
-    "syncbeats",
-    "syncbeats.in",
-    "syncbeats instagram",
-    "@syncbeats.in",
-    "syncbeats app",
-    "music sync",
-    "listen together",
-    "spatial audio app",
-    "sync music across phones",
-    "AmpMe alternative",
-  ],
-  openGraph: {
-    title: "SyncBeats - 3D audio that hits everyone at once.",
-    description: "Your crew. Your music. One massive speaker.",
-    url: BASE_URL,
-    siteName: "SyncBeats",
-    images: [
-      {
-        url: "/syncbeats-og.png",
-        width: 1200,
-        height: 630,
-        alt: "SyncBeats — synchronized music player",
-      },
-    ],
-    locale: "en_US",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "SyncBeats | One track. Every phone. Zero lag.",
-    description:
-      "Instantly connect your devices to create a perfectly synchronized, high-fidelity spatial audio experience.",
-    site: "@syncbeatsapp",
-    creator: "@syncbeatsapp",
-    images: ["/syncbeats-og.png"],
-  },
-  manifest: "/manifest.json",
-  icons: {
-    icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/syncbeats-icon.svg", type: "image/svg+xml" }
-    ],
-    shortcut: "/apple-touch-icon.png",
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
-    ],
-  },
+  metadataBase: new URL(SITE_URL),
+  title: { default: SITE_TITLE, template: "%s | SyncBeats" },
+  description: SITE_DESCRIPTION,
   applicationName: "SyncBeats",
-  authors: [{ name: "SyncBeats", url: BASE_URL }],
-  category: "music",
-  alternates: {
-    canonical: BASE_URL,
-  },
+  authors: [{ name: "SyncBeats Team", url: SITE_URL }],
+  creator: "SyncBeats",
+  publisher: "SyncBeats",
   robots: {
     index: true,
     follow: true,
     googleBot: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
       "max-image-preview": "large",
       "max-snippet": -1,
+      "max-video-preview": -1,
     },
   },
-};
-
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      name: "SyncBeats",
-      url: BASE_URL,
-      logo: `${BASE_URL}/icon-192.png`,
-      sameAs: [
-        "https://www.instagram.com/syncbeats.in/",
-        "https://github.com/Smanikanta21/syncbeats"
-      ],
-    },
-    {
-      "@type": "WebApplication",
-      name: "SyncBeats",
-      url: BASE_URL,
-      description:
-        "SyncBeats lets you play music in perfect sync across multiple devices. Create a room, share the link, and listen together in real time.",
-      applicationCategory: "MusicApplication",
-      operatingSystem: "All",
-      sameAs: [
-        "https://www.instagram.com/syncbeats.in/",
-        "https://github.com/Smanikanta21/syncbeats"
-      ],
-      offers: {
-        "@type": "Offer",
-        price: "0",
-        priceCurrency: "USD",
-      },
-      featureList: [
-        "Real-time music synchronization",
-        "Multi-device support",
-        "Room-based listening parties",
-        "No download required",
-      ],
-    }
-  ]
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: "SyncBeats",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SyncBeats",
+  },
+  manifest: "/manifest.json",
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#0e2828",
+  },
 };
 
 export default function RootLayout({
@@ -180,108 +116,105 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${outfitFont.variable} ${jetbrainsMono.variable} antialiased`}
+      className={`${archivo.variable} ${jetbrainsMono.variable} antialiased`}
     >
       <head>
-        {/* JSON-LD structured data */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
+        {/* iOS home-screen installs retain the URL used when first installed.
+            Redirect stale root/intro launch URLs before React can paint them. */}
+        <Script id="standalone-room-launch" strategy="beforeInteractive">
+          {`(() => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+              || window.navigator.standalone === true;
+            const path = window.location.pathname.replace(/\\/$/, '') || '/';
+            if (isStandalone && (path === '/' || path === '/intro')) {
+              window.location.replace('/room/default');
+            }
+          })();`}
+        </Script>
       </head>
 
-      {/* Google Analytics */}
-      <Script
-        async
-        src="https://www.googletagmanager.com/gtag/js?id=G-9D67M1G5XC"
-        strategy="afterInteractive"
-      />
-      <Script id="google-analytics" strategy="afterInteractive">
-        {`
-          try {
-            const isDev = window.location.hostname === 'dev.syncbeats.in' || window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
-            let isAdmin = false;
-            
-            // Read sb_token from cookies
-            const match = document.cookie.match(new RegExp('(^| )sb_token=([^;]+)'));
-            if (match && match[2]) {
-              const token = decodeURIComponent(match[2]);
-              const payloadB64 = token.split('.')[1];
-              if (payloadB64) {
-                // Decode base64url
-                const payloadStr = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
-                const payload = JSON.parse(payloadStr);
-                
-                if (payload.email === 'siraparapuabhinay21@gmail.com') {
-                  isAdmin = true;
-                }
-              }
-            }
-            
-            if (isDev || isAdmin) {
-              window['ga-disable-G-9D67M1G5XC'] = true;
-            }
-          } catch(e) {}
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){window.dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', 'G-9D67M1G5XC');
-        `}
-      </Script>
-
-      {/* Ahrefs Analytics */}
-      <Script
-        src="https://analytics.ahrefs.com/analytics.js"
-        data-key="+9fzuLLzZbLhEJcB+CsBWA"
-        strategy="lazyOnload"
-      />
-
-
-
-      <body className={cn('transition-colors', 'duration-300', 'bg-background', 'text-foreground')}>
-        {/* Replaces the native pointer everywhere, on fine-pointer devices that
-            allow motion. Mounted above the providers so it survives navigation. */}
-        <CustomCursor />
+      <body className="transition-colors duration-300 bg-background text-foreground">
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
-        <div className={cn('fixed', 'inset-0', 'pointer-events-none', 'z-0')}>
-          
+        <div
+          className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+          aria-hidden="true"
+        >
+          {/* Low-contrast light sources drift across the viewport. Keep the
+              gradients stationary in size and move them on the compositor. */}
+          <div className="ambient-blob-field absolute inset-0 overflow-hidden">
+            <div
+              className="ambient-blob ambient-blob--warm"
+              style={{
+                background:
+                  "radial-gradient(circle, var(--warm-tint) 0%, transparent 70%)",
+              }}
+            />
+            <div
+              className="ambient-blob ambient-blob--cool"
+              style={{
+                background:
+                  "radial-gradient(circle, var(--cool-tint) 0%, transparent 70%)",
+              }}
+            />
+            <div
+              className="ambient-blob ambient-blob--warm-secondary"
+              style={{
+                background:
+                  "radial-gradient(circle, var(--warm-tint) 0%, transparent 70%)",
+              }}
+            />
+          </div>
+
           {/* DESKTOP LAYER (Heavy, high fidelity) */}
-          <div className={cn('hidden', 'md:block', 'absolute', 'inset-0')}>
-
-            <div className={cn('absolute', 'inset-0', 'opacity-[0.015]', 'dark:opacity-[0.03]')} style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+          <div className="hidden md:block absolute inset-0">
+            <div
+              className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03]"
+              style={{
+                backgroundImage:
+                  'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")',
+              }}
+            />
           </div>
 
-          {/* MOBILE LAYER (Optimized, lightweight) */}
-          <div className={cn('block', 'md:hidden', 'absolute', 'inset-0')}>
-            <div className={cn('absolute', 'top-[0%]', 'left-[0%]', 'w-[70vw]', 'h-[70vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-violet-600/15', 'dark:from-violet-900/25', 'to-transparent', 'animate-pulse', 'duration-[16000ms]', 'will-change-transform')} style={{ transform: 'translate(-15%, -15%)' }} />
-            <div className={cn('absolute', 'top-[20%]', 'right-[0%]', 'w-[80vw]', 'h-[80vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-emerald-500/15', 'dark:from-emerald-900/25', 'to-transparent', 'animate-pulse', 'duration-[24000ms]', 'delay-1000', 'will-change-transform')} style={{ transform: 'translateX(15%)' }} />
-            <div className={cn('absolute', 'bottom-[0%]', 'left-[20%]', 'w-[90vw]', 'h-[90vw]', 'bg-[radial-gradient(circle,var(--tw-gradient-stops))]', 'from-blue-500/15', 'dark:from-blue-900/25', 'to-transparent', 'animate-pulse', 'duration-[20000ms]', 'delay-500', 'will-change-transform')} style={{ transform: 'translateY(15%)' }} />
-            <div className={cn('absolute', 'inset-0', 'opacity-[0.05]', 'dark:opacity-[0.08]')} style={{ backgroundImage: 'url("/noise.png")', backgroundRepeat: 'repeat', backgroundSize: '150px' }} />
+          {/* MOBILE LAYER (Optimized, lightweight). Temperature, not hue: the
+              warm highlight and cool shadow are the two references the glass
+              sits in. Same tokens the ambient field and the fluid blobs use. */}
+          <div className="block md:hidden absolute inset-0">
+            <div
+              className="absolute inset-0 opacity-[0.05] dark:opacity-[0.08]"
+              style={{
+                backgroundImage: 'url("/noise.png")',
+                backgroundRepeat: "repeat",
+                backgroundSize: "150px",
+              }}
+            />
           </div>
-
         </div>
         <SmoothScrolling>
-          <NavigationProgress />
-          <IOSHomeScreenPrompt />
-          <ThemeProvider>
-            <ConnectionProvider>
-              <ConnectionStatusModal />
-              <AuthProvider>
-                <AudioProvider>
-                  <BeatProvider>
-                    <VisualizerProvider>
-                      <ToastProvider>
-                        <div className={cn('relative', 'z-10', 'w-full', 'min-h-full', 'flex', 'flex-col')}>{children}</div>
-                      </ToastProvider>
-                    </VisualizerProvider>
-                  </BeatProvider>
-                </AudioProvider>
-              </AuthProvider>
-            </ConnectionProvider>
-          </ThemeProvider>
-          <Toaster position="bottom-right" theme="system" richColors closeButton />
-          <Analytics />
-          <SpeedInsights />
+          <LoadingProvider>
+            <NavigationProgress />
+            <IOSHomeScreenPrompt />
+            <MobileAppGuard />
+            <ThemeProvider>
+              <ConnectionProvider>
+                <ConnectionStatusModal />
+                <AuthProvider>
+                  <AudioProvider>
+                    <RoomSearchProvider>
+                    <BeatProvider>
+                      <VisualizerProvider>
+                        <div className="relative z-10 w-full min-h-full flex flex-col">
+                          {children}
+                        </div>
+                      </VisualizerProvider>
+                    </BeatProvider>
+                    </RoomSearchProvider>
+                  </AudioProvider>
+                </AuthProvider>
+              </ConnectionProvider>
+            </ThemeProvider>
+            <PrivacyAnalytics />
+          </LoadingProvider>
         </SmoothScrolling>
       </body>
     </html>

@@ -51,18 +51,23 @@ export interface AppSettings {
   ambientEnabled?: boolean;
   showDebugAudio?: boolean;
   liquidMotion?: boolean;
+  sidebarPosition?: "left" | "right";
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   audioLatencyOffsetMs: 0,
   syncAggressiveness: "high",
   keepScreenAwake: false,
+  sidebarPosition: "left",
   islandCustomizer: {
-    glowColor: "violet",
+    glowColor: "none",
     autoShrinkDelaySec: 6,
     showAlbumArt: true,
   },
-  dynamicBackgroundColors: false,
+  // On by default now that something consumes it: FluidField reads the current
+  // track's cover through extractTwoColorsFromImage and dyes the fluid with it.
+  // This flag existed and did nothing before that.
+  dynamicBackgroundColors: true,
   gradientSettings: {
     presetName: "Cyber Neon",
     nodes: [

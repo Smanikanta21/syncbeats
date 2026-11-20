@@ -1,6 +1,5 @@
 import prisma from '../src/db/prisma';
 // @ts-ignore
-const fetch = require('isomorphic-unfetch');
 
 async function main() {
   console.log('[Fix] Querying database for songs with Unknown Artist...');

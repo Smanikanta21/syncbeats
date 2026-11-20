@@ -3,7 +3,6 @@
 import prisma from '../db/prisma';
 import { sanitizeNullBytes } from '../db/prisma';
 
-
 export interface UserRow {
   id:            string;
   name:          string;
@@ -38,24 +37,6 @@ export function sanitizeString(val: string): string {
     .replace(/\u0000/g, '')
     .replace(/\\u0000/g, '')
     .replace(/\x00/g, '');
-}
-
-function cleanJsonPayload(data: any): any {
-  if (data === null || data === undefined) return data;
-  if (typeof data === 'string') {
-    return sanitizeString(data);
-  }
-  if (typeof data === 'object') {
-    if (Array.isArray(data)) {
-      return data.map(cleanJsonPayload);
-    }
-    const clean: any = {};
-    for (const key of Object.keys(data)) {
-      clean[sanitizeString(key)] = cleanJsonPayload(data[key]);
-    }
-    return clean;
-  }
-  return data;
 }
 
 export class UserRepository {

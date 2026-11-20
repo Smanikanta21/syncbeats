@@ -17,6 +17,7 @@ import { createRoomRoutes }    from './handlers/RoomRoutes';
 import { createAuthRoutes }    from './handlers/AuthRoutes';
 import { createDeviceRoutes } from './handlers/DeviceRoutes';
 import { createSearchRoutes }  from './handlers/SearchRoutes';
+import { createRecommendationRoutes } from './handlers/RecommendationRoutes';
 import { createYoutubeRoutes } from './handlers/YoutubeRoutes';
 import { createHistoryRoutes } from './handlers/HistoryRoutes';
 import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
@@ -25,14 +26,16 @@ import playlistRoutes from './handlers/PlaylistRoutes';
 import { createUserRoutes } from './handlers/UserRoutes';
 import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
 import { createTelemetryRoutes } from './handlers/TelemetryRoutes';
+import { createBetaRoutes } from './handlers/BetaRoutes';
+import { createBetaSignupStore } from './db/BetaSignupRepository';
 import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
 
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient }  from 'redis';
-import { AuditLogger } from './services/AuditLogger';
-import { notFoundHandler, errorHandler } from './utils/errorHandler';
+import { notFoundHandler, errorHandler, isInternalError, logErrorToFile } from './utils/errorHandler';
+import { safeStringify } from './utils/errorLogger';
 
 // ─── Timestamp all console output in Indian Standard Time (IST / UTC+5:30) ────
 (['log', 'warn', 'error', 'info', 'debug'] as const).forEach((method) => {
@@ -40,20 +43,13 @@ import { notFoundHandler, errorHandler } from './utils/errorHandler';
   (console as any)[method] = (...args: unknown[]) => {
     const istDate = new Date(Date.now() + 5.5 * 3600 * 1000);
     const ts = istDate.toISOString().replace('T', ' ').slice(0, 19);
-    
-    // Serialize arguments for logging
-    const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-    original(`[${ts} IST]`, msg);
 
-    // Pipe directly to DB (skip AuditLogger's own stdout to avoid infinite loop)
-    if (!msg.includes('[AuditLog]') && !msg.includes('[AuditLogger Error]') && !msg.includes('prisma:')) {
-      let action = `SERVER_${method.toUpperCase()}`;
-      if (msg.includes('[Server]')) action = 'SERVER_LIFECYCLE';
-      else if (msg.includes('[Cleanup]')) action = 'SERVER_CLEANUP';
-      else if (msg.includes('[Socket]')) action = 'SOCKET_EVENT';
-      
-      AuditLogger.log(action, msg).catch(() => {});
-    }
+    // Serialize arguments for logging. Must never throw: this wrapper runs inside
+    // catch blocks, where a circular req object would turn logging into a crash.
+    const msg = args.map(arg =>
+      typeof arg === 'object' && arg !== null ? safeStringify(arg) : String(arg)
+    ).join(' ');
+    original(`[${ts} IST]`, msg);
   };
 });
 
@@ -86,7 +82,7 @@ export class SyncBeatsServer {
       },
       credentials: true, 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range']
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'x-client-device', 'Accept', 'Range']
     },
     transports: ['polling', 'websocket'],
   });
@@ -104,7 +100,6 @@ export class SyncBeatsServer {
     this.setupRoutes();
     this.setupRedisAdapter();
     this.setupSocketIO();
-    this.setupRoomCleanup();
     this.setupGracefulShutdown();
   }
 
@@ -140,37 +135,73 @@ export class SyncBeatsServer {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'Accept', 'Range'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'X-Device-Id', 'x-client-device', 'Accept', 'Range'],
       optionsSuccessStatus: 200,
     };
 
     this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
-    // Internal details are kept off the wire by utils/errorHandler (it logs the raw
-    // error and sends a written message). The old blanket res.json masker that lived
-    // here rewrote *every* 5xx body to "Internal Server Error", including the messages
-    // routes had deliberately written for the user.
-
-    // Global Request Audit Logging Middleware
+    // ── Leakage Protection Interceptor ──────────────────────────────────────
+    // Guarantees that internal errors (Prisma, database schemas, stack traces)
+    // NEVER reach clients even if a handler inadvertently responds with raw err.message.
+    // Intercepted errors are translated, logged to logs/error.log with clear human-readable
+    // diagnostics and suggested fixes, and replaced with safe, user-facing messages.
     this.app.use((req, res, next) => {
-      if (req.path.startsWith('/files') || req.path.startsWith('/health') || req.method === 'OPTIONS') {
-        return next();
-      }
-      const start = Date.now();
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '127.0.0.1';
-        const status = res.statusCode;
-        const isErr = status >= 400;
-        const msg = `${req.method} ${req.originalUrl} ${status} (${duration}ms)`;
-        
-        if (isErr) {
-          void AuditLogger.error(`[BACKEND] HTTP_${status}`, msg, ip);
-        } else {
-          void AuditLogger.info(`[BACKEND] HTTP_${status}`, msg, ip);
+      const originalJson = res.json.bind(res);
+      const originalSend = res.send.bind(res);
+
+      res.json = function (body: any) {
+        if (body && typeof body === 'object') {
+          // Check every field a client could read — handlers routinely put the
+          // human sentence in `error` and the raw one in `details`/`message`.
+          const textFields = ['error', 'message', 'details', 'stack', 'trace'] as const;
+          const leaking = textFields.filter(f => f in body && isInternalError(body[f]));
+
+          if (leaking.length > 0) {
+            const candidate = body[leaking[0]];
+            const explanation = logErrorToFile(candidate, {
+              method: req.method,
+              url: req.originalUrl || req.url,
+              ip: req.ip,
+              userId: (req as any)?.user?.sub,
+              userEmail: (req as any)?.user?.email,
+              body: req.body,
+              source: `Response Sanitize Interceptor: ${req.method} ${req.originalUrl || req.url}`,
+            });
+
+            // Replace the readable field, drop the diagnostic ones outright.
+            if (body.error !== undefined) body.error = explanation.userFacingMessage;
+            else body.message = explanation.userFacingMessage;
+            delete body.details;
+            delete body.stack;
+            delete body.trace;
+
+            // Only our own faults become a 5xx — P2002/P2025 stay a deliberate 4xx.
+            if (explanation.isInternal && res.statusCode < 500) {
+              res.status(500);
+            }
+          }
         }
-      });
+        return originalJson(body);
+      };
+
+      res.send = function (data: any) {
+        if (typeof data === 'string' && isInternalError(data)) {
+          const explanation = logErrorToFile(data, {
+            method: req.method,
+            url: req.originalUrl || req.url,
+            ip: req.ip,
+            source: `Response Sanitize Interceptor (send): ${req.method} ${req.originalUrl || req.url}`,
+          });
+          if (res.statusCode < 500) {
+            res.status(500);
+          }
+          return originalJson({ error: explanation.userFacingMessage });
+        }
+        return originalSend(data);
+      };
+
       next();
     });
 
@@ -220,30 +251,34 @@ export class SyncBeatsServer {
   }
 
   private setupRoutes(): void {
-    const baseUrl = `http://localhost:${PORT}`;
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });
     });
     this.app.use('/auth',    createAuthRoutes());
-    
+
     const userRepository = new UserRepository();
     this.app.use('/users',   createUserRoutes(userRepository));
-    
+
     this.app.use('/rooms',   createRoomRoutes(this.roomManager, this.io));
     this.app.use('/devices', createDeviceRoutes());
     this.app.use('/search',  createSearchRoutes());
+    this.app.use('/recommendations', createRecommendationRoutes(prisma));
     this.app.use('/youtube', createYoutubeRoutes());
     this.app.use('/history', createHistoryRoutes(prisma));
     this.app.use('/spotify', createSpotifyRoutes());
+    this.app.use('/bridge', createMusicBridgeRoutes());
     this.app.use('/api/bridge', createMusicBridgeRoutes());
+    this.app.use('/playlists', playlistRoutes);
     this.app.use('/api/playlists', playlistRoutes);
     this.app.use('/feedback', createFeedbackRoutes());
     this.app.use('/telemetry', createTelemetryRoutes());
+    const betaSignups = createBetaSignupStore(prisma);
+    this.app.use('/beta', createBetaRoutes(betaSignups));
+    const pruneBetaSignups = () => betaSignups.prune().catch(() => console.error('[Mac beta] Could not prune expired signups'));
+    void pruneBetaSignups();
+    setInterval(pruneBetaSignups, 60 * 60 * 1000).unref();
 
-    this.app.get('/debug-sentry', function mainHandler(req, res) {
-      throw new Error('My first Sentry error!');
-    });
 
     // ── CLI install route ──────────────────────────────────────────────────
     this.app.get('/cli', (_req, res) => {
@@ -367,49 +402,48 @@ fi
     });
   }
 
-  private setupRoomCleanup(): void {
-    // Rooms expire 60 days after their last access (timer resets on every join)
-    const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000;
-    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // run every hour
-
-    const cleanup = async () => {
-      try {
-        const cutoff = new Date(Date.now() - TWO_MONTHS_MS);
-        const candidates = await this.roomRepo.listOlderThan(cutoff);
-
-        for (const room of candidates) {
-          const liveRoom = this.roomManager.get(room.id);
-          const hasParticipants = !!liveRoom && liveRoom.getParticipantCount() > 0;
-          if (!hasParticipants) {
-            console.log(`[Cleanup] Removed stale empty room ${room.id}`);
-          }
-        }
-      } catch (err) {
-        console.error('[Cleanup] room cleanup failed:', err);
-      }
-    };
-
-    void cleanup();
-    setInterval(() => { void cleanup(); }, CLEANUP_INTERVAL_MS);
-  }
-
   private setupGracefulShutdown(): void {
+    let shuttingDown = false;
     const shutdown = async (signal: string) => {
-      console.log(`\n[Server] ${signal} received — shutting down gracefully`);
-      this.httpServer.close(async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log('[Server] ' + signal + ' received — shutting down gracefully');
+      const deadline = setTimeout(() => {
+        console.error('[Server] Shutdown exceeded 10 seconds; pending writes may not be durable.');
+        process.exit(1);
+      }, 10_000);
+      deadline.unref();
+      try {
+        // Disconnect sockets first so their final paused state joins the persistence queue.
+        await new Promise<void>(resolve => this.io.close(() => resolve()));
+        await this.socketHandler.flushPersistence();
         await prisma.$disconnect();
+        clearTimeout(deadline);
         console.log('[Server] Closed. Goodbye.');
         process.exit(0);
-      });
+      } catch (error) {
+        console.error('[Server] Could not flush room state during shutdown:', error);
+        process.exit(1);
+      }
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT',  () => shutdown('SIGINT'));
+
+    process.on('unhandledRejection', (reason) => {
+      logErrorToFile(reason, { source: 'Process: unhandledRejection' });
+      console.error('[Process] Unhandled promise rejection:', reason);
+    });
+
+    process.on('uncaughtException', (err) => {
+      logErrorToFile(err, { source: 'Process: uncaughtException' });
+      console.error('[Process] Uncaught exception:', err);
+    });
   }
 
   start(): void {
     this.httpServer.listen(PORT, () => {
       console.log(`[Server] SyncBeats server running on port: ${process.env.NODE_ENV === 'Production' ? 'syncbeats.in/api' : `
-        
+
         |-----------------------------|
         | 'http://localhost:${PORT}'
         |-----------------------------|`}`);

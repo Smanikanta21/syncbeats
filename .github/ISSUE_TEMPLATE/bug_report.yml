@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible problem with SyncBeats.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities or exposed credentials, use SECURITY.md. Never include tokens, cookies, or personal data."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include whether this is the hosted site or a local checkout and the commit if known.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, operating system, devices, and network conditions; omit private addresses and user data.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove credentials and personal data before attaching evidence.

@@ -13,21 +13,6 @@ function getFlagEmoji(countryCode: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
-function resolvePrivateIp(ip: string) {
-  return {
-    ip,
-    country: "Local Network",
-    countryCode: "US",
-    city: "Localhost / Dev",
-    regionName: "Development",
-    lat: 37.7749,
-    lon: -122.4194,
-    isp: "Internal / Loopback",
-    flag: "💻",
-    isPrivate: true,
-  };
-}
-
 async function resolveIp(ip: string) {
   const cleanIp = ip?.trim();
   if (!cleanIp) return null;
@@ -119,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     const uniqueIps = Array.from(new Set(ips.filter(Boolean)));
     const results = await Promise.all(uniqueIps.slice(0, 50).map((ip) => resolveIp(ip)));
-    
+
     const resultMap: Record<string, any> = {};
     results.forEach((res) => {
       if (res) resultMap[res.ip] = res;

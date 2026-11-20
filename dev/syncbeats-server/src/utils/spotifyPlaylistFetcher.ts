@@ -1,9 +1,12 @@
 /**
- * Spotify Public Playlist Scraper Utility
+ * Spotify Playlist Fetcher
  *
- * Extracts full playlist track metadata from Spotify's public web player API
- * using an anonymous access token embedded in the Spotify embed page HTML.
- * No API keys or user login required for public playlists.
+ * Reads full playlist metadata through the official Web API, using a
+ * Client Credentials token built from SPOTIFY_CLIENT_ID/SECRET.
+ *
+ * The anonymous embed-page token route is deliberately not used: Spotify put
+ * `get_access_token` behind a WAF (403) and embed-issued tokens get 429 on
+ * /tracks. See pitfall #8 in CLAUDE.md.
  *
  * Anti-ban shields:
  *   1. 429 Shield  — reads Retry-After header, waits, retries same page (max 5 retries)
@@ -72,7 +75,7 @@ export async function getOfficialSpotifyToken(): Promise<string> {
 
 /**
  * Fetches ALL tracks from a public Spotify playlist by paginating the API.
- * Uses an anonymous token (no user auth, no API keys needed).
+ * Requires the app credentials above.
  *
  * Returns rich TrackMetadata objects (title, artist, duration_ms, artwork, etc.)
  */

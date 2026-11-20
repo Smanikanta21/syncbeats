@@ -1,134 +1,129 @@
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
-import { eventBus, EVENTS } from '../events/EventBus';
+import { DeviceRepository } from '../db/DeviceRepository';
+import { RoomPersistence } from '../core/RoomPersistence';
+
 import { UserRepository } from '../auth/UserRepository';
 import {
-  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, SpatialPosition, RepeatMode
+  JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, RepeatMode
 } from '../types';
-import { roomCodeLookupError } from '../utils/errorHandler';
+import { roomCodeLookupError, logErrorToFile } from '../utils/errorHandler';
 
-/** What a client sees when it acts on a room the server no longer has. */
-const ROOM_GONE = 'This room is no longer active. Try rejoining from the hub.';
-
-/**
- * Bounds mirror `lib/spatial/geometry.ts` on the client. Enforced here as well
- * because this position is re-broadcast to every other device and fed straight
- * into their Web Audio AudioParams — a NaN from one client would otherwise
- * throw inside everyone else's audio graph.
- */
-const MIN_RADIUS = 0.4;
-const MAX_RADIUS = 4;
-const MAX_ELEVATION = 45;
-
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-function sanitiseSpatialPosition(raw: unknown): SpatialPosition | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const { angle, radius, elevation } = raw as Record<string, unknown>;
-  if (typeof angle !== 'number' || !Number.isFinite(angle)) return null;
-  if (typeof radius !== 'number' || !Number.isFinite(radius)) return null;
-  if (elevation !== undefined && (typeof elevation !== 'number' || !Number.isFinite(elevation))) return null;
-
-  // Normalise the angle into (-π, π] so a client sending accumulated radians
-  // can't grow without bound.
-  const TWO_PI = Math.PI * 2;
-  let a = angle % TWO_PI;
-  if (a > Math.PI) a -= TWO_PI;
-  if (a <= -Math.PI) a += TWO_PI;
-
-  return {
-    angle: a,
-    radius: clamp(radius, MIN_RADIUS, MAX_RADIUS),
-    elevation: clamp(elevation ?? 0, -MAX_ELEVATION, MAX_ELEVATION),
-  };
+function emitSafeError(socket: Socket, err: unknown, source: string, payload?: unknown): void {
+  // Always logged — a non-internal error is still a failure worth a trail.
+  const explanation = logErrorToFile(err, { source, body: payload });
+  socket.emit('error', { message: explanation.userFacingMessage });
 }
 
 export class SocketHandler {
+  private deviceRepo = new DeviceRepository();
   private userRepo: UserRepository = new UserRepository();
-  /** Coalesces the write-behind queue save; a burst of reorders costs one UPDATE. */
-  private queueSaveTimers = new Map<string, NodeJS.Timeout>();
+  private readonly persistence: RoomPersistence;
 
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
     private roomRepo:    RoomRepository,
   ) {
+    this.persistence = new RoomPersistence(
+      (roomId, state) => this.roomRepo.savePlaybackState(roomId, state),
+      (roomId, error) => logErrorToFile(error, { source: 'Room persistence: ' + roomId }),
+    );
     // Forward room state changes → socket.io rooms
-    eventBus.on(EVENTS.ROOM_STATE_CHANGED, (snap: RoomSnapshot) => {
+    this.roomManager.on('room:stateChanged', (snap: RoomSnapshot) => {
       this.io.to(snap.roomId).emit('room:stateChanged', snap);
-      
-      // Persist state to DB to recover after reloads or server restarts
-      this.roomRepo.updateState(snap.roomId, snap.state, snap.position, snap.trackUrl).catch(err => {
-        console.error(`[DB Sync] Failed to save state for room ${snap.roomId}:`, err);
-      });
+
+      const room = this.roomManager.get(snap.roomId);
+      if (room?.isHydrated) {
+        this.persistence.schedule(snap.roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+      }
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_JOINED, ({ roomId, participant }: { roomId: string; participant: unknown }) => {
+    this.roomManager.on('room:participantJoined', ({ roomId, participant }: { roomId: string; participant: unknown }) => {
       this.io.to(roomId).emit('room:participantJoined', participant);
-      
+
       const p = participant as any;
       if (p.userId) {
         this.roomRepo.recordParticipantJoin(roomId, p.userId, p.socketId, p.displayName).catch(err => {
+          logErrorToFile(err, { source: `DB Sync: recordParticipantJoin ${p.userId} in room ${roomId}` });
           console.error(`[DB Sync] Failed to record join for ${p.userId} in ${roomId}:`, err);
         });
       }
     });
 
-    eventBus.on(EVENTS.PARTICIPANT_LEFT, ({ roomId, socketId }: { roomId: string; socketId: string }) => {
+    this.roomManager.on('room:participantLeft', ({ roomId, socketId }: { roomId: string; socketId: string }) => {
       this.io.to(roomId).emit('room:participantLeft', socketId);
 
       this.roomRepo.recordParticipantLeave(roomId, socketId).catch(err => {
         console.error(`[DB Sync] Failed to record leave for socket ${socketId} in ${roomId}:`, err);
       });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated) {
+        const snap = room.snapshot();
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+        void this.persistence.flush(roomId).catch(err => {
+          console.error(`[DB Sync] Immediate flush on participant leave failed for ${roomId}:`, err);
+        });
+      }
     });
 
-    eventBus.on(EVENTS.HOST_CHANGED, ({ roomId, hostId }: { roomId: string; hostId: string }) => {
+    this.roomManager.on('room:hostChanged', ({ roomId, hostId }: { roomId: string; hostId: string }) => {
       this.io.to(roomId).emit('room:hostChanged', hostId);
     });
 
     // When a file is uploaded → broadcast track URL to every client in room
-    eventBus.on(EVENTS.TRACK_SET, ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
+    this.roomManager.on('room:trackSet', ({ roomId, trackUrl, title }: { roomId: string; trackUrl: string; title: string }) => {
       console.log(`[Socket] Broadcasting room:trackSet to ${roomId}`);
-      this.io.to(roomId).emit('room:trackSet', { trackUrl, title });
+      this.io.to(roomId).emit('room:trackSet', { roomId, roomInstanceId: this.roomManager.get(roomId)?.snapshot().roomInstanceId, trackUrl, title });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated) {
+        const snap = room.snapshot();
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+        void this.persistence.flush(roomId).catch(err => {
+          console.error(`[DB Sync] Immediate flush on trackSet failed for ${roomId}:`, err);
+        });
+      }
     });
 
-    eventBus.on(EVENTS.QUEUE_CHANGED, ({ roomId, queue }: { roomId: string; queue: any[] }) => {
-      this.io.to(roomId).emit('room:queueChanged', { queue });
-      this.scheduleQueueSave(roomId);
+    this.roomManager.on('room:queueChanged', ({ roomId, queue }: { roomId: string; queue: any[] }) => {
+      const snap = this.roomManager.get(roomId)?.snapshot();
+      this.io.to(roomId).emit('room:queueChanged', {
+        roomId, roomInstanceId: snap?.roomInstanceId, queue, queueVersion: snap?.queueVersion,
+        nextTrack: snap?.nextTrack, shuffle: snap?.shuffle, repeatMode: snap?.repeatMode,
+      });
+
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated && snap) {
+        this.persistence.schedule(roomId, {
+          state: snap.state, positionMs: snap.position, trackUrl: snap.trackUrl,
+          queue: room.getQueueState(),
+        });
+      }
     });
 
-    eventBus.on(EVENTS.PLAYBACK_SCHEDULE, (payload: any) => {
+    this.roomManager.on('playback:schedule', (payload: any) => {
       this.io.to(payload.roomId).emit('playback:schedule', payload);
     });
 
-    eventBus.on(EVENTS.PLAYBACK_PAUSE, (payload: any) => {
+    this.roomManager.on('playback:pause', (payload: any) => {
       this.io.to(payload.roomId).emit('playback:pause', payload);
     });
   }
 
-  /**
-   * Write-behind persistence for the queue. Drag-reorder fires a mutation per frame, so
-   * the save is debounced; the whole queue is written as one document, which makes a
-   * dropped tick harmless — the next mutation rewrites it in full.
-   */
-  private scheduleQueueSave(roomId: string): void {
-    const pending = this.queueSaveTimers.get(roomId);
-    if (pending) clearTimeout(pending);
+  flushPersistence(): Promise<void> { return this.persistence.flush(); }
 
-    this.queueSaveTimers.set(roomId, setTimeout(() => {
-      this.queueSaveTimers.delete(roomId);
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-      void this.roomRepo.saveQueue(roomId, room.getQueueState());
-    }, 1000));
-  }
-
-  /**
-   * The room a user-triggered event is acting on, or null after telling them why not.
-   * These handlers used to `return` in silence, which left the UI waiting forever for
-   * a state change that was never coming.
-   */
   private requireRoom(socket: Socket, roomId: unknown) {
     if (typeof roomId !== 'string' || !roomId) {
       socket.emit('error', { message: 'That action was missing a room code.' });
@@ -136,7 +131,7 @@ export class SocketHandler {
     }
     const room = this.roomManager.get(roomId);
     if (!room) {
-      socket.emit('error', { message: ROOM_GONE });
+      socket.emit('error', { message: 'That room is no longer available. Try joining again.' });
       return null;
     }
     return room;
@@ -145,9 +140,15 @@ export class SocketHandler {
   register(socket: Socket): void {
     console.log(`[WS] connected: ${socket.id}`);
 
+    // Refreshing a foreground tab must not leave/rejoin and pause a single-device room.
+    socket.on('room:resync', ({ roomId }: { roomId: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (room?.isHydrated && room.hasParticipant(socket.id)) socket.emit('room:snapshot', room.snapshot());
+    });
+
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName, userId, deviceId, isReady = false }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, userId, deviceId, deviceName, isReady = false }: JoinPayload) => {
       try {
         // The room code is checked against the DB on EVERY join, before getOrCreate.
         // The old code only checked when the in-memory room looked untouched, so a
@@ -186,6 +187,12 @@ export class SocketHandler {
         if (deviceId) {
           socket.data.deviceId = deviceId;
         }
+        const reportedDeviceName = typeof deviceName === 'string' ? deviceName.trim().slice(0, 100) : undefined;
+        const registeredDeviceName = userId && deviceId
+          ? await this.deviceRepo.nameForUserDevice(userId, deviceId).catch(() => undefined)
+          : undefined;
+        const participantDeviceName = reportedDeviceName || registeredDeviceName;
+        socket.data.deviceName = participantDeviceName;
         const room = this.roomManager.getOrCreate(roomId);
 
         // Allow multiple devices per user. Duplicate socket joins will simply overwrite in the Map.
@@ -213,14 +220,20 @@ export class SocketHandler {
 
         // If joining an existing room, kick any ghost sockets with the same userId AND same deviceId
         // This ensures if a user joins from two DIFFERENT devices (e.g. iPhone and Mac), they aren't kicked.
-        if (room && userId) {
+        if (room && typeof userId === 'string' && userId.trim() !== '' && typeof deviceId === 'string' && deviceId.trim() !== '') {
+          const cleanUserId = userId.trim();
+          const cleanDeviceId = deviceId.trim();
           const existingGhosts = room.snapshot().participants.filter(
-            (p: any) => p.userId === userId && p.deviceId === deviceId && p.socketId !== socket.id
+            (p: any) => p.userId === cleanUserId && p.deviceId === cleanDeviceId && p.socketId !== socket.id
           );
           for (const ghost of existingGhosts) {
-            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${userId} on device ${deviceId}`);
+            console.log(`[Room ${roomId}] Kicking ghost socket ${ghost.socketId} for user ${cleanUserId} on device ${cleanDeviceId}`);
             this.io.to(ghost.socketId).emit('room:kicked', { reason: 'Joined from another tab on this device' });
-            this.io.sockets.sockets.get(ghost.socketId)?.disconnect();
+            const ghostSocket = this.io.sockets.sockets.get(ghost.socketId);
+            if (ghostSocket) {
+              ghostSocket.data.kicked = true;
+              ghostSocket.disconnect(true);
+            }
             room.removeParticipant(ghost.socketId);
           }
         }
@@ -248,7 +261,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, deviceId: socket.data.deviceId, joinedAt: Date.now(), isReady, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, deviceId: socket.data.deviceId, deviceName: participantDeviceName, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
@@ -277,17 +290,16 @@ export class SocketHandler {
       room.setIsPrivate(isPrivate);
     });
 
-
     socket.on('room:approveJoin', ({ roomId, targetSocketId, displayName }: { roomId: string, targetSocketId: string, displayName: string }) => {
       const room = this.roomManager.get(roomId);
       if (!room || room.snapshot().hostId !== socket.data.userId) return;
-      
+
       const targetSocket = this.io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) return;
 
       targetSocket.join(roomId);
       this.roomManager.trackSocket(targetSocketId, roomId);
-      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, deviceId: targetSocket.data.deviceId, joinedAt: Date.now(), isReady: false, volume: 100 });
+      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, deviceId: targetSocket.data.deviceId, deviceName: targetSocket.data.deviceName, joinedAt: Date.now(), isReady: false, volume: 100 });
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
@@ -348,8 +360,7 @@ export class SocketHandler {
       try {
         room.syncSchedule(trackUrl, positionMs, startTime, senderId, title, artist, thumbnail);
       } catch (err) {
-        console.error(`[Room ${roomId}] schedule failed:`, err);
-        socket.emit('error', { message: "We couldn't start that track on every device. Please try again." });
+        emitSafeError(socket, err, 'playback:schedule', { roomId, trackUrl });
       }
     });
 
@@ -359,8 +370,7 @@ export class SocketHandler {
       try {
         room.play(socket.id);
       } catch (err) {
-        console.error(`[Room ${roomId}] play failed:`, err);
-        socket.emit('error', { message: "We couldn't start playback. Please try again." });
+        emitSafeError(socket, err, 'playback:play', { roomId });
       }
     });
 
@@ -371,8 +381,7 @@ export class SocketHandler {
         const pos = positionMs !== undefined ? positionMs : room.computeCurrentPosition();
         room.syncPause(pos, senderId);
       } catch (err) {
-        console.error(`[Room ${roomId}] pause failed:`, err);
-        socket.emit('error', { message: "We couldn't pause playback. Please try again." });
+        emitSafeError(socket, err, 'playback:pause', { roomId });
       }
     });
 
@@ -382,8 +391,7 @@ export class SocketHandler {
       try {
         room.seek(socket.id, position);
       } catch (err) {
-        console.error(`[Room ${roomId}] seek failed:`, err);
-        socket.emit('error', { message: "We couldn't move to that position. Please try again." });
+        emitSafeError(socket, err, 'playback:seek', { roomId, position });
       }
     });
 
@@ -414,8 +422,11 @@ export class SocketHandler {
     });
 
     // Every device fires this at the end of a track; Room advances at most once.
-    socket.on('playback:ended', ({ roomId, trackUrl }: { roomId: string; trackUrl: string }) => {
-      this.roomManager.get(roomId)?.handleTrackEnded(trackUrl);
+    socket.on('playback:ended', ({ roomId, trackUrl, playbackInstanceId }: { roomId: string; trackUrl: string; playbackInstanceId?: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (room?.hasParticipant(socket.id) && typeof trackUrl === 'string') {
+        room.handleTrackEnded(trackUrl, playbackInstanceId);
+      }
     });
 
     socket.on('room:removeFromQueue', ({ roomId, itemId }: { roomId: string; itemId: string }) => {
@@ -435,7 +446,6 @@ export class SocketHandler {
       }
       room.setRepeatMode(repeatMode);
     });
-
 
     socket.on('room:reset', async ({ roomId }: { roomId: string }) => {
       const room = this.requireRoom(socket, roomId);
@@ -461,26 +471,23 @@ export class SocketHandler {
       console.log(`[WS] Force Syncing all ${userSockets.length} devices for user ${userId}`);
     });
 
-
-
     socket.on('room:setParticipantVolume', ({ roomId, targetSocketId, volume }: SetParticipantVolumePayload) => {
       const room = this.requireRoom(socket, roomId);
       if (!room) return;
       try {
         room.setParticipantVolume(targetSocketId?.trim() || socket.id, volume);
       } catch (err) {
-        console.error(`[Room ${roomId}] volume change failed:`, err);
-        socket.emit('error', { message: "We couldn't change that device's volume. Please try again." });
+        emitSafeError(socket, err, 'room:setParticipantVolume', { roomId, targetSocketId });
       }
     });
 
     // ── Client ready / buffering state ───────────────────────────────────
 
-    socket.on('room:clientReady', ({ roomId, isReady = true }: { roomId: string, isReady?: boolean }) => {
+    socket.on('room:clientReady', ({ roomId, isReady = true, trackUrl }: { roomId: string, isReady?: boolean, trackUrl?: string }) => {
       const room = this.requireRoom(socket, roomId);
       if (!room) return;
 
-      room.setParticipantReady(socket.id, isReady);
+      room.setParticipantReady(socket.id, !!isReady, trackUrl);
       console.log(`[Room ${roomId}] ${socket.id} is ready: ${isReady}`);
     });
 
@@ -542,13 +549,24 @@ export class SocketHandler {
 
     // ── Upload Progress ──────────────────────────────────────────────────
 
-    socket.on('room:upload_progress', ({ roomId, title, progress }: { roomId: string, title: string, progress: number }) => {
-      socket.to(roomId).emit('room:upload_progress', { title, progress });
+    socket.on('room:upload_progress', ({ roomId, title, progress, trackUrl, operationId, status, indeterminate, error }: {
+      roomId: string; title: string; progress: number; trackUrl?: string; operationId?: string; status?: string; indeterminate?: boolean; error?: string;
+    }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room?.hasParticipant(socket.id) || !Number.isFinite(progress)) return;
+      socket.to(roomId).emit('room:upload_progress', {
+        roomId, socketId: socket.id, title, trackUrl, operationId, status, indeterminate, error,
+        progress: Math.max(0, Math.min(100, progress)),
+      });
     });
 
-    socket.on('room:sync_progress', ({ roomId, progress }: { roomId: string, progress: number }) => {
-      // Forward to other participants
-      socket.to(roomId).emit('room:deviceSyncProgress', { socketId: socket.id, progress });
+    socket.on('room:sync_progress', ({ roomId, progress, trackUrl }: { roomId: string; progress: number; trackUrl?: string }) => {
+      const room = this.roomManager.get(roomId);
+      if (!room?.hasParticipant(socket.id) || !Number.isFinite(progress)) return;
+      socket.to(roomId).emit('room:deviceSyncProgress', {
+        roomId, socketId: socket.id, trackUrl: trackUrl ?? room.getTrackUrl(),
+        progress: Math.max(0, Math.min(100, progress)),
+      });
     });
 
     // Chat & Reactions
@@ -595,7 +613,7 @@ export class SocketHandler {
     socket.on('room:reaction', ({ roomId, emoji }: { roomId: string, emoji: string }) => {
       const room = this.roomManager.get(roomId);
       const p = room?.snapshot().participants.find(p => p.socketId === socket.id);
-      
+
       socket.to(roomId).emit('room:reaction', { 
         socketId: socket.id,
         userId: p?.userId,
@@ -619,28 +637,9 @@ export class SocketHandler {
       socket.to(roomId).emit('room:participantStats', { socketId: socket.id, latency, jitter });
     });
 
-    // ── Spatial Audio Sync ───────────────────────────────────────────────
-
-    socket.on('spatial:update', (payload: { roomId?: unknown; deviceId?: unknown; position?: unknown }) => {
-      const roomId = typeof payload?.roomId === 'string' ? payload.roomId : null;
-      if (!roomId) return;
-      const room = this.roomManager.get(roomId);
-      if (!room) return;
-
-      // Keys are either a socket id or the synthetic `seat:<userId>`. Bound the
-      // length — this map is keyed by client-supplied strings and lives for the
-      // life of the room.
-      const deviceId = typeof payload?.deviceId === 'string' ? payload.deviceId.trim() : '';
-      if (!deviceId || deviceId.length > 128) return;
-
-      const position = sanitiseSpatialPosition(payload?.position);
-      if (!position) return;
-
-      room.setSpatialPosition(deviceId, position);
-
-      // Broadcast to everyone else in the room (excludes the sender)
-      socket.to(roomId).emit('spatial:update', { deviceId, position });
-    });
+    // Spatial audio is parked as a beta. Keep the event name reserved so stale
+    // clients cannot mutate and broadcast room layouts while the feature is off.
+    socket.on('spatial:update', () => {});
 
     // ── Equalizer State Multi-Device Sync ─────────────────────────────────
 

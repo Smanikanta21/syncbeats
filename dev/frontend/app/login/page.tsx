@@ -6,39 +6,36 @@ import { Mail, User, Lock, ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff, type
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
-import { authApi, roomsApi } from "../../lib/api";
 import { cn } from "@/lib/utils";
-import { logger } from "../../lib/logger";
-import { PhaseField } from "../../components/auth/PhaseField";
+import { SyncBeatsLogo } from "../../components/brand/SyncBeatsLogo";
+import { SyncBeatsLoader } from "../../components/SyncBeatsLoader";
 
 /**
- * The page composes itself once on load, the same way the traces behind it do:
- * headline, then fields, then actions. Switching mode replays both.
+ * The panel composes as one piece. This used to stagger each field in with a
+ * downward y offset, which read as a wave falling down the form on every load
+ * and every mode switch — the fields now cross-fade together instead.
  */
 const container: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.055, delayChildren: 0.08 } },
+  show: {},
 };
 
 const item: Variants = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } },
 };
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const router  = useRouter();
-  const { user, loading: authLoading, login, register, googleLogin } = useAuth();
+  const { user, loading: authLoading, serverError, token, retrySession, login, register, googleLogin } = useAuth();
 
-  // If user is already authenticated, force route directly to active room or hub
+  // Authenticated users begin at the hub, where they can choose or create a room.
   useEffect(() => {
     if (!authLoading && user) {
-      roomsApi.default()
-        .then((res) => {
-          if (res?.roomId) router.replace(`/room/${res.roomId}`);
-          else router.replace("/room/default");
-        })
-        .catch(() => router.replace("/room/default"));
+      const requested = new URLSearchParams(window.location.search).get("returnTo");
+      const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/hub";
+      router.replace(destination);
     }
   }, [user, authLoading, router]);
 
@@ -49,17 +46,16 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
-  const [emailExists, setEmailExists] = useState<boolean | null>(null);
   const [shakeNonce, setShakeNonce] = useState(0);
   const [shakeTargets, setShakeTargets] = useState<string[]>([]);
-  /** Bumped on every mode switch to re-scatter the traces behind the form. */
-  const [perturb, setPerturb] = useState(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
 
     if (params.get('mode') === 'register') {
+      // Initialize the one-time query-selected mode after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLogin(false);
     }
 
@@ -81,24 +77,6 @@ export default function AuthPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  useEffect(() => {
-    if (!email.trim() || !email.includes('@')) {
-      setEmailExists(null);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const result = await authApi.checkEmail(email.trim());
-        setEmailExists(result.exists);
-      } catch (err) {
-        setEmailExists(null);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [email]);
-
   const resetForm = () => {
     setName("");
     setEmail("");
@@ -119,13 +97,14 @@ export default function AuthPage() {
     setError(null);
     setLoading(true);
 
-    if (typeof window !== "undefined" && (window as any).google?.accounts?.id) {
-      (window as any).google.accounts.id.cancel();
-    }
+    const googleIdentity = (window as Window & {
+      google?: { accounts?: { id?: { cancel: () => void } } };
+    }).google?.accounts?.id;
+    googleIdentity?.cancel();
 
     try {
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') || '/room/default';
+      const returnTo = params.get('returnTo') || '/hub';
 
       if (isLogin) {
         const token = await login(email, password);
@@ -140,7 +119,8 @@ export default function AuthPage() {
           throw new Error("Password and confirm password must match");
         }
         await register(name, email, password);
-        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}`);
+        const roomReturn = /^\/room\/(default|\d{6})$/.test(returnTo) ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}${roomReturn}`);
       }
     } catch (err) {
       const message = (err as Error).message;
@@ -153,7 +133,9 @@ export default function AuthPage() {
       }
 
       if (message.includes("UNVERIFIED_EMAIL")) {
-        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}&resent=true`);
+        const returnTo = new URLSearchParams(window.location.search).get('returnTo') || '';
+        const roomReturn = /^\/room\/(default|\d{6})$/.test(returnTo) ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
+        router.push(`/verify-email-sent?email=${encodeURIComponent(email)}&resent=true${roomReturn}`);
         return;
       }
 
@@ -185,21 +167,8 @@ export default function AuthPage() {
 
   const switchMode = (toLogin: boolean) => {
     setIsLogin(toLogin);
-    setPerturb((value) => value + 1);
     resetForm();
   };
-
-  // An email that already exists is good news on the login form and bad news on
-  // signup — hence the comparison against which form is asking. The hint text
-  // carries the same meaning as the colour, so it isn't a colour-only signal.
-  const emailKnown = email.includes('@') ? emailExists : null;
-  const emailTone = emailKnown === null ? undefined : emailKnown === isLogin ? "ok" : "bad";
-  const emailHint =
-    emailKnown === null
-      ? ""
-      : isLogin
-        ? (emailKnown ? "Recognised." : "No account with this email yet.")
-        : (emailKnown ? "Already registered — sign in instead." : "Available.");
 
   // Handle Google OAuth 2.0 Popup & Redirect Flow
   const handleGoogleOAuth = useCallback(() => {
@@ -249,19 +218,16 @@ export default function AuthPage() {
       setError(null);
       setLoading(true);
       try {
-        logger.info("GOOGLE_OAUTH_SUBMIT", "Google OAuth credential submitted");
         const params = new URLSearchParams(window.location.search);
-        const returnTo = params.get('returnTo') || '/room/default';
+        const returnTo = params.get('returnTo') || '/hub';
         const token = await googleLogin(idToken);
-        logger.success("GOOGLE_OAUTH_SUCCESS", "Google OAuth authentication succeeded");
         if (returnTo.startsWith('syncbeats://') || returnTo.startsWith('http://localhost:')) {
           window.location.href = `${returnTo}?token=${token}`;
         } else {
           router.push(returnTo);
         }
-      } catch (err: any) {
-        logger.error("GOOGLE_OAUTH_FAILED", err.message || "Google sign-in failed");
-        setError(err.message || "Google sign-in failed");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Google sign-in failed");
         setLoading(false);
       }
     };
@@ -299,66 +265,117 @@ export default function AuthPage() {
     return () => window.removeEventListener("message", handleMessage);
   }, [googleLogin, router]);
 
+  if (authLoading || user || (serverError && token)) {
+    const failed = !authLoading && !user && serverError;
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-background px-6 text-foreground">
+        <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
+          {failed ? <>
+            <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
+            <p className="text-sm text-foreground/65" role="status">Couldn’t check your saved session. Check your connection and try again.</p>
+            <button type="button" onClick={retrySession} className="rounded-xl bg-foreground/10 px-4 py-2 text-sm font-medium hover:bg-foreground/15">Try again</button>
+          </> : <SyncBeatsLoader title={user ? 'Opening your room hub…' : 'Checking your session…'} />}
+        </div>
+      </main>
+    );
+  }
+
   return (
     // reducedMotion="user" drops framer's transform animations for viewers who
     // ask for less motion, without a conditional on every element.
     <MotionConfig reducedMotion="user">
-      <div className={cn('relative', 'flex', 'min-h-dvh', 'w-full', 'items-center', 'justify-center', 'overflow-hidden', 'px-4', 'py-24', 'sm:px-6')}>
-        {/* The converging traces sit behind the panel and read through its
-            frosted glass, so the card is the focus and the field is weather. */}
-        <PhaseField perturb={perturb} />
-
-        <div className={cn('absolute', 'top-4', 'left-4', 'sm:top-6', 'sm:left-6', 'z-50')}>
-          <Link
-            href="/"
-            className={cn(
-              'group flex items-center gap-2.5 px-4 py-2.5 rounded-full',
-              'bg-background/90 dark:bg-black/90 backdrop-blur-3xl border border-foreground/15',
-              'text-foreground font-bold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:bg-foreground/10'
-            )}
-          >
-            <ArrowLeft className={cn('w-4', 'h-4', 'group-hover:-translate-x-1', 'transition-transform')} />
-            <span>Home</span>
+      <div className="relative mx-auto grid h-dvh min-h-dvh w-full max-w-[1440px] overflow-x-hidden overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(28rem,0.88fr)]">
+        <aside className="relative hidden min-h-dvh flex-col justify-between px-8 pt-[max(3rem,calc(env(safe-area-inset-top,0px)+1rem))] pb-[max(3rem,calc(env(safe-area-inset-bottom,0px)+1rem))] lg:flex xl:px-14 xl:pt-[max(3.5rem,calc(env(safe-area-inset-top,0px)+1rem))] xl:pb-[max(3.5rem,calc(env(safe-area-inset-bottom,0px)+1rem))]">
+          <Link href="/" className="w-fit">
+            <SyncBeatsLogo markClassName="h-9 w-9" wordmarkClassName="text-lg" />
           </Link>
-        </div>
 
-        <motion.main
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          className={cn(
-            'relative z-10 w-full max-w-lg glass-panel rounded-[2.5rem]',
-            'border border-foreground/15 p-6 sm:p-10 shadow-2xl'
-          )}
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={isLogin ? "head-login" : "head-signup"}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <h1 className={cn('text-3xl', 'sm:text-4xl', 'font-black', 'tracking-tight', 'text-foreground')}>
-                {isLogin ? "Sound, in step." : "Get in step."}
-              </h1>
-              <p className={cn('mt-2', 'text-sm', 'sm:text-base', 'text-foreground/50', 'font-medium')}>
-                {isLogin
-                  ? "Log in to pick up where your session left off."
-                  : "Turn the devices you own into one speaker."}
-              </p>
-            </motion.div>
-          </AnimatePresence>
+          <section className="mx-auto flex w-full max-w-[38rem] flex-1 flex-col justify-center py-8" aria-labelledby="login-story-title">
+            <p className="micro-label mb-4">How it works</p>
+            <h2 id="login-story-title" className="max-w-[11ch] font-display text-5xl font-semibold leading-[1.02] tracking-[-0.045em] text-balance xl:text-6xl">
+              Make a room for the music.
+            </h2>
+            <p className="mt-5 max-w-md text-base leading-relaxed text-foreground/55 xl:text-lg">
+              Start on one device, bring the others in, and share one queue.
+            </p>
+
+            <ol className="mt-9 border-t border-foreground/10">
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">01</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Open a room</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Choose your listening room or create one.</p>
+                </div>
+              </li>
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">02</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Join another device</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Use the room code or scan its QR code.</p>
+                </div>
+              </li>
+              <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-foreground/10 py-4 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-4">
+                <span className="pt-0.5 font-mono text-xs tabular text-foreground/35">03</span>
+                <div className="grid gap-1 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(0,1fr)] sm:items-baseline sm:gap-5">
+                  <h3 className="text-sm font-semibold">Share the queue</h3>
+                  <p className="text-sm leading-relaxed text-foreground/50">Pick music together, then press play.</p>
+                </div>
+              </li>
+            </ol>
+          </section>
+
+        </aside>
+
+        <div className="relative flex min-h-dvh items-center justify-center px-4 pb-[max(3rem,calc(env(safe-area-inset-bottom,0px)+1rem))] pt-[max(8rem,calc(env(safe-area-inset-top,0px)+4.5rem))] sm:px-7 lg:px-10 lg:pt-[max(3.5rem,calc(env(safe-area-inset-top,0px)+1rem))] lg:pb-[max(3.5rem,calc(env(safe-area-inset-bottom,0px)+1rem))]">
+          <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+1rem)] flex items-center justify-between lg:hidden">
+            <Link href="/" className="flex items-center"><SyncBeatsLogo markClassName="h-8 w-8" wordmarkClassName="text-base" /></Link>
+            <Link href="/" className="flex min-h-10 items-center gap-1.5 rounded-full px-2 text-sm text-foreground/50 transition-colors hover:text-foreground">
+              <ArrowLeft className="h-4 w-4" /> Website
+            </Link>
+          </div>
+
+          <motion.main
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10 w-full max-w-[29rem] glass-panel rounded-[2rem] p-5 sm:p-8 xl:p-9"
+          >
+          <div>
+            <div className="mb-6 grid grid-cols-2 rounded-2xl border border-foreground/[0.07] bg-foreground/[0.035] p-1" role="group" aria-label="Account access">
+              <button type="button" onClick={() => switchMode(true)} aria-pressed={isLogin} className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors ${isLogin ? "bg-background text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground"}`}>Sign in</button>
+              <button type="button" onClick={() => switchMode(false)} aria-pressed={!isLogin} className={`min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors ${!isLogin ? "bg-background text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground"}`}>Create account</button>
+            </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={isLogin ? "title-login" : "title-signup"}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <h1 className="max-w-[14ch] font-display text-display font-semibold text-foreground">
+                  {isLogin ? "Welcome back." : "Join SyncBeats."}
+                </h1>
+                <p className="mt-3 max-w-sm text-base leading-relaxed text-foreground/55 text-pretty">
+                  {isLogin
+                    ? "Sign in to return to your listening room."
+                    : "Bring the devices you own together and listen as one."}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
           <AnimatePresence>
             {error && (
               <motion.div
+                role="alert"
+                aria-live="assertive"
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className={cn('mt-6', 'flex', 'items-start', 'gap-2', 'text-sm', 'font-medium', 'text-red-400', 'bg-red-500/10', 'border', 'border-red-500/20', 'rounded-2xl', 'p-4')}
+                className="mt-6 flex items-start gap-2 text-sm font-medium text-bad-600 dark:text-bad-400 bg-bad-500/10 border border-bad-500/20 rounded-2xl p-4"
               >
-                <AlertCircle className={cn('mt-0.5', 'h-4', 'w-4', 'shrink-0')} />
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 {error}
               </motion.div>
             )}
@@ -372,7 +389,7 @@ export default function AuthPage() {
               initial="hidden"
               animate="show"
               exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
-              className={cn('mt-7', 'space-y-4')}
+              className="mt-6 space-y-4"
             >
               {!isLogin && (
                 <Field
@@ -400,8 +417,6 @@ export default function AuthPage() {
                 shaking={shakeTargets.includes(isLogin ? "login-email" : "signup-email")}
                 placeholder="name@email.com"
                 autoComplete="email"
-                tone={emailTone}
-                hint={emailHint}
                 required
               />
 
@@ -420,8 +435,8 @@ export default function AuthPage() {
                 required
                 action={
                   isLogin ? (
-                    <Link href="/forgot-password" className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50', 'hover:text-foreground', 'transition-colors')}>
-                      Forgot?
+                    <Link href="/forgot-password" className="text-data font-semibold text-foreground/45 hover:text-foreground transition-colors">
+                      Forgot password
                     </Link>
                   ) : undefined
                 }
@@ -450,26 +465,23 @@ export default function AuthPage() {
                 whileTap={{ y: 0, scale: 0.98 }}
                 type="submit"
                 disabled={loading}
-                className={cn(
-                  'group mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-2xl',
-                  'bg-foreground text-background font-bold shadow-lg',
-                  'disabled:opacity-60 disabled:cursor-wait'
-                )}
+                aria-busy={loading}
+                className="group mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold transition-opacity hover:opacity-85 disabled:opacity-60 disabled:cursor-wait"
               >
                 {loading
-                  ? (isLogin ? "Signing in…" : "Creating account…")
+                  ? <SyncBeatsLoader inline title={isLogin ? "Signing in…" : "Creating account…"} />
                   : (
                     <>
-                      <span>{isLogin ? "Sign In" : "Create Account"}</span>
-                      <ArrowRight className={cn('h-4', 'w-4', 'transition-transform', 'duration-300', 'group-hover:translate-x-1')} />
+                      <span>{isLogin ? "Sign in" : "Create account"}</span>
+                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                     </>
                   )}
               </motion.button>
 
-              <motion.div variants={item} className={cn('flex', 'items-center', 'gap-3', 'pt-2')}>
-                <span className={cn('h-px', 'flex-1', 'bg-foreground/10')} />
-                <span className={cn('text-[11px]', 'font-semibold', 'uppercase', 'tracking-widest', 'text-foreground/30')}>or</span>
-                <span className={cn('h-px', 'flex-1', 'bg-foreground/10')} />
+              <motion.div variants={item} className="flex items-center gap-3 pt-2">
+                <span className="h-px flex-1 bg-foreground/10" />
+                <span className="text-data text-foreground/30">or</span>
+                <span className="h-px flex-1 bg-foreground/10" />
               </motion.div>
 
               <motion.button
@@ -479,14 +491,9 @@ export default function AuthPage() {
                 type="button"
                 disabled={loading}
                 onClick={handleGoogleOAuth}
-                className={cn(
-                  'flex h-14 w-full items-center justify-center gap-3 rounded-2xl',
-                  'bg-foreground/5 border border-foreground/10 hover:bg-foreground/10',
-                  'text-foreground text-sm font-semibold transition-colors shadow-sm',
-                  'disabled:opacity-50 disabled:cursor-wait'
-                )}
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.035] text-foreground text-sm font-semibold transition-colors hover:bg-foreground/[0.07] disabled:opacity-50 disabled:cursor-wait"
               >
-                <svg className={cn('h-5', 'w-5', 'shrink-0')} viewBox="0 0 24 24" aria-hidden="true">
+                <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
@@ -501,22 +508,19 @@ export default function AuthPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6, duration: 0.6 }}
-            className={cn('mt-7', 'pt-6', 'border-t', 'border-foreground/10', 'text-center', 'text-sm', 'font-medium', 'text-foreground/50')}
+            className="mt-7 pt-6 border-t border-foreground/10 text-center text-sm text-foreground/50"
           >
             {isLogin ? "Don't have an account? " : "Already have an account? "}
             <button
               type="button"
               onClick={() => switchMode(!isLogin)}
-              className={cn(
-                'relative font-bold text-foreground/90 transition-colors hover:text-foreground',
-                'after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0',
-                'after:bg-foreground after:transition-transform after:duration-300 hover:after:scale-x-100'
-              )}
+              className="relative font-semibold text-foreground/90 transition-colors hover:text-foreground after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-(--accent-color) after:transition-transform after:duration-300 hover:after:scale-x-100"
             >
               {isLogin ? "Sign up" : "Sign in"}
             </button>
           </motion.p>
         </motion.main>
+        </div>
       </div>
     </MotionConfig>
   );
@@ -532,30 +536,25 @@ type FieldProps = {
   shakeKey: string;
   shaking: boolean;
   secret?: boolean;
-  tone?: "ok" | "bad";
-  hint?: string;
   action?: ReactNode;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "name" | "value" | "onChange">;
 
 function Field({
   name, label, value, onChange, shakeKey, shaking,
-  secret, tone, hint, action, icon: Icon, type = "text", ...rest
+  secret, action, icon: Icon, type = "text", ...rest
 }: FieldProps) {
   const [revealed, setRevealed] = useState(false);
 
-  // Focus state and validity share one channel: the border plus the ring, the
-  // same way every other input in the app reads.
-  const edge =
-    tone === "ok"
-      ? 'border-emerald-500/50 focus:border-emerald-500/80 focus:ring-emerald-500/60'
-      : tone === "bad"
-        ? 'border-red-500/50 focus:border-red-500/80 focus:ring-red-500/60'
-        : 'border-foreground/10 focus:border-foreground/30 focus:ring-foreground/30';
+  // Focus state reads through the border plus the ring, the same way every other
+  // input in the app does, focusing to the live accent so the form joins the
+  // palette the rest of the site is on. Per-field validity styling is gone with
+  // the email-existence probe — the error banner above carries the message.
+  const edge = 'border-foreground/10 focus:border-(--accent-border) focus:ring-(--accent-border)';
 
   return (
     <motion.div variants={item} className="space-y-1.5">
-      <div className={cn('flex', 'items-center', 'justify-between', 'ml-1')}>
-        <label htmlFor={name} className={cn('text-[10px]', 'font-bold', 'uppercase', 'tracking-widest', 'text-foreground/50')}>
+      <div className="flex items-center justify-between ml-1">
+        <label htmlFor={name} className="text-data font-semibold text-foreground/55">
           {label}
         </label>
         {action}
@@ -567,8 +566,8 @@ function Field({
         transition={{ duration: 0.35 }}
         className="relative"
       >
-        <div className={cn('absolute', 'inset-y-0', 'left-0', 'pl-4', 'flex', 'items-center', 'pointer-events-none')}>
-          <Icon className={cn('h-4.5', 'w-4.5', 'text-foreground/40')} />
+        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <Icon className="h-4.5 w-4.5 text-foreground/40" />
         </div>
         <input
           id={name}
@@ -591,23 +590,12 @@ function Field({
             type="button"
             aria-label={revealed ? "Hide password" : "Show password"}
             onClick={() => setRevealed((shown) => !shown)}
-            className={cn('absolute', 'inset-y-0', 'right-0', 'pr-4', 'flex', 'items-center', 'text-foreground/40', 'hover:text-foreground', 'transition-colors')}
+            className="absolute inset-y-0 right-0 pr-4 flex items-center text-foreground/40 hover:text-foreground transition-colors"
           >
-            {revealed ? <EyeOff className={cn('h-4.5', 'w-4.5')} /> : <Eye className={cn('h-4.5', 'w-4.5')} />}
+            {revealed ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
           </button>
         )}
       </motion.div>
-
-      {/* Rendered even when empty so the field below doesn't jump as the
-          email check resolves. */}
-      {hint !== undefined && (
-        <p className={cn(
-          'ml-1 h-3.5 text-[11px] font-semibold leading-3.5 transition-colors',
-          tone === "bad" ? 'text-red-400/90' : tone === "ok" ? 'text-emerald-400/90' : 'text-transparent'
-        )}>
-          {hint}
-        </p>
-      )}
     </motion.div>
   );
 }

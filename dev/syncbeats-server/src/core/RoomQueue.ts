@@ -12,8 +12,7 @@
 
 import { randomUUID } from 'crypto';
 import { QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
-
-const YT_11 = '[a-zA-Z0-9_-]{11}';
+import { YT_ID_PATTERN, ytId } from '../utils/youtube';
 
 /**
  * Stable identity for a track within a room. Two inputs that name the same audio
@@ -34,13 +33,8 @@ export function trackKey(rawUrl: string): string {
 
   const base = url.split('?')[0];
 
-  const yt =
-    base.match(new RegExp(`^(?:youtube:|ws-p2p:yt:)(${YT_11})$`)) ||
-    base.match(new RegExp(`^youtube_(${YT_11})\\.yt$`)) ||
-    base.match(new RegExp(`/vi/(${YT_11})`)) ||
-    url.match(new RegExp(`[?&](?:v|videoId)=(${YT_11})`)) ||
-    base.match(new RegExp(`^(${YT_11})$`));
-  if (yt) return `yt:${yt[1]}`;
+  const yt = ytId(url);
+  if (yt) return `yt:${yt}`;
 
   const sp = base.match(/^spotify-lazy:(.+)$/);
   if (sp) return `sp:${sp[1]}`;
@@ -50,7 +44,7 @@ export function trackKey(rawUrl: string): string {
 
 function fileNameFromUrl(url: string): string {
   const base = url.split('?')[0];
-  const yt = base.match(new RegExp(`(${YT_11})$`));
+  const yt = base.match(new RegExp(`(${YT_ID_PATTERN})$`));
   if (base.startsWith('youtube:') && yt) return `youtube_${yt[1]}.yt`;
   return base.split('/').pop() || 'track.mp3';
 }
@@ -69,6 +63,7 @@ export class RoomQueue {
   private byKey = new Map<string, string>();
   private currentId: string | null = null;
   private lastAdvanceAt = 0;
+  private nextOrder: string[] | null = null;
 
   shuffle = false;
   repeatMode: RepeatMode = 'off';
@@ -88,6 +83,16 @@ export class RoomQueue {
   findByUrl(trackUrl: string): QueueItem | null {
     const id = this.byKey.get(trackKey(trackUrl));
     return id ? this.byId(id) : null;
+  }
+
+  /** Stable look-ahead, including the shuffle order of the next repeat-all lap. */
+  peekNext(ignoreRepeatTrack = false): QueueItem | null {
+    if (this.order.length === 0) return null;
+    if (!ignoreRepeatTrack && this.repeatMode === 'track') return this.current();
+    const index = this.currentId ? this.order.indexOf(this.currentId) : -1;
+    if (index + 1 < this.order.length) return this.byId(this.order[index + 1]);
+    if (this.repeatMode !== 'all') return null;
+    return this.byId(this.getNextOrder()[0]);
   }
 
   /** Wire shape the web client consumes, serialized in playback order. */
@@ -227,9 +232,13 @@ export class RoomQueue {
     cur.playedAt = Date.now();
   }
 
-  next(): QueueItem | null {
+  next(ignoreRepeatTrack = false): QueueItem | null {
     if (this.order.length === 0) return null;
-    if (this.repeatMode === 'track' && this.currentId) return this.current();
+    if (!ignoreRepeatTrack && this.repeatMode === 'track' && this.currentId) {
+      this.lastAdvanceAt = Date.now();
+      this.bump();
+      return this.current();
+    }
 
     const idx = this.currentId ? this.order.indexOf(this.currentId) : -1;
     let nextIdx = idx + 1;
@@ -238,7 +247,7 @@ export class RoomQueue {
 
     if (nextIdx >= this.order.length) {
       if (this.repeatMode !== 'all') return null;
-      if (this.shuffle) this.reshuffleUpcoming(-1);
+      this.order = this.getNextOrder().slice();
       // New lap — clear history so the whole queue isn't stuck in the History section.
       for (const it of this.items) delete it.playedAt;
       nextIdx = 0;
@@ -312,7 +321,9 @@ export class RoomQueue {
     const clashId = this.byKey.get(key);
     if (clashId && clashId !== id) {
       const survivor = this.byId(clashId);
+      const wasCurrent = this.currentId === id;
       this.remove(id);
+      if (wasCurrent) this.currentId = clashId;
       return survivor;
     }
 
@@ -334,6 +345,7 @@ export class RoomQueue {
       currentId: this.currentId,
       shuffle: this.shuffle,
       repeatMode: this.repeatMode,
+      nextOrder: this.nextOrder,
     };
   }
 
@@ -362,6 +374,10 @@ export class RoomQueue {
     q.repeatMode = (['off', 'all', 'track'] as const).includes(data.repeatMode as RepeatMode)
       ? (data.repeatMode as RepeatMode)
       : 'off';
+    if (Array.isArray(data.nextOrder) && data.nextOrder.length === known.size &&
+        new Set(data.nextOrder).size === known.size && data.nextOrder.every(id => known.has(id))) {
+      q.nextOrder = data.nextOrder.slice();
+    }
 
     // Queues written before `playedAt` existed encoded history as position: everything
     // ahead of the pointer had been played. Backfill once so a room that reloads after
@@ -397,5 +413,22 @@ export class RoomQueue {
     this.order = [...head, ...tail];
   }
 
-  private bump(): void { this.version++; }
+  private getNextOrder(): string[] {
+    if (this.nextOrder) return this.nextOrder;
+    const order = this.order.slice();
+    if (this.shuffle) {
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      // Avoid playing the last item twice at the lap boundary when possible.
+      if (order.length > 1 && order[0] === this.currentId) {
+        [order[0], order[1]] = [order[1], order[0]];
+      }
+    }
+    this.nextOrder = order;
+    return order;
+  }
+
+  private bump(): void { this.version++; this.nextOrder = null; }
 }

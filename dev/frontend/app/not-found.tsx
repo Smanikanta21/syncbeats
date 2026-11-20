@@ -39,7 +39,7 @@ export default function NotFound() {
           <p className="text-xl md:text-2xl text-foreground/60 font-medium mb-12">
             The track you're looking for couldn't be found.
           </p>
-          <Link href="/" className="h-14 px-8 flex items-center justify-center gap-2 rounded-2xl bg-foreground text-background text-sm font-black tracking-widest uppercase hover:scale-105 active:scale-95 transition-all">
+          <Link href="/" className="h-14 px-8 flex items-center justify-center gap-2 rounded-2xl bg-foreground text-background text-sm font-semibold hover:scale-105 active:scale-95 transition-all">
             <ArrowLeft className="w-4 h-4" /> Go Back Home
           </Link>
         </motion.div>

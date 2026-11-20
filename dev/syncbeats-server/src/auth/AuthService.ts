@@ -6,6 +6,7 @@ import crypto    from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { UserRepository, PublicUser } from './UserRepository';
 import { DeviceRepository, PublicDevice } from '../db/DeviceRepository';
+import { RoomRepository } from '../db/RoomRepository';
 import {
   buildVerifyEmailHtml,
   buildWelcomeHtml,
@@ -29,11 +30,13 @@ export interface AuthResult {
   token: string;
   device: PublicDevice | null;
   needsDeviceRename: boolean;
+  defaultRoomId?: string;
 }
 
 export class AuthService {
   private repo = new UserRepository();
   private devices = new DeviceRepository();
+  public rooms = new RoomRepository();
   private googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
@@ -51,6 +54,24 @@ export class AuthService {
     const max = 10 ** length;
     const value = crypto.randomInt(min, max);
     return String(value);
+  }
+
+  public async generateUniqueRoomCode(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const existing = await this.rooms.findById(code);
+      if (!existing) return code;
+    }
+    throw new Error('Room code generation exhausted');
+  }
+
+  public async assignDefaultRoom(userId: string): Promise<string> {
+    const existing = await this.rooms.findActiveByHost(userId);
+    if (existing) return existing.id;
+    const roomId = await this.generateUniqueRoomCode();
+    await this.rooms.create(roomId, userId);
+    console.log(`[Auth] Assigned default room ${roomId} to user ${userId}`);
+    return roomId;
   }
 
   private getPublicAppUrl(): string {
@@ -130,6 +151,11 @@ export class AuthService {
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const user = await this.repo.create(name, email, hash);
+    try {
+      await this.assignDefaultRoom(user.id);
+    } catch (roomErr) {
+      console.error('[Auth] Failed to assign default room on register:', roomErr);
+    }
     await this.issueEmailVerification(user, true);
   }
 
@@ -155,9 +181,10 @@ export class AuthService {
 
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
+    const defaultRoomId = await this.assignDefaultRoom(user.id).catch(() => undefined);
     const token = this.signToken(loggedInUser);
     const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
-    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
+    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false, defaultRoomId };
   }
 
   async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
@@ -193,6 +220,11 @@ export class AuthService {
     if (!row) throw new Error('Unable to create Google account');
 
     if (isNewUser) {
+      try {
+        await this.assignDefaultRoom(row.id);
+      } catch (roomErr) {
+        console.error('[Auth] Failed to assign default room on google signup:', roomErr);
+      }
       await this.sendEmail(
         row.email,
         'Welcome to SyncBeats!',
@@ -204,9 +236,10 @@ export class AuthService {
 
     const { password_hash: _, ...user } = row;
     const loggedInUser = (await this.repo.setLastLoginAt(user.id)) ?? (user as PublicUser);
+    const defaultRoomId = await this.assignDefaultRoom(user.id).catch(() => undefined);
     const token = this.signToken(loggedInUser);
     const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
-    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false };
+    return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false, defaultRoomId };
   }
 
   async resendVerification(email: string): Promise<void> {

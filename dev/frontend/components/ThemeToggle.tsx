@@ -52,7 +52,7 @@ export function ThemeToggle({ size = "sm", className }: ThemeToggleProps) {
     <button
       onClick={toggleTheme}
       className={cn(
-        "rounded-full glass-panel hover:scale-110 active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-accent-primary/50 flex items-center justify-center shrink-0 cursor-pointer",
+        "rounded-full glass-panel hover:scale-110 active:scale-95 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30 flex items-center justify-center shrink-0 cursor-pointer",
         size === "sm" ? "p-1.5 w-7 h-7" : "p-2 w-8 h-8",
         className
       )}
@@ -70,7 +70,7 @@ export function ThemeToggle({ size = "sm", className }: ThemeToggleProps) {
           {resolvedTheme === "dark" ? (
             <Moon className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-foreground")} />
           ) : (
-            <Sun className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-amber-400")} />
+            <Sun className={cn(size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4", "text-foreground")} />
           )}
         </motion.div>
       </AnimatePresence>

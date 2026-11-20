@@ -1,0 +1,30 @@
+# SyncBeats
+
+> SyncBeats is a free web app for synchronized music playback across phones, tablets, and computers. People sign in, join a shared listening room, and play the same track together in their browsers.
+
+## Product
+- [Homepage](https://www.syncbeats.in/): Product overview, listening scenarios, FAQs, and Mac app status.
+- [Listening guide](https://www.syncbeats.in/how-it-works): Setup steps, supported device categories, music sources, and practical synchronization advice.
+- [Detailed product information](https://www.syncbeats.in/llms-full.txt): A plain-text product reference.
+
+## Getting started
+Create an account, open the room hub, and create a room. Share its six-digit room code, link, or QR code. Friends sign in and join from their own devices. Add a track, wait for audio readiness, and press play. Any participant can play, pause, or seek.
+
+## Availability and limitations
+- The web app is available now and is free to use.
+- A native Mac app is in development and coming soon. No release date or public Mac download has been announced.
+- The web app requires internet access. Listeners can use different networks.
+- Audio uploads and in-room music search are supported. Source availability varies; paid music catalogs are not unlocked by SyncBeats.
+- Playback alignment depends on network, browser, and audio hardware. Bluetooth adds output delay. No fixed latency is guaranteed.
+- Keep the listening room open; background and battery-saving behavior may interrupt playback.
+
+## Support and policies
+- [Contact](https://www.syncbeats.in/contact)
+- [Privacy policy](https://www.syncbeats.in/privacy-policy)
+- [Terms of service](https://www.syncbeats.in/terms-of-service)
+
+## Optional
+- [Start or join a room](https://www.syncbeats.in/hub): Account required; not a public content page.
+- [Sitemap](https://www.syncbeats.in/sitemap.xml): Canonical public pages.
+
+Canonical origin: https://www.syncbeats.in

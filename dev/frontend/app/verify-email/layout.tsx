@@ -1,7 +1,8 @@
-import { Metadata } from 'next';
+import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: 'Verify Email',
+  robots: { index: false, follow: false },
+  title: "Verify Email",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

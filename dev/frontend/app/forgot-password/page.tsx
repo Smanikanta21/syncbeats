@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
           onClose={() => router.push("/login")} 
         />
         
-        <p className="mt-4 text-xs font-bold uppercase tracking-wider text-foreground/40 hover:text-foreground/80 text-center">
+        <p className="mt-4 text-xs font-bold text-foreground/40 hover:text-foreground/80 text-center">
           <Link href="/login" className="transition-colors">
             ← Back to Login
           </Link>

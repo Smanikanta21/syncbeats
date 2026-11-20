@@ -15,7 +15,6 @@
 import prisma from '../src/db/prisma';
 
 // @ts-ignore
-const fetch = require('isomorphic-unfetch');
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 200; // Small delay between batches to be polite to Spotify

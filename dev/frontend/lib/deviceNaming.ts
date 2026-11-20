@@ -7,7 +7,7 @@
  * had already drifted apart on their fallback labels.
  */
 
-import { Headphones, Laptop, Monitor, Smartphone, type LucideIcon } from "lucide-react";
+import { Headphones, Laptop, Monitor, Smartphone, Tablet, type LucideIcon } from "lucide-react";
 import type { Participant } from "./types";
 
 export function getDeviceIcon(name: string, type?: string): LucideIcon {
@@ -17,6 +17,7 @@ export function getDeviceIcon(name: string, type?: string): LucideIcon {
   if (n.includes("mac") || n.includes("windows") || n.includes("linux") || n.includes("laptop")) return Laptop;
 
   switch (type) {
+    case "tablet":     return Tablet;
     case "mobile":     return Smartphone;
     case "speakers":   return Monitor;
     case "headphones": return Headphones;
@@ -54,11 +55,19 @@ export function getFriendlyDeviceName(
  * resolve the best available device label.
  */
 export function parseParticipantNames(p: Participant, short = false): { userName: string; deviceName: string } {
-  const nameParts = (p.displayName || "").split("::");
+  const rawName = p.displayName || "";
+  // Older native clients use "Name · Mac"; web clients use "Name::Device".
+  const nameParts = rawName.includes("::")
+    ? rawName.split("::")
+    : rawName.match(/^(.*)\s+·\s+(Mac|macOS|iPhone|iPad|Android|Windows)$/i)?.slice(1) || [rawName];
   const userName = nameParts[0]?.trim() || p.displayName || "Guest";
   const rawDeviceFromDisplayName = nameParts.length > 1 ? nameParts[1]?.trim() : undefined;
 
-  let deviceName = p.outputDeviceName?.trim();
+  const registeredName = p.deviceName?.trim();
+  // Older native registrations only stored "Device"; retain their platform hint.
+  const namedDevice = registeredName && !/^(device|connected device|default)$/i.test(registeredName)
+    ? registeredName : undefined;
+  let deviceName = namedDevice || p.outputDeviceName?.trim();
   if (!deviceName && rawDeviceFromDisplayName) {
     deviceName = rawDeviceFromDisplayName;
   }

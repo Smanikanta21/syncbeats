@@ -1,12 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma from '../db/prisma';
-import { RoomRepository } from '../db/RoomRepository';
-import { RoomManager } from '../core/RoomManager';
 
 const router = Router();
-const repo = new RoomRepository();
-const roomManager = RoomManager.getInstance();
 
 // GET /api/playlists/:id - Fetch playlist and its tracks (with Song catalog data)
 router.get('/:id', requireAuth, async (req: any, res: any) => {
@@ -179,7 +175,7 @@ router.post('/:id/enrich', requireAuth, async (req: any, res: any) => {
           // Query iTunes Search API to fetch 600x600 artwork, artist name, and album title
           const q = encodeURIComponent(hasUnknownArtist ? currentTitle : `${currentArtist} ${currentTitle}`);
           const itRes = await fetch(`https://itunes.apple.com/search?term=${q}&entity=song&limit=1`);
-          
+
           let newArt: string | null = null;
           let newArtist: string | null = null;
           let newAlbum: string | null = null;

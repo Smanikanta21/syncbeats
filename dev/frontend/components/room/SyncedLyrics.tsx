@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Music2, Loader2, AlertCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { Music2, Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 /* ─── LRC Types ─────────────────────────────────────────────────────────── */
@@ -23,11 +23,10 @@ interface LyricLine {
 /* ─── LRC Parser ─────────────────────────────────────────────────────────── */
 // Sung words land around 4 characters per second. The old 0.12 (≈8/sec) was
 // speaking pace and made every estimate roughly half as long as the real vocal.
-const SECONDS_PER_CHAR = 0.25;
-
 function parseLrc(lrc: string): LyricLine[] {
+  const SECONDS_PER_CHAR = 0.25;
   const lines: LyricLine[] = [];
-  
+
   // 1. Parse global offset (in milliseconds, can be positive or negative)
   const offsetMatch = lrc.match(/\[offset:([+-]?\d+)\]/i);
   const globalOffset = offsetMatch ? parseInt(offsetMatch[1]) / 1000 : 0;
@@ -97,7 +96,7 @@ function parseLrc(lrc: string): LyricLine[] {
 
     // Check for Enhanced LRC tags e.g. <00:12.34> word
     const wordMatches = Array.from(line.text.matchAll(/<(\d{2}):(\d{2})\.(\d{2,3})>([^<]+)/g));
-    
+
     if (wordMatches.length > 0) {
       line.words = wordMatches.map((wm) => {
         const wm_m = parseInt(wm[1]);
@@ -144,7 +143,7 @@ function parseLrc(lrc: string): LyricLine[] {
 /* ─── Track Title Cleaner ────────────────────────────────────────────────── */
 function cleanForSearch(rawTitle: string, providedArtist?: string | null): { title: string; artist: string } {
   let cleaned = rawTitle;
-  
+
   // Remove timestamps or ID prefixes/suffixes
   cleaned = cleaned.replace(/^\d+[_-\s]*/, '');
   cleaned = cleaned.replace(/\.[^.]+$/, '');
@@ -157,7 +156,7 @@ function cleanForSearch(rawTitle: string, providedArtist?: string | null): { tit
   cleaned = cleaned.replace(/official audio/gi, '');
   cleaned = cleaned.replace(/lyric video/gi, '');
   cleaned = cleaned.replace(/lyrics/gi, '');
-  
+
   // Clean up extra spaces
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
@@ -195,7 +194,7 @@ async function fetchLyrics(
   // Build a generic query for the 'q=' endpoint which searches all fields (artist, track, album)
   // This is much more robust for messy YouTube titles.
   const query = artist ? `${artist} ${title}` : title;
-  const url = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+  const url = `/api/lyrics?q=${encodeURIComponent(query)}`;
 
   try {
     const res = await fetch(url, {
@@ -215,8 +214,8 @@ async function fetchLyrics(
     if (!best?.syncedLyrics) return null;
 
     return parseLrc(best.syncedLyrics);
-  } catch (error) {
-    console.error("fetchLyrics error:", error);
+  } catch {
+    // A missing/offline lyrics provider must not interrupt playback.
     return null;
   }
 }
@@ -258,6 +257,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
   const [activeIdx, setActiveIdx] = useState(0);
   const prevKeyRef = useRef("");
   const lineRefs = useRef<(HTMLElement | null)[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
   const lastIdxRef = useRef(-1);
 
@@ -344,7 +344,12 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
   // Skipped while browsing; re-centres the moment browsing ends.
   useEffect(() => {
     if (browsing) return;
-    lineRefs.current[activeIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const container = scrollRef.current;
+    const line = lineRefs.current[activeIdx];
+    if (!container || !line) return;
+    const top = container.scrollTop + line.getBoundingClientRect().top - container.getBoundingClientRect().top
+      - (container.clientHeight - line.offsetHeight) / 2;
+    container.scrollTo({ top: Math.max(0, top), behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }, [activeIdx, browsing]);
 
   /* ── Status screens ──────────────────────────────────────────────────── */
@@ -370,7 +375,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 text-foreground/50">
         <InstrumentalDots className="scale-150" />
-        <p className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-50">
+        <p className="text-[11px] font-semibold opacity-50">
           {status === "error" ? "Couldn't load lyrics" : "Instrumental"}
         </p>
       </div>
@@ -379,9 +384,13 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
 
   /* ── Lyrics view ─────────────────────────────────────────────────────── */
   return (
-    <div className="relative h-full overflow-hidden">
+    <div className="relative flex-1 min-h-0 h-full overflow-hidden">
       <div
-        className="h-full overflow-y-auto scrollbar-hide px-6 py-12 space-y-6"
+        ref={scrollRef}
+        tabIndex={0}
+        aria-label="Lyrics"
+        className="h-full overflow-y-auto overscroll-contain scrollbar-hide px-4 sm:px-6 py-8 space-y-6 focus-visible:outline-2 focus-visible:outline-foreground/40"
+        onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) nudgeBrowse(); }}
         onWheel={nudgeBrowse}
         onTouchMove={nudgeBrowse}
         style={{
@@ -431,7 +440,7 @@ export function SyncedLyrics({ title, artist, currentTime = 0, duration, dataRef
                 style={{ transformOrigin: "left center" }}
                 transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
                 className={cn(
-                  "text-foreground text-xl md:text-2xl font-black leading-snug text-left transition-none select-none tracking-tight max-w-[72%]",
+                  "text-foreground font-display text-xl md:text-2xl font-extrabold leading-snug text-left transition-none select-none tracking-tight max-w-[72%]",
                 )}
               >
                 {isActive ? (
@@ -490,7 +499,7 @@ function ActiveLine({
         const el = wordRefs.current[i];
         if (!el) continue;
         const w = line.words[i];
-        
+
         if (t >= w.start) {
           if (t < w.end) {
              // Currently singing
@@ -498,7 +507,7 @@ function ActiveLine({
              const elapsed = t - w.start;
              // Calculate percentage 0 to 100
              const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
-             
+
              el.style.backgroundImage = `linear-gradient(90deg, var(--foreground) ${pct}%, color-mix(in srgb, var(--foreground) 30%, transparent) ${pct}%)`;
              el.style.backgroundClip = "text";
              el.style.webkitBackgroundClip = "text";

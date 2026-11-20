@@ -44,7 +44,7 @@ export function ConfirmModal({
           >
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl ${isDanger ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-foreground/10 text-foreground'}`}>
+                <div className={`p-2.5 rounded-2xl ${isDanger ? 'bg-bad-500/10 text-bad-500 border border-bad-500/20' : 'bg-foreground/10 text-foreground'}`}>
                   <AlertTriangle className="w-5 h-5" />
                 </div>
                 <h3 className="text-base font-bold text-foreground tracking-tight">{title}</h3>
@@ -77,7 +77,7 @@ export function ConfirmModal({
                 }}
                 className={`h-11 px-6 text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 min-h-[44px] flex items-center justify-center ${
                   isDanger
-                    ? "bg-red-500 hover:bg-red-600 text-white"
+                    ? "bg-bad-500 hover:bg-bad-600 text-white"
                     : "bg-foreground text-background hover:opacity-90"
                 }`}
               >

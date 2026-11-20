@@ -1,9 +1,18 @@
-// lib/api.ts — Typed fetch wrapper for all SyncBeats API calls
-import type { RoomSnapshot } from './types';
+import { currentBrowserDevice } from "./browserDevice";
+import type { RoomSnapshot, Participant, TrackQueueItem } from './types';
+export type { Participant, TrackQueueItem } from './types';
+
+export function getRestUrl(): string {
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  return getServerUrl();
+}
 
 export function getServerUrl(): string {
-  if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
-    return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
+  // Next dev proxies HTTP; Socket.IO uses the backend on the current LAN host.
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
   if (typeof window !== 'undefined' && window.location.hostname) {
     if (window.location.hostname.includes('dev.syncbeats.in')) {
@@ -12,25 +21,43 @@ export function getServerUrl(): string {
     if (window.location.hostname.includes('syncbeats.in')) {
       return 'https://api.syncbeats.in';
     }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
+    if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
+      return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
+    }
     return `${window.location.protocol}//${window.location.hostname}:4000`;
+  }
+  if (process.env.INTERNAL_BACKEND_URL) {
+    return process.env.INTERNAL_BACKEND_URL.trim().replace(/\/+$/, '');
+  }
+  if (process.env.NEXT_PUBLIC_SERVER_URL && process.env.NEXT_PUBLIC_SERVER_URL.trim() !== '') {
+    return process.env.NEXT_PUBLIC_SERVER_URL.trim().replace(/\/+$/, '');
   }
   return 'https://api.syncbeats.in';
 }
 
 const DEVICE_STORAGE_KEY = 'sb_device_id';
 const AUTH_COOKIE_KEY = 'sb_token';
-const AUTH_STORAGE_KEY = 'sb_token';
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10; // 10 years
 
 export function getDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
 
-  const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
-  if (existing) return existing;
+  try {
+    const existing = localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (existing) return existing;
 
-  const generated = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  localStorage.setItem(DEVICE_STORAGE_KEY, generated);
-  return generated;
+    const generated = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(DEVICE_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    const memKey = '__sb_mem_device_id';
+    const fallback = (globalThis as any)[memKey] ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    (globalThis as any)[memKey] = fallback;
+    return fallback;
+  }
 }
 
 function readCookie(name: string): string | null {
@@ -42,24 +69,19 @@ function readCookie(name: string): string | null {
 }
 
 export function getAuthToken(): string | null {
-  const cookieToken = readCookie(AUTH_COOKIE_KEY);
-  if (cookieToken) return cookieToken;
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(AUTH_STORAGE_KEY);
+  return readCookie(AUTH_COOKIE_KEY);
 }
 
 export function setAuthToken(token: string): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${AUTH_COOKIE_KEY}=${encodeURIComponent(token)}; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
-  localStorage.setItem(AUTH_STORAGE_KEY, token);
 }
 
 export function clearAuthToken(): void {
   if (typeof document === 'undefined') return;
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${AUTH_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
 function getToken(): string | null {
@@ -86,7 +108,8 @@ function notifyServerError(message: string) {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  auth = false
+  auth = false,
+  timeoutMs?: number
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -94,18 +117,22 @@ async function request<T>(
   };
   const deviceId = getDeviceId();
   if (deviceId) headers['X-Device-Id'] = deviceId;
+  if (currentBrowserDevice().name === 'iPad') headers['x-client-device'] = 'ipad';
   if (auth) {
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const base = getServerUrl();
+  const base = getRestUrl();
+  const url = base === '/api'
+    ? (path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : '/' + path}`)
+    : `${base}${path}`;
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
+    res = await fetch(url, {
       cache: 'no-store',
       ...options,
       headers,
-      signal: AbortSignal.timeout(30000), // 30s timeout — prevents requests from hanging indefinitely but allows slow connections/db
+      signal: options.signal ?? AbortSignal.timeout(timeoutMs ?? 30000),
     });
   } catch (err: any) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
@@ -127,11 +154,6 @@ async function request<T>(
       notifyServerError("SyncBeats Server is temporarily unavailable");
     }
     const errorMsg = data.error ?? `HTTP ${res.status} ${res.statusText}`;
-    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_ENV === 'development') {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent("toast", { detail: { message: `API Error: ${errorMsg}`, type: "error" } }));
-      }
-    }
     throw new ApiError(errorMsg, res.status);
   }
   return data as T;
@@ -239,33 +261,10 @@ export const authApi = {
       body: JSON.stringify({ settings }),
     }, true),
 
-  me: () => request<AuthResponse>('/auth/me', {}, true),
+  me: () => request<AuthResponse>('/auth/me', {}, true, 10_000),
 };
 
 // ── Rooms ─────────────────────────────────────────────────────────────────
-
-export interface Participant {
-  socketId:    string;
-  displayName: string;
-  joinedAt:    number;
-  isReady:     boolean;
-  volume:      number;
-}
-
-export interface TrackQueueItem {
-  id:         string;
-  trackUrl:   string;
-  title:      string;
-  artist?:    string;
-  thumbnail?: string;
-  fileName:   string;
-  queueIndex: number;
-  isCurrent:  boolean;
-  /** Set once the track played through to the end; drives the History section. */
-  playedAt?:  number;
-  addedBy:    string;
-  createdAt:  number;
-}
 
 export interface RoomRecord {
   id:             string;
@@ -279,6 +278,13 @@ export interface RoomRecord {
   repeat_mode:    string;
   is_private?:    boolean;
   participant_count?: number;
+}
+
+export interface OnlineRoomRecord {
+  id: string;
+  host_name: string;
+  participant_count: number;
+  is_playing: boolean;
 }
 
 export interface DeviceListResponse {
@@ -323,6 +329,9 @@ export const roomsApi = {
 
   mine: () =>
     request<{ rooms: RoomRecord[] }>('/rooms/mine', {}, true),
+
+  online: () =>
+    request<{ rooms: OnlineRoomRecord[] }>('/rooms/online', {}, true),
 
   endSession: (roomId: string) =>
     request<{ ok: boolean }>(`/rooms/${roomId}`, { method: 'DELETE' }, true),
@@ -487,6 +496,22 @@ export const devicesApi = {
     }, true),
 };
 
+export interface MusicTaste {
+  onboardingStatus: 'NEW' | 'COMPLETE' | 'SKIPPED';
+  languages: string[]; genres: string[]; favoriteArtistIds: string[]; customArtists: string[]; useActivity: boolean;
+}
+export interface RecommendationArtist { id: string; name: string; languages: string[]; genres: string[] }
+export interface RecommendationCatalog { languages: string[]; genres: string[]; artists: RecommendationArtist[] }
+export interface RecommendationPick extends RecommendationArtist { query: string; reason: string; score: number }
+export interface RecommendationFeed { modelVersion: string; profile: MusicTaste; sections: { id: string; title: string; picks: RecommendationPick[] }[] }
+export const recommendationApi = {
+  catalog: () => request<RecommendationCatalog>('/recommendations/catalog', {}, true),
+  feed: () => request<RecommendationFeed>('/recommendations/feed', {}, true),
+  save: (profile: MusicTaste) => request<MusicTaste>('/recommendations/profile', { method: 'PUT', body: JSON.stringify(profile) }, true),
+  reset: () => request<{ ok: boolean }>('/recommendations/profile', { method: 'DELETE' }, true),
+  event: (event: { artistId: string; kind: 'LIKE' | 'DISLIKE' | 'OPEN'; eventId: string }) => request<{ ok: boolean }>('/recommendations/events', { method: 'POST', body: JSON.stringify(event) }, true),
+};
+
 export const historyApi = {
   logSearch: (userId: string, query: string) =>
     request<{ success: boolean; entry: any }>('/history/search', {
@@ -502,4 +527,24 @@ export const historyApi = {
 
   getRecent: (userId: string) =>
     request<{ listens: any[]; searches: any[] }>(`/history/recent?userId=${encodeURIComponent(userId)}`, {}, true),
+};
+
+
+export interface AccountPlaylistTrack {
+  id: string;
+  title: string;
+  artist?: string | null;
+  youtubeId?: string | null;
+  thumbnail?: string | null;
+}
+
+export interface AccountPlaylist {
+  id: string;
+  name: string;
+  tracks: AccountPlaylistTrack[];
+}
+
+export const accountLibraryApi = {
+  getPlaylists: () =>
+    request<{ playlists: AccountPlaylist[] }>('/spotify/my-playlists', {}, true),
 };

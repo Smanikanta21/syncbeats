@@ -48,7 +48,9 @@ function NavigationProgressContent() {
             scaleX: { duration: 0.4, ease: "easeOut" },
             opacity: { duration: 0.2 },
           }}
-          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] pointer-events-none"
+          // Ink, not a hue. Depth is carried by the opacity ramp instead of a
+          // colour sweep — the palette has no brand hue to walk.
+          className="fixed top-0 left-0 right-0 h-[2.5px] z-9999 bg-gradient-to-r from-foreground/20 via-foreground/70 to-foreground shadow-[0_0_12px_var(--accent-glow)] pointer-events-none"
         />
       )}
     </AnimatePresence>

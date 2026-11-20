@@ -1,5 +1,19 @@
 import { Router, Request, Response } from 'express';
-import prisma from '../db/prisma';
+import path from 'path';
+import fs from 'fs';
+import { PrismaClient } from '@prisma/client';
+
+// ── Dedicated Telemetry DB Client ────────────────────────────────────────────
+// Keeps telemetry writes routed to the VM local database (or TELEMETRY_DATABASE_URL)
+// so high-frequency training data does not burden the primary Neon app database.
+const telemetryPrisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.TELEMETRY_DATABASE_URL || process.env.DATABASE_URL,
+    },
+  },
+  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+});
 
 // ── Simple in-memory rate limiter (per IP, 1 req / 10s) ──────────────────────
 const lastSeen = new Map<string, number>();
@@ -49,6 +63,7 @@ interface SyncTelemetryPayload {
 
 function isValidPayload(b: any): b is SyncTelemetryPayload {
   return (
+    b !== null && typeof b === 'object' &&
     typeof b.sessionId        === 'string' && b.sessionId.length > 0 &&
     typeof b.roomId           === 'string' && b.roomId.length > 0 &&
     typeof b.networkQuality   === 'string' &&
@@ -95,33 +110,32 @@ export function createTelemetryRoutes(): Router {
     }
 
     try {
-      // Telemetry database writes have been temporarily disabled to save on database writes.
-      // await prisma.syncTelemetry.create({
-      //   data: {
-      //     sessionId:        body.sessionId,
-      //     roomId:           body.roomId,
-      //     userId:           body.userId ?? null,
-      //     deviceType:       body.deviceType ?? null,
-      //     os:               body.os ?? null,
-      //     exactModel:       body.exactModel ?? null,
-      //     userAgent:        body.userAgent ?? null,
-      //     networkQuality:   body.networkQuality,
-      //     rttMedianMs:      body.rttMedianMs,
-      //     rttJitterMs:      body.rttJitterMs,
-      //     rttSamples:       body.rttSamples,
-      //     clockOffsetMs:    body.clockOffsetMs,
-      //     driftSamples:     body.driftSamples,
-      //     driftMeanMs:      body.driftMeanMs,
-      //     driftMaxMs:       body.driftMaxMs,
-      //     correctionTier:   body.correctionTier,
-      //     correctionsCount: body.correctionsCount,
-      //     playbackRate:     body.playbackRate,
-      //     audioUnlocked:    body.audioUnlocked,
-      //     tabVisible:       body.tabVisible,
-      //     sessionAgeSecs:   body.sessionAgeSecs,
-      //     participantCount: body.participantCount,
-      //   },
-      // });
+      await telemetryPrisma.syncTelemetry.create({
+        data: {
+          sessionId:        body.sessionId,
+          roomId:           body.roomId,
+          userId:           body.userId ?? null,
+          deviceType:       body.deviceType ?? null,
+          os:               body.os ?? null,
+          exactModel:       body.exactModel ?? null,
+          userAgent:        body.userAgent ?? null,
+          networkQuality:   body.networkQuality,
+          rttMedianMs:      body.rttMedianMs,
+          rttJitterMs:      body.rttJitterMs,
+          rttSamples:       body.rttSamples,
+          clockOffsetMs:    body.clockOffsetMs,
+          driftSamples:     body.driftSamples,
+          driftMeanMs:      body.driftMeanMs,
+          driftMaxMs:       body.driftMaxMs,
+          correctionTier:   body.correctionTier,
+          correctionsCount: body.correctionsCount,
+          playbackRate:     body.playbackRate,
+          audioUnlocked:    body.audioUnlocked,
+          tabVisible:       body.tabVisible,
+          sessionAgeSecs:   body.sessionAgeSecs,
+          participantCount: body.participantCount,
+        },
+      });
 
       res.status(201).json({ ok: true });
     } catch (err) {
@@ -133,7 +147,16 @@ export function createTelemetryRoutes(): Router {
 
   router.post('/log', (req: Request, res: Response) => {
     const { device, msg } = req.body;
-    require('fs').appendFileSync('/Users/abhinay/syncbeats/device_logs.txt', `[${device}] ${msg}\n`);
+    try {
+      const logDir = process.env.LOGS_DIR || path.join(process.cwd(), 'logs');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      const logPath = path.join(logDir, 'device_logs.txt');
+      fs.appendFileSync(logPath, `[${device}] ${msg}\n`);
+    } catch {
+      // Ignore logging failure in container
+    }
     res.json({ ok: true });
   });
 
