@@ -16,6 +16,8 @@ import { AddToPlaylistModal } from "./AddToPlaylistModal";
 import { getSocket } from "../../lib/socket";
 import { useVisualizer } from "../../context/VisualizerContext";
 
+import { useRoomSearch } from "../../context/RoomSearchContext";
+
 interface SearchTabProps {
   roomId: string;
   initialMode: "youtube" | "spotify" | null;
@@ -48,7 +50,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode || "youtube");
-  const [query, setQuery] = useState("");
+  const { query, setQuery } = useRoomSearch(roomId);
 
   useEffect(() => {
     setMode(initialMode || "youtube");
@@ -266,9 +268,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  // Reset when mode changes
+  // Reset provider results when mode changes; keep the shared room query.
   useEffect(() => {
-    setQuery("");
     setYtResults([]);
     setSpResults([]);
     setDbResults([]);
