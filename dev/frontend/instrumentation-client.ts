@@ -8,7 +8,7 @@ Sentry.init({
   dsn: "https://7ab10d30a5fd53329db9256ad4cb436e@o4512129711603712.ingest.de.sentry.io/4512129831927888",
 
   // Add optional integrations for additional features
-  integrations: [Sentry.replayIntegration()],
+  integrations: [],
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
@@ -16,10 +16,10 @@ Sentry.init({
   // Define how likely Replay events are sampled.
   // This sets the sample rate to be 10%. You may want this to be 100% while
   // in development and sample at a lower rate in production
-  replaysSessionSampleRate: 0.1,
+  replaysSessionSampleRate: 0,
 
   // Define how likely Replay events are sampled when an error occurs.
-  replaysOnErrorSampleRate: 1.0,
+  replaysOnErrorSampleRate: 0,
 
   // Turns off collection of data that could identify users. Adjust per category:
   // https://docs.sentry.io/platforms/javascript/configuration/options/#dataCollection
@@ -30,9 +30,9 @@ Sentry.init({
     databaseQueryData: false,
     queues: false,
     httpBodies: [],
-    httpHeaders: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
-    cookies: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
-    urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    httpHeaders: false,
+    cookies: false,
+    urlQueryParams: false,
   },
 });
 

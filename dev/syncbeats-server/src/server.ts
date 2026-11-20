@@ -26,6 +26,8 @@ import playlistRoutes from './handlers/PlaylistRoutes';
 import { createUserRoutes } from './handlers/UserRoutes';
 import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
 import { createTelemetryRoutes } from './handlers/TelemetryRoutes';
+import { createBetaRoutes } from './handlers/BetaRoutes';
+import { createBetaSignupStore } from './db/BetaSignupRepository';
 import { UserRepository } from './auth/UserRepository';
 import prisma                  from './db/prisma';
 import { RoomRepository }      from './db/RoomRepository';
@@ -271,6 +273,11 @@ export class SyncBeatsServer {
     this.app.use('/api/playlists', playlistRoutes);
     this.app.use('/feedback', createFeedbackRoutes());
     this.app.use('/telemetry', createTelemetryRoutes());
+    const betaSignups = createBetaSignupStore(prisma);
+    this.app.use('/beta', createBetaRoutes(betaSignups));
+    const pruneBetaSignups = () => betaSignups.prune().catch(() => console.error('[Mac beta] Could not prune expired signups'));
+    void pruneBetaSignups();
+    setInterval(pruneBetaSignups, 60 * 60 * 1000).unref();
 
     // ── CLI install route ──────────────────────────────────────────────────
     this.app.get('/cli', (_req, res) => {

@@ -7,8 +7,8 @@ import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { AudioProvider } from "../context/AudioContext";
 import { ThemeProvider } from "../context/ThemeProvider";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { PrivacyAnalytics } from "../components/PrivacyAnalytics";
+
 import SmoothScrolling from "../components/SmoothScrolling";
 
 import { RoomSearchProvider } from "../context/RoomSearchContext";
@@ -133,52 +133,6 @@ export default function RootLayout({
         </Script>
       </head>
 
-      {/* Google Analytics */}
-      <Script
-        async
-        src="https://www.googletagmanager.com/gtag/js?id=G-9D67M1G5XC"
-        strategy="afterInteractive"
-      />
-      <Script id="google-analytics" strategy="afterInteractive">
-        {`
-          try {
-            const isDev = window.location.hostname === 'dev.syncbeats.in' || window.location.hostname === 'dev.syncbeats.app' || window.location.hostname === 'localhost';
-            let isAdmin = false;
-
-            // Read sb_token from cookies
-            const match = document.cookie.match(new RegExp('(^| )sb_token=([^;]+)'));
-            if (match && match[2]) {
-              const token = decodeURIComponent(match[2]);
-              const payloadB64 = token.split('.')[1];
-              if (payloadB64) {
-                // Decode base64url
-                const payloadStr = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
-                const payload = JSON.parse(payloadStr);
-
-                if (payload.email === 'siraparapuabhinay21@gmail.com') {
-                  isAdmin = true;
-                }
-              }
-            }
-
-            if (isDev || isAdmin) {
-              window['ga-disable-G-9D67M1G5XC'] = true;
-            }
-          } catch(e) {}
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){window.dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', 'G-9D67M1G5XC');
-        `}
-      </Script>
-
-      {/* Ahrefs Analytics */}
-      <Script
-        src="https://analytics.ahrefs.com/analytics.js"
-        data-key="+9fzuLLzZbLhEJcB+CsBWA"
-        strategy="lazyOnload"
-      />
-
       <body className="transition-colors duration-300 bg-background text-foreground">
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
         <div
@@ -259,8 +213,7 @@ export default function RootLayout({
                 </AuthProvider>
               </ConnectionProvider>
             </ThemeProvider>
-            <Analytics />
-            <SpeedInsights />
+            <PrivacyAnalytics />
           </LoadingProvider>
         </SmoothScrolling>
       </body>

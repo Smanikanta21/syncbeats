@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Disc } from "lucide-react";
+import { PublicInfoPage } from "../../components/PublicInfoPage";
 
 export const metadata: Metadata = {
   title: "Terms of Service — SyncBeats",
@@ -9,128 +9,75 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-export default function TermsOfService() {
-  const lastUpdated = "May 2026";
+const contents = [
+  { id: "acceptance-and-scope", label: "Acceptance and scope" },
+  { id: "open-source-license-and-acceptable-use", label: "Open-source license and acceptable use" },
+  { id: "accounts-and-shared-rooms", label: "Accounts and shared rooms" },
+  { id: "music-uploads-and-third-party-services", label: "Music, uploads, and third-party services" },
+  { id: "mac-beta-participation", label: "Mac beta participation" },
+  { id: "availability-warranties-and-liability", label: "Availability, warranties, and liability" },
+  { id: "changes-and-contact", label: "Changes and contact" },
+];
 
+export default function Page() {
   return (
-    <main className="min-h-screen bg-background text-foreground relative overflow-hidden">
-      {/* Back to Home Button */}
-      <Link href="/" className="absolute top-6 left-6 md:top-8 md:left-8 z-50 flex items-center gap-2 group">
-        <div className="w-8 h-8 rounded-full bg-foreground/5 border border-foreground/10 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
-          <Disc className="w-4 h-4 text-foreground/80 animate-[spin_4s_linear_infinite]" />
-        </div>
-        <span className="text-sm font-bold tracking-widest text-foreground/60 group-hover:text-foreground transition-colors">HOME</span>
-      </Link>
-
-      {/* Background — temperature, not hue. See "Smoked glass" in globals.css. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -right-[10%] w-[500px] h-[500px] rounded-full mix-blend-screen blur-[120px]" style={{ background: 'var(--warm-tint)', opacity: 0.14 }} />
-        <div className="absolute top-[40%] -left-[10%] w-[400px] h-[400px] rounded-full mix-blend-screen blur-[100px]" style={{ background: 'var(--cool-tint)', opacity: 0.2 }} />
+    <PublicInfoPage title="Terms of service" description="The ground rules for shared listening and using SyncBeats." eyebrow="Using SyncBeats" updated="20 November 2026" contents={contents}>
+      <section id="acceptance-and-scope">
+      <h2>Acceptance and scope</h2>
+      <div>
+      <p>These terms cover access to the hosted SyncBeats service and participation in its Mac beta program. By using the service, you agree to these terms. If you do not agree, stop using the hosted service. Our <Link href="/privacy-policy">Privacy Policy</Link> explains how information is handled.</p>
+      <p>You must be at least 13 and meet any higher applicable age or consent requirement in your location. If you need a parent or guardian’s consent, obtain it before using the service.</p>
       </div>
+      </section>
 
-      <div className="max-w-4xl mx-auto px-6 py-24 relative z-10">
-        <div className="mb-12 text-center md:text-left">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight bg-clip-text text-transparent bg-linear-to-b from-foreground to-foreground/50">
-            Terms of Service
-          </h1>
-          <p className="text-foreground/50 font-bold text-sm">Last updated: {lastUpdated}</p>
-        </div>
-
-        <div className="glass-panel bg-background/50 backdrop-blur-xl border border-foreground/10 rounded-4xl p-8 md:p-12 shadow-[0_8px_40px_rgba(0,0,0,0.04)] space-y-12">
-          
-          <section>
-            <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">1</div>
-              Acceptance of Terms
-            </h2>
-            <p className="text-foreground/70 leading-relaxed font-medium pl-11">
-              By accessing and using SyncBeats ("Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, you may not use the Service.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold mb-6 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">2</div>
-              Use License
-            </h2>
-            <div className="pl-11 space-y-4">
-              <p className="text-foreground/70 leading-relaxed font-medium">
-                SyncBeats grants you a limited, non-exclusive, revocable license to access and use the Service for personal, non-commercial purposes, subject to these Terms. You agree not to:
-              </p>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-foreground/70 font-medium">
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Reproduce, copy, or sell the Service</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Attempt unauthorized access</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Upload copyrighted material you don't own</li>
-                <li className="flex gap-3 p-4 rounded-xl bg-foreground/5 border border-foreground/5"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-bad-500/50 shrink-0" /> Reverse engineer source code</li>
-              </ul>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">3</div>
-              User Accounts
-            </h2>
-            <div className="pl-11">
-              <p className="text-foreground/70 leading-relaxed font-medium mb-4">
-                If you create an account, you are responsible for maintaining the confidentiality of your password and all activities under your account. You must notify us immediately of any unauthorized access.
-              </p>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">4</div>
-              User Content
-            </h2>
-            <div className="pl-11 space-y-4">
-              <p className="text-foreground/70 leading-relaxed font-medium">
-                By uploading audio files to SyncBeats, you represent that you own or have rights to the content. You grant us a license to store and transmit it.
-              </p>
-              <div className="p-4 rounded-xl bg-warn-500/10 border border-warn-500/20 text-warn-600 dark:text-warn-400 font-medium text-sm">
-                <strong>You are solely responsible for uploaded content.</strong> We do not monitor user content. Do not upload copyrighted material unless you have permission.
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">5</div>
-              Disclaimer & Liability
-            </h2>
-            <div className="pl-11 space-y-4">
-              <p className="text-foreground/70 leading-relaxed font-medium">
-                The Service is provided "as is" without warranties of any kind. SyncBeats does not warrant that the Service will be uninterrupted, error-free, or perfectly synchronized at all times.
-              </p>
-              <p className="text-foreground/70 leading-relaxed font-medium">
-                To the extent permitted by law, SyncBeats shall not be liable for lost data, business interruption, or indirect damages. Our total liability shall not exceed the amount you paid to us in the past 12 months.
-              </p>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold mb-4 tracking-tight flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center text-sm">6</div>
-              DMCA & Contact
-            </h2>
-            <div className="pl-11 space-y-4">
-              <p className="text-foreground/70 leading-relaxed font-medium">
-                If you believe your copyright is infringed, notify us in writing at <a href="mailto:legal@syncbeats.in" className="text-foreground underline">legal@syncbeats.in</a>.
-              </p>
-              <div className="mt-6 p-6 bg-foreground/5 rounded-2xl border border-foreground/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="font-bold mb-1">Questions about our Terms?</h4>
-                  <p className="text-sm text-foreground/60 font-medium">Reach out to our support team.</p>
-                </div>
-                <a href="mailto:support@syncbeats.in" className="inline-flex items-center justify-center px-6 py-3 bg-foreground text-background font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg">
-                  support@syncbeats.in
-                </a>
-              </div>
-            </div>
-          </section>
-
-        </div>
+      <section id="open-source-license-and-acceptable-use">
+      <h2>Open-source license and acceptable use</h2>
+      <div>
+      <p>The SyncBeats repository is licensed under MIT. Rights to use, copy, modify, distribute, and commercially reuse covered source code are governed by the repository’s <a href="https://github.com/Smanikanta21/syncbeats/blob/main/LICENSE">LICENSE</a>, including its notice and warranty terms. These hosted-service terms do not take away those open-source rights. Third-party code and media remain subject to their own licenses.</p>
+      <p>When using our hosted service, do not access accounts or systems without authorization, interfere with other users, bypass access controls, upload malware, or use the service unlawfully. An open-source license does not grant rights to someone else’s music, account, or trademarks.</p>
       </div>
-    </main>
+      </section>
+
+      <section id="accounts-and-shared-rooms">
+      <h2>Accounts and shared rooms</h2>
+      <div>
+      <p>Keep your credentials secure and provide accurate account information. You are responsible for activity you authorize through your account. Contact us promptly if you suspect unauthorized access.</p>
+      <p>Rooms are shared spaces: permitted participants can affect playback and the queue. Private-room approval and other controls do not make a room confidential from everyone you admit. The service may restrict accounts or remove content to address abuse, legal requests, or operational problems.</p>
+      </div>
+      </section>
+
+      <section id="music-uploads-and-third-party-services">
+      <h2>Music, uploads, and third-party services</h2>
+      <div>
+      <p>You retain rights to your own content. By uploading or queueing content, you represent that you have the permissions needed for the intended storage, playback, and sharing. You grant SyncBeats the limited permission needed to store and transmit that content to provide the features you request.</p>
+      <p>Owning a device, having a music subscription, or finding a track online does not automatically grant public-performance, redistribution, or broadcasting rights. Respect applicable copyright law and the terms of music providers you use.</p>
+      <p>Availability of search results, streams, metadata, and integrations depends on third-party providers and may change. We may review reports and remove or restrict content when appropriate.</p>
+      </div>
+      </section>
+
+      <section id="mac-beta-participation">
+      <h2>Mac beta participation</h2>
+      <div>
+      <p>The Mac app is in development. Joining the interest list requests beta invitations; it does not guarantee access, supported hardware, a release date, or a particular feature. Build requirements and testing instructions will be provided with invitations.</p>
+      <p>Beta software may contain bugs, lose state, change behavior, or stop working. Use it with content and devices you are comfortable testing. You may provide feedback voluntarily and withdraw from the invitation list through <Link href="/contact">Contact</Link>.</p>
+      </div>
+      </section>
+
+      <section id="availability-warranties-and-liability">
+      <h2>Availability, warranties, and liability</h2>
+      <div>
+      <p>To the extent permitted by applicable law, the hosted service and beta software are provided “as is” and “as available,” without warranties. We cannot guarantee uninterrupted availability or perfectly synchronized audible playback on every device and network.</p>
+      <p>To the extent permitted by law, SyncBeats and its maintainers are not liable for indirect or consequential losses, lost data, or business interruption. Where lawful, total liability is limited to the amount you paid for the service in the preceding 12 months. These terms do not exclude rights or liabilities that cannot legally be excluded, including mandatory consumer protections.</p>
+      </div>
+      </section>
+
+      <section id="changes-and-contact">
+      <h2>Changes and contact</h2>
+      <div>
+      <p>Features, availability, and these terms may change. Updated terms will carry a new date, and material changes will be communicated where appropriate. You can stop using the hosted service if you disagree with an update.</p>
+      <p>For service questions, privacy requests, or a copyright concern, use our <Link href="/contact">Contact page</Link>. Include enough information to identify a copyright concern and your authority to raise it; avoid posting private details in public issues.</p>
+      </div>
+      </section>
+    </PublicInfoPage>
   );
 }

@@ -21,6 +21,7 @@ export function LandingFooter() {
           <Link href="/hub">Start or join a room</Link>
           <Link href="/how-it-works">Listening guide</Link>
           <Link href="/#mac-app">Mac app · Coming soon</Link>
+          <Link href="/mac-beta">Become a Mac beta tester</Link>
         </nav>
         <nav aria-label="Help and community">
           <span>STAY IN THE LOOP</span>

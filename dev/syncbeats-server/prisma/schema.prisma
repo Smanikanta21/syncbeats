@@ -289,6 +289,22 @@ model UserFeedback {
   @@map("user_feedback")
 }
 
+model MacBetaSignup {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  macChip         String   @map("mac_chip")
+  macosVersion    String?  @map("macos_version")
+  testingInterest String?  @map("testing_interest") @db.Text
+  consentVersion  String   @map("consent_version")
+  consentedAt     DateTime @map("consented_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("mac_beta_signups")
+}
+
 model AdminAuditLog {
   id        String   @id @default(cuid())
   action    String

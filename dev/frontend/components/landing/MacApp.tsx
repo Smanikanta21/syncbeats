@@ -29,11 +29,14 @@ export function MacApp() {
               Native Mac app <strong>Coming soon</strong>
             </span>
           </div>
+          <Link href="/mac-beta" className="landing-text-link">
+            Join the Mac beta list <ArrowUpRight size={17} aria-hidden="true" />
+          </Link>
           <Link href="/room/default" className="landing-text-link">
             Listen in your browser today{" "}
             <ArrowUpRight size={17} aria-hidden="true" />
           </Link>
-          <small>Release date to be announced. Updates will appear here.</small>
+          <small>Invitations will be sent when beta builds are ready. Release date to be announced.</small>
         </div>
         <div
           className="landing-mac-art"
