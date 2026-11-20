@@ -19,7 +19,7 @@ import { isSameTrack } from '../lib/trackIdentity';
 import { applyQueueUpdate, normalizeRoomSnapshot, type QueueUpdate } from '../lib/roomState';
 import { resolvePlayableTrack } from '../lib/trackDownload';
 import { updateTransferActivities, visibleTransferActivity } from '../lib/transferActivity';
-import { estimateClockSample } from '../lib/syncClock';
+import { estimateClockSample, selectClockOffset } from '../lib/syncClock';
 
 interface UseRoomOptions {
   roomId:      string;
@@ -343,7 +343,7 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
 
     // Read adaptive params snapshot for this burst
     const p = paramsRef.current; // paramsRef is a stable ref — no dep needed
-    const offsetSamples: { offset: number; rtt: number }[] = [];
+    const offsetSamples: { offsetMs: number; rttMs: number }[] = [];
     const rttSamples:    number[] = []; // ALL rtts (including rejected) for quality classification
 
     for (let i = 0; i < p.NTP_SAMPLE_COUNT; i++) {
@@ -354,31 +354,15 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
       const validServerSample = Number.isFinite(t1) && Number.isFinite(t2) && Number.isFinite(sample.rttMs) && sample.rttMs >= 0;
       const rtt = validServerSample ? sample.rttMs : elapsedMs;
       rttSamples.push(rtt); // always collect, even noisy ones
-      if (validServerSample && rtt <= p.NTP_RTT_GATE_MS) {
-        offsetSamples.push({ offset: sample.offsetMs, rtt });
+      if (validServerSample) {
+        offsetSamples.push(sample);
       }
       await new Promise(r => setTimeout(r, p.NTP_PING_GAP_MS));
     }
 
     if (generation !== connectionGenerationRef.current || !socket.connected) return;
-    if (offsetSamples.length > 0) {
-      // Sort by RTT ascending to select samples with minimum network delay/asymmetry
-      const sortedByRtt = [...offsetSamples].sort((a, b) => a.rtt - b.rtt);
-
-      // IQR outlier rejection: discard samples where RTT > Q3 + 1.5×IQR
-      // This strips GC pause spikes and Wi-Fi jitter outliers from the offset estimation
-      const rtts = sortedByRtt.map(s => s.rtt);
-      const q1Rtt = rtts[Math.floor(rtts.length * 0.25)];
-      const q3Rtt = rtts[Math.floor(rtts.length * 0.75)];
-      const iqrRtt = q3Rtt - q1Rtt;
-      const rttFence = q3Rtt + 1.5 * iqrRtt;
-      const cleanSamples = sortedByRtt.filter(s => s.rtt <= rttFence);
-
-      // Select top 35% lowest latency samples from the clean set
-      const bestSamples = cleanSamples.slice(0, Math.max(1, Math.ceil(cleanSamples.length * 0.35)));
-      const bestOffsets = bestSamples.map(s => s.offset).sort((a, b) => a - b);
-      const median = bestOffsets[Math.floor(bestOffsets.length / 2)];
-
+    const median = selectClockOffset(offsetSamples, p.NTP_RTT_GATE_MS, !hasClockSync.current);
+    if (median !== null) {
       // EWMA blend to smooth network jitter. If we already have a sync, 
       // blend the new measurement (20% new, 80% old) unless it's a massive shift (>100ms).
       if (hasClockSync.current) {

@@ -28,6 +28,41 @@ function fixture() {
   return { sync, audio, readyClock, calls, snapshot };
 }
 
+test('telemetry receives fresh drift checks, never samples room mutations or paused time', () => {
+  const { sync, audio, snapshot } = fixture();
+  const samples = [];
+  const unsubscribe = sync.subscribeDrift(report => samples.push(report));
+  sync.reconcile(snapshot);
+  assert.equal(samples.length, 0);
+  audio.isPlaying = true;
+  audio.getTruePosition = () => 9.99;
+  sync.correctDrift();
+  audio.getTruePosition = () => 9.92;
+  sync.correctDrift();
+  assert.equal(samples.length, 2);
+  assert.ok(Math.abs(samples[0].driftMs - 10) < 0.001);
+  assert.equal(samples[0].correctionApplied, false);
+  assert.equal(samples[1].tier, 'crossfade');
+  assert.equal(samples[1].correctionApplied, true);
+  sync.pause(5);
+  sync.correctDrift();
+  assert.equal(samples.length, 2);
+  unsubscribe();
+  sync.reconcile(snapshot);
+  audio.isPlaying = true;
+  sync.correctDrift();
+  assert.equal(samples.length, 2);
+});
+
+test('audio-unlock telemetry reports the audio handle rather than playback intent', () => {
+  const { sync, audio, snapshot } = fixture();
+  sync.reconcile(snapshot);
+  audio.audioUnlocked = false;
+  assert.equal(sync.isAudioUnlocked(), false);
+  audio.audioUnlocked = true;
+  assert.equal(sync.isAudioUnlocked(), true);
+});
+
 test('reconnect and ordinary snapshots share intent; repeated metadata leaves its generation unchanged', () => {
   const { sync, snapshot, calls } = fixture();
   sync.reconcile(snapshot);

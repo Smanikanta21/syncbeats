@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import type { AdaptiveParams } from './useAdaptiveSync';
-import type { RoomSnapshot } from '../lib/types';
+import type { RoomSnapshot, PlaybackSchedulePayload } from '../lib/types';
 import { isSameTrack } from '../lib/trackIdentity';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ interface AudioHandle {
   getTruePosition: () => number;
   pauseAt: (position: number) => void;
   playNow: (expectedPosition: number) => void;
-  scheduleStart: (payload: any, clockOffset: number) => Promise<void>;
+  scheduleStart: (payload: PlaybackSchedulePayload, clockOffset: number) => Promise<void>;
   setPlaybackInstance?: (id: string | null, startEpoch?: number) => void;
   isReadyForTrack?: (url: string | null) => boolean;
   setPlaybackRate?: (rate: number) => void;
@@ -121,6 +121,7 @@ export class SyncController {
 
   // ── Listeners ──
   private _listeners: Set<() => void> = new Set();
+  private _driftListeners: Set<(report: Readonly<DriftReport>) => void> = new Set();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Binding
@@ -147,6 +148,17 @@ export class SyncController {
     return () => this._listeners.delete(listener);
   }
 
+  /** Drift measurements have their own channel; room metadata is not a new sample. */
+  subscribeDrift(listener: (report: Readonly<DriftReport>) => void): () => void {
+    this._driftListeners.add(listener);
+    return () => this._driftListeners.delete(listener);
+  }
+
+  private _reportDrift(report: DriftReport): void {
+    this._lastDriftReport = report;
+    this._driftListeners.forEach(listener => listener(report));
+  }
+
   private _notify(): void {
     this._listeners.forEach(fn => fn());
   }
@@ -171,6 +183,7 @@ export class SyncController {
   getIntent(): Readonly<PlaybackIntent> { return this._intent; }
   getRoomIntent(): Readonly<RoomIntent> { return this._room; }
   getLastDrift(): Readonly<DriftReport> { return this._lastDriftReport; }
+  isAudioUnlocked(): boolean { return this._audioRef?.current.audioUnlocked ?? false; }
   getCurrentRate(): number { return this._currentRate; }
 
   getServerNow(): number {
@@ -380,7 +393,7 @@ export class SyncController {
   // Only executes if gen is still current.
   // ─────────────────────────────────────────────────────────────────────────
 
-  applyScheduleIfCurrent(capturedGen: number, payload: any, clockOffset: number): void {
+  applyScheduleIfCurrent(capturedGen: number, payload: PlaybackSchedulePayload, clockOffset: number): void {
     if (!this.isGenCurrent(capturedGen) || this._endedGen === capturedGen) return;
     if (this._intent.state !== 'playing') return;
     const audio = this._audioRef?.current;
@@ -490,7 +503,7 @@ export class SyncController {
         this._currentRate = 1;
         audio.setPlaybackRate?.(1);
       }
-      this._lastDriftReport = { driftMs, tier: 'synced', correctionApplied: false, playbackRate: 1 };
+      this._reportDrift({ driftMs, tier: 'synced', correctionApplied: false, playbackRate: 1 });
       return;
     }
 
@@ -532,7 +545,7 @@ export class SyncController {
         audio.playNow(expected);
         if (audio.setPlaybackRate) audio.setPlaybackRate(1);
       }
-      this._lastDriftReport = { driftMs, tier: 'crossfade', correctionApplied: true, playbackRate: 1 };
+      this._reportDrift({ driftMs, tier: 'crossfade', correctionApplied: true, playbackRate: 1 });
       return;
     }
 
@@ -542,7 +555,7 @@ export class SyncController {
       if (audio.setPlaybackRate) audio.setPlaybackRate(1);
     }
     audio.playNow(expected);
-    this._lastDriftReport = { driftMs, tier: 'emergency', correctionApplied: true, playbackRate: 1 };
+    this._reportDrift({ driftMs, tier: 'emergency', correctionApplied: true, playbackRate: 1 });
   }
 }
 
