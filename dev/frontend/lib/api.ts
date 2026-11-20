@@ -528,3 +528,23 @@ export const historyApi = {
   getRecent: (userId: string) =>
     request<{ listens: any[]; searches: any[] }>(`/history/recent?userId=${encodeURIComponent(userId)}`, {}, true),
 };
+
+
+export interface AccountPlaylistTrack {
+  id: string;
+  title: string;
+  artist?: string | null;
+  youtubeId?: string | null;
+  thumbnail?: string | null;
+}
+
+export interface AccountPlaylist {
+  id: string;
+  name: string;
+  tracks: AccountPlaylistTrack[];
+}
+
+export const accountLibraryApi = {
+  getPlaylists: () =>
+    request<{ playlists: AccountPlaylist[] }>('/spotify/my-playlists', {}, true),
+};
