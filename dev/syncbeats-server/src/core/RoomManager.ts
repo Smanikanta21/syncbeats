@@ -1,17 +1,20 @@
-// ─── Step 3: RoomManager singleton ────────────────────────────────────────
+// ─── RoomManager singleton ────────────────────────────────────────
 //
 // Owns all Room instances, handles multi-room disconnect routing.
 
+import { EventEmitter } from 'events';
 import { Room } from './Room';
-import { eventBus, EVENTS } from '../events/EventBus';
 
-export class RoomManager {
+export class RoomManager extends EventEmitter {
   private static instance: RoomManager;
   private rooms: Map<string, Room> = new Map();
   // socketId → Set of roomIds it belongs to
   private socketRooms: Map<string, Set<string>> = new Map();
 
-  private constructor() { }
+  private constructor() {
+    super();
+    this.setMaxListeners(100);
+  }
 
   static getInstance(): RoomManager {
     if (!RoomManager.instance) {
@@ -65,14 +68,14 @@ export class RoomManager {
   // ── Private ────────────────────────────────────────────────────────────
 
   private wireRoomEvents(room: Room): void {
-    room.on('stateChanged', (snap) => eventBus.emit(EVENTS.ROOM_STATE_CHANGED, snap));
-    room.on('participantJoined', (p) => eventBus.emit(EVENTS.PARTICIPANT_JOINED, { roomId: room.roomId, participant: p }));
-    room.on('participantLeft', (id) => eventBus.emit(EVENTS.PARTICIPANT_LEFT, { roomId: room.roomId, socketId: id }));
-    room.on('hostChanged', (hostId) => eventBus.emit(EVENTS.HOST_CHANGED, { roomId: room.roomId, hostId }));
-    room.on('trackSet', ({ trackUrl, title }) => eventBus.emit(EVENTS.TRACK_SET, { roomId: room.roomId, trackUrl, title }));
-    room.on('queueChanged', (queue) => eventBus.emit(EVENTS.QUEUE_CHANGED, { roomId: room.roomId, queue }));
-    room.on('schedule', (payload) => eventBus.emit(EVENTS.PLAYBACK_SCHEDULE, { roomId: room.roomId, ...payload }));
-    room.on('pause', (payload) => eventBus.emit(EVENTS.PLAYBACK_PAUSE, { roomId: room.roomId, ...payload }));
+    room.on('stateChanged', (snap) => this.emit('room:stateChanged', snap));
+    room.on('participantJoined', (p) => this.emit('room:participantJoined', { roomId: room.roomId, participant: p }));
+    room.on('participantLeft', (id) => this.emit('room:participantLeft', { roomId: room.roomId, socketId: id }));
+    room.on('hostChanged', (hostId) => this.emit('room:hostChanged', { roomId: room.roomId, hostId }));
+    room.on('trackSet', ({ trackUrl, title }) => this.emit('room:trackSet', { roomId: room.roomId, trackUrl, title }));
+    room.on('queueChanged', (queue) => this.emit('room:queueChanged', { roomId: room.roomId, queue }));
+    room.on('schedule', (payload) => this.emit('playback:schedule', { roomId: room.roomId, ...payload }));
+    room.on('pause', (payload) => this.emit('playback:pause', { roomId: room.roomId, ...payload }));
     room.on('empty', () => {
       console.log(`[RoomManager] Room ${room.roomId} is now empty`);
     });

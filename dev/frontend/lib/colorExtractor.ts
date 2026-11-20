@@ -3,6 +3,8 @@
  * Extracts 2 vibrant primary/secondary colors from any track's cover art (Spotify/YouTube/local) using HTML5 Canvas.
  */
 
+import { ytId } from './youtube';
+
 export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: string; coverUrl?: string } | null | undefined): string | null {
   if (!item) return null;
   if (item.thumbnail) return item.thumbnail;
@@ -14,14 +16,9 @@ export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: stri
   const customThumbMatch = url.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
 
-  const ytProtoMatch = url.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  if (ytProtoMatch) {
-    return `https://i.ytimg.com/vi/${ytProtoMatch[1]}/hqdefault.jpg`;
-  }
-
-  const ytStandardMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (ytStandardMatch) {
-    return `https://i.ytimg.com/vi/${ytStandardMatch[1]}/hqdefault.jpg`;
+  const id = ytId(url);
+  if (id) {
+    return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
   }
 
   return null;
@@ -30,25 +27,26 @@ export function getTrackThumbnailUrl(item: { trackUrl?: string; thumbnail?: stri
 const ytTitleCache = new Map<string, string>();
 const pendingFetches = new Set<string>();
 
-export function getYoutubeTrackTitle(ytId: string): string | null {
-  if (!ytId || !/^[a-zA-Z0-9_-]{11}$/.test(ytId)) return null;
-  if (ytTitleCache.has(ytId)) return ytTitleCache.get(ytId)!;
+export function getYoutubeTrackTitle(rawYtId: string): string | null {
+  const validId = ytId(rawYtId);
+  if (!validId) return null;
+  if (ytTitleCache.has(validId)) return ytTitleCache.get(validId)!;
 
-  if (typeof window !== "undefined" && !pendingFetches.has(ytId)) {
-    pendingFetches.add(ytId);
-    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+  if (typeof window !== "undefined" && !pendingFetches.has(validId)) {
+    pendingFetches.add(validId);
+    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${validId}&format=json`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.title) {
           const cleanTitle = data.title.replace(/\0/g, '').trim();
-          ytTitleCache.set(ytId, cleanTitle);
+          ytTitleCache.set(validId, cleanTitle);
           if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("syncbeats:title-resolved", { detail: { ytId, title: cleanTitle } }));
+            window.dispatchEvent(new CustomEvent("syncbeats:title-resolved", { detail: { ytId: validId, title: cleanTitle } }));
           }
         }
       })
       .catch(() => {})
-      .finally(() => pendingFetches.delete(ytId));
+      .finally(() => pendingFetches.delete(validId));
   }
   return null;
 }
@@ -168,36 +166,6 @@ function processImageData(imgData: Uint8ClampedArray): [string, string] | null {
   }
 
   return [color1, color2];
-}
-
-/** Parse a hex color to { h, s, l } (h: 0–360, s: 0–100, l: 0–100) */
-export function hexToHsl(hex: string): { h: number; s: number; l: number } {
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.substring(0, 2), 16);
-  const g = parseInt(clean.substring(2, 4), 16);
-  const b = parseInt(clean.substring(4, 6), 16);
-  return rgbToHsl(r, g, b);
-}
-
-export function colorsToAmbientHues(primaryHex: string, accentHex: string) {
-  const { h: h1 } = hexToHsl(primaryHex);
-  const { h: h2 } = hexToHsl(accentHex);
-
-  const lerpHue = (t: number) => {
-    let diff = h2 - h1;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    return (h1 + diff * t + 360) % 360;
-  };
-
-  return {
-    subHue:      Math.round(lerpHue(0)),
-    bassHue:     Math.round(lerpHue(0.1)),
-    lowMidHue:   Math.round(lerpHue(0.33)),
-    midHue:      Math.round(lerpHue(0.5)),
-    upperMidHue: Math.round(lerpHue(0.67)),
-    highHue:     Math.round(lerpHue(1)),
-  };
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────

@@ -96,7 +96,7 @@ function detectExactModel(ua: string): { deviceType: string; os: string; exactMo
         }
       }
     }
-  } catch (_) { /* WebGL not available */ }
+  } catch { /* WebGL not available */ }
 
   if (/Macintosh/i.test(ua)) {
     const macOsVersion = ua.match(/Mac OS X ([\d_]+)/i)?.[1]?.replace(/_/g, '.') ?? '';
@@ -155,8 +155,7 @@ interface TelemetryBatch {
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const BATCH_INTERVAL_MS = 10_000; // Flush every 10 seconds
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? '';
-const ENDPOINT   = `${SERVER_URL}/telemetry/sync`;
+const ENDPOINT = '/api/telemetry/sync';
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
 
@@ -187,18 +186,31 @@ export function useSyncTelemetry({
   const correctionTierRef = useRef<string>('synced');
   const correctionsRef    = useRef<number>(0);
   const rateRef           = useRef<number>(1);
-  const joinTimeRef       = useRef<number>(Date.now());
+  const joinTimeRef       = useRef<number>(0);
+  const contextRef        = useRef({ snapshot, networkQuality });
+
+  // Frequent room snapshots must not keep restarting the ten-second flush.
+  useEffect(() => {
+    contextRef.current = { snapshot, networkQuality };
+  }, [snapshot, networkQuality]);
+
+  useEffect(() => {
+    joinTimeRef.current = Date.now();
+    driftWindowRef.current = [];
+    correctionTierRef.current = 'synced';
+    correctionsRef.current = 0;
+    rateRef.current = 1;
+  }, [roomId, sessionId]);
 
   // Subscribe to SyncController drift reports on mount
   useEffect(() => {
     const sync = syncRef.current;
-    const unsub = sync.subscribe(() => {
-      const report = sync.getLastDrift();
+    const unsub = sync.subscribeDrift(report => {
       driftWindowRef.current.push(report.driftMs);
 
-      // Track worst tier in this window (priority: emergency > crossfade > soft-seek > micro-rate > synced)
+      // Track the strongest correction in this window.
       const tierPriority: Record<string, number> = {
-        emergency: 4, crossfade: 3, 'soft-seek': 2, 'micro-rate': 1, synced: 0,
+        emergency: 2, crossfade: 1, synced: 0,
       };
       const currentPriority = tierPriority[correctionTierRef.current] ?? 0;
       const newPriority = tierPriority[report.tier] ?? 0;
@@ -220,6 +232,7 @@ export function useSyncTelemetry({
     const { deviceType, os, exactModel } = detectExactModel(ua);
 
     const flush = () => {
+      const { snapshot, networkQuality } = contextRef.current;
       const driftSamples = driftWindowRef.current.slice();
       if (driftSamples.length === 0) return; // Nothing to report (not playing)
 
@@ -256,7 +269,7 @@ export function useSyncTelemetry({
         correctionTier:   correctionTierRef.current,
         correctionsCount: correctionsRef.current,
         playbackRate:     rateRef.current,
-        audioUnlocked:    syncRef.current.getIntent().state !== 'idle',
+        audioUnlocked:    syncRef.current.isAudioUnlocked(),
         tabVisible:       document.visibilityState === 'visible',
         sessionAgeSecs:   Math.floor((Date.now() - joinTimeRef.current) / 1000),
         participantCount: snapshot?.participants?.length ?? 1,
@@ -290,5 +303,5 @@ export function useSyncTelemetry({
 
     const interval = setInterval(flush, BATCH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [syncRef, clockOffsetRef, roomId, userId, sessionId, networkQuality, snapshot, lastBurstRttsRef]);
+  }, [syncRef, clockOffsetRef, roomId, userId, sessionId, lastBurstRttsRef]);
 }

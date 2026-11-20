@@ -1,0 +1,217 @@
+{
+  "info": {
+    "name": "SyncBeats Mac beta local regression",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:4099"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!/^http:\\/\\/(127\\.0\\.0\\.1|localhost):\\d+$/.test(pm.variables.get(\"baseUrl\"))) { throw new Error(\"Run only against a disposable local beta test server\"); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Save beta request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"postman-beta@example.invalid\", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"Two built-in speakers\", \"consent\": true}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 202\", () => pm.response.to.have.status(202));",
+              "pm.test(\"Generic confirmation exposes no membership or email\", () => { const b=pm.response.json(); pm.expect(b.ok).to.eql(true); pm.expect(b).not.to.have.property(\"email\"); pm.expect(b).not.to.have.property(\"id\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Duplicate normalized email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \" POSTMAN-BETA@EXAMPLE.INVALID \", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"Two built-in speakers\", \"consent\": true}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 202\", () => pm.response.to.have.status(202));",
+              "pm.test(\"Generic confirmation exposes no membership or email\", () => { const b=pm.response.json(); pm.expect(b.ok).to.eql(true); pm.expect(b).not.to.have.property(\"email\"); pm.expect(b).not.to.have.property(\"id\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject missing consent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"postman-beta@example.invalid\", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"Two built-in speakers\", \"consent\": false}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+              "pm.test(\"Actionable validation error\", () => pm.expect(pm.response.json().error).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject invalid email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"invalid\", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"Two built-in speakers\", \"consent\": true}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+              "pm.test(\"Actionable validation error\", () => pm.expect(pm.response.json().error).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject oversized notes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"postman-beta@example.invalid\", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"consent\": true}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+              "pm.test(\"Actionable validation error\", () => pm.expect(pm.response.json().error).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ignore honeypot",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"honeypot@example.invalid\", \"name\": \"Local API Test\", \"macChip\": \"apple-silicon\", \"macosVersion\": \"macOS 15\", \"testingInterest\": \"Two built-in speakers\", \"consent\": true, \"website\": \"https://bot.invalid\"}"
+        },
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 202\", () => pm.response.to.have.status(202));",
+              "pm.test(\"Generic confirmation exposes no membership or email\", () => { const b=pm.response.json(); pm.expect(b.ok).to.eql(true); pm.expect(b).not.to.have.property(\"email\"); pm.expect(b).not.to.have.property(\"id\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "No public signup directory",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/beta/mac"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"No public list\", () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

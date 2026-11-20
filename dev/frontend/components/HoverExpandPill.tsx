@@ -21,7 +21,7 @@ export function HoverExpandPill({
   label,
   onClick,
   active = false,
-  activeColor = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_12px_rgba(52,211,153,0.15)]",
+  activeColor = "bg-[var(--accent-color)]/15 text-[var(--accent-color)] border-[var(--accent-color)]/30 shadow-[0_0_12px_var(--accent-glow)]",
   title,
   delayMs = 700,
   groupId = "global-pill-group",
@@ -94,7 +94,7 @@ export function HoverExpandPill({
             animate={{ opacity: 1, width: "auto" }}
             exit={{ opacity: 0, width: 0 }}
             transition={{ type: "spring", stiffness: 450, damping: 28 }}
-            className="text-[10px] font-extrabold uppercase tracking-wider whitespace-nowrap overflow-hidden"
+            className="text-[10px] font-semibold whitespace-nowrap overflow-hidden"
           >
             {label}
           </motion.span>

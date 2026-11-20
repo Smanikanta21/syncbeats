@@ -30,6 +30,7 @@ services:
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT:-4000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connection_limit=10&connect_timeout=15}
+      TELEMETRY_DATABASE_URL: ${TELEMETRY_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
       # Auth
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -59,6 +60,8 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
+      # Same-origin /api rewrites are proxied from here, over the compose network.
+      INTERNAL_BACKEND_URL: http://server:${PORT:-4000}
       NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
 

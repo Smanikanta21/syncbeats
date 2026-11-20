@@ -1,8 +1,6 @@
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
 import { fetchEntirePlaylist, SpotifyTrackMetadata } from '../utils/spotifyPlaylistFetcher';
-// @ts-ignore
-const fetch = require('isomorphic-unfetch');
 
 // ── Spotify app client-credentials token cache (scoped to this service) ──────
 let _appToken: string | null = null;
@@ -28,8 +26,6 @@ async function _getAppSpotifyToken(): Promise<string> {
   return _appToken as string;
 }
 
-
-
 export interface TrackMetadata {
   title:           string;
   artist:          string;
@@ -43,9 +39,6 @@ export interface TrackMetadata {
 // Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BROWSER_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
 function cleanStr(s: any): string {
   if (!s || typeof s !== 'string') return '';
   return s
@@ -57,7 +50,6 @@ function cleanStr(s: any): string {
 }
 
 const isDateLike = (s: string) => /^\d{4}-\d{2}-\d{2}/.test(s.trim());
-
 
 export class MusicBridgeService {
 
@@ -201,7 +193,6 @@ export class MusicBridgeService {
     console.log(`[MusicBridge] Spotify API: ${tracks.length} valid tracks (no embed cap applied)`);
     return { name, coverUrl, tracks };
   }
-
 
   // _scrapeEmbed  (Tier 3 — <=100 tracks, no auth)
   //

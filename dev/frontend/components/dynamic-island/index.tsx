@@ -6,17 +6,19 @@ import {
   Disc, Pause, Play, SkipForward, SkipBack, Upload,
   Loader2, AlertCircle, AlertTriangle, Activity,
   ChevronLeft, Search, FastForward, Rewind, LogOut, Users,
-  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass
+  Radio, Volume2, VolumeX, UserPlus, Send, User, LayoutGrid, MessageSquare, Compass, X
 } from "lucide-react";
+import { expandedPanelSize, EXTENDED_ACTIVITY_HEIGHT, EXTENDED_PLAYER_HEIGHT, showBackgroundProgress } from './layout';
 import Link from "next/link";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useLayoutEffect, useEffect, useRef, useState, useCallback, useMemo, useReducer } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useAudio } from "../../context/AudioContext";
 
 import { useUpload } from "../../context/UploadContext";
-import { JoinRequest } from "../../lib/types";
+import { JoinRequest, type TrackActivity } from "../../lib/types";
 import { getSocket } from "../../lib/socket";
 import { roomsApi, usersApi } from "../../lib/api";
+import { ytId } from "../../lib/youtube";
 import { formatTime } from "../../hooks/useAudioPlayer";
 import { ThemeToggle } from "../ThemeToggle";
 import { useSyncInfo } from "../../context/SyncContext";
@@ -24,6 +26,9 @@ import { useNetworkStats, qualityColor } from "../../hooks/useNetworkStats";
 import { SearchTab } from "../room/SearchTab";
 import { useSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
+import { trackCacheKey } from "../../lib/trackIdentity";
+import { INITIAL_ISLAND, islandReducer, islandView, type IslandActivity, type IslandView } from './state';
+import { useIslandDock, useIslandSize, useIslandViewport } from './useDock';
 
 // ─────────────────────────────────────────────────────────
 // Constants
@@ -74,11 +79,9 @@ const contentMorph = (reduce: boolean) =>
         transition: { duration: 0.24, delay: 0.1, ease: EASE_OUT },
       };
 
-const COMPACT_WIDTH = 130;
 const COMPACT_HEIGHT = 44;
 // Extended grows while syncing: the sync bar adds a label row that clips at 44.
 // 62 = title (14) + gap (6) + label row (13) + gap (6) + bar (4) + py-2 (16).
-const EXTENDED_SYNC_HEIGHT = 62;
 
 // Secondary island — the detached circle iOS shows beside the pill when a
 // second activity is live. Ring geometry is derived so the size is one knob.
@@ -94,8 +97,8 @@ const GLOW_HEX: Record<string, string> = {
   cyan: "#06b6d4",
   emerald: "#10b981",
   amber: "#f59e0b",
-  dark: "#a855f7",
-  none: "#a855f7",
+  dark: "#d4d4d4",
+  none: "#d4d4d4",
 };
 const STUCK_HEX = "#f59e0b";
 
@@ -105,7 +108,7 @@ function useIslandAccent() {
 }
 
 // Room island states
-type IslandState = "pill" | "extended" | "expanded";
+type IslandState = IslandView;
 type IslandTab = "player" | "network" | "search" | "requests" | "deviceInfo" | "invite";
 
 // ─────────────────────────────────────────────────────────
@@ -114,7 +117,7 @@ type IslandTab = "player" | "network" | "search" | "requests" | "deviceInfo" | "
 
 const globalYtTitleCache = new Map<string, string>();
 
-function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | null): string {
+function cleanTrackTitle(title: string | null | undefined): string {
   if (!title) return "Unknown Track";
   let fileName = title.split('/').pop() ?? '';
   fileName = fileName.split('?')[0];
@@ -132,17 +135,18 @@ function cleanTrackTitle(title: string | null | undefined, trackUrl?: string | n
   fileName = fileName.replace(/_/g, ' ').trim();
 
   // If the result is a raw 11-char YouTube ID (e.g., "LPnDCTqW7zw")
-  if (/^[a-zA-Z0-9_-]{11}$/.test(fileName) && !/^[a-zA-Z]{11}$/.test(fileName)) {
-    const ytId = fileName;
-    if (globalYtTitleCache.has(ytId)) {
-      return globalYtTitleCache.get(ytId)!;
+  const extractedYtId = ytId(fileName);
+  if (extractedYtId && !/^[a-zA-Z]{11}$/.test(extractedYtId)) {
+    const id = extractedYtId;
+    if (globalYtTitleCache.has(id)) {
+      return globalYtTitleCache.get(id)!;
     }
     if (typeof window !== "undefined") {
-      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`)
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`)
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data && data.title) {
-            globalYtTitleCache.set(ytId, data.title);
+            globalYtTitleCache.set(id, data.title);
           }
         })
         .catch(() => {});
@@ -157,10 +161,10 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
   if (!trackUrl) return null;
   const customThumbMatch = trackUrl.match(/[?&]thumb=([^&]+)/);
   if (customThumbMatch) return decodeURIComponent(customThumbMatch[1]);
-  
-  const ytMatch = trackUrl.match(/^(?:ws-p2p:yt:|youtube:)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) {
-    return `https://i.ytimg.com/vi/${ytMatch[1]}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
+
+  const id = ytId(trackUrl);
+  if (id) {
+    return `https://i.ytimg.com/vi/${id}/${quality === 'hq' ? 'hqdefault' : 'mqdefault'}.jpg`;
   }
   return null;
 }
@@ -170,6 +174,7 @@ function getTrackThumbnail(trackUrl: string | undefined | null, quality: 'hq' | 
 // ─────────────────────────────────────────────────────────
 
 import { AudioBars } from "./AudioBars";
+import { SyncBeatsLogo } from "../brand/SyncBeatsLogo";
 
 // ─────────────────────────────────────────────────────────
 // CompactProgressBar
@@ -202,13 +207,13 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
   // ~15px left under the title, and leading-none keeps the 9px text at 9px
   // (arbitrary text-[9px] otherwise inherits leading-normal and clips).
   return (
-    <div className={cn('flex', 'items-center', 'gap-1.5', 'w-full', 'mt-1', 'shrink-0')}>
-      <span ref={curRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/50', 'shrink-0')}>00:00</span>
-      <div className={cn('flex-1', 'min-w-0', 'h-0.75', 'bg-white/15', 'rounded-full', 'overflow-hidden')}>
-        <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')}
+    <div className="flex items-center gap-1.5 w-full mt-1 shrink-0">
+      <span ref={curRef} className="text-[9px] font-bold leading-none tabular-nums text-white/50 shrink-0">00:00</span>
+      <div className="flex-1 min-w-0 h-0.75 bg-white/15 rounded-full overflow-hidden">
+        <div ref={barRef} className="h-full bg-white/80 rounded-full"
           style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
       </div>
-      <span ref={durRef} className={cn('text-[9px]', 'font-bold', 'leading-none', 'tabular-nums', 'text-white/40', 'shrink-0')}>00:00</span>
+      <span ref={durRef} className="text-[9px] font-bold leading-none tabular-nums text-white/40 shrink-0">00:00</span>
     </div>
   );
 };
@@ -219,56 +224,17 @@ const CompactProgressBar = ({ isPlaying, isVisible = true }: { isPlaying: boolea
 // ─────────────────────────────────────────────────────────
 
 const SyncProgressBar = ({
-  downloadProgress,
-  deviceSyncProgress,
-  participants,
-  incomingTrack,
-  isReady,
+  activity,
   isStuck,
   onSkip,
 }: {
-  downloadProgress: number;
-  deviceSyncProgress: Record<string, number>;
-  participants: any[];
-  incomingTrack: { title: string; progress: number } | null;
-  isReady: boolean;
+  activity: IslandActivity;
   isStuck?: boolean;
   onSkip?: () => void;
 }) => {
-  const upload = useUpload();
-  const accent = useIslandAccent();
-
-  // Compute overall sync progress only for active room participants
-  const activeSocketIds = new Set((participants || []).map((p: any) => p.socketId));
-  const progresses = Object.entries(deviceSyncProgress)
-    .filter(([sid]) => activeSocketIds.has(sid))
-    .map(([, p]) => p);
-  const hasSync = progresses.length > 0;
-  const avgSync = hasSync
-    ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length)
-    : 0;
-
-  const progress = upload.isUploading
-    ? (upload.uploadProgress || 10)
-    : incomingTrack
-    ? incomingTrack.progress
-    : !isReady
-    ? downloadProgress
-    : hasSync
-    ? avgSync
-    : 100;
-
-  const label = upload.isUploading
-    ? "Uploading Song..."
-    : incomingTrack
-    ? (incomingTrack.title ? `Receiving "${incomingTrack.title.substring(0, 18)}..."` : "Receiving Track")
-    : isStuck
-    ? "Stuck • Tap to skip"
-    : !isReady
-    ? "Downloading Track"
-    : hasSync && avgSync < 100
-    ? "Syncing Devices"
-    : "Synced";
+  const accent = "#d4d4d4";
+  const progress = activity.progress;
+  const label = isStuck ? 'Taking longer · tap to skip' : activity.label;
 
   const canSkip = !!(isStuck && onSkip);
 
@@ -279,25 +245,25 @@ const SyncProgressBar = ({
       onClick={canSkip ? e => { e.stopPropagation(); onSkip!(); } : undefined}
       title={canSkip ? "Track is stuck. Tap to skip." : undefined}
     >
-      <div className={cn('flex', 'items-center', 'justify-between', 'gap-2')}>
+      <div className="flex items-center justify-between gap-2">
         <span
-          className={cn('text-[9px]', 'font-black', 'uppercase', 'tracking-widest', 'flex', 'items-center', 'gap-1', 'min-w-0')}
+          className="text-[9px] font-semibold flex items-center gap-1 min-w-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.45)" }}
         >
-          {isStuck && <AlertTriangle className={cn('w-3', 'h-3', 'shrink-0', 'animate-bounce')} />}
+          {isStuck && <AlertTriangle className="w-3 h-3 shrink-0 animate-bounce" />}
           <span className="truncate">{label}</span>
         </span>
         <span
-          className={cn('text-[10px]', 'font-black', 'tabular-nums', 'shrink-0')}
+          className="text-[10px] font-black tabular-nums shrink-0"
           style={{ color: isStuck ? STUCK_HEX : "rgba(255,255,255,0.6)" }}
         >
-          {progress}%
+          {progress == null ? '…' : `${progress}%`}
         </span>
       </div>
-      <div className={cn('w-full', 'h-1', 'rounded-full', 'bg-white/15', 'overflow-hidden')}>
+      <div className="w-full h-1 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-label={activity.label} aria-valuenow={progress ?? undefined} aria-valuemin={0} aria-valuemax={100}>
         <div
           className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out', isStuck && 'animate-pulse')}
-          style={{ width: `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
+          style={{ width: progress == null ? '35%' : `${progress}%`, backgroundColor: isStuck ? STUCK_HEX : accent }}
         />
       </div>
     </div>
@@ -340,21 +306,21 @@ const RealtimeProgressBar = ({
   }, [isPlaying, duration, audio, isVisible]);
 
   return (
-    <div className={cn('flex', 'items-center', 'gap-3', 'w-full', 'mt-2')}>
-      <span ref={leftTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-right', 'select-none', 'pointer-events-none')}>0:00</span>
-      <div className={cn('relative', 'flex-1', 'h-8', 'flex', 'items-center', 'cursor-pointer', 'group')}
+    <div className="flex items-center gap-2.5 sm:gap-3 w-full mt-0.5">
+      <span ref={leftTimeRef} className="text-[11px] sm:text-[12px] font-medium text-white/50 font-mono w-9 text-right select-none pointer-events-none">0:00</span>
+      <div className="relative flex-1 h-6 flex items-center cursor-pointer group"
         onClick={e => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
           const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           onSeek(p * duration);
         }}>
-        <div className={cn('absolute', 'w-full', 'h-1.5', 'rounded-full', 'bg-white/10', 'overflow-hidden')}>
-          <div ref={barRef} className={cn('h-full', 'bg-white/80', 'rounded-full')} style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
+        <div className="absolute w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div ref={barRef} className="h-full bg-white/80 rounded-full" style={{ width: "0%", transition: isPlaying ? "none" : "width 200ms ease" }} />
         </div>
-        <div ref={handleRef} className={cn('absolute', 'w-3', 'h-3', 'rounded-full', 'bg-white', 'shadow-lg', 'opacity-0', 'group-hover:opacity-100', 'transition-opacity')} style={{ left: "-6px" }} />
+        <div ref={handleRef} className="absolute w-3 h-3 rounded-full bg-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: "-6px" }} />
       </div>
-      <span ref={rightTimeRef} className={cn('text-[12px]', 'font-medium', 'text-white/50', 'font-mono', 'w-9', 'text-left', 'select-none', 'pointer-events-none')}>-0:00</span>
+      <span ref={rightTimeRef} className="text-[11px] sm:text-[12px] font-medium text-white/50 font-mono w-9 text-left select-none pointer-events-none">-0:00</span>
     </div>
   );
 };
@@ -375,138 +341,118 @@ const tabVariants = {
 
 const PlayerTab = ({
   effectivePlaying, trackTitle, trackUrl, isReady, error, downloadProgress,
-  progress, displayTime, duration, hasTrack, onToggle, onNext, onPrev, onSeek,
+  duration, onToggle, onNext, onPrev, onSeek,
   onTabChange, isRoom, roomParticipants, pendingRequestsCount, isHost, isPrivate,
-  isVisible = true, audio, deviceSyncProgress,
+  isVisible = true,
 }: any) => {
   const isYt = !!trackUrl?.startsWith("youtube:") || !!trackUrl?.startsWith("ws-p2p:yt:");
   const thumbnailUrl = getTrackThumbnail(trackUrl, 'hq');
   const trackInitials = cleanTrackTitle(trackTitle).substring(0, 2).toUpperCase();
   const [showErrorDetails, setShowErrorDetails] = useState(false);
-  const accent = useIslandAccent();
 
   const isRoomReady = isRoom && roomParticipants ? roomParticipants.every((p: any) => p.isReady) : true;
   const loadingParticipants = isRoom && roomParticipants ? roomParticipants.filter((p: any) => !p.isReady) : [];
 
   return (
-    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'justify-evenly', 'px-5', 'sm:px-8', 'py-8', 'sm:py-10', 'gap-6')}>
+    <div className="relative w-full flex flex-col px-4 sm:px-6 py-4 gap-3 sm:gap-4">
       {/* Track header */}
-      <div className={cn('flex', 'items-start', 'gap-3', 'sm:gap-4', 'w-full')}>
-        <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-15 h-15 sm:w-17 sm:h-17 rounded-[14px] shadow-lg ${
+      <div className="flex items-start gap-3 sm:gap-3.5 w-full">
+        <div className={`flex items-center justify-center shrink-0 border overflow-hidden w-13 h-13 sm:w-15 sm:h-15 rounded-[12px] shadow-lg ${
           thumbnailUrl ? "border-white/20" : isYt ? "bg-[#FF0000]/10 border-[#FF0000]/20" : "bg-white/10 border-white/10"
         }`}>
           {thumbnailUrl
-            ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
-            : <span className={cn('text-xl', 'font-black', 'text-white/80', 'select-none')}>{trackInitials}</span>}
+            ? <img src={thumbnailUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
+            : <span className="text-lg sm:text-xl font-black text-white/80 select-none">{trackInitials}</span>}
         </div>
 
-        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pt-1')}>
-          <div className={cn('font-bold', 'text-white', 'text-[18px]', 'truncate', 'leading-tight', 'tracking-tight')}>
+        <div className="flex flex-col justify-center flex-1 min-w-0 pt-0.5">
+          <div className="font-bold text-white text-[16px] sm:text-[17px] truncate leading-tight tracking-tight">
             {cleanTrackTitle(trackTitle)}
           </div>
           <div
-            className={`text-[13px] sm:text-[15px] truncate mt-0.5 transition-colors ${
+            className={`text-[12px] sm:text-[13px] truncate mt-0.5 transition-colors ${
               error ? "text-[#FF0000]/80 cursor-pointer hover:text-[#FF0000]" : "text-white/50"
             }`}
             onClick={e => { if (error) { e.stopPropagation(); setShowErrorDetails(p => !p); } }}
           >
             {error ? (
-              <span className={cn('flex', 'items-center', 'gap-1')}><AlertCircle className={cn('w-3.5', 'h-3.5')} /> Failed • Tap for info</span>
+              <span className="flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Failed • Tap for info</span>
             ) : isReady && !isRoomReady ? "Syncing to peers…"
               : isReady ? "Ready to play"
-              : `Buffering… ${downloadProgress}%`}
+              : "Preparing audio…"}
           </div>
 
           <AnimatePresence>
             {error && showErrorDetails && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                <div className={cn('bg-[#FF0000]/10', 'border', 'border-[#FF0000]/20', 'rounded-lg', 'p-2.5', 'text-[11px]', 'text-[#FF0000]/90', 'mt-2')}>
-                  <p className={cn('font-bold', 'mb-1')}>Track Transfer Failed</p>
+                <div className="bg-[#FF0000]/10 border border-[#FF0000]/20 rounded-lg p-2.5 text-[11px] text-[#FF0000]/90 mt-2">
+                  <p className="font-bold mb-1">Track Transfer Failed</p>
                   <p className="opacity-80">{error}</p>
                 </div>
               </motion.div>
             )}
-            {hasTrack && isRoom && loadingParticipants.length > 0 && !error && !showErrorDetails && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-2">
-                <div className={cn('flex', 'items-center', 'gap-2', 'flex-wrap', 'max-h-12', 'overflow-y-auto', 'custom-scrollbar', 'pr-1')} data-lenis-prevent="true">
-                  {loadingParticipants.map((p: any) => {
-                    const progress = deviceSyncProgress[p.socketId] || 0;
-                    return (
-                      <div key={p.socketId} className={cn('flex', 'items-center', 'gap-2', 'bg-white/10', 'rounded-full', 'pl-2.5', 'pr-3', 'py-1.5')}>
-                        <Loader2 className={cn('w-3', 'h-3', 'text-white/50', 'animate-spin', 'shrink-0')} />
-                        <span className={cn('text-[10px]', 'font-bold', 'text-white/70', 'uppercase', 'tracking-widest', 'whitespace-nowrap')}>{p.displayName}</span>
-                        <div className={cn('w-12', 'h-1', 'bg-black/40', 'rounded-full', 'overflow-hidden', 'shrink-0')}>
-                          <div className={cn('h-full', 'rounded-full', 'transition-[width]', 'duration-300', 'ease-out')} style={{ width: `${progress}%`, backgroundColor: accent }} />
-                        </div>
-                        <span className={cn('text-[9px]', 'font-black', 'text-white/40', 'tabular-nums')}>{progress}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
+          {isReady && loadingParticipants.length > 0 && (
+            <p className="mt-1 text-[11px] text-white/40">{loadingParticipants.length} {loadingParticipants.length === 1 ? 'device is' : 'devices are'} preparing audio</p>
+          )}
           </AnimatePresence>
         </div>
 
-        <div className={cn('flex', 'items-center', 'gap-4', 'shrink-0', 'pr-1', 'pt-1')}>
-          {error ? <AlertCircle className={cn('w-5', 'h-5', 'text-[#FF0000]/80')} />
-            : !isReady || !isRoomReady ? (
-                <div className={cn('w-6', 'h-1', 'bg-white/10', 'rounded-full', 'overflow-hidden', 'flex', 'items-center', 'shrink-0')}>
-                  <motion.div
-                    className={cn('h-full', 'bg-white/40', 'rounded-full', 'w-1/3')}
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "300%" }}
-                    transition={{ repeat: Infinity, duration: 0.8, ease: "easeInOut", repeatType: "mirror" }}
-                  />
-                </div>
-              )
-            : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
+        <div className="flex items-center gap-3 sm:gap-4 shrink-0 pr-1 pt-0.5">
+          {error ? <AlertCircle className="w-5 h-5 text-[#FF0000]/80" />
+                        : <AudioBars isPlaying={effectivePlaying} isSmall={false} isVisible={isVisible} />}
 
           {isRoom && (
             <button type="button" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("open-profile-modal")); }}
-              className={cn('p-1.5', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'bg-white/5', 'hover:bg-white/20', 'group')}
+              className="p-1.5 rounded-full transition-colors pointer-events-auto active:scale-95 bg-white/5 hover:bg-white/20 group"
               aria-label="Your profile" title="Your Profile">
-              <User className={cn('w-4', 'h-4', 'text-white/80', 'group-hover:text-white', 'transition-colors')} />
+              <User className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
             </button>
           )}
         </div>
       </div>
 
+      {!error && (!isReady || !isRoomReady) && (
+        <SyncProgressBar activity={{
+          id: 'player-preparation', status: 'active',
+          label: !isReady ? 'Preparing audio' : 'Waiting for devices',
+          progress: !isReady ? (downloadProgress > 0 ? downloadProgress : null) : null,
+        }} />
+      )}
+
       <RealtimeProgressBar duration={duration} onSeek={onSeek} isPlaying={effectivePlaying} isVisible={isVisible} />
 
+      {isRoom && isHost && isPrivate && pendingRequestsCount > 0 && (
+        <button type="button" onClick={() => onTabChange('requests')} className="flex h-9 items-center justify-center gap-2 rounded-xl bg-white/5 px-3 text-xs text-white/70 hover:bg-white/10">
+          <Users className="h-4 w-4" /> Join requests ({pendingRequestsCount})
+        </button>
+      )}
+
       {/* Controls */}
-      <div className={cn('flex', 'items-center', 'justify-between', 'w-full', 'gap-2')}>
-        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
-          <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <Activity className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
+      <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center w-full gap-1">
+        <div className="flex items-center justify-center">
+          <button type="button" aria-label="Network health" onClick={e => { e.stopPropagation(); onTabChange("network"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
-          {isRoom && isHost && isPrivate && (
-            <button type="button" aria-label={`Join requests${pendingRequestsCount > 0 ? ` (${pendingRequestsCount} pending)` : ""}`} onClick={e => { e.stopPropagation(); onTabChange("requests"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95', 'relative')}>
-              <Users className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
-              {pendingRequestsCount > 0 && (
-                <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-3', 'bg-red-500', 'rounded-full', 'border-2', 'border-background', 'animate-pulse')} />
-              )}
-            </button>
-          )}
+
         </div>
 
-        <div className={cn('flex', 'items-center', 'justify-center', 'gap-6', 'sm:gap-10')}>
-          <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <SkipBack className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
+        <div className="flex min-w-0 items-center justify-center gap-1 sm:gap-3">
+          <button type="button" aria-label="Previous track" onClick={e => { e.stopPropagation(); onPrev(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipBack className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="currentColor" />
           </button>
-          <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
+          <button type="button" aria-label={effectivePlaying ? "Pause" : "Play"} onClick={e => { e.stopPropagation(); onToggle(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
             {effectivePlaying
-              ? <Pause className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'text-white')} fill="currentColor" />
-              : <Play className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'ml-1', 'text-white')} fill="currentColor" />}
+              ? <Pause className="w-8 h-8 sm:w-9 sm:h-9 text-white" fill="currentColor" />
+              : <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 text-white" fill="currentColor" />}
           </button>
-          <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <SkipForward className={cn('w-7', 'h-7', 'sm:w-8', 'sm:h-8', 'text-white')} fill="currentColor" />
+          <button type="button" aria-label="Next track" onClick={e => { e.stopPropagation(); onNext(e); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <SkipForward className="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="currentColor" />
           </button>
         </div>
 
-        <div className={cn('flex', 'items-center', 'gap-1', 'sm:gap-2')}>
-          <button type="button" aria-label="Search tracks" onClick={e => { e.stopPropagation(); onTabChange("search"); }} className={cn('p-1', 'sm:p-2', 'rounded-full', 'transition-colors', 'pointer-events-auto', 'active:scale-95')}>
-            <Search className={cn('w-5', 'h-5', 'sm:w-6', 'sm:h-6', 'text-white/50', 'hover:text-white', 'hover:cursor-pointer', 'hover:scale-105', 'transition-colors')} />
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button type="button" aria-label="Search tracks" onClick={e => { e.stopPropagation(); onTabChange("search"); }} className="p-1 sm:p-2 rounded-full transition-colors pointer-events-auto active:scale-95">
+            <Search className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 hover:text-white hover:cursor-pointer hover:scale-105 transition-colors" />
           </button>
         </div>
       </div>
@@ -524,46 +470,46 @@ const NetworkTab = ({ onBack, netStats, audio }: { onBack: () => void; netStats:
   const accent = useIslandAccent();
 
   return (
-    <div className={cn('relative', 'w-full', 'flex', 'flex-col', 'px-5', 'sm:px-6', 'pt-4', 'pb-5')}>
+    <div className="relative w-full flex flex-col px-5 sm:px-6 pt-4 pb-5">
       {/* Header */}
-      <div className={cn('flex', 'items-center', 'gap-3', 'mb-6', 'shrink-0')}>
-        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'transition-colors', 'pointer-events-auto')}>
-          <ChevronLeft className={cn('w-6', 'h-6')} />
+      <div className="flex items-center gap-3 mb-6 shrink-0">
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors pointer-events-auto">
+          <ChevronLeft className="w-6 h-6" />
         </button>
-        <h3 className={cn('text-white', 'font-bold', 'tracking-widest', 'uppercase')}>Network Health</h3>
+        <h3 className="text-white font-bold ">Network Health</h3>
       </div>
-      <div className={cn('flex-1', 'flex', 'flex-col', 'gap-4')}>
-        <div className={cn('flex', 'justify-between', 'items-end')}>
-          <div className={cn('flex', 'flex-col')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Latency</span>
-            <span className={cn('text-white', 'font-black', 'text-3xl')} style={{ color: qualityColor(netStats.quality) }}>
-              {Math.round(netStats.latency || 0)}<span className={cn('text-lg', 'text-white/50', 'ml-1')}>ms</span>
+      <div className="flex-1 flex flex-col gap-4">
+        <div className="flex justify-between items-end">
+          <div className="flex flex-col">
+            <span className="text-white/50 text-xs font-bold ">Latency</span>
+            <span className="text-white font-black text-3xl" style={{ color: qualityColor(netStats.quality) }}>
+              {Math.round(netStats.latency || 0)}<span className="text-lg text-white/50 ml-1">ms</span>
             </span>
           </div>
-          <div className={cn('flex', 'flex-col', 'items-end', 'gap-0.5')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Jitter</span>
-            <span className={cn('text-white', 'font-bold', 'text-xl')}>{Math.round(netStats.jitter || 0)}ms</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-white/50 text-xs font-bold ">Jitter</span>
+            <span className="text-white font-bold text-xl">{Math.round(netStats.jitter || 0)}ms</span>
           </div>
         </div>
-        <div className={cn('w-full', 'h-24', 'bg-white/5', 'rounded-xl', 'border', 'border-white/10', 'p-2', 'flex', 'items-end', 'gap-0.5')}>
+        <div className="w-full h-24 bg-white/5 rounded-xl border border-white/10 p-2 flex items-end gap-0.5">
           {history.slice(-40).map((s: any, i: number) => {
             const hPct = Math.max(5, (s.latency / maxLat) * 100);
-            return <div key={i} className={cn('flex-1', 'bg-white/40', 'rounded-sm', 'transition-all', 'duration-300')} style={{ height: `${hPct}%` }} />;
+            return <div key={i} className="flex-1 bg-white/40 rounded-sm transition-all duration-300" style={{ height: `${hPct}%` }} />;
           })}
         </div>
-        <div className={cn('flex', 'flex-col', 'gap-2')}>
-          <div className={cn('flex', 'justify-between', 'items-center')}>
-            <span className={cn('text-white/50', 'text-xs', 'font-bold', 'uppercase', 'tracking-widest')}>Sync Correction</span>
-            <span className={cn('text-white', 'font-bold', 'text-sm', 'tabular-nums')}>{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <span className="text-white/50 text-xs font-bold ">Sync Correction</span>
+            <span className="text-white font-bold text-sm tabular-nums">{audio.manualLatency > 0 ? "+" : ""}{Math.round(audio.manualLatency * 1000)}ms</span>
           </div>
           <input type="range" min={-0.5} max={0.5} step={0.01} value={audio.manualLatency}
             aria-label="Manual sync correction in seconds"
             onChange={e => audio.setManualLatency(Number(e.target.value))}
-            className={cn('w-full', 'h-2', 'rounded-full', 'appearance-none', 'outline-none', 'bg-white/20', 'cursor-pointer', 'pointer-events-auto')}
+            className="w-full h-2 rounded-full appearance-none outline-none bg-white/20 cursor-pointer pointer-events-auto"
             style={{ background: `linear-gradient(to right, ${accent} 0 ${((audio.manualLatency + 0.5) / 1) * 100}%, rgba(255,255,255,0.2) ${((audio.manualLatency + 0.5) / 1) * 100}% 100%)` }} />
-          <div className={cn('flex', 'items-center', 'justify-between', 'mt-1')}>
-            <p className={cn('text-[10px]', 'text-white/40')}>Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
-            <button type="button" onClick={() => audio.setManualLatency(0)} className={cn('px-2', 'py-1', 'rounded', 'bg-white/10', 'hover:bg-white/20', 'text-[10px]', 'font-bold', 'text-white', 'transition-colors', 'pointer-events-auto')}>Auto Sync</button>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[10px] text-white/40">Reported: {Math.round(audio.outputLatency * 1000)}ms.</p>
+            <button type="button" onClick={() => audio.setManualLatency(0)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-colors pointer-events-auto">Auto Sync</button>
           </div>
         </div>
       </div>
@@ -615,16 +561,16 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
   };
 
   return (
-    <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-3', 'pb-3', 'px-5')}>
-      <div className={cn('flex', 'items-center', 'gap-2', 'mb-3', 'shrink-0')}>
-        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-1.5', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-1', 'pointer-events-auto')}>
-          <ChevronLeft className={cn('w-4', 'h-4', 'text-white/70')} />
+    <div className="flex flex-col h-auto text-white pt-3 pb-3 px-5">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <button type="button" aria-label="Back to player" onClick={e => { e.stopPropagation(); onBack(); }} className="p-1.5 hover:bg-white/10 rounded-full transition-colors -ml-1 pointer-events-auto">
+          <ChevronLeft className="w-4 h-4 text-white/70" />
         </button>
-        <span className={cn('text-xs', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/60')}>Invite Friends</span>
+        <span className="text-xs font-bold text-white/60">Invite Friends</span>
       </div>
-      <div className={cn('flex', 'flex-col')}>
-        <div className={cn('relative', 'mb-3', 'shrink-0')}>
-          <Search className={cn('absolute', 'left-3', 'top-1/2', '-translate-y-1/2', 'w-3.5', 'h-3.5', 'text-white/40')} />
+      <div className="flex flex-col">
+        <div className="relative mb-3 shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
           <input
             name="syncbeats-island-search-input"
             type="search"
@@ -648,46 +594,46 @@ const InviteTab = ({ onBack, roomId, onStateChange }: { onBack: () => void; room
             data-lpignore="true"
             data-form-type="other"
             aria-autocomplete="none"
-            className={cn('w-full', 'bg-white/5', 'border', 'border-white/10', 'rounded-full', 'py-1.5', 'pl-9', 'pr-4', 'text-xs', 'text-white', 'placeholder-white/40', 'focus:outline-none', 'focus:border-white/30')}
+            className="w-full bg-white/5 border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs text-white placeholder-white/40 focus:outline-none focus:border-white/30"
           />
         </div>
-        <div className={cn('max-h-65', 'overflow-y-auto', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')}>
+        <div className="max-h-65 overflow-y-auto custom-scrollbar flex flex-col gap-2 pointer-events-auto">
           {loading ? (
-            <div className={cn('flex', 'justify-center', 'py-3')}><Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white/40')} /></div>
+            <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-white/40" /></div>
           ) : results.length > 0 ? (
             results.map((u: any) => (
-              <div key={u.id} className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
-                <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                  <span className={cn('font-bold', 'text-xs', 'truncate')}>{u.name}</span>
-                  <span className={cn('text-[11px]', 'text-white/40', 'truncate')}>{u.email}</span>
+              <div key={u.id} className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-bold text-xs truncate">{u.name}</span>
+                  <span className="text-[11px] text-white/40 truncate">{u.email}</span>
                 </div>
                 <button
                   onClick={() => handleInvite(u)}
                   disabled={inviting === u.id}
-                  className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50')}
+                  className="px-3.5 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50"
                 >
-                  {inviting === u.id ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : "Invite"}
+                  {inviting === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Invite"}
                 </button>
               </div>
             ))
           ) : query.includes("@") ? (
-            <div className={cn('flex', 'items-center', 'justify-between', 'p-2.5', 'bg-white/5', 'rounded-xl', 'border', 'border-white/5')}>
-              <div className={cn('flex', 'flex-col', 'min-w-0')}>
-                <span className={cn('text-[10px]', 'text-white/40', 'mb-0.5')}>Invite via email</span>
-                <span className={cn('font-bold', 'text-xs', 'truncate')}>{query}</span>
+            <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] text-white/40 mb-0.5">Invite via email</span>
+                <span className="font-bold text-xs truncate">{query}</span>
               </div>
               <button
                 onClick={() => handleInvite(undefined, query)}
                 disabled={inviting === query}
-                className={cn('px-3.5', 'py-1', 'bg-white/10', 'hover:bg-white/20', 'rounded-full', 'text-xs', 'font-bold', 'transition-colors', 'disabled:opacity-50', 'flex', 'items-center', 'gap-1')}
+                className="px-3.5 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
               >
-                {inviting === query ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} /> : <><Send className={cn('w-3', 'h-3')}/> Send</>}
+                {inviting === query ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Send className="w-3 h-3"/> Send</>}
               </button>
             </div>
           ) : query.length > 0 ? (
-            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>No users found. Type a full email to invite via email.</div>
+            <div className="text-center text-white/40 text-xs py-2">No users found. Type a full email to invite via email.</div>
           ) : (
-            <div className={cn('text-center', 'text-white/40', 'text-xs', 'py-2')}>Search for friends to invite</div>
+            <div className="text-center text-white/40 text-xs py-2">Search for friends to invite</div>
           )}
         </div>
       </div>
@@ -705,23 +651,23 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
   onDeny: (id: string) => void;
   onBack: () => void;
 }) => (
-  <div className={cn('flex', 'flex-col', 'h-auto', 'text-white', 'pt-2', 'pb-4')}>
-    <div className={cn('flex', 'items-center', 'justify-between', 'px-6', 'mb-4')}>
-      <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className={cn('p-2', 'hover:bg-white/10', 'rounded-full', 'transition-colors', '-ml-2', 'pointer-events-auto')}>
-        <ChevronLeft className={cn('w-5', 'h-5', 'text-white/50')} />
+  <div className="flex flex-col h-auto text-white pt-2 pb-4">
+    <div className="flex items-center justify-between px-6 mb-4">
+      <button type="button" aria-label="Close join requests" onClick={e => { e.stopPropagation(); onBack(); }} className="p-2 hover:bg-white/10 rounded-full transition-colors -ml-2 pointer-events-auto">
+        <ChevronLeft className="w-5 h-5 text-white/50" />
       </button>
-      <span className={cn('text-sm', 'font-bold', 'uppercase', 'tracking-widest', 'text-white/50')}>Join Requests ({requests.length})</span>
+      <span className="text-sm font-bold text-white/50">Join Requests ({requests.length})</span>
       <div className="w-9" />
     </div>
-    <div className={cn('max-h-[320px]', 'min-h-0', 'overflow-y-auto', 'px-6', 'custom-scrollbar', 'flex', 'flex-col', 'gap-2', 'pointer-events-auto')} data-lenis-prevent="true">
+    <div className="max-h-[320px] min-h-0 overflow-y-auto px-6 custom-scrollbar flex flex-col gap-2 pointer-events-auto" data-lenis-prevent="true">
       {requests.length === 0 ? (
-        <div className={cn('text-center', 'text-white/40', 'text-xs', 'mt-10')}>No pending requests</div>
+        <div className="text-center text-white/40 text-xs mt-10">No pending requests</div>
       ) : requests.map(req => (
-        <div key={req.socketId} className={cn('flex', 'items-center', 'justify-between', 'p-3', 'rounded-2xl', 'bg-white/5', 'border', 'border-white/10')}>
-          <span className={cn('font-semibold', 'text-sm', 'truncate', 'pr-2')}>{req.displayName}</span>
-          <div className={cn('flex', 'items-center', 'gap-2', 'shrink-0')}>
-            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'text-xs', 'font-bold', 'hover:bg-red-500/30', 'transition-colors')}>Deny</button>
-            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className={cn('px-3', 'py-1.5', 'rounded-full', 'bg-emerald-500', 'text-white', 'text-xs', 'font-bold', 'hover:bg-emerald-600', 'transition-colors')}>Approve</button>
+        <div key={req.socketId} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10">
+          <span className="font-semibold text-sm truncate pr-2">{req.displayName}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={e => { e.stopPropagation(); onDeny(req.socketId); }} className="px-3 py-1.5 rounded-full bg-bad-500/20 text-bad-400 text-xs font-bold hover:bg-bad-500/30 transition-colors">Deny</button>
+            <button onClick={e => { e.stopPropagation(); onApprove(req.socketId, req.displayName); }} className="px-3 py-1.5 rounded-full bg-ok-500 text-white text-xs font-bold hover:bg-ok-600 transition-colors">Approve</button>
           </div>
         </div>
       ))}
@@ -734,7 +680,7 @@ const RequestsTab = ({ requests, onApprove, onDeny, onBack }: {
 // ─────────────────────────────────────────────────────────
 
 const RoomPill = ({
-  effectivePlaying, trackTitle, trackUrl, isRoom, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback, showAlbumArt = true
+  effectivePlaying, trackUrl, isSyncing, hasTrack, seekIndicator, volIndicator, onTogglePlayback, showAlbumArt = true
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
@@ -752,32 +698,32 @@ const RoomPill = ({
   if (isSyncing) {
     // While buffering just show a subtle spinner — pill is in transit to extended anyway
     return (
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2')}>
-        <Loader2 className={cn('w-3.5', 'h-3.5', 'text-white/50', 'animate-spin')} />
+      <div className="absolute inset-0 flex items-center justify-center gap-2">
+        <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
       </div>
     );
   }
 
   if (!hasTrack) {
     return (
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-center', 'gap-2', 'px-3', 'group')}>
-        <Search className={cn('w-3.5', 'h-3.5', 'text-white/50', 'group-hover:text-white', 'transition-colors')} />
-        <span className={cn('text-[11px]', 'font-bold', 'text-white/50', 'group-hover:text-white', 'transition-colors')}>Search</span>
+      <div className="absolute inset-0 flex items-center justify-center gap-2 px-3 group">
+        <Search className="w-3.5 h-3.5 text-white/50 group-hover:text-white transition-colors" />
+        <span className="text-[11px] font-bold text-white/50 group-hover:text-white transition-colors">Search</span>
       </div>
     );
   }
 
   return (
-    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'px-2.5', 'gap-2.5')}>
+    <div className="absolute inset-0 flex items-center px-2.5 gap-2.5">
       {/* Tiny thumbnail or disc */}
-      <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'flex', 'items-center', 'justify-center', 'bg-white/10')}>
+      <div className="w-7 h-7 rounded-[9px] shrink-0 overflow-hidden flex items-center justify-center bg-white/10">
         {showAlbumArt && thumbUrl
-          ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+          ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
           : <Disc className={`w-4 h-4 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
       </div>
       {/* Dynamic Right Side: Seek | Vol | EQ | Play */}
       <div
-        className={cn('flex', 'items-center', 'gap-1', 'flex-1', 'justify-center', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+        className="flex items-center gap-1 flex-1 justify-center cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto"
         onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
         onPointerDown={(e) => e.stopPropagation()}
         role="button"
@@ -785,18 +731,18 @@ const RoomPill = ({
       >
         {volIndicator ? (
           <>
-            {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <VolumeX className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{volIndicator.text}</span>
+            {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5 text-white" /> : <VolumeX className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white tabular-nums">{volIndicator.text}</span>
           </>
         ) : seekIndicator ? (
           <>
-            {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5', 'text-white')} /> : <Rewind className={cn('w-3.5', 'h-3.5', 'text-white')} />}
-            <span className={cn('text-[10px]', 'font-black', 'text-white', 'tabular-nums')}>{seekIndicator.text}</span>
+            {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5 text-white" /> : <Rewind className="w-3.5 h-3.5 text-white" />}
+            <span className="text-[10px] font-black text-white tabular-nums">{seekIndicator.text}</span>
           </>
         ) : effectivePlaying ? (
           <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
         ) : (
-          <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80')} />
+          <Play className="w-4 h-4 text-white/80 fill-white/80" />
         )}
       </div>
     </div>
@@ -824,16 +770,16 @@ const RadialNavigatorPillContent = ({
   }
 
   return (
-    <div className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2.5', 'bg-black', 'rounded-full', 'select-none', 'border-none')}>
-      <div className={cn('flex', 'items-center', 'gap-2.5', 'min-w-0', 'flex-1', 'px-1')}>
-        <div className={cn('w-7', 'h-7', 'rounded-full', 'bg-white/10', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
+    <div className="absolute inset-0 flex items-center justify-between px-3 gap-2.5 bg-black rounded-full select-none border-none">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 px-1">
+        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
           <IconComponent className={`w-4 h-4 text-white ${!snappedItem ? "animate-spin-slow" : ""}`} />
         </div>
-        <div className={cn('flex', 'flex-col', 'justify-center', 'min-w-0')}>
-          <span className={cn('text-[11px]', 'font-bold', 'uppercase', 'tracking-wider', 'text-white', 'truncate', 'leading-tight')}>
+        <div className="flex flex-col justify-center min-w-0">
+          <span className="text-[11px] font-bold text-white truncate leading-tight">
             {snappedItem ? snappedItem.label : "Hold & Drag"}
           </span>
-          <span className={cn('text-[9px]', 'font-semibold', 'text-white/50', 'truncate', 'leading-tight')}>
+          <span className="text-[9px] font-semibold text-white/50 truncate leading-tight">
             {snappedItem ? "Release thumb to open" : "Move toward an icon to snap"}
           </span>
         </div>
@@ -848,19 +794,15 @@ const RadialNavigatorPillContent = ({
 // ─────────────────────────────────────────────────────────
 
 const RoomExtendedPill = ({
-  effectivePlaying, trackTitle, trackUrl, isReady,
-  downloadProgress, deviceSyncProgress, participants, incomingTrack,
+  effectivePlaying, trackTitle, trackUrl, activity, notice,
   pendingRequestsCount, isHost, isPrivate, onRequestsClick, seekIndicator, volIndicator, onTogglePlayback,
-  prefetchProgress, prefetchTitle, isPrefetching, isStuck, onNextTrack,
+  isStuck, onNextTrack, onRetry,
 }: {
   effectivePlaying: boolean;
   trackTitle: string;
   trackUrl: string | null;
-  isReady: boolean;
-  downloadProgress: number;
-  deviceSyncProgress: Record<string, number>;
-  participants: any[];
-  incomingTrack: { title: string; progress: number } | null;
+  activity: IslandActivity | null;
+  notice: IslandActivity | null;
   pendingRequestsCount: number;
   isHost: boolean;
   isPrivate: boolean;
@@ -868,142 +810,124 @@ const RoomExtendedPill = ({
   seekIndicator: { amount: number; text: string } | null;
   volIndicator: { amount: number; text: string } | null;
   onTogglePlayback: () => void;
-  prefetchProgress: number;
-  prefetchTitle: string | null;
-  isPrefetching: boolean;
   isStuck?: boolean;
   onNextTrack?: () => void;
+  onRetry: () => void;
 }) => {
   const audio = useAudio();
-  const upload = useUpload();
-  const accent = useIslandAccent();
   const thumbUrl = getTrackThumbnail(trackUrl, 'mq');
-  const title = cleanTrackTitle(trackTitle);
+  const title = trackTitle ? cleanTrackTitle(trackTitle) : 'SyncBeats';
 
   // If there's an active audio error (decoding failed / blocked track), display error alert in Dynamic Island
   if (audio.error) {
     return (
       <div
-        className={cn('absolute', 'inset-0', 'flex', 'items-center', 'justify-between', 'px-3', 'gap-2', 'bg-red-950/90', 'border', 'border-red-500/50', 'rounded-full', 'text-red-200', 'cursor-pointer', 'pointer-events-auto', 'shadow-[0_0_25px_rgba(239,68,68,0.5)]')}
+        className="absolute inset-0 flex items-center justify-between px-3 gap-2 bg-bad-950/90 border border-bad-500/50 rounded-full text-bad-200 cursor-pointer pointer-events-auto shadow-[0_0_25px_color-mix(in_srgb,var(--color-bad-500)_50%,transparent)]"
         onPointerDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onNextTrack?.(); }}
-        title="Playback Error. Tap to skip track."
+        title="Playback error"
       >
-        <div className={cn('flex', 'items-center', 'gap-2', 'min-w-0', 'flex-1')}>
-          <AlertCircle className={cn('w-4', 'h-4', 'text-red-400', 'shrink-0', 'animate-bounce')} />
-          <span className={cn('text-[10px]', 'font-bold', 'text-red-200', 'truncate')}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <AlertCircle className="w-4 h-4 text-bad-400 shrink-0 animate-bounce" />
+          <span className="text-[10px] font-bold text-bad-200 truncate">
             {audio.error}
           </span>
         </div>
+        <button type="button" onClick={e => { e.stopPropagation(); onRetry(); }} className="min-w-11 min-h-11 text-[10px] font-bold focus-visible:outline-2 focus-visible:outline-white">
+          Retry
+        </button>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onNextTrack?.(); }}
-          className={cn('px-2.5', 'py-1', 'rounded-full', 'bg-red-500/30', 'hover:bg-red-500/50', 'text-[10px]', 'font-black', 'text-red-100', 'flex', 'items-center', 'gap-1', 'shrink-0', 'transition-all', 'border', 'border-red-400/30')}
+          className="min-h-11 min-w-11 px-2 rounded-full bg-bad-500/30 hover:bg-bad-500/50 text-[10px] font-black text-bad-100 flex items-center gap-1 shrink-0 transition-all border border-bad-400/30 focus-visible:outline-2 focus-visible:outline-white"
         >
-          Skip <SkipForward className={cn('w-3', 'h-3')} />
+          Skip <SkipForward className="w-3 h-3" />
         </button>
       </div>
     );
   }
 
-  const hasTrack = !!trackUrl || !!trackTitle;
-  const activeSocketIds = new Set((participants || []).map((p: any) => p.socketId));
-  const progresses = Object.entries(deviceSyncProgress)
-    .filter(([sid]) => activeSocketIds.has(sid))
-    .map(([, p]) => p);
-  const isSyncing = (hasTrack && !isReady) || incomingTrack != null || upload.isUploading || (hasTrack && progresses.length > 0 && progresses.some(p => p < 100));
+  const isSyncing = activity?.status === 'active';
 
   return (
     <>
-      <div className={cn('absolute', 'inset-0', 'flex', 'items-stretch', 'px-3', 'gap-2.5')}>
+      <div className="absolute inset-0 flex items-stretch px-3 gap-2.5">
       {/* LEFT half: track info + playback progress */}
-      <div className={cn('flex', 'items-center', 'gap-2.5', 'flex-1', 'min-w-0', 'py-2')}>
+      <div className="flex items-center gap-2.5 flex-1 min-w-0 py-2">
         {/* Thumbnail */}
-        <div className={cn('w-7', 'h-7', 'rounded-[9px]', 'shrink-0', 'overflow-hidden', 'bg-white/10', 'flex', 'items-center', 'justify-center')}>
+        <div className="w-7 h-7 rounded-[9px] shrink-0 overflow-hidden bg-white/10 flex items-center justify-center">
           {thumbUrl
-            ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className={cn('w-full', 'h-full', 'object-cover', 'select-none', 'pointer-events-none', 'no-touch-select')} />
+            ? <img src={thumbUrl} draggable={false} onContextMenu={e => e.preventDefault()} className="w-full h-full object-cover select-none pointer-events-none no-touch-select" />
             : isSyncing
             ? <Loader2 className={`w-4 h-4 text-white/50 animate-spin`} />
             : <Disc className={`w-3.5 h-3.5 text-white/60 ${effectivePlaying ? "animate-[spin_4s_linear_infinite]" : ""}`} />}
         </div>
 
         {/* Title + progress line */}
-        <div className={cn('flex', 'flex-col', 'justify-center', 'flex-1', 'min-w-0', 'pr-0.5')}>
-          <div className={cn('text-white', 'text-[11px]', 'font-semibold', 'truncate', 'leading-tight')}>
+        <div className="flex flex-col justify-center flex-1 min-w-0 pr-0.5">
+          <div className="text-white text-[11px] font-semibold truncate leading-tight">
             {title ? title.split(/\s+/).slice(0, 5).join(" ") : (isSyncing ? "Syncing..." : "No track")}
           </div>
-          {isSyncing ? (
-            <div className={cn('mt-1.5', 'w-full')}>
+          {isSyncing && activity ? (
+            <div className="mt-1.5 w-full">
               <SyncProgressBar
-                downloadProgress={downloadProgress}
-                deviceSyncProgress={deviceSyncProgress}
-                participants={participants}
-                incomingTrack={incomingTrack}
-                isReady={isReady}
+                activity={activity}
                 isStuck={isStuck}
                 onSkip={onNextTrack}
               />
             </div>
+          ) : notice ? (
+            <span className="mt-1 truncate text-[10px] text-white/70" role="status">{notice.label}</span>
           ) : (
             <CompactProgressBar isPlaying={effectivePlaying} isVisible />
           )}
         </div>
 
         {/* Dynamic Right Side: Seek | EQ | Pause */}
-        <div
-          className={cn('flex', 'items-center', 'justify-center', 'gap-1', 'shrink-0', 'min-w-8', 'rounded-full', 'cursor-pointer', 'hover:opacity-80', 'transition-opacity', 'pointer-events-auto')}
+        <button
+          type="button"
+          className="flex items-center justify-center gap-1 shrink-0 min-w-11 min-h-11 rounded-full cursor-pointer hover:opacity-80 transition-opacity pointer-events-auto focus-visible:outline-2 focus-visible:outline-white"
           onClick={(e) => { e.stopPropagation(); onTogglePlayback(); }}
           onPointerDown={(e) => e.stopPropagation()}
-          role="button"
           aria-label={effectivePlaying ? "Pause" : "Play"}
         >
           {volIndicator ? (
-            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
-              {volIndicator.amount > 0 ? <Volume2 className={cn('w-3.5', 'h-3.5')} /> : <VolumeX className={cn('w-3.5', 'h-3.5')} />}
-              <span className={cn('text-[10px]', 'font-black')}>{volIndicator.text}</span>
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {volIndicator.amount > 0 ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{volIndicator.text}</span>
             </div>
           ) : seekIndicator ? (
-            <div className={cn('flex', 'items-center', 'gap-1', 'text-white', 'bg-white/10', 'px-2', 'py-0.5', 'rounded-full')}>
-              {seekIndicator.amount > 0 ? <FastForward className={cn('w-3.5', 'h-3.5')} /> : <Rewind className={cn('w-3.5', 'h-3.5')} />}
-              <span className={cn('text-[10px]', 'font-black')}>{seekIndicator.text}</span>
+            <div className="flex items-center gap-1 text-white bg-white/10 px-2 py-0.5 rounded-full">
+              {seekIndicator.amount > 0 ? <FastForward className="w-3.5 h-3.5" /> : <Rewind className="w-3.5 h-3.5" />}
+              <span className="text-[10px] font-black">{seekIndicator.text}</span>
             </div>
           ) : effectivePlaying ? (
             <AudioBars isPlaying={effectivePlaying} isSmall isVisible />
           ) : (
-            <Play className={cn('w-4', 'h-4', 'text-white/80', 'fill-white/80', 'shrink-0')} />
+            <Play className="w-4 h-4 text-white/80 fill-white/80 shrink-0" />
           )}
-        </div>
+        </button>
       </div>
 
       {/* RIGHT half: join requests (if any) */}
       {isHost && isPrivate && pendingRequestsCount > 0 && (
         <>
           {/* Divider */}
-          <div className={cn('w-px', 'bg-white/10', 'self-stretch', 'my-2.5', 'shrink-0')} />
-          <div className={cn('flex', 'items-center', 'py-2', 'shrink-0')}>
+          <div className="w-px bg-white/10 self-stretch my-2.5 shrink-0" />
+          <div className="flex items-center py-2 shrink-0">
             <button
               type="button"
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onRequestsClick(); }}
               aria-label={`${pendingRequestsCount} pending join requests`}
-              className={cn('flex', 'items-center', 'gap-1.5', 'px-2.5', 'py-1', 'rounded-full', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'transition-colors', 'text-[10px]', 'font-black', 'pointer-events-auto', 'whitespace-nowrap')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bad-500/20 text-bad-400 hover:bg-bad-500/30 transition-colors text-[10px] font-black pointer-events-auto whitespace-nowrap"
             >
-              <Users className={cn('w-3', 'h-3')} />
+              <Users className="w-3 h-3" />
               {pendingRequestsCount} pending
             </button>
           </div>
         </>
       )}
       </div>
-      {/* Prefetch progress bar — thin strip at very bottom */}
-      {isPrefetching && prefetchTitle && (
-        <div className={cn('absolute', 'bottom-0', 'left-0', 'right-0', 'h-[2px]', 'rounded-b-full', 'overflow-hidden', 'bg-white/10', 'pointer-events-none')}>
-          <div
-            className={cn('h-full', 'transition-[width]', 'duration-300', 'ease-out')}
-            style={{ width: `${prefetchProgress}%`, backgroundColor: accent }}
-          />
-        </div>
-      )}
     </>
   );
 };
@@ -1014,7 +938,7 @@ const RoomExtendedPill = ({
 
 export function DynamicIsland() {
   const pathname = usePathname();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const audio = useAudio();
   const upload = useUpload();
   const {
@@ -1022,12 +946,15 @@ export function DynamicIsland() {
     incomingTrack, pendingRequests, hostId, joinStatus, isPrivate, deviceSyncProgress,
     play, pause, seek, nextTrack, prevTrack, prefetch,
   } = useSyncInfo();
-  const isRoom = pathname.includes("/room/");
+  const isRoom = Boolean(pathname && pathname.includes("/room/"));
+  const roomId = isRoom && pathname ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
+  const { layoutWidth: windowWidth, bounds: viewportBounds } = useIslandViewport();
+  const isMobile = windowWidth > 0 && windowWidth < 768;
   const isHost = hostId === user?.id;
   const hasTrack = audio.hasTrack;
   const effectivePlaying = isRoom ? isRoomPlaying : audio.isPlaying;
   const activeSocketIds = useMemo(
-    () => new Set((roomParticipants || []).map((p: any) => p.socketId)),
+    () => new Set(roomParticipants.filter(p => !p.isReady && !p.isBlocked).map(p => p.socketId)),
     [roomParticipants]
   );
   const isAnyOtherDeviceBuffering = useMemo(() => {
@@ -1037,7 +964,7 @@ export function DynamicIsland() {
   }, [deviceSyncProgress, activeSocketIds]);
   const reduceMotion = useReducedMotion();
   const { settings } = useSettings();
-  const islandCustomizer = settings.islandCustomizer || { glowColor: "violet", autoShrinkDelaySec: 6, showAlbumArt: true };
+  const islandCustomizer = settings.islandCustomizer || { glowColor: "none", autoShrinkDelaySec: 6, showAlbumArt: true };
 
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 
@@ -1046,8 +973,8 @@ export function DynamicIsland() {
   const glowClassMap = {
     violet: "border border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.45)]",
     cyan: "border border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.45)]",
-    emerald: "border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
-    amber: "border border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
+    emerald: "border border-[#10b981]/40 shadow-[0_0_30px_rgba(16,185,129,0.45)]",
+    amber: "border border-[#f59e0b]/40 shadow-[0_0_30px_rgba(245,158,11,0.45)]",
     dark: "border border-white/8 shadow-[0_30px_60px_rgba(0,0,0,0.6)]",
     none: "border border-white/10 shadow-none",
   };
@@ -1057,13 +984,27 @@ export function DynamicIsland() {
 
   // ── Island state machine
   // In room: pill / extended / expanded
-  const [islandState, setIslandState] = useState<IslandState>("pill");
+  const [island, dispatchIsland] = useReducer(islandReducer, INITIAL_ISLAND);
+  const islandState = islandView(island);
+  const setIslandState = useCallback((view: IslandState) => {
+    dispatchIsland({ type: view === 'expanded' ? 'open' : view === 'extended' ? 'preview' : 'close' });
+  }, []);
   const [isExpanded, setIsExpanded] = useState(false); // non-room
   const islandRef = useRef<HTMLDivElement>(null);
   const [wiggle, setWiggle] = useState(false);
   const [isSwallowing, setIsSwallowing] = useState(false);
-  const shrinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevReqCountRef = useRef(0);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submissionRef = useRef(0);
+  const restoreTriggerFocus = useCallback(() => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && islandRef.current?.contains(focused)) focused.blur();
+    requestAnimationFrame(() => islandRef.current?.focus({ preventScroll: true }));
+  }, []);
+  const closeIsland = useCallback(() => {
+    dispatchIsland({ type: 'close' });
+    restoreTriggerFocus();
+  }, [restoreTriggerFocus]);
 
   const uploadRef = useRef(upload);
   useEffect(() => {
@@ -1072,11 +1013,13 @@ export function DynamicIsland() {
 
   useEffect(() => {
     let dragCounter = 0;
+    let cancelled = false;
+    let dropTimer: ReturnType<typeof setTimeout> | undefined;
 
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       dragCounter++;
-      
+
       const types = e.dataTransfer?.types;
       let hasFiles = true; // Default to true to be safe
       if (types) {
@@ -1113,16 +1056,19 @@ export function DynamicIsland() {
 
       const files = Array.from(e.dataTransfer?.files || []);
       const audioFiles = files.filter(f => f.type.startsWith('audio/') || f.name.toLowerCase().endsWith('.mp3'));
-      
+
       if (audioFiles.length > 0) {
         setIsSwallowing(true);
-        setTimeout(async () => {
+        const currentRoomId = roomId;
+        if (dropTimer) clearTimeout(dropTimer);
+        dropTimer = setTimeout(async () => {
+          if (cancelled) return;
           setIsSwallowing(false);
-          const currentRoomId = window.location.pathname.split("/room/")[1]?.split("/")[0];
           if (currentRoomId) {
             setIslandState("pill");
             setActiveTab("player");
             for (const file of audioFiles) {
+              if (cancelled) break;
               try {
                 await uploadRef.current.uploadFile(file, currentRoomId);
               } catch (err) {
@@ -1140,39 +1086,31 @@ export function DynamicIsland() {
     window.addEventListener("drop", handleDrop);
 
     return () => {
+      cancelled = true;
+      if (dropTimer) clearTimeout(dropTimer);
       window.removeEventListener("dragenter", handleDragEnter);
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("dragover", handleDragOver);
       window.removeEventListener("drop", handleDrop);
     };
-  }, []);
-
+  }, [roomId, setIslandState]);
 
   const [activeTab, setActiveTab] = useState<IslandTab>("player");
-  const [inviteQuery, setInviteQuery] = useState("");
-  const [inviteResultsCount, setInviteResultsCount] = useState(0);
-  const [inviteLoading, setInviteLoading] = useState(false);
+
   const [initialSearchMode, setInitialSearchMode] = useState<"youtube" | "spotify" | null>(null);
-  const [activeSearchMode, setActiveSearchMode] = useState<"youtube" | "spotify" | null | undefined>(undefined);
+
   const [slideDir, setSlideDir] = useState(1);
-  const [ytResultsCount, setYtResultsCount] = useState(0);
+
   const [seekIndicator, setSeekIndicator] = useState<{ amount: number; text: string } | null>(null);
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [volIndicator, setVolIndicator] = useState<{ amount: number; text: string } | null>(null);
   const volTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [forceShowDetails, setForceShowDetails] = useState(false);
-  const [isViewingPlaylist, setIsViewingPlaylist] = useState(false);
-  const [isImportingPlaylist, setIsImportingPlaylist] = useState(false);
-  const [hasSearchContent, setHasSearchContent] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [isPressing, setIsPressing] = useState(false);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isHoveringRef = useRef(false);
-  const [windowWidth, setWindowWidth] = useState(0);
-  const [windowHeight, setWindowHeight] = useState(0);
   const localProgressRef = useRef(0);
   // ── Auto-sizing: measures actual rendered content height ──────────────────
-  const contentMeasureRef = useRef<HTMLDivElement>(null);
+  const [contentMeasureElement, setContentMeasureElement] = useState<HTMLDivElement | null>(null);
   const [measuredContentHeight, setMeasuredContentHeight] = useState(300);
 
   const [radialSnapInfo, setRadialSnapInfo] = useState<{
@@ -1202,43 +1140,25 @@ export function DynamicIsland() {
     return () => window.removeEventListener("modal:toggle", handleModalToggle as EventListener);
   }, []);
 
-  useEffect(() => {
-    setWindowWidth(window.innerWidth);
-    setWindowHeight(window.innerHeight);
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-      setWindowHeight(window.innerHeight);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   // ── ResizeObserver: auto-size island to content ──────────────────────────
-  useEffect(() => {
-    const el = contentMeasureRef.current;
+  useLayoutEffect(() => {
+    const el = contentMeasureElement;
     if (!el) return;
-    // Initial measurement
-    setMeasuredContentHeight(el.scrollHeight);
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         // Use borderBoxSize if available for accuracy, fallback to scrollHeight
         const h = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).scrollHeight;
-        setMeasuredContentHeight(Math.ceil(h));
+        if (h > 0) setMeasuredContentHeight(Math.ceil(h));
       }
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [islandState]); // re-attach whenever island opens/closes
+  }, [contentMeasureElement]);
 
   const lastTapRef = useRef<number>(0);
-  const [scrubTime, setScrubTime] = useState<number | null>(null);
-  const scrubTimeRef = useRef<number | null>(null);
-  useEffect(() => { scrubTimeRef.current = scrubTime; }, [scrubTime]);
 
-  const roomId = isRoom ? (pathname.split("/room/")[1]?.split("/")[0] ?? "") : "";
   const netStats = useNetworkStats(isRoom, activeTab === "deviceInfo", roomId || undefined);
-  const [deviceInfoTarget, setDeviceInfoTarget] = useState<string | null>(null);
-  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 
   const [isBufferingStuck, setIsBufferingStuck] = useState(false);
 
@@ -1253,38 +1173,56 @@ export function DynamicIsland() {
     }
   }, [hasTrack, audio.isReady, audio.downloadProgress, audio.error]);
 
-
-
-  // ── Auto-trigger extended when syncing/buffering, stay extended until done
-  useEffect(() => {
-    if (!isRoom) return;
-    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering));
-    if (isSyncing) {
-      if (islandState === "expanded") return; // Allow user to interact with the expanded island during sync
-      // Force extended and cancel any pending shrink — stay here until done
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = null;
-      if (islandState !== "extended") setIslandState("extended");
-    } else if (islandState === "extended" && !isHoveringRef.current) {
-      // Syncing just finished — brief pause then snap back to appropriate state
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = setTimeout(() => setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill"), 1200);
+  const activity = useMemo<IslandActivity | null>(() => {
+    if (!isRoom) return null;
+    const fromTransfer = (transfer: TrackActivity, prefix: string): IslandActivity => ({
+      id: transfer.roomId + ':' + transfer.id,
+      status: transfer.status,
+      progress: transfer.indeterminate ? null : transfer.progress,
+      label: transfer.status === 'failed' ? transfer.error || 'Could not prepare this track'
+        : transfer.status === 'cancelled' ? 'Transfer cancelled'
+        : transfer.status === 'complete' ? 'Added to queue' : prefix + transfer.title,
+    });
+    if (hasTrack && audio.error) return { id: 'audio:' + trackCacheKey(audio.trackUrl || ''), label: audio.error, status: 'failed', progress: null };
+    if (hasTrack && !audio.isReady) return {
+      id: 'audio:' + trackCacheKey(audio.trackUrl || ''), status: 'active',
+      label: audio.downloadProgress >= 100 ? 'Preparing audio' : 'Downloading track',
+      progress: audio.downloadIndeterminate || audio.downloadProgress >= 100 ? null : audio.downloadProgress,
+    };
+    if (upload.activity?.roomId === roomId && upload.activity.status === 'active') return fromTransfer(upload.activity, 'Adding: ');
+    if (incomingTrack?.roomId === roomId && incomingTrack.status === 'active') return fromTransfer(incomingTrack, 'Preparing: ');
+    if (incomingTrack?.roomId === roomId && incomingTrack.status === 'failed') return fromTransfer(incomingTrack, '');
+    if (pendingPlay && (isAnyOtherDeviceBuffering || activeSocketIds.size > 0)) {
+      const progresses = [...activeSocketIds].map(id => deviceSyncProgress[id]).filter(Number.isFinite);
+      return { id: 'peers:' + trackCacheKey(audio.trackUrl || ''), status: 'active', label: 'Waiting for devices',
+        progress: progresses.length ? Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length) : null };
     }
-  }, [audio.isReady, incomingTrack, isAnyOtherDeviceBuffering, isRoom, islandState, effectivePlaying, hasTrack]);
+    if (upload.activity?.roomId === roomId) return fromTransfer(upload.activity, '');
+    if (incomingTrack?.roomId === roomId) return fromTransfer(incomingTrack, '');
+    return null;
+  }, [isRoom, roomId, hasTrack, audio.error, audio.trackUrl, audio.isReady, audio.downloadProgress, audio.downloadIndeterminate,
+      upload.activity, incomingTrack, pendingPlay, isAnyOtherDeviceBuffering, activeSocketIds, deviceSyncProgress]);
 
-  // ── Playing state changes
+  useEffect(() => { dispatchIsland({ type: 'reset' }); }, [pathname]);
   useEffect(() => {
-    if (!isRoom || isHoveringRef.current || islandState === "expanded") return;
-    const isSyncing = incomingTrack != null || (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering));
-    if (isSyncing) return; // let the syncing effect handle it
+    dispatchIsland({ type: 'context', playing: effectivePlaying && hasTrack,
+      requests: isHost && isPrivate && pendingRequests.length > 0, activity });
+  }, [effectivePlaying, hasTrack, isHost, isPrivate, pendingRequests.length, activity, pathname]);
 
-    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-    if (effectivePlaying && hasTrack) {
-      if (islandState === "pill") setIslandState("extended");
-    } else {
-      if (islandState === "extended") setIslandState("pill");
+  // A single completion timer owns dismissal. Progress updates do not restart it.
+  const noticeId = island.notice?.id;
+  const activityIsActive = island.activity?.status === 'active';
+  useEffect(() => {
+    if (!noticeId || island.expanded || activityIsActive) return;
+    const timer = setTimeout(() => dispatchIsland({ type: 'dismiss', id: noticeId }), 1200);
+    return () => clearTimeout(timer);
+  }, [noticeId, island.expanded, activityIsActive, pathname]);
+
+  useEffect(() => () => {
+    for (const ref of [previewTimerRef, clickTimerRef, pressTimerRef, seekTimeoutRef, volTimeoutRef]) {
+      if (ref.current) clearTimeout(ref.current);
     }
-  }, [effectivePlaying, hasTrack, isRoom, islandState, incomingTrack, audio.isReady, isAnyOtherDeviceBuffering]);
+  }, [pathname]);
 
   // ── Default to search tab if manually expanded with no track and player tab active
   useEffect(() => {
@@ -1294,27 +1232,6 @@ export function DynamicIsland() {
     }
   }, [isRoom, hasTrack, islandState, activeTab]);
 
-  // ── Collapse island to pill if current track is cleared (e.g. queue cleared)
-  // Only collapse if the user is not actively viewing an expanded modal tab (like invite or search)
-  useEffect(() => {
-    if (isRoom && !hasTrack && islandState !== "expanded") {
-      setIslandState("pill");
-    }
-  }, [hasTrack, isRoom, islandState]);
-
-  // ── Auto-trigger extended for join requests
-  useEffect(() => {
-    if (!isRoom) return;
-    const currentCount = pendingRequests?.length || 0;
-    const prevCount = prevReqCountRef.current;
-    if (currentCount > prevCount) {
-      setIslandState("extended");
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-      shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), 10000);
-    }
-    prevReqCountRef.current = currentCount;
-  }, [pendingRequests?.length, isRoom]);
-
   const showVolIndicator = useCallback((deltaOrAbs: number, isAbsolute = false) => {
     setVolIndicator({ amount: deltaOrAbs, text: isAbsolute ? `${deltaOrAbs}%` : `${deltaOrAbs > 0 ? "+" : ""}${deltaOrAbs}%` });
     if (volTimeoutRef.current) clearTimeout(volTimeoutRef.current);
@@ -1322,12 +1239,10 @@ export function DynamicIsland() {
   }, []);
 
   useEffect(() => {
-    const handleShowDeviceInfo = (e: any) => {
-      setDeviceInfoTarget(e.detail.socketId);
+    const handleShowDeviceInfo = () => {
       setActiveTab("deviceInfo");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     window.addEventListener("showDeviceInfo", handleShowDeviceInfo);
     return () => window.removeEventListener("showDeviceInfo", handleShowDeviceInfo);
@@ -1336,35 +1251,29 @@ export function DynamicIsland() {
   useEffect(() => {
     const handleExpandAdd = () => {
       setInitialSearchMode("youtube");
-      setActiveSearchMode("youtube");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandSpotify = () => {
       setInitialSearchMode("spotify");
-      setActiveSearchMode("spotify");
       setSlideDir(0);
       setActiveTab("search");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandInvite = () => {
       setSlideDir(0);
       setActiveTab("invite");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
     const handleExpandSync = () => {
       setSlideDir(0);
       setActiveTab("network");
       if (isRoom) setIslandState("expanded");
       else setIsExpanded(true);
-      if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     };
 
     document.addEventListener("island:expand-add", handleExpandAdd);
@@ -1383,12 +1292,12 @@ export function DynamicIsland() {
   useEffect(() => {
     if (isRoom) {
       if (islandState === "pill") {
-        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        const t = setTimeout(() => { setActiveTab("player"); }, 500);
         return () => clearTimeout(t);
       }
     } else {
       if (!isExpanded) {
-        const t = setTimeout(() => { setActiveTab("player"); setYtResultsCount(0); }, 500);
+        const t = setTimeout(() => { setActiveTab("player"); }, 500);
         return () => clearTimeout(t);
       }
     }
@@ -1401,7 +1310,7 @@ export function DynamicIsland() {
     const handleClickOutside = (e: MouseEvent) => {
       if (!document.contains(e.target as Node)) return;
       if (islandRef.current && !islandRef.current.contains(e.target as Node)) {
-        if (isRoom) setIslandState("pill");
+        if (isRoom) closeIsland();
         else setIsExpanded(false);
       }
     };
@@ -1414,25 +1323,7 @@ export function DynamicIsland() {
       cancelAnimationFrame(id);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [islandState, isExpanded, isRoom, hasTrack]);
-
-  // ── Inactivity timer (mobile)
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-    const expanded = isRoom ? islandState === "expanded" : isExpanded;
-    // Do not auto-close expanded interactive tabs (invite, search, deviceInfo, requests, settings)
-    if (expanded && windowWidth < 768 && activeTab !== "deviceInfo" && activeTab !== "invite" && activeTab !== "search" && activeTab !== "requests") {
-      inactivityTimerRef.current = setTimeout(() => {
-        if (isRoom) setIslandState("pill");
-        else setIsExpanded(false);
-      }, 3000);
-    }
-  }, [islandState, isExpanded, windowWidth, activeTab, isRoom]);
-
-  useEffect(() => {
-    resetInactivityTimer();
-    return () => { if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current); };
-  }, [islandState, isExpanded, windowWidth, resetInactivityTimer]);
+  }, [islandState, isExpanded, isRoom, closeIsland]);
 
   const showSeekIndicator = useCallback((amount: number) => {
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
@@ -1442,7 +1333,6 @@ export function DynamicIsland() {
 
   const handleTabChange = useCallback((newTab: IslandTab) => {
     if (activeTab === newTab) return;
-    if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
     const order: Record<IslandTab, number> = { network: -1, player: 0, search: 1, invite: 2, requests: 3, deviceInfo: 4 };
     setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
     setActiveTab(newTab);
@@ -1453,8 +1343,8 @@ export function DynamicIsland() {
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
   const isProfile = pathname.includes("/profile");
 
-  const displayTime = scrubTime !== null ? scrubTime : audio.currentTime || 0;
-  const displayProgress = scrubTime !== null ? scrubTime / Math.max(audio.duration, 1) : localProgressRef.current;
+  const displayTime = audio.currentTime || 0;
+  const displayProgress = localProgressRef.current;
 
   const _isPlayingRef = useRef(false);
   const _getTruePosRef = useRef(audio.getTruePosition);
@@ -1466,7 +1356,7 @@ export function DynamicIsland() {
   useEffect(() => {
     let rafId: number;
     const tick = () => {
-      if (_isPlayingRef.current && scrubTimeRef.current === null) {
+      if (_isPlayingRef.current) {
         const pos = _getTruePosRef.current();
         const dur = _durationRef.current;
         if (dur > 0) localProgressRef.current = Math.min(1, pos / dur);
@@ -1511,7 +1401,7 @@ export function DynamicIsland() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('input, textarea, select, button, [role="tab"], [role="button"]')) || (document.activeElement as HTMLElement)?.isContentEditable) return;
       const state = _keyboardStateRef.current;
       if (e.code === "Space") {
         e.preventDefault();
@@ -1539,7 +1429,7 @@ export function DynamicIsland() {
         if (newVol !== cur) {
           audio.setVolume(newVol);
           showVolIndicator(newVol - cur);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1550,7 +1440,7 @@ export function DynamicIsland() {
         if (newVol !== cur) {
           audio.setVolume(newVol);
           showVolIndicator(newVol - cur);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1559,7 +1449,7 @@ export function DynamicIsland() {
         if (audio.toggleMute) {
           const newVol = audio.toggleMute();
           showVolIndicator(newVol, true);
-          if (state.isRoom && state.roomId) {
+          if (state.isRoom && state.roomId && getSocket().connected) {
             getSocket().emit("room:setParticipantVolume", { roomId: state.roomId, targetSocketId: getSocket().id, volume: newVol });
           }
         }
@@ -1570,61 +1460,103 @@ export function DynamicIsland() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [audio, play, pause, seek]);
 
-  // Compute syncing flag first — used both for dimensions and handlers
-  const isSyncingNow = isRoom && (
-    incomingTrack != null ||
-    upload.isUploading ||
-    (hasTrack && (!audio.isReady || isAnyOtherDeviceBuffering))
-  );
+  const isSyncingNow = isRoom && activity?.status === 'active';
 
-  // Auto-extend island to show downloading progress bar whenever a song is downloading/buffering
+  const isExpanded_room = islandState === 'expanded';
+  const isExtended_room = islandState === 'extended';
+  const showSecondary = isRoom && showBackgroundProgress({
+    prefetching: prefetch.isPrefetching,
+    expanded: isExpanded_room,
+    foregroundBusy: activity?.status === 'active',
+    searchBusy: !!upload.activeImport?.isImporting,
+    gestureActive: !!(wiggle || isSwallowing || radialSnapInfo?.isOpen),
+  });
+  const [secondaryExiting, setSecondaryExiting] = useState(false);
+  useEffect(() => { if (showSecondary) setSecondaryExiting(true); }, [showSecondary]);
+  useEffect(() => { if (isModalOpen || !isRoom) setSecondaryExiting(false); }, [isModalOpen, isRoom]);
+  const secondaryReserve = showSecondary || secondaryExiting ? SECONDARY_SIZE + SECONDARY_GAP : 0;
+  const secondaryProgressLabel = prefetch.isIndeterminate ? 'preparing' : `${prefetch.nextTrackProgress}%`;
+  const secondaryLabel = prefetch.nextTrackTitle
+    ? `Next track: ${prefetch.nextTrackTitle} — ${secondaryProgressLabel}` : `Next track — ${secondaryProgressLabel}`;
+  const availableWidth = Math.max(1, viewportBounds.width - secondaryReserve);
+  const pillWidth = Math.min(hasTrack ? 120 : 86, availableWidth);
+  const hasPending = isHost && isPrivate && pendingRequests.length > 0;
+  const extendedWidth = Math.min(hasPending ? 460 : 360, availableWidth);
+  const maxIslandHeight = Math.max(1, viewportBounds.height);
+  const expandedSize = expandedPanelSize(viewportBounds, activeTab, measuredContentHeight);
+  const expandedWidth = expandedSize.width;
+  const expandedHeight = expandedSize.height;
+  const extendedHeight = Math.min((isSyncingNow || hasPending) ? EXTENDED_ACTIVITY_HEIGHT : EXTENDED_PLAYER_HEIGHT, maxIslandHeight);
+  const dropZoneSize = Math.min(240, availableWidth, maxIslandHeight);
+  const currentWidth = wiggle || isSwallowing ? dropZoneSize
+    : radialSnapInfo?.isOpen ? Math.min(265, availableWidth)
+    : isExpanded_room ? expandedWidth : isExtended_room ? extendedWidth : pillWidth;
+  const currentHeight = Math.min(maxIslandHeight, wiggle || isSwallowing ? dropZoneSize
+    : isExpanded_room ? expandedHeight : isExtended_room ? extendedHeight : COMPACT_HEIGHT);
+  const currentRadius = wiggle || isSwallowing ? 48 : isExpanded_room ? 32 : currentHeight / 2;
+  const renderedSize = useIslandSize(islandRef, isRoom && !isModalOpen && joinStatus !== 'pending' && joinStatus !== 'denied');
+  const docking = useIslandDock(false,
+    isExpanded_room, {
+      width: Math.min(renderedSize?.width ?? currentWidth, availableWidth) + secondaryReserve,
+      height: Math.min(renderedSize?.height ?? currentHeight, maxIslandHeight),
+    }, viewportBounds);
+
   useEffect(() => {
-    if (isSyncingNow && islandState === "pill") {
-      setIslandState("extended");
-    }
-  }, [isSyncingNow, islandState]);
+    if (!isExpanded_room || !isRoom) return;
+    const frame = requestAnimationFrame(() => {
+      if (!islandRef.current?.contains(document.activeElement)) islandRef.current?.focus({ preventScroll: true });
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeIsland(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(islandRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]'
+      ) || []).filter(element => element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === islandRef.current)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === islandRef.current)) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', onKey); };
+  }, [isExpanded_room, isRoom, closeIsland]);
 
   // ── Render guard
   if (isModalOpen) return null;
-  if (isRoom && (joinStatus === "pending" || joinStatus === "denied")) return null;
+  if (isRoom && joinStatus === "denied") return null;
 
   // ── Non-room layout (nav bar)
   if (!isRoom) {
     // Legacy compact/expanded for non-room
-    const currentExpandedHeight: number | "auto" = "auto";
-    const dynamicExpandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
-    const dynamicCompactWidth = !hasTrack ? dynamicExpandedWidth
-      : (windowWidth >= 768 ? 200 : COMPACT_WIDTH) + (effectivePlaying || forceShowDetails ? 80 : 0);
 
     return (
       <div 
-        className={cn('fixed', 'left-0', 'right-0', 'z-50', 'flex', 'justify-center', 'pointer-events-none')}
+        className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none"
         style={{
-          top: "max(1.5rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          top: "max(calc(1.5rem + 2px), calc(env(safe-area-inset-top, 0px) + 0.5rem + 2px))",
         }}
       >
-        <div className={cn('pointer-events-auto', 'glass-panel', 'w-[92%]', 'max-w-5xl', 'rounded-4xl', 'px-4', 'sm:px-6', 'md:px-8', 'py-3.5', 'flex', 'items-center', 'justify-between', 'shadow-2xl', 'select-none')}>
-          <Link href="/room/default" className={cn('flex', 'items-center', 'gap-2', 'sm:gap-3', 'group')}>
-            <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'bg-foreground/5', 'border', 'border-foreground/10', 'flex', 'items-center', 'justify-center', 'group-hover:bg-foreground/10', 'group-hover:scale-105', 'transition-all', 'outline-none')}>
-              <Disc className={cn('w-4', 'h-4', 'sm:w-5', 'sm:h-5', 'text-foreground/70', 'animate-[spin_5s_linear_infinite]')} />
-            </div>
-            <span className={cn('text-base', 'sm:text-lg', 'font-black', 'tracking-widest', 'text-foreground', 'transition-opacity', 'hover:opacity-80')}>
-              SYNC<span className="text-foreground/50">BEATS</span>
-            </span>
+        <div className="pointer-events-auto glass-panel w-[92%] max-w-5xl rounded-4xl px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between shadow-2xl select-none">
+          <Link href="/room/default" className="flex items-center gap-2 sm:gap-3 group">
+            <SyncBeatsLogo markClassName="h-9 w-9 sm:h-10 sm:w-10 group-hover:scale-105 transition-transform" wordmarkClassName="text-base sm:text-lg" />
           </Link>
-          <div className={cn('flex', 'items-center', 'gap-3', 'sm:gap-5')}>
+          <div className="flex items-center gap-3 sm:gap-5">
             <ThemeToggle />
-            <div className={cn('w-px', 'h-6', 'bg-foreground/10', 'hidden', 'sm:block')} />
+            <div className="w-px h-6 bg-foreground/10 hidden sm:block" />
             {isProfile ? (
-              <Link href="/room/default" className={cn('h-9', 'px-5', 'flex', 'items-center', 'justify-center', 'rounded-xl', 'bg-foreground/10', 'text-foreground', 'text-xs', 'sm:text-sm', 'font-bold', 'tracking-widest', 'uppercase', 'hover:bg-foreground', 'hover:text-background', 'active:scale-95', 'transition-all')}>Done</Link>
+              <Link href="/room/default" className="h-9 px-5 flex items-center justify-center rounded-xl bg-foreground/10 text-foreground text-xs sm:text-sm font-bold hover:bg-foreground hover:text-background active:scale-95 transition-all">Done</Link>
             ) : (
-              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className={cn('flex', 'items-center', 'gap-3', 'cursor-pointer', 'group', 'outline-none')}>
-                <div className={cn('text-right', 'hidden', 'sm:block')}>
-                  <div className={cn('text-sm', 'font-bold', 'text-foreground')}>{displayName}</div>
-                  <div className={cn('text-xs', 'font-semibold', 'text-foreground/40')}>{user?.email ?? ""}</div>
+              <div onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))} className="flex items-center gap-3 cursor-pointer group outline-none">
+                <div className="text-right hidden sm:block">
+                  <div className="text-sm font-bold text-foreground">{displayName}</div>
+                  <div className="text-xs font-semibold text-foreground/40">{user?.email ?? ""}</div>
                 </div>
-                <div className={cn('w-9', 'h-9', 'sm:w-10', 'sm:h-10', 'rounded-xl', 'flex', 'items-center', 'justify-center', 'border-2', 'border-transparent', 'glass-panel', 'group-active:scale-95', 'transition-all', 'shadow-md')}>
-                  <span className={cn('text-xs', 'sm:text-sm', 'font-black', 'text-foreground')}>{initials}</span>
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border-2 border-transparent glass-panel group-active:scale-95 transition-all shadow-md">
+                  <span className="text-xs sm:text-sm font-black text-foreground">{initials}</span>
                 </div>
               </div>
             )}
@@ -1634,210 +1566,125 @@ export function DynamicIsland() {
     );
   }
 
-  // ── Room island layout
-  // Three states: pill / extended / expanded
-  const isExpanded_room = islandState === "expanded";
-  const isExtended_room = islandState === "extended";
-
-  // Secondary island = background tasks only. Uploads are deliberately excluded:
-  // upload.isUploading already drives isSyncingNow, which auto-extends the main
-  // island and shows "Uploading Song..." there. Prefetch is the only task that
-  // runs behind an unaffected island, so it's the only one that earns a circle.
-  const showSecondary = isRoom && prefetch.isPrefetching && !isExpanded_room && !wiggle && !isSwallowing;
-  const secondaryLabel = prefetch.nextTrackTitle
-    ? `Downloading next track: ${prefetch.nextTrackTitle} — ${prefetch.nextTrackProgress}%`
-    : `Downloading next track — ${prefetch.nextTrackProgress}%`;
-  // Width the circle needs beside the island. The extended island already runs
-  // to within 16px of both edges on a phone, so without reserving this the
-  // circle lands off-screen — and a fixed element doesn't scroll into view, it
-  // just silently disappears. Reserving alone isn't enough either: the island
-  // is centred, so freed width splits across both sides. The wrapper below also
-  // shifts left by half of this, which keeps the pair centred as a group.
-  const secondaryReserve = showSecondary ? SECONDARY_SIZE + SECONDARY_GAP : 0;
-
-  // Pill dimensions
-  const pillWidth = hasTrack ? 120 : 86;
-  const pillHeight = COMPACT_HEIGHT;
-  // Extended dimensions (iOS live-activity style)
-  const hasPending = isRoom && hostId === user?.id && isPrivate && pendingRequests.length > 0;
-  const extendedWidth = Math.min(hasPending ? 460 : 360, (windowWidth > 0 ? windowWidth : 600) - 32 - secondaryReserve);
-  // While syncing the extended pill carries a second row (sync label + bar), so
-  // it needs the extra height or the bar clips against the bottom edge.
-  const extendedHeight = isSyncingNow ? EXTENDED_SYNC_HEIGHT : COMPACT_HEIGHT;
-  const expandedWidth = windowWidth > 0 ? Math.min(840, windowWidth - 32) : 640;
-
-  // ── Auto-sized height: drive island size from actual rendered content ─────
-  // The ResizeObserver watches the content wrapper and feeds its scrollHeight
-  // back here. We add a small buffer (8px) so the content never clips.
-  const ISLAND_VERT_PAD = 8;
-  const maxIslandHeight = windowHeight > 0 ? windowHeight - 32 : 900;
-  const expandedHeight = Math.min(maxIslandHeight, measuredContentHeight + ISLAND_VERT_PAD);
-
-  // Current animated dimensions
-  // When radial navigator active: expand to 265px
-  const dropZoneSize = windowWidth > 0 ? Math.min(240, windowWidth - 64) : 240;
-  const currentWidth = wiggle || isSwallowing
-    ? dropZoneSize
-    : radialSnapInfo?.isOpen
-    ? Math.min(265, (windowWidth > 0 ? windowWidth : 320) - 32)
-    : isExpanded_room
-    ? expandedWidth
-    : isExtended_room
-    ? extendedWidth
-    : pillWidth;
-  const currentHeight = wiggle || isSwallowing
-    ? dropZoneSize
-    : isExpanded_room
-    ? expandedHeight
-    : isExtended_room
-    ? extendedHeight
-    : pillHeight;
-  // Stay a true pill in every collapsed state — radius tracks the live height.
-  const currentRadius = wiggle || isSwallowing ? 48 : (isExpanded_room ? 36 : currentHeight / 2);
-
-  const handlePointerDown_room = () => {
-    resetInactivityTimer();
-    if (windowWidth >= 768) return;
-    if (islandState === "expanded") return;
+  const cancelPress = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = null;
+    setIsPressing(false);
+  };
+  const openIsland = () => {
+    if (!hasTrack) { setInitialSearchMode('youtube'); setSlideDir(0); setActiveTab('search'); }
+    dispatchIsland({ type: 'open' });
+  };
+  const handlePointerDown_room = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('button, a, input, select, textarea, [role="slider"]')) return;
     setIsPressing(true);
     pressTimerRef.current = setTimeout(() => {
-      if (!hasTrack) {
-        setInitialSearchMode("youtube");
-        setSlideDir(0);
-        setActiveTab("search");
-      }
-      setIslandState("expanded");
-      setForceShowDetails(false);
-      setIsPressing(false);
-      pressTimerRef.current = null;
-      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(50);
+      cancelPress();
+      openIsland();
+      if (!reduceMotion) navigator.vibrate?.(30);
     }, 300);
   };
-
   const handlePointerUp_room = () => {
-    resetInactivityTimer();
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-      setIsPressing(false);
-      const nowTime = Date.now();
-      // Restrict double-tap toggle to pill & extended states only (never when expanded)
-      if (islandState !== "expanded" && nowTime - lastTapRef.current < 500) {
-        handleToggle();
-        lastTapRef.current = 0;
-      } else {
-        lastTapRef.current = nowTime;
-        if (islandState === "pill") {
-          if (!hasTrack) {
-            setInitialSearchMode("youtube");
-            setSlideDir(0);
-            setActiveTab("search");
-            setIslandState("expanded");
-          } else {
-            setIslandState("extended");
-            if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-            const delaySec = islandCustomizer.autoShrinkDelaySec ?? 6;
-            if (delaySec > 0) {
-              shrinkTimerRef.current = setTimeout(() => setIslandState("pill"), delaySec * 1000);
-            }
-          }
-        } else if (islandState === "extended") {
-          setIslandState("pill");
-        }
-      }
+    if (!pressTimerRef.current) return;
+    cancelPress();
+    const now = Date.now();
+    if (now - lastTapRef.current < 500) {
+      handleToggle();
+      lastTapRef.current = 0;
+      return;
     }
+    lastTapRef.current = now;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!hasTrack) openIsland();
+    else if (islandState === 'pill') {
+      dispatchIsland({ type: 'preview' });
+      const delay = islandCustomizer.autoShrinkDelaySec ?? 6;
+      if (delay > 0) previewTimerRef.current = setTimeout(() => dispatchIsland({ type: 'end-preview' }), delay * 1000);
+    } else dispatchIsland({ type: 'compact' });
   };
 
   return (
     <>
       {/* Backdrop */}
       <motion.div
-        className={cn('fixed', 'inset-0', 'z-40', 'pointer-events-none')}
+        className="fixed inset-0 z-40 pointer-events-none"
         animate={{ opacity: isExpanded_room ? 1 : 0, backgroundColor: isExpanded_room ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0)" }}
         transition={{ duration: 0.35, ease: EASE_OUT }}
         style={{ pointerEvents: isExpanded_room ? "auto" : "none", backdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)", WebkitBackdropFilter: isExpanded_room ? "blur(3px)" : "blur(0px)" }}
-        onClick={() => setIslandState("pill")}
+        onClick={closeIsland}
       />
 
       <div 
-        className={cn('fixed', 'left-1/2', '-translate-x-1/2', 'z-100', 'flex', 'flex-col', 'items-center', 'pointer-events-none')}
+        className="fixed z-[100] flex flex-col items-center pointer-events-none left-1/2 -translate-x-1/2"
         style={{
-          top: "max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))",
+          top: "max(calc(1.75rem + 2px), calc(env(safe-area-inset-top, 0px) + 0.5rem + 2px))",
         }}
       >
         {/* relative: anchors the secondary circle to the island's right edge.
             x slides the pair left by half the circle's footprint so the two
             stay centred as a group instead of the circle hanging off-screen. */}
         <motion.div
-          className={cn('relative', 'flex', 'items-center')}
+          className="relative flex items-center"
           animate={{ x: -secondaryReserve / 2 }}
           transition={reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING}
         >
         <motion.div
           ref={islandRef}
           onContextMenu={e => e.preventDefault()}
-          onPointerDown={e => { handlePointerDown_room(); resetInactivityTimer(); }}
-          onPointerUp={e => { handlePointerUp_room(); resetInactivityTimer(); }}
+          role={isExpanded_room ? 'dialog' : 'button'}
+          aria-label={isExpanded_room ? 'Room controls' : 'Open music controls'}
+          aria-expanded={isExpanded_room}
+          aria-modal={isExpanded_room || undefined}
+          tabIndex={isExpanded_room ? -1 : 0}
+          onPointerDown={handlePointerDown_room}
+          onPointerUp={handlePointerUp_room}
+          onClickCapture={event => {
+            if (docking.suppressClick()) { event.preventDefault(); event.stopPropagation(); }
+          }}
           onMouseEnter={() => {
-            if (windowWidth >= 768) {
-              isHoveringRef.current = true;
-              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-              if (islandState === "pill" && hasTrack) {
-                setIslandState("extended");
-              }
+            if (!isMobile && hasTrack) {
+              if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+              dispatchIsland({ type: 'preview' });
             }
           }}
           onMouseLeave={() => {
-            if (windowWidth >= 768) {
-              isHoveringRef.current = false;
-              if (shrinkTimerRef.current) clearTimeout(shrinkTimerRef.current);
-              // Do NOT auto-shrink when the island is expanded into a modal tab (invite, search, deviceInfo, etc.)
-              // Only auto-shrink hover-preview "extended" pills.
-              if (islandState === "extended") {
-                shrinkTimerRef.current = setTimeout(() => {
-                  setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
-                }, 1200);
-              }
-            }
-            handlePointerUp_room();
-          }}
-          onClick={e => {
-            if (windowWidth >= 768) {
-              if (islandState === "pill" || islandState === "extended") {
-                if (!hasTrack) {
-                  setInitialSearchMode("youtube");
-                  setSlideDir(0);
-                  setActiveTab("search");
-                }
-                setIslandState("expanded");
-              } else if (islandState === "expanded") {
-                if (activeTab === "player" || activeTab === "network" || activeTab === "deviceInfo") {
-                  setIslandState((effectivePlaying && hasTrack) ? "extended" : "pill");
-                }
-              }
+            if (!isMobile) {
+              if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+              previewTimerRef.current = setTimeout(() => dispatchIsland({ type: 'end-preview' }), 1200);
             }
           }}
-          onPointerLeave={() => { handlePointerUp_room(); resetInactivityTimer(); }}
-          onPointerMove={resetInactivityTimer}
-          onDoubleClick={e => {
-            e.preventDefault();
-            if (islandState === "pill" || islandState === "extended") {
-              handleToggle();
+          onKeyDown={event => {
+            if (event.target === event.currentTarget && !isExpanded_room && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault(); event.stopPropagation(); openIsland();
             }
+          }}
+          onClick={event => {
+            if (isExpanded_room) return;
+            if (event.detail === 0) { openIsland(); return; }
+            if (!isMobile) {
+              if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+              clickTimerRef.current = setTimeout(openIsland, 300);
+            }
+          }}
+          onDoubleClick={event => {
+            if (isMobile || isExpanded_room || docking.suppressClick()) return;
+            event.preventDefault();
+            if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+            handleToggle();
           }}
           initial={false}
           transition={{
             width: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
             height: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
             borderRadius: reduceMotion ? { duration: 0.2, ease: "easeOut" } : SHAPE_SPRING,
-            scale: isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
+            scale: reduceMotion ? { duration: 0 } : isSwallowing ? { duration: 0.5, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30, mass: 0.6 },
             x: wiggle && !isSwallowing ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : { type: "spring", stiffness: 400, damping: 30 }
           }}
           animate={{
             width: currentWidth,
             height: currentHeight,
             borderRadius: currentRadius,
-            scale: isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
+            scale: reduceMotion ? 1 : isSwallowing ? [1, 1.08, 0.85] : (isPressing && islandState === "pill" ? 0.94 : 1),
             x: wiggle && !isSwallowing && !reduceMotion ? [0, -5, 5, -5, 5, -5, 5, 0] : 0
           }}
           style={{
@@ -1849,12 +1696,14 @@ export function DynamicIsland() {
             flexDirection: "column",
             willChange: "width, height, border-radius",
             transform: "translateZ(0)",
-            maxHeight: isExpanded_room && windowWidth > 0 && windowWidth < 768 ? windowHeight - 32 : undefined,
+            maxHeight: maxIslandHeight,
+            maxWidth: viewportBounds.width - secondaryReserve,
+            touchAction: isMobile && !isExpanded_room ? 'none' : 'auto',
             WebkitUserSelect: "none",
             WebkitTouchCallout: "none",
             userSelect: "none",
           }}
-          className={cn("pointer-events-auto select-none no-touch-select", currentGlowClass)}
+          className={cn("pointer-events-auto select-none no-touch-select focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white", currentGlowClass)}
         >
           {/* Rotating Border Light Beam — one flat accent arc, no colour fade */}
           <AnimatePresence>
@@ -1865,7 +1714,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className={cn('absolute', '-inset-[1px]', 'pointer-events-none', 'z-[45]', 'rounded-[inherit]', 'overflow-hidden', 'p-[2px]')}
+                className="absolute -inset-[1px] pointer-events-none z-[45] rounded-[inherit] overflow-hidden p-[2px]"
                 style={{
                   WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
                   WebkitMaskComposite: "xor",
@@ -1875,7 +1724,7 @@ export function DynamicIsland() {
                 <motion.div
                   animate={reduceMotion ? { rotate: 0 } : { rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
-                  className={cn('w-[300%]', 'h-[300%]', '-top-[100%]', '-left-[100%]', 'absolute')}
+                  className="w-[300%] h-[300%] -top-[100%] -left-[100%] absolute"
                   style={{
                     background: `conic-gradient(from 0deg at 50% 50%,
                       transparent 0deg,
@@ -1899,7 +1748,7 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className={cn('absolute', 'inset-0', 'z-30', 'bg-black', 'rounded-full')}
+                className="absolute inset-0 z-30 bg-black rounded-full"
               >
                 <RadialNavigatorPillContent snappedItem={radialSnapInfo.snappedItem} />
               </motion.div>
@@ -1907,12 +1756,12 @@ export function DynamicIsland() {
           </AnimatePresence>
 
           {/* Pill content */}
-          <AnimatePresence>
+          <AnimatePresence mode="wait" initial={false}>
             {islandState === "pill" && !wiggle && (
               <motion.div
                 key="pill-content"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('absolute', 'inset-0')}
+                className="absolute inset-0"
               >
                 <RoomPill
                   effectivePlaying={effectivePlaying}
@@ -1928,25 +1777,21 @@ export function DynamicIsland() {
                 />
               </motion.div>
             )}
-          </AnimatePresence>
+
 
           {/* Extended content */}
-          <AnimatePresence>
             {islandState === "extended" && (
               <motion.div
                 key="extended-content"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('absolute', 'inset-0')}
+                className="absolute inset-0"
               >
                 <RoomExtendedPill
                   effectivePlaying={effectivePlaying}
                   trackTitle={audio.trackTitle}
                   trackUrl={audio.trackUrl}
-                  isReady={audio.isReady}
-                  downloadProgress={audio.downloadProgress}
-                  deviceSyncProgress={deviceSyncProgress}
-                  participants={roomParticipants}
-                  incomingTrack={incomingTrack}
+                  activity={activity}
+                  notice={island.notice}
                   pendingRequestsCount={pendingRequests?.length || 0}
                   isHost={isHost}
                   isPrivate={isPrivate}
@@ -1954,37 +1799,43 @@ export function DynamicIsland() {
                   seekIndicator={seekIndicator}
                   volIndicator={volIndicator}
                   onTogglePlayback={handleToggle}
-                  prefetchProgress={prefetch.nextTrackProgress}
-                  prefetchTitle={prefetch.nextTrackTitle}
-                  isPrefetching={prefetch.isPrefetching}
                   isStuck={isBufferingStuck}
                   onNextTrack={nextTrack}
+                  onRetry={() => { audio.unlockAudio(); audio.retryTrack(); play(); }}
                 />
               </motion.div>
             )}
-          </AnimatePresence>
+
 
           {/* Expanded content */}
-          <AnimatePresence>
             {isExpanded_room && !wiggle && (
               <motion.div
                 key="expanded-tab-container"
                 {...contentMorph(!!reduceMotion)}
-                className={cn('w-full', 'relative', 'pointer-events-auto')}
+                className="w-full h-full relative flex flex-col pointer-events-auto overflow-hidden"
+                style={{ maxHeight: currentHeight }}
               >
-                {/* Measurement wrapper: renders at natural height so ResizeObserver can read it */}
-                <div ref={contentMeasureRef}>
-                <AnimatePresence custom={slideDir} initial={false} mode="popLayout">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4" style={{ height: expandedSize.headerHeight }}>
+                  <span className="min-w-0 truncate text-sm font-medium text-white/80">
+                    {{ player: 'Now playing', search: 'Add music', network: 'Network', deviceInfo: 'Devices', requests: 'Join requests', chat: 'Room chat', invite: 'Invite friends' }[activeTab] || 'Room'}
+                  </span>
+                  <button type="button" aria-label="Close island" onClick={closeIsland} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ touchAction: 'pan-y' }}>
+                <div ref={setContentMeasureElement}>
+                <AnimatePresence custom={slideDir} initial={false} mode="wait">
                   {activeTab === "player" && (
-                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="player" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
 
                       <PlayerTab
                         effectivePlaying={effectivePlaying}
-                        trackTitle={incomingTrack ? incomingTrack.title : audio.trackTitle}
+                        trackTitle={audio.trackTitle}
                         trackUrl={audio.trackUrl}
                         isReady={audio.isReady}
                         error={audio.error}
-                        downloadProgress={incomingTrack ? incomingTrack.progress : audio.downloadProgress}
+                        downloadProgress={audio.downloadProgress}
                         audio={audio}
                         deviceSyncProgress={deviceSyncProgress}
                         progress={displayProgress}
@@ -2006,49 +1857,39 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                   {activeTab === "network" && (
-                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="network" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <NetworkTab onBack={() => handleTabChange("player")} netStats={netStats} audio={audio} />
                     </motion.div>
                   )}
                   {activeTab === "search" && (
-                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="search" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <SearchTab 
                         roomId={roomId!} 
                         initialMode={initialSearchMode}
                         onBack={() => setActiveTab("player")} 
-                        onResultsCountChange={setYtResultsCount} 
-                        onModeChange={setActiveSearchMode}
                         onLoadingStateChange={setIsSearchLoading}
                         isSearchOnly={false} 
-                        onPlaylistViewChange={setIsViewingPlaylist}
-                        onImportingStateChange={setIsImportingPlaylist}
-                        onHasContentChange={setHasSearchContent}
-                        onErrorStateChange={setSearchError}
                         isPlaying={audio.isPlaying}
                         hasTrack={hasTrack}
-                        onSuccess={() => { 
-                          setWiggle(true); 
-                          setTimeout(() => setWiggle(false), 400); 
-                          if (isRoom) setIslandState("extended");
+                        onSuccess={() => {
+                          setIsSearchLoading(false);
+                          setActiveTab('player');
+                          dispatchIsland({ type: 'submitted', id: `enqueue:${roomId}:${++submissionRef.current}` });
+                          restoreTriggerFocus();
                         }}
                       />
                     </motion.div>
                   )}
                   {(activeTab === "deviceInfo" || activeTab === "invite") && (
-                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative')}>
+                    <motion.div key="invite-tab" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative">
                       <InviteTab 
                         onBack={() => setActiveTab("player")} 
-                        roomId={roomId || ''} 
-                        onStateChange={(q, count, l) => {
-                          setInviteQuery(q);
-                          setInviteResultsCount(count);
-                          setInviteLoading(l);
-                        }}
+                        roomId={roomId || ''}
                       />
                     </motion.div>
                   )}
                   {activeTab === "requests" && (
-                    <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className={cn('w-full', 'relative', 'h-auto')}>
+                    <motion.div key="requests" custom={slideDir} variants={tabVariants} initial="enter" animate="center" exit="exit" transition={SPRING} className="w-full relative h-auto">
                       <RequestsTab
                         requests={pendingRequests || []}
                         onApprove={(id: any, name: any) => {
@@ -2064,7 +1905,8 @@ export function DynamicIsland() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-                </div>{/* /contentMeasureRef */}
+                </div>{/* measured body */}
+                </div>{/* scrolling body */}
               </motion.div>
             )}
           </AnimatePresence>
@@ -2078,19 +1920,19 @@ export function DynamicIsland() {
                 animate={{ opacity: 1, scale: isSwallowing ? 0.5 : 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={cn('absolute', 'inset-0', 'z-50', 'flex', 'flex-col', 'items-center', 'justify-center')}
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center"
               >
                 <motion.div 
                   animate={{ y: isSwallowing ? 20 : 0, scale: isSwallowing ? 0 : 1 }}
                   transition={{ duration: 0.3, ease: "backIn" }}
-                  className={cn('w-16', 'h-16', 'rounded-full', 'bg-white/20', 'flex', 'items-center', 'justify-center', 'mb-4', 'shadow-2xl')}
+                  className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4 shadow-2xl"
                 >
-                  <Upload className={cn('w-8', 'h-8', 'text-white')} />
+                  <Upload className="w-8 h-8 text-white" />
                 </motion.div>
                 <motion.span 
                   animate={{ opacity: isSwallowing ? 0 : 1 }}
                   transition={{ duration: 0.2 }}
-                  className={cn('text-lg', 'font-bold', 'text-white', 'tracking-wide', 'drop-shadow-md')}
+                  className="text-lg font-bold text-white tracking-wide drop-shadow-md"
                 >
                   Drop MP3
                 </motion.span>
@@ -2105,10 +1947,10 @@ export function DynamicIsland() {
             Absolutely placed off the island's right edge, so as the island
             animates between pill and extended the circle tracks its edge. */}
         <div
-          className={cn('absolute', 'left-full', 'top-0', 'h-full', 'flex', 'items-center', 'pointer-events-none')}
+          className="absolute left-full top-0 h-full flex items-center pointer-events-none"
           style={{ paddingLeft: SECONDARY_GAP }}
         >
-          <AnimatePresence>
+          <AnimatePresence onExitComplete={() => { if (!showSecondary) setSecondaryExiting(false); }}>
             {showSecondary && (
               <motion.div
                 key="secondary-island"
@@ -2125,7 +1967,7 @@ export function DynamicIsland() {
                 role="img"
                 aria-label={secondaryLabel}
                 title={secondaryLabel}
-                className={cn('relative', 'flex', 'items-center', 'justify-center', 'rounded-full', 'shrink-0')}
+                className="relative flex items-center justify-center rounded-full shrink-0"
                 style={{
                   width: SECONDARY_SIZE,
                   height: SECONDARY_SIZE,
@@ -2134,18 +1976,18 @@ export function DynamicIsland() {
                   transformOrigin: "left center",
                 }}
               >
-                <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className={cn('absolute', 'inset-0', 'w-full', 'h-full')} style={{ transform: "rotate(-90deg)" }}>
+                <svg viewBox={`0 0 ${SECONDARY_SIZE} ${SECONDARY_SIZE}`} className="absolute inset-0 w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                   <circle cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
                   <circle
                     cx={SECONDARY_SIZE / 2} cy={SECONDARY_SIZE / 2} r={SECONDARY_R} fill="none"
                     stroke={activeGlowColorHex} strokeWidth="2.5" strokeLinecap="round"
                     strokeDasharray={SECONDARY_C}
-                    strokeDashoffset={SECONDARY_C * (1 - prefetch.nextTrackProgress / 100)}
+                    strokeDashoffset={SECONDARY_C * (prefetch.isIndeterminate ? 0.7 : 1 - prefetch.nextTrackProgress / 100)}
                     style={{ transition: "stroke-dashoffset 0.3s ease-out" }}
                   />
                 </svg>
-                <span className={cn('text-[10px]', 'font-black', 'tabular-nums', 'text-white/90')}>
-                  {prefetch.nextTrackProgress}
+                <span className="text-[10px] font-black tabular-nums text-white/90">
+                  {prefetch.isIndeterminate ? <Loader2 className="w-4 h-4 motion-safe:animate-spin" /> : prefetch.nextTrackProgress}
                 </span>
               </motion.div>
             )}

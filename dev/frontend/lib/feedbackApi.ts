@@ -1,6 +1,6 @@
 // lib/feedbackApi.ts — API client for submitting user feedback
 
-import { getServerUrl, getAuthToken } from './api';
+import { getRestUrl, getAuthToken } from './api';
 
 export interface FeedbackInput {
   rating: number;
@@ -11,7 +11,7 @@ export interface FeedbackInput {
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<{ ok: boolean; id: string }> {
-  const SERVER = getServerUrl();
+  const SERVER = getRestUrl();
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
@@ -22,7 +22,8 @@ export async function submitFeedback(input: FeedbackInput): Promise<{ ok: boolea
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${SERVER}/feedback`, {
+  const endpoint = SERVER === '/api' ? '/api/feedback' : `${SERVER}/feedback`;
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify(input),

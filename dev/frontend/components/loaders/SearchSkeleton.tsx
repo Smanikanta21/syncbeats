@@ -1,8 +1,5 @@
 "use client";
 
-import React from "react";
-import { cn } from "../../lib/utils";
-
 interface SearchSkeletonProps {
   count?: number;
 }
@@ -13,9 +10,7 @@ export function SearchSkeleton({ count = 4 }: SearchSkeletonProps) {
       {Array.from({ length: count }).map((_, idx) => (
         <div
           key={idx}
-          className={cn(
-            "flex items-center gap-3 p-2.5 rounded-xl bg-foreground/4 border border-foreground/[0.06]"
-          )}
+          className="flex items-center gap-3 p-2.5 rounded-xl bg-foreground/4 border border-foreground/[0.06]"
         >
           {/* Thumbnail Skeleton */}
           <div className="w-14 h-14 rounded-lg bg-foreground/10 shrink-0" />

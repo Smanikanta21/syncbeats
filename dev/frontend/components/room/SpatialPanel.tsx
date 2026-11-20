@@ -39,7 +39,7 @@ const SpatialScene3D = dynamic(
     ssr: false,
     loading: () => (
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/25">
+        <span className="text-[10px] font-bold text-foreground/25">
           Loading stage…
         </span>
       </div>
@@ -262,7 +262,7 @@ export function SpatialPanel({
     <div className="flex w-full min-w-0 flex-1 flex-col min-h-0">
       <div className="mb-2 flex shrink-0 items-center justify-between gap-3 lg:mb-4">
         <div className="min-w-0">
-          <h2 className="text-xs font-black uppercase tracking-widest text-foreground/50">
+          <h2 className="micro-label">
             Spatial Audio
           </h2>
           <p className="mt-0.5 truncate text-[10px] text-foreground/40 lg:text-xs">
@@ -347,12 +347,12 @@ export function SpatialPanel({
           )}
 
           {mode === "room" && otherUserCount === 0 && (
-            <div className="pointer-events-none absolute left-1/2 top-4 hidden -translate-x-1/2 rounded-full bg-background/70 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-foreground/40 backdrop-blur lg:block">
+            <div className="pointer-events-none absolute left-1/2 top-4 hidden -translate-x-1/2 rounded-full bg-background/70 px-3 py-1 text-[9px] font-bold text-foreground/40 backdrop-blur lg:block">
               You're the only one here
             </div>
           )}
 
-          <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 select-none text-[9px] font-bold uppercase tracking-widest text-foreground/20 lg:block">
+          <div className="pointer-events-none absolute bottom-3 left-1/2 hidden -translate-x-1/2 select-none text-[9px] font-bold text-foreground/20 lg:block">
             Drag a speaker to move it · Drag empty space to orbit · Scroll to zoom
           </div>
         </div>

@@ -203,7 +203,7 @@ function DeviceLevels({
           className={cn(
             "flex cursor-pointer flex-col gap-1 rounded-lg px-1.5 py-1 transition-colors",
             d.deviceId === selectedId
-              ? "bg-sky-500/10 ring-1 ring-sky-400/40"
+              ? "bg-foreground/10 ring-1 ring-foreground/25"
               : "hover:bg-foreground/5",
           )}
         >
@@ -218,7 +218,7 @@ function DeviceLevels({
               <span className="truncate text-[10px] font-semibold text-foreground/70">{d.label}</span>
             </span>
             {d.isMe && (
-              <span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-foreground">
+              <span className="shrink-0 text-[8px] font-semibold text-foreground">
                 here
               </span>
             )}

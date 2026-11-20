@@ -1,0 +1,22 @@
+.page {
+  font-family: var(--font-sans);
+  cursor: url("/cursors/syncbeats.svg") 4 3, auto;
+}
+
+.page :is(button, input, select, textarea) { font-family: inherit; }
+.page :is(button, a, select, input[type="checkbox"], input[type="color"], [role="button"]) {
+  cursor: url("/cursors/syncbeats-hand.svg") 12 3, pointer;
+}
+.page :is(input[type="text"], input[type="email"], input[type="password"], textarea) {
+  cursor: url("/cursors/syncbeats-text.svg") 12 16, text;
+}
+.page :is(input[type="range"], [data-cursor="grab"]) {
+  cursor: url("/cursors/syncbeats-grab.svg") 16 16, grab;
+}
+.page :is(input[type="range"], [data-cursor="grab"]):active {
+  cursor: url("/cursors/syncbeats-grabbing.svg") 16 16, grabbing;
+}
+.page :is(button:disabled, input:disabled, [aria-disabled="true"]) { cursor: not-allowed; }
+.page button:focus-visible { outline: 2px solid var(--foreground); outline-offset: 3px; }
+
+.page :is(button, a, [role="button"]):active { cursor: url("/cursors/syncbeats-pressed.svg") 12 3, pointer; }

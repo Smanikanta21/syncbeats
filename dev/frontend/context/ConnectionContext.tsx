@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { getSocket } from "../lib/socket";
 import { getServerUrl } from "../lib/api";
 
@@ -86,7 +86,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      const res = await fetch(`${serverUrl}/health`, {
+      const res = await fetch("/api/health", {
         method: "GET",
         signal: controller.signal,
         cache: "no-store",
@@ -162,7 +162,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setServerError(null);
     };
 
-    const handleSocketDisconnect = (reason: string) => {
+    const handleSocketDisconnect = () => {
       setIsSocketConnected(false);
       if (disconnectTimerRef.current) clearTimeout(disconnectTimerRef.current);
       // Give socket 5 seconds to reconnect before alarming user with a server down message

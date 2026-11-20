@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
-import { roomsApi, historyApi, getServerUrl, getAuthToken, youtubeApi } from "../../lib/api";
+import { roomsApi, getServerUrl, getAuthToken, youtubeApi, historyApi } from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Image, Music, Sparkles, History, Clock } from "lucide-react";
+import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Music, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { SearchSkeleton } from "../loaders/SearchSkeleton";
 import { AppFeedback } from "../feedback/AppFeedback";
@@ -16,11 +16,13 @@ import { AddToPlaylistModal } from "./AddToPlaylistModal";
 import { getSocket } from "../../lib/socket";
 import { useVisualizer } from "../../context/VisualizerContext";
 
+import { useRoomSearch } from "../../context/RoomSearchContext";
+
 interface SearchTabProps {
   roomId: string;
   initialMode: "youtube" | "spotify" | null;
   onBack: () => void;
-  onResultsCountChange: (count: number) => void;
+  onResultsCountChange?: (count: number) => void;
   onModeChange?: (mode: "youtube" | "spotify" | null) => void;
   onLoadingStateChange?: (isLoading: boolean) => void;
   isSearchOnly?: boolean;
@@ -48,7 +50,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode || "youtube");
-  const [query, setQuery] = useState("");
+  const { query, setQuery } = useRoomSearch(roomId);
 
   useEffect(() => {
     setMode(initialMode || "youtube");
@@ -82,17 +84,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   // Single-flight async wrappers — prevents duplicate API calls on rapid clicks
   const enqueueAsync = useAsync(async (playlistId: string, source?: string) => {
     if (!token || !roomId) throw new Error('Not authenticated');
-    const SERVER = getServerUrl();
-    
+
     let body: any = { playlistId };
-    
+
     if (source === "youtube") {
       const tracksData = await youtubeApi.getPlaylistItems(playlistId);
       if (!tracksData || tracksData.length === 0) throw new Error('Playlist is empty or private.');
       body.tracks = tracksData;
     }
 
-    const res = await fetch(`${SERVER}/rooms/${roomId}/enqueue-playlist`, {
+    const res = await fetch(`/api/rooms/${roomId}/enqueue-playlist`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -103,8 +104,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
     return res.json();
   });
-
-
 
   const handleSpotifyImport = async (url: string) => {
     if (!token) return;
@@ -130,8 +129,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     });
 
     try {
-      const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
-      const response = await fetch(`${SERVER}/api/bridge/import`, {
+      const response = await fetch(`/api/bridge/import`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ playlistUrl: url }),
@@ -151,7 +149,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       let totalTracks = 0;
       let playlistId = "";
       let playlistName = "Spotify Playlist";
-      let coverUrl: string | undefined;
 
       setImportProgress(15);
       setImportStage("indexing");
@@ -181,7 +178,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             totalTracks = data.totalTracks || 0;
             playlistId = data.playlistId || "";
             playlistName = data.playlistName || "Imported Playlist";
-            coverUrl = data.coverUrl;
             setImportStats(prev => ({ ...prev, total: totalTracks }));
             setImportStage("downloading");
             upload.setActiveImport(curr => curr ? { ...curr, playlistName, playlistId, totalTracks, stage: "downloading" } : null);
@@ -246,7 +242,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   // Upload State
   const [uploadQueue, setUploadQueue] = useState<{ id: string, name: string, status: "pending" | "uploading" | "done" | "error" }[]>([]);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const handleUploadFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -271,12 +266,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   }, [roomId, upload, onSuccess]);
 
-
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  // Reset when mode changes
+  // Reset provider results when mode changes; keep the shared room query.
   useEffect(() => {
-    setQuery("");
     setYtResults([]);
     setSpResults([]);
     setDbResults([]);
@@ -354,7 +347,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
     // The YouTube playlist fetch has been extracted to its own useEffect below
 
-
     if (!query.trim()) return;
 
     const timer = setTimeout(async () => {
@@ -417,6 +409,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   }, [activeError, onErrorStateChange]);
 
   useEffect(() => {
+    if (!onResultsCountChange) return;
     let total = 0;
     if (mode === "spotify") {
       if (selectedPlaylistId) {
@@ -438,7 +431,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     if (!q.trim()) return;
     setIsSearching(true); setShowSuggestions(false); setDownloadError(null); setSpError(null); setSelectedIndex(0);
 
-    // Search logging removed
+    // Only text typed/chosen in SyncBeats becomes a first-party taste signal.
+    if (user?.id && !/^https?:\/\//i.test(q) && mode !== "spotify") void historyApi.logSearch(user.id, q.slice(0, 200)).catch(() => {});
+
+    // Playlist links should work from either source's search box.
+    const spotifyPlaylistUrl = q.trim().match(/^https?:\/\/open\.spotify\.com\/(?:intl-[^/]+\/)?playlist\/([a-zA-Z0-9]+)(?:[/?#]|$)/i);
+    if (spotifyPlaylistUrl) {
+      setMode("spotify");
+      setIsSearching(false);
+      handleSpotifyImport(`https://open.spotify.com/playlist/${spotifyPlaylistUrl[1]}`);
+      return;
+    }
 
     if (mode === "youtube") {
       const isUrl = q.trim().startsWith("http") && q.includes("youtube.com/playlist");
@@ -495,7 +498,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     }
   };
 
-
   const handleSpotifySearchEnqueue = async (spotifyUrl: string) => {
     setSpError(null);
     try {
@@ -533,8 +535,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     });
 
     try {
-      const SERVER = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000";
-      const response = await fetch(`${SERVER}/api/bridge/import-youtube`, {
+      const response = await fetch(`/api/bridge/import-youtube`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ playlistUrl: url }),
@@ -651,7 +652,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       setImporting(false);
     }
   };
-
 
   // handleSpotifyEnqueue: now a thin wrapper — actual logic in enqueueAsync above
   const handleSpotifyEnqueue = useCallback(async (playlistId: string, source?: string) => {
@@ -773,7 +773,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
     if (!targetId || isFixingMetadata || !token) return;
     setIsFixingMetadata(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:4000"}/api/playlists/${targetId}/enrich`, {
+      const res = await fetch(`/api/playlists/${targetId}/enrich`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -895,6 +895,27 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       className={`relative flex flex-col w-full h-auto ${containerPadding}`}
       style={{ maxHeight: isSearchOnly ? undefined : 'calc(100vh - 80px)' }}
     >
+      <div role="group" aria-label="Music source" className="flex gap-2 mb-3">
+        {(["youtube", "spotify"] as const).map(source => (
+          <button
+            key={source}
+            type="button"
+            aria-pressed={mode === source}
+            disabled={importing}
+            onClick={() => {
+              setMode(source);
+              setQuery("");
+              setSelectedPlaylistId(null);
+              setSelectedPlaylistData(null);
+              setDownloadError(null);
+              setSpError(null);
+            }}
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors disabled:opacity-40 ${mode === source ? "bg-white/15 text-white" : "text-white/50 hover:bg-white/10 hover:text-white"}`}
+          >
+            {source === "youtube" ? "YouTube" : "Spotify"}
+          </button>
+        ))}
+      </div>
       <motion.div layout transition={SPRING} className={`flex items-start gap-3 shrink-0 relative z-50 ${isSearchOnly ? "m-0 h-full" : "mb-4"}`}>
         {!isSearchOnly && (
           <button 
@@ -909,15 +930,14 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 onBack?.();
               }
             }} 
-            className={cn('p-2', '-ml-2', 'rounded-full', 'hover:bg-white/10', 'active:bg-white/20', 'text-white/70', 'hover:text-white', 'transition-colors', 'shrink-0', 'mt-0.5', 'cursor-pointer', 'touch-manipulation', 'z-50')}
+            className="p-2 -ml-2 rounded-full hover:bg-white/10 active:bg-white/20 text-white/70 hover:text-white transition-colors shrink-0 mt-0.5 cursor-pointer touch-manipulation z-50"
             title="Back"
           >
-            <ChevronLeft className={cn('w-6', 'h-6')} />
+            <ChevronLeft className="w-6 h-6" />
           </button>
         )}
         <motion.div 
-          className={cn('flex-1', 'relative', 'h-full', isDraggingOver ? 'ring-2 ring-white/50 rounded-full' : '')}
-          animate={isDraggingOver ? { scale: 1.02, y: [0, -3, 0, 3, 0], transition: { repeat: Infinity, duration: 0.4 } } : { scale: 1, y: 0 }}
+          className="flex-1 relative h-full"
         >
           <input
             name="syncbeats-search-input"
@@ -942,12 +962,12 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
             className={`w-full h-full bg-white/10 border border-white/20 rounded-full pl-10 ${query && mode === "youtube" && query.includes("youtube.com/playlist") ? "pr-24" : query ? "pr-4" : "pr-24"} text-white text-base md:text-sm placeholder-white/40 focus:outline-none focus:bg-white/20 transition-all ${!isSearchOnly ? "py-2.5" : ""}`}
             autoFocus
           />
-          <Search className={cn('absolute', 'left-3.5', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-white/50')} />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
 
           <AnimatePresence>
             {!query && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center', 'gap-0.5')}>
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
 
                 {/* YouTube: fetch my playlists, or connect if the account isn't linked */}
                 {mode === "youtube" && (
@@ -956,7 +976,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       href={youtubeApi.getConnectUrl()}
                       title="YouTube not connected — tap to connect"
                       aria-label="YouTube not connected, tap to connect"
-                      className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'transition-colors', 'text-amber-400/80', 'hover:text-amber-300')}
+                      className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-warn-400/80 hover:text-warn-300"
                     >
                       <YoutubeGlyph />
                     </a>
@@ -968,16 +988,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       disabled={loadingPlaylists || youtubeConnected === null}
                       title="Load my YouTube playlists"
                       aria-label="Load my YouTube playlists"
-                      className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'transition-colors', 'disabled:opacity-40', 'text-white/50', 'hover:text-[#FF0000]')}
+                      className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors disabled:opacity-40 text-white/50 hover:text-[#FF0000]"
                     >
-                      {loadingPlaylists ? <Loader2 className={cn('w-3.5', 'h-3.5', 'animate-spin')} /> : <YoutubeGlyph />}
+                      {loadingPlaylists ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <YoutubeGlyph />}
                     </button>
                   )
                 )}
 
                 {/* Upload Button */}
-                <label className={cn('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-full', 'hover:bg-white/10', 'cursor-pointer', 'text-white/50', 'hover:text-white', 'transition-colors')} title="Upload Local File">
-                  {upload.isUploading ? <Loader2 className={cn('w-3.5', 'h-3.5', 'animate-spin')} /> : <Upload className={cn('w-3.5', 'h-3.5')} />}
+                <label className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 cursor-pointer text-white/50 hover:text-white transition-colors" title="Upload Local File">
+                  {upload.isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                   <input type="file" accept="audio/*" multiple className="hidden"
                     onChange={e => {
                       const files = Array.from(e.target.files || []);
@@ -987,10 +1007,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 </label>
               </motion.div>
             )}
-            
+
             {query && mode === "youtube" && query.trim().startsWith("http") && query.includes("youtube.com/playlist") && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                className={cn('absolute', 'right-1.5', 'top-1/2', '-translate-y-1/2', 'flex', 'items-center')}>
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center">
                 <button
                   type="button"
                   onClick={() => {
@@ -1001,7 +1021,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                     }
                     handleYoutubeImport(query);
                   }}
-                  className={cn('px-3', 'py-1.5', 'bg-[#FF0000]', 'hover:bg-[#ff3333]', 'text-white', 'text-[10px]', 'font-bold', 'rounded-full', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5')}
+                  className="px-3 py-1.5 bg-[#FF0000] hover:bg-[#ff3333] text-white text-[10px] font-bold rounded-full transition-all active:scale-95 flex items-center gap-1.5"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
@@ -1016,7 +1036,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
       {downloadError && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-          className={cn('bg-red-500/20', 'border', 'border-red-500/30', 'text-red-200', 'text-xs', 'px-3', 'py-2', 'rounded-xl', 'mb-3', 'shrink-0')}>
+          className="bg-bad-500/20 border border-bad-500/30 text-bad-200 text-xs px-3 py-2 rounded-xl mb-3 shrink-0">
           {downloadError}
         </motion.div>
       )}
@@ -1025,15 +1045,15 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
           className={cn(
             spError.includes("Connect your Spotify account") || spError.includes("Connect your YouTube account")
-              ? 'bg-amber-500/20 border-amber-500/30 text-amber-200'
-              : 'bg-red-500/20 border-red-500/30 text-red-200',
+              ? 'bg-warn-500/20 border-warn-500/30 text-warn-200'
+              : 'bg-bad-500/20 border-bad-500/30 text-bad-200',
             'border text-xs px-3 py-3 rounded-xl mb-3 shrink-0 flex flex-col gap-2'
           )}>
           <div>{spError}</div>
           {spError.includes("Connect your Spotify account") && (
             <a
               href={`${getServerUrl()}/spotify/auth?token=${token || getAuthToken()}`}
-              className={cn('inline-flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-lg', 'bg-[#1DB954]', 'text-black', 'font-semibold', 'text-xs', 'hover:bg-[#1ed760]', 'transition-colors', 'w-fit')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1DB954] text-black font-semibold text-xs hover:bg-[#1ed760] transition-colors w-fit"
             >
               Connect Spotify Account for Full Import
             </a>
@@ -1041,23 +1061,23 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           {spError.includes("Connect your YouTube account") && (
             <a
               href={youtubeApi.getConnectUrl()}
-              className={cn('inline-flex', 'items-center', 'gap-1.5', 'px-3', 'py-1.5', 'rounded-lg', 'bg-[#FF0000]', 'text-white', 'font-semibold', 'text-xs', 'hover:bg-[#ff3333]', 'transition-colors', 'w-fit')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF0000] text-white font-semibold text-xs hover:bg-[#ff3333] transition-colors w-fit"
             >
               Connect YouTube Account
             </a>
           )}
           {spError === "Private playlists cannot be imported. Make it public first." && (
-            <div className={cn('w-full', 'rounded-lg', 'overflow-hidden', 'border', 'border-red-500/30', 'mt-1', 'relative', 'bg-black/50', 'aspect-video', 'flex-shrink-0')}>
+            <div className="w-full rounded-lg overflow-hidden border border-bad-500/30 mt-1 relative bg-black/50 aspect-video flex-shrink-0">
               <video 
-                className={cn('w-full', 'h-full', 'object-cover')}
+                className="w-full h-full object-cover"
                 autoPlay 
                 loop 
                 muted 
                 playsInline
                 src="/demo-make-public.mp4"
               />
-              <div className={cn('absolute', 'bottom-2', 'left-2', 'pointer-events-none')}>
-                 <span className={cn('bg-black/60', 'text-white/80', 'text-[9px]', 'px-2', 'py-1', 'rounded-md', 'uppercase', 'tracking-wider', 'font-bold', 'backdrop-blur-md')}>How to make public</span>
+              <div className="absolute bottom-2 left-2 pointer-events-none">
+                 <span className="bg-black/60 text-white/80 text-[9px] px-2 py-1 rounded-md font-bold backdrop-blur-md">How to make public</span>
               </div>
             </div>
           )}
@@ -1067,116 +1087,55 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       <AnimatePresence>
         {importing && (
           <motion.div
-            initial={{ opacity: 0, y: 15, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -15, scale: 0.95 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className={cn('p-5', 'rounded-3xl', 'bg-foreground/5', 'border', 'border-foreground/15', 'shadow-2xl', 'backdrop-blur-2xl', 'relative', 'overflow-hidden', 'my-3', 'shrink-0')}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="my-3 shrink-0 rounded-2xl border border-foreground/15 bg-foreground/5 p-4"
+            aria-label="Playlist import"
           >
-            {/* Ambient Pulsing Background Aura */}
-            <div className={cn('absolute', '-top-12', '-right-12', 'w-40', 'h-40', 'rounded-full', 'bg-violet-500/10', 'blur-3xl', 'pointer-events-none')} />
-            <div className={cn('absolute', '-bottom-12', '-left-12', 'w-40', 'h-40', 'rounded-full', 'bg-emerald-500/10', 'blur-3xl', 'pointer-events-none')} />
-
-            {/* Header Info */}
-            <div className={cn('flex', 'items-center', 'justify-between', 'mb-3', 'relative', 'z-10')}>
-              <div className={cn('flex', 'items-center', 'gap-3')}>
-                <div className={cn('w-10', 'h-10', 'rounded-2xl', 'bg-foreground/10', 'border', 'border-foreground/15', 'flex', 'items-center', 'justify-center', 'text-foreground', 'shrink-0', 'shadow-md')}>
-                  {importStage === "done" ? <CheckCircle2 className={cn('w-6', 'h-6', 'text-emerald-400')} /> : <Loader2 className={cn('w-5', 'h-5', 'animate-spin', 'text-foreground/80')} />}
-                </div>
-                <div>
-                  <h4 className={cn('text-sm', 'font-black', 'text-foreground', 'flex', 'items-center', 'gap-2')}>
-                    <span>{importStage === "done" ? `Imported "${importStats.playlistName || "Playlist"}"` : "Importing Playlist"}</span>
-                    <span className={cn('text-[9px]', 'px-2', 'py-0.5', 'rounded-full', 'bg-foreground/10', 'text-foreground/80', 'font-bold', 'border', 'border-foreground/15', 'uppercase', 'tracking-widest')}>
-                      {importStage === "done" ? "SUCCESS" : "ACTIVE"}
-                    </span>
-                  </h4>
-                  <p className={cn('text-xs', 'text-foreground/60', 'mt-0.5', 'max-w-[200px]', 'truncate')}>
-                    {importStage === "scraping" && "Fetching playlist from YouTube..."}
-                    {importStage === "indexing" && "Reading playlist..."}
-                    {importStage === "enriching" && (upload.activeImport?.currentTitle || (importStats.total > 0 ? `${importStats.total} / ${upload.activeImport?.totalTracks || '?'} songs` : "Importing songs..."))}
-                    {importStage === "done" && `${importStats.total} songs imported!`}
-                  </p>
-                </div>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{importStats.playlistName || 'Importing playlist'}</p>
+                <p className="mt-1 truncate text-xs text-foreground/60" aria-live="polite">
+                  {importStage === 'scraping' ? `Fetching ${mode === 'spotify' ? 'Spotify' : 'YouTube'} playlist…`
+                    : importStage === 'indexing' ? 'Reading tracks…'
+                    : importStage === 'enriching' ? 'Matching tracks…'
+                    : importStage === 'downloading' ? 'Saving playlist…'
+                    : 'Playlist ready'}
+                </p>
+                {importStats.total > 0 && <p className="mt-1 text-xs tabular-nums text-foreground/45">
+                  {importStats.total}{upload.activeImport?.totalTracks ? ` / ${upload.activeImport.totalTracks}` : ''} tracks
+                </p>}
               </div>
-              <div className="flex items-center gap-3">
-                <span className={cn('text-xl', 'font-black', 'text-foreground', 'font-mono', 'tracking-wider', 'ml-2')}>
-                  {Math.round(importProgress)}%
-                </span>
-                {importStage !== "done" && (
-                  <button 
-                    onClick={() => {
-                      if (importAbortController) importAbortController.abort();
-                      setImporting(false);
-                      upload.setActiveImport(null);
-                    }}
-                    className={cn('w-7', 'h-7', 'rounded-full', 'bg-foreground/10', 'hover:bg-red-500/20', 'hover:text-red-400', 'flex', 'items-center', 'justify-center', 'transition-colors', 'ml-2')}
-                    title="Cancel Import"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+              {importStage !== 'done' && (
+                <button type="button" aria-label="Cancel playlist import" onClick={() => {
+                  importAbortController?.abort();
+                  setImporting(false);
+                  upload.setActiveImport(null);
+                }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/10 hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
-
-            {/* Animated Progress Bar in Pure White */}
-            <div className={cn('w-full', 'h-3.5', 'rounded-full', 'bg-white/10', 'overflow-hidden', 'relative', 'border', 'border-white/15', 'p-0.5', 'z-10', 'shadow-inner')}>
-              <motion.div
-                className={cn('h-full', 'rounded-full', 'bg-white', 'relative', 'shadow-[0_0_12px_rgba(255,255,255,0.6)]')}
-                initial={{ width: "0%" }}
-                animate={{ width: `${importProgress}%` }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                {/* Subtle glowing head light */}
-                <div className={cn('absolute', 'top-0', 'right-0', 'w-3', 'h-full', 'bg-white', 'rounded-full', 'shadow-[0_0_10px_rgba(255,255,255,0.9)]', 'opacity-100')} />
-              </motion.div>
-            </div>
-
-            {/* Completion Actions or Stage Footer */}
-            {importStage === "done" && importStats.playlistId ? (
-              <div className={cn('flex', 'items-center', 'gap-2', 'mt-4', 'pt-3', 'border-t', 'border-foreground/10', 'relative', 'z-10')}>
-                <button
-                  onClick={() => {
-                    if (importStats.playlistId) {
-                      handlePlaylistClick(importStats.playlistId);
-                      setImporting(false);
-                    }
-                  }}
-                  className={cn('px-4', 'py-2', 'rounded-xl', 'bg-foreground', 'hover:bg-foreground/90', 'text-background', 'font-extrabold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5', 'shadow-lg')}
-                >
-                  <Music className={cn('w-4', 'h-4')} /> View Playlist ({importStats.total} Tracks)
-                </button>
-                <button
-                  onClick={() => {
-                    if (importStats.playlistId) {
-                      handleSpotifyEnqueue(importStats.playlistId);
-                      setImporting(false);
-                    }
-                  }}
-                  className={cn('px-3.5', 'py-2', 'rounded-xl', 'bg-foreground/10', 'hover:bg-foreground/20', 'text-foreground', 'font-bold', 'text-xs', 'transition-all', 'active:scale-95', 'flex', 'items-center', 'gap-1.5', 'border', 'border-foreground/10')}
-                >
-                  <Play className={cn('w-3.5', 'h-3.5', 'fill-current')} /> Play All
-                </button>
-                <button
-                  onClick={() => setImporting(false)}
-                  className={cn('ml-auto', 'px-3', 'py-2', 'rounded-xl', 'bg-foreground/5', 'hover:bg-foreground/10', 'text-foreground/60', 'hover:text-foreground', 'text-xs', 'font-bold', 'transition-all')}
-                >
-                  Dismiss
-                </button>
-              </div>
-            ) : (
-              <div className={cn('flex', 'flex-col', 'gap-1', 'mt-3', 'relative', 'z-10')}>
-                {upload.activeImport?.currentTitle && (
-                  <p className={cn('text-[11px]', 'text-foreground/50', 'truncate', 'italic')}>
-                    ♪ {upload.activeImport.currentTitle}
-                  </p>
-                )}
-                <div className={cn('flex', 'items-center', 'justify-between', 'text-[11px]', 'text-foreground/60')}>
-                  <div className={cn('flex', 'items-center', 'gap-1.5', 'font-bold')}>
-                    <Sparkles className={cn('w-3.5', 'h-3.5', 'text-foreground/70', 'animate-spin')} />
-                    <span>{importStats.total > 0 ? `${importStats.total} of ${upload.activeImport?.totalTracks || '?'} tracks` : "Scanning playlist..."}</span>
-                  </div>
-                  <span className={cn('text-foreground/40', 'italic')}>~2s per 20 songs</span>
+            {importStage !== 'done' && (
+              <div className="mt-3 flex items-center gap-3">
+                <div role="progressbar" aria-label="Playlist import progress" aria-valuemin={0} aria-valuemax={100}
+                  aria-valuenow={importStage === 'scraping' || importStage === 'indexing' ? undefined : Math.round(importProgress)}
+                  className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/10">
+                  <div className={`h-full rounded-full bg-foreground/70 transition-[width] duration-300 ${importStage === 'scraping' || importStage === 'indexing' ? 'w-1/3 motion-safe:animate-pulse' : ''}`}
+                    style={importStage === 'scraping' || importStage === 'indexing' ? undefined : { width: `${Math.min(100, Math.max(0, importProgress))}%` }} />
                 </div>
+                {importStage !== 'scraping' && importStage !== 'indexing' && <span className="text-xs tabular-nums text-foreground/60">{Math.round(importProgress)}%</span>}
+              </div>
+            )}
+            {importStage === 'done' && (
+              <div className="mt-3 flex items-center gap-2">
+                <button type="button" onClick={async () => {
+                  if (importStats.playlistId) { handlePlaylistClick(importStats.playlistId); setImporting(false); }
+                }} className="flex h-9 items-center gap-2 rounded-xl bg-foreground/10 px-3 text-xs font-medium text-foreground hover:bg-foreground/20">
+                  <Play className="h-3.5 w-3.5 fill-current" /> Play all
+                </button>
+                <button type="button" onClick={() => setImporting(false)} className="h-9 rounded-xl px-3 text-xs text-foreground/60 hover:bg-foreground/5">Dismiss</button>
               </div>
             )}
           </motion.div>
@@ -1188,7 +1147,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 15 }}
             transition={{ ...SPRING, opacity: { duration: 0.2 } }}
             ref={scrollRef}
-            className={cn('flex-1', 'min-h-0', 'overflow-y-auto', 'custom-scrollbar', 'pr-2', 'space-y-2', '-mx-2', 'px-2', 'flex', 'flex-col', 'pointer-events-auto', 'scroll-smooth')}
+            className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 space-y-2 -mx-2 px-2 flex flex-col pointer-events-auto scroll-smooth"
             data-lenis-prevent="true"
             onPointerDownCapture={e => e.stopPropagation()}
             onWheelCapture={e => e.stopPropagation()}
@@ -1202,9 +1161,9 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               <AppFeedback message={downloadError} severity="error" onDismiss={() => setDownloadError(null)} className="mb-2" />
             )}
 
-            {loadingPlaylists && !isSearching ? (
-              <div className={cn('flex', 'items-center', 'justify-center', 'py-12')}>
-                <Loader2 className={cn('w-6', 'h-6', 'animate-spin', 'text-white/30')} />
+            {loadingPlaylists && !isSearching && !importing ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-white/30" />
               </div>
             ) : isSearching ? (
               <SearchSkeleton count={5} />
@@ -1214,52 +1173,52 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`px-4 py-3 text-sm rounded-xl cursor-pointer flex items-center gap-3 transition-colors shrink-0 ${selectedIndex === idx ? "bg-white/20 text-white" : "text-white/80 hover:text-white hover:bg-white/10"}`}>
 
-                  <Search className={cn('w-3.5', 'h-3.5', 'text-white/40')} />{s}
+                  <Search className="w-3.5 h-3.5 text-white/40" />{s}
                 </div>
               ))
             ) : (ytResults.length > 0 || spResults.length > 0 || uploadQueue.length > 0 || (mode === "spotify" && (mySpotifyPlaylists.length > 0 || selectedPlaylistId)) || (mode === "youtube" && (myYoutubePlaylists.length > 0 || selectedPlaylistId))) ? (
               <>
                 {uploadQueue.map(uq => (
-                  <div key={uq.id} className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'shrink-0')}>
-                    <div className={cn('w-20', 'h-14', 'bg-white/10', 'rounded-lg', 'flex', 'items-center', 'justify-center', 'shrink-0')}>
-                      <Upload className={cn('w-6', 'h-6', 'text-white/50')} />
+                  <div key={uq.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent shrink-0">
+                    <div className="w-20 h-14 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
+                      <Upload className="w-6 h-6 text-white/50" />
                     </div>
-                    <div className={cn('space-y-1', 'min-w-0', 'flex-1')}>
-                      <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{uq.name}</div>
-                      <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>Local Upload</div>
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="text-white text-sm font-bold truncate">{uq.name}</div>
+                      <div className="text-white/50 text-[10px] truncate">Local Upload</div>
                     </div>
-                    <div className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'text-white')}>
-                      {uq.status === "uploading" ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : uq.status === "done" ? <CheckCircle2 className={cn('w-5', 'h-5', 'text-green-500')} /> : uq.status === "error" ? <AlertCircle className={cn('w-5', 'h-5', 'text-red-500')} /> : <Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'opacity-50')} />}
+                    <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 text-white">
+                      {uq.status === "uploading" ? <Loader2 className="w-4 h-4 animate-spin" /> : uq.status === "done" ? <CheckCircle2 className="w-5 h-5 text-ok-500" /> : uq.status === "error" ? <AlertCircle className="w-5 h-5 text-bad-500" /> : <Loader2 className="w-4 h-4 animate-spin opacity-50" />}
                     </div>
                   </div>
                 ))}
 
                 {/* Spotify Results */}
-                {spResults.map((r, idx) => (
+                {spResults.map((r) => (
                   <div key={r.id}
-                    className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'bg-white/5', 'border', 'border-transparent', 'hover:bg-white/10', 'transition-all', 'duration-300', 'group', 'shrink-0')}>
-                    <img src={r.coverUrl || "/placeholder-playlist.png"} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                    <div className={cn('space-y-1', 'min-w-0', 'flex-1')}>
-                      <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                    className="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-transparent hover:bg-white/10 transition-all duration-300 group shrink-0">
+                    <img src={r.coverUrl || "/placeholder-playlist.png"} loading="eager" decoding="sync" className="w-14 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="text-white text-sm font-bold truncate flex items-center gap-2">
                         {r.name}
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                       </div>
-                      <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
+                      <div className="text-white/50 text-[10px] truncate">{r.trackCount} Tracks • {r.owner}</div>
                     </div>
                     <button
                       onClick={() => handleSpotifySearchEnqueue(`https://open.spotify.com/playlist/${r.id}`)}
                       disabled={importAsync.isPending || enqueuing === r.id}
-                      className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'disabled:opacity-50', 'disabled:cursor-wait')}
+                      className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-[#1DB954] text-white active:scale-90 transition-all disabled:opacity-50 disabled:cursor-wait"
                     >
-                      {(importAsync.isPending || enqueuing === r.id) ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                      {(importAsync.isPending || enqueuing === r.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-5 h-5" />}
                     </button>
                   </div>
                 ))}
 
                 {/* My Spotify Playlists */}
-                {mode === "spotify" && displayedSpotifyPlaylists.map((r, idx) => {
+                {mode === "spotify" && displayedSpotifyPlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
-                    upload.activeImport?.isImporting && (
+                    !importing && upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
                       upload.activeImport?.playlistName?.toLowerCase() === r.name?.toLowerCase()
                     )
@@ -1277,31 +1236,31 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       {/* Background Fill Progress Bar */}
                       {isThisPlaylistImporting && (
                         <motion.div
-                          className={cn('absolute', 'inset-y-0', 'left-0', 'bg-foreground/10', 'z-0', 'pointer-events-none', 'border-r', 'border-foreground/30')}
+                          className="absolute inset-y-0 left-0 bg-foreground/10 z-0 pointer-events-none border-r border-foreground/30"
                           initial={{ width: "0%" }}
                           animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         >
-                          <div className={cn('absolute', 'top-0', 'right-0', 'w-2', 'h-full', 'bg-white/80', 'shadow-[0_0_8px_rgba(255,255,255,0.8)]', 'opacity-90')} />
+                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.8)] opacity-90" />
                         </motion.div>
                       )}
 
                       {r.coverUrl ? (
-                        <img src={r.coverUrl} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0', 'relative', 'z-10')} />
+                        <img src={r.coverUrl} loading="eager" decoding="sync" className="w-14 h-14 object-cover rounded-lg bg-black/50 shrink-0 relative z-10" />
                       ) : (
-                        <div className={cn('w-14', 'h-14', 'rounded-lg', 'bg-black/50', 'shrink-0', 'flex', 'items-center', 'justify-center', 'relative', 'z-10')}>
+                        <div className="w-14 h-14 rounded-lg bg-black/50 shrink-0 flex items-center justify-center relative z-10">
                           <svg width="24" height="24" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                         </div>
                       )}
-                      <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'relative', 'z-10')}>
-                        <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                      <div className="space-y-1 min-w-0 flex-1 relative z-10">
+                        <div className="text-white text-sm font-bold truncate flex items-center gap-2">
                           {r.name}
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954" className="shrink-0"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                         </div>
-                        <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.trackCount} Tracks • {r.owner}</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.trackCount} Tracks • {r.owner}</div>
                         {isThisPlaylistImporting && (
-                          <div className={cn('text-cyan-300', 'text-xs', 'font-extrabold', 'truncate', 'flex', 'items-center', 'gap-1.5', 'mt-1', 'bg-cyan-500/20', 'border', 'border-cyan-500/30', 'px-2', 'py-0.5', 'rounded-md', 'w-fit', 'max-w-full', 'shadow-md')}>
-                            <Loader2 className={cn('w-3.5', 'h-3.5', 'shrink-0', 'animate-spin', 'text-cyan-400')} />
+                          <div className="text-foreground/75 text-xs font-semibold truncate flex items-center gap-1.5 mt-1 bg-foreground/5 border border-foreground/10 px-2 py-0.5 rounded-md w-fit max-w-full">
+                            <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-foreground/60" />
                             <span>Importing & Enriching ({Math.round(upload.activeImport?.progress ?? 0)}%)</span>
                           </div>
                         )}
@@ -1312,10 +1271,17 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           if (matchedTracks.length === 0) return null;
                           const firstSong = matchedTracks[0].song;
                           return (
-                            <div className={cn('text-emerald-400', 'text-xs', 'font-semibold', 'truncate', 'flex', 'items-center', 'gap-1.5', 'mt-1', 'bg-emerald-500/10', 'border', 'border-emerald-500/25', 'px-2', 'py-0.5', 'rounded-md', 'w-fit', 'max-w-full')}>
-                              <Music className={cn('w-3', 'h-3', 'shrink-0', 'text-emerald-400', 'opacity-90')} />
+                            /* Query-match highlight, not a success state — so
+                               the live accent rather than `ok`. Green read as
+                               "this worked" when it means "this is what you
+                               searched for". */
+                            <div
+                              className="text-xs font-semibold truncate flex items-center gap-1.5 mt-1 border border-(--accent-border) px-2 py-0.5 rounded-md w-fit max-w-full"
+                              style={{ color: "var(--accent-color)", background: "var(--accent-glow)" }}
+                            >
+                              <Music className="w-3 h-3 shrink-0 opacity-90" />
                               <span className="truncate">
-                                Contains <span className={cn('text-white', 'font-bold')}>{firstSong?.title}</span>
+                                Contains <span className="text-white font-bold">{firstSong?.title}</span>
                                 {firstSong?.artist ? ` • ${firstSong.artist}` : ""}
                                 {matchedTracks.length > 1 ? ` (+${matchedTracks.length - 1} more)` : ""}
                               </span>
@@ -1326,29 +1292,29 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
                       <button onClick={(e) => handleFixPlaylistMetadata(r.id, e)}
                         disabled={isFixingMetadata}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-emerald-500/10', 'hover:bg-emerald-500/20', 'text-emerald-400', 'border', 'border-emerald-500/20', 'active:scale-90', 'transition-all', 'hidden', 'group-hover:flex', 'relative', 'z-10')}
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-ok-500/10 hover:bg-ok-500/20 text-ok-400 border border-ok-500/20 active:scale-90 transition-all hidden group-hover:flex relative z-10"
                         title="Fix & refetch missing artwork and metadata">
                         <Sparkles className={cn('w-4', 'h-4', isFixingMetadata && 'animate-spin')} />
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/5', 'hover:bg-red-500/20', 'text-white/50', 'hover:text-red-400', 'active:scale-90', 'transition-all', 'sm:hidden', 'group-hover:flex', 'relative', 'z-10')}>
-                        <Trash2 className={cn('w-4', 'h-4')} />
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/5 hover:bg-bad-500/20 text-white/50 hover:text-bad-400 active:scale-90 transition-all sm:hidden group-hover:flex relative z-10">
+                        <Trash2 className="w-4 h-4" />
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id); }}
                         disabled={enqueuing === r.id}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-[#1DB954]', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
-                        {enqueuing === r.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-[#1DB954] text-white active:scale-90 transition-all relative z-10 disabled:opacity-50 disabled:cursor-wait">
+                        {enqueuing === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-5 h-5 ml-0.5" />}
                       </button>
                     </div>
                   );
                 })}
 
                 {/* My YouTube Playlists */}
-                {mode === "youtube" && displayedYoutubePlaylists.map((r, idx) => {
+                {mode === "youtube" && displayedYoutubePlaylists.map((r) => {
                   const isThisPlaylistImporting = !!(
-                    upload.activeImport?.isImporting && (
+                    !importing && upload.activeImport?.isImporting && (
                       upload.activeImport?.playlistId === r.id ||
                       upload.activeImport?.playlistName?.toLowerCase() === r.title?.toLowerCase()
                     )
@@ -1366,39 +1332,39 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                       {/* Background Fill Progress Bar */}
                       {isThisPlaylistImporting && (
                         <motion.div
-                          className={cn('absolute', 'inset-y-0', 'left-0', 'bg-foreground/10', 'z-0', 'pointer-events-none', 'border-r', 'border-foreground/30')}
+                          className="absolute inset-y-0 left-0 bg-foreground/10 z-0 pointer-events-none border-r border-foreground/30"
                           initial={{ width: "0%" }}
                           animate={{ width: `${upload.activeImport?.progress ?? 0}%` }}
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         >
-                          <div className={cn('absolute', 'top-0', 'right-0', 'w-2', 'h-full', 'bg-white/80', 'shadow-[0_0_8px_rgba(255,255,255,0.8)]', 'opacity-90')} />
+                          <div className="absolute top-0 right-0 w-2 h-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.8)] opacity-90" />
                         </motion.div>
                       )}
 
                       {r.thumbnail ? (
-                        <img src={r.thumbnail} loading="eager" decoding="sync" className={cn('w-14', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0', 'relative', 'z-10')} />
+                        <img src={r.thumbnail} loading="eager" decoding="sync" className="w-14 h-14 object-cover rounded-lg bg-black/50 shrink-0 relative z-10" />
                       ) : (
-                        <div className={cn('w-14', 'h-14', 'rounded-lg', 'bg-black/50', 'shrink-0', 'flex', 'items-center', 'justify-center', 'relative', 'z-10')}>
-                          <Play className={cn('w-6', 'h-6', 'text-red-500', 'fill-current')} />
+                        <div className="w-14 h-14 rounded-lg bg-black/50 shrink-0 flex items-center justify-center relative z-10">
+                          <Play className="w-6 h-6 text-[#FF0000] fill-current" />
                         </div>
                       )}
-                      <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'relative', 'z-10')}>
-                        <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                      <div className="space-y-1 min-w-0 flex-1 relative z-10">
+                        <div className="text-white text-sm font-bold truncate flex items-center gap-2">
                           {r.title || r.name}
-                          <Play className={cn('w-3.5', 'h-3.5', 'text-red-500', 'shrink-0', 'fill-current')} />
+                          <Play className="w-3.5 h-3.5 text-[#FF0000] shrink-0 fill-current" />
                         </div>
-                        <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.itemCount} Tracks • SyncBeats</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.itemCount} Tracks • SyncBeats</div>
                       </div>
 
                       <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(r.id, e); }}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/5', 'hover:bg-red-500/20', 'text-white/50', 'hover:text-red-400', 'active:scale-90', 'transition-all', 'sm:hidden', 'group-hover:flex', 'relative', 'z-10')}>
-                        <Trash2 className={cn('w-4', 'h-4')} />
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/5 hover:bg-bad-500/20 text-white/50 hover:text-bad-400 active:scale-90 transition-all sm:hidden group-hover:flex relative z-10">
+                        <Trash2 className="w-4 h-4" />
                       </button>
 
                       <button onClick={(e) => { e.stopPropagation(); handleSpotifyEnqueue(r.id, "youtube"); }}
                         disabled={enqueuing === r.id}
-                        className={cn('w-10', 'h-10', 'shrink-0', 'flex', 'items-center', 'justify-center', 'rounded-full', 'bg-white/10', 'hover:bg-red-500', 'text-white', 'active:scale-90', 'transition-all', 'relative', 'z-10', 'disabled:opacity-50', 'disabled:cursor-wait')}>
-                        {enqueuing === r.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-5', 'h-5', 'ml-0.5')} />}
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/10 hover:bg-[#FF0000] text-white active:scale-90 transition-all relative z-10 disabled:opacity-50 disabled:cursor-wait">
+                        {enqueuing === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-5 h-5 ml-0.5" />}
                       </button>
                     </div>
                   );
@@ -1406,8 +1372,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
                 {/* Playlist Info Drill-down View */}
                 {(mode === "spotify" || mode === "youtube") && !query.trim() && selectedPlaylistId && (
-                  <div className={cn('flex', 'flex-col', 'gap-2')}>
-                    <div className={cn('sticky', 'top-0', 'z-30', 'bg-black/95', 'backdrop-blur-xl', 'pb-3', 'pt-2', '-mx-2', 'px-2', 'w-[calc(100%+16px)]', 'border-b', 'border-white/5')}>
+                  <div className="flex flex-col gap-2">
+                    <div className="sticky top-0 z-30 bg-black/95 backdrop-blur-xl pb-3 pt-2 -mx-2 px-2 w-[calc(100%+16px)] border-b border-white/5">
                       <button
                         type="button"
                         onClick={e => { 
@@ -1416,26 +1382,26 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           setSelectedPlaylistId(null); 
                           setSelectedPlaylistData(null); 
                         }}
-                        className={cn('flex', 'items-center', 'gap-2', 'text-white/80', 'hover:text-white', 'active:text-white', 'transition-colors', 'py-1', 'text-sm', 'font-semibold', 'cursor-pointer', 'touch-manipulation')}
+                        className="flex items-center gap-2 text-white/80 hover:text-white active:text-white transition-colors py-1 text-sm font-semibold cursor-pointer touch-manipulation"
                       >
-                        <ChevronLeft className={cn('w-5', 'h-5')} /> Back to Playlists
+                        <ChevronLeft className="w-5 h-5" /> Back to Playlists
                       </button>
                     </div>
 
                     {selectedPlaylistData && (
                       <>
-                        <div className={cn('flex', 'items-end', 'gap-4', 'p-4', 'bg-white/5', 'rounded-2xl', 'relative')}>
+                        <div className="flex items-end gap-4 p-4 bg-white/5 rounded-2xl relative">
                           {isEditingPlaylist ? (
-                            <label className={cn('relative', 'w-24', 'h-24', 'rounded-xl', 'shadow-xl', 'shrink-0', 'bg-black/50', 'flex', 'items-center', 'justify-center', 'cursor-pointer', 'group', 'overflow-hidden', 'border', 'border-white/10', 'hover:border-white/30', 'transition-colors')}>
-                              <img src={editCoverUrl || "/placeholder-playlist.png"} loading="eager" decoding="sync" className={cn('absolute', 'inset-0', 'w-full', 'h-full', 'object-cover', 'opacity-50', 'group-hover:opacity-30', 'transition-opacity')} />
-                              <Camera className={cn('w-8', 'h-8', 'text-white', 'relative', 'z-10', 'drop-shadow-md')} />
+                            <label className="relative w-24 h-24 rounded-xl shadow-xl shrink-0 bg-black/50 flex items-center justify-center cursor-pointer group overflow-hidden border border-white/10 hover:border-white/30 transition-colors">
+                              <img src={editCoverUrl || "/placeholder-playlist.png"} loading="eager" decoding="sync" className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity" />
+                              <Camera className="w-8 h-8 text-white relative z-10 drop-shadow-md" />
                               <input type="file" accept="image/*" className="hidden" onChange={handleCoverImageUpload} />
                             </label>
                           ) : (
                             (selectedPlaylistData.coverUrl || selectedPlaylistData.thumbnail) ? (
-                              <img src={selectedPlaylistData.coverUrl || selectedPlaylistData.thumbnail} loading="eager" decoding="sync" className={cn('w-24', 'h-24', 'object-cover', 'rounded-xl', 'shadow-xl', 'shrink-0')} />
+                              <img src={selectedPlaylistData.coverUrl || selectedPlaylistData.thumbnail} loading="eager" decoding="sync" className="w-24 h-24 object-cover rounded-xl shadow-xl shrink-0" />
                             ) : (
-                              <div className={cn('w-24', 'h-24', 'rounded-xl', 'shadow-xl', 'shrink-0', 'bg-black/50', 'flex', 'items-center', 'justify-center')}>
+                              <div className="w-24 h-24 rounded-xl shadow-xl shrink-0 bg-black/50 flex items-center justify-center">
                                 {mode === "spotify" ? (
                                   <svg width="40" height="40" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                                 ) : (
@@ -1444,16 +1410,16 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                               </div>
                             )
                           )}
-                          <div className={cn('flex-1', 'min-w-0', 'pb-1')}>
-                            <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'mb-1', 'flex', 'items-center', 'justify-between')}>
+                          <div className="flex-1 min-w-0 pb-1">
+                            <div className="text-white/50 text-[10px] mb-1 flex items-center justify-between">
                               <span>{mode === "youtube" ? "YouTube Playlist" : "Playlist"}</span>
                               {!isEditingPlaylist && mode === "spotify" && (
                                 <button onClick={() => {
                                   setEditName(selectedPlaylistData.name);
                                   setEditCoverUrl(selectedPlaylistData.coverUrl || "");
                                   setIsEditingPlaylist(true);
-                                }} className={cn('p-1', 'hover:bg-white/10', 'rounded-full', 'transition-colors')}>
-                                  <Edit2 className={cn('w-3.5', 'h-3.5')} />
+                                }} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                                  <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
@@ -1463,20 +1429,20 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className={cn('w-full', 'bg-black/40', 'border', 'border-white/20', 'rounded', 'px-2', 'py-1', 'text-white', 'text-lg', 'font-bold', 'mb-2', 'outline-none', 'focus:border-[#1DB954]')}
+                                className="w-full bg-black/40 border border-white/20 rounded px-2 py-1 text-white text-lg font-bold mb-2 outline-none focus:border-[#1DB954]"
                                 autoFocus
                               />
                             ) : (
-                              <div className={cn('text-white', 'text-xl', 'font-bold', 'truncate', 'mb-2')}>{selectedPlaylistData.name || selectedPlaylistData.title}</div>
+                              <div className="text-white text-xl font-bold truncate mb-2">{selectedPlaylistData.name || selectedPlaylistData.title}</div>
                             )}
 
-                            <div className={cn('flex', 'items-center', 'gap-2')}>
+                            <div className="flex items-center gap-2">
                               {isEditingPlaylist ? (
                                 <>
-                                  <button onClick={handleUpdatePlaylist} disabled={isSavingPlaylist} className={cn('h-8', 'px-4', 'bg-[#1DB954]', 'hover:bg-[#1ed760]', 'disabled:opacity-50', 'text-black', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-1', 'active:scale-95', 'transition-all')}>
-                                    {isSavingPlaylist ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Check className={cn('w-4', 'h-4')} />} Save
+                                  <button onClick={handleUpdatePlaylist} disabled={isSavingPlaylist} className="h-8 px-4 bg-[#1DB954] hover:bg-[#1ed760] disabled:opacity-50 text-black text-sm font-bold rounded-full flex items-center gap-1 active:scale-95 transition-all">
+                                    {isSavingPlaylist ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save
                                   </button>
-                                  <button onClick={() => setIsEditingPlaylist(false)} className={cn('h-8', 'px-3', 'bg-white/10', 'hover:bg-white/20', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-1', 'active:scale-95', 'transition-all')}>
+                                  <button onClick={() => setIsEditingPlaylist(false)} className="h-8 px-3 bg-white/10 hover:bg-white/20 text-white text-sm font-bold rounded-full flex items-center gap-1 active:scale-95 transition-all">
                                     Cancel
                                   </button>
                                 </>
@@ -1489,21 +1455,21 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                 }}
                                   disabled={enqueuing === selectedPlaylistData.id}
                                   className={cn('h-8', 'px-4', mode === "youtube" ? 'bg-[#FF0000] hover:bg-[#ff3333]' : 'bg-[#1DB954] hover:bg-[#1ed760]', 'text-white', 'text-sm', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-2', 'active:scale-95', 'transition-all', 'disabled:opacity-50')}>
-                                  {enqueuing === selectedPlaylistData.id ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} /> : <Play className={cn('w-4', 'h-4', 'fill-current')} />} Play All
+                                  {enqueuing === selectedPlaylistData.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />} Play All
                                 </button>
                               )}
                               {!isEditingPlaylist && mode === "spotify" && (
                                 <>
                                   <button onClick={(e) => handleFixPlaylistMetadata(selectedPlaylistData.id, e)}
                                     disabled={isFixingMetadata}
-                                    className={cn('h-8', 'px-3', 'bg-emerald-500/20', 'hover:bg-emerald-500/30', 'border', 'border-emerald-500/30', 'text-emerald-300', 'text-xs', 'font-bold', 'rounded-full', 'flex', 'items-center', 'gap-1.5', 'active:scale-95', 'transition-all')}
+                                    className="h-8 px-3 bg-ok-500/20 hover:bg-ok-500/30 border border-ok-500/30 text-ok-300 text-xs font-bold rounded-full flex items-center gap-1.5 active:scale-95 transition-all"
                                     title="Refetch missing album art, artist names, and YouTube links">
                                     <Sparkles className={cn('w-3.5', 'h-3.5', isFixingMetadata && 'animate-spin')} />
                                     <span>{isFixingMetadata ? 'Refetching...' : 'Fix Missing Info'}</span>
                                   </button>
                                   <button onClick={(e) => handleDeletePlaylist(selectedPlaylistData.id, e)}
-                                    className={cn('h-8', 'w-8', 'bg-white/10', 'hover:bg-red-500/20', 'text-white', 'hover:text-red-400', 'rounded-full', 'flex', 'items-center', 'justify-center', 'active:scale-95', 'transition-all')}>
-                                    <Trash2 className={cn('w-4', 'h-4')} />
+                                    className="h-8 w-8 bg-white/10 hover:bg-bad-500/20 text-white hover:text-bad-400 rounded-full flex items-center justify-center active:scale-95 transition-all">
+                                    <Trash2 className="w-4 h-4" />
                                   </button>
                                 </>
                               )}
@@ -1511,10 +1477,10 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                           </div>
                         </div>
 
-                        <div className={cn('flex', 'flex-col', 'gap-1', 'mt-2')}>
+                        <div className="flex flex-col gap-1 mt-2">
                           {loadingPlaylist ? (
-                            <div className={cn('flex', 'items-center', 'justify-center', 'py-12')}>
-                              <Loader2 className={cn('w-8', 'h-8', 'animate-spin', 'text-white/30')} />
+                            <div className="flex items-center justify-center py-12">
+                              <Loader2 className="w-8 h-8 animate-spin text-white/30" />
                             </div>
                           ) : selectedPlaylistData.tracks?.map((track: any, idx: number) => {
                             const song = track.song || track;
@@ -1536,25 +1502,37 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                             return (
                               <div key={`${track.id || yId}-${idx}`}
                                 className={cn('flex', 'items-center', 'gap-3', 'p-2', 'rounded-xl', 'transition-all', 'duration-300', 'group', 'shrink-0', 'animate-in', 'fade-in', 'slide-in-from-bottom-2',
-                                  isAdded ? 'bg-green-500/20 border border-green-500/30' : (isMatch ? 'bg-emerald-500/15 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)]' : 'bg-white/5 border border-transparent hover:bg-white/10')
+                                  // `isAdded` keeps `ok` — already-in-queue is a
+                                  // real success state. `isMatch` moves to the
+                                  // accent: it marks what you searched for, and
+                                  // the two must not look like the same thing.
+                                  isAdded ? 'bg-ok-500/20 border border-ok-500/30' : (isMatch ? 'bg-(--accent-glow) border border-(--accent-border) shadow-[0_0_15px_var(--accent-glow)]' : 'bg-white/5 border border-transparent hover:bg-white/10')
                                 )}
                                 style={{ animationFillMode: 'both', animationDelay: `${Math.min(idx * 30, 500)}ms` }}
                               >
-                                <img src={yThumb} loading="eager" decoding="sync" className={cn('w-12', 'h-10', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                                <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
-                                  <div className={cn('text-white', 'text-sm', 'font-medium', 'truncate', 'flex', 'items-center', 'gap-2')}>
+                                <img src={yThumb} loading="eager" decoding="sync" className="w-12 h-10 object-cover rounded-lg bg-black/50 shrink-0" />
+                                <div className="space-y-1 min-w-0 flex-1 pl-1">
+                                  <div className="text-white text-sm font-medium truncate flex items-center gap-2">
                                     {song.title}
-                                    {isMatch && <span className={cn('text-[9px]', 'bg-emerald-500/30', 'text-emerald-300', 'border', 'border-emerald-500/40', 'px-1.5', 'py-0.5', 'rounded', 'font-bold', 'uppercase', 'tracking-wider', 'shrink-0')}>Matches search</span>}
+                                    {isMatch && (
+                                      <span
+                                        className="text-[9px] border border-(--accent-border) px-1.5 py-0.5 rounded font-bold shrink-0"
+                                        style={{ color: "var(--accent-color)", background: "var(--accent-glow)" }}
+                                      >
+                                        Matches search
+                                      </span>
+                                    )}
+
                                   </div>
-                                  <div className={cn('text-white/50', 'text-[10px]', 'truncate')}>{song.artist}</div>
+                                  <div className="text-white/50 text-[10px] truncate">{song.artist}</div>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button onClick={() => !isAdded && handlePlay(mappedSong)} disabled={enqueuing === mappedSong.url || isAdded}
                                     className={cn('w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all',
-                                      isAdded ? 'bg-green-500 text-white' : 'bg-white/10 hover:bg-[#FF0000] text-white active:scale-90'
+                                      isAdded ? 'bg-ok-500 text-white' : 'bg-white/10 hover:bg-[#FF0000] text-white active:scale-90'
                                     )}>
-                                    {enqueuing === mappedSong.url ? <Loader2 className={cn('w-3', 'h-3', 'animate-spin')} />
-                                      : isAdded ? <CheckCircle2 className={cn('w-4', 'h-4')} /> : <Plus className={cn('w-4', 'h-4')} />}
+                                    {enqueuing === mappedSong.url ? <Loader2 className="w-3 h-3 animate-spin" />
+                                      : isAdded ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                                   </button>
                                   {youtubeConnected && (
                                     <button
@@ -1567,7 +1545,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                           thumbnail: yThumb,
                                         });
                                       }}
-                                      className={cn('w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                                      className="w-8 h-8 flex items-center justify-center rounded-full transition-all bg-transparent hover:bg-white/10 text-white/50 hover:text-white active:scale-90"
                                       title="Add to YouTube Playlist"
                                     >
                                       <MoreHorizontal className="w-4 h-4" />
@@ -1586,27 +1564,27 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 {/* Local DB Songs (from Spotify library) */}
                 {dbResults.length > 0 && (
                   <>
-                    <div className={cn('text-[10px]', 'text-white/40', 'uppercase', 'tracking-widest', 'font-bold', 'px-2', 'mb-1.5', 'mt-2')}>From Spotify Library (DB)</div>
+                    <div className="text-[10px] text-white/40 font-bold px-2 mb-1.5 mt-2">From Spotify Library (DB)</div>
                     {dbResults.map((r, idx) => {
                       const isAdded = addedSongs.has(r.url);
                       return (
                         <div key={`db-${r.url}-${idx}`}
-                          className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-green-500/20 border border-green-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
+                          className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-ok-500/20 border border-ok-500/30" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
                           <div className="relative">
-                            <img src={r.thumbnail || "/placeholder-playlist.png"} loading="eager" decoding="sync" className={cn('w-20', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                            <div className={cn('absolute', '-bottom-1', '-right-1', 'bg-black/80', 'p-0.5', 'rounded-full', 'border', 'border-white/10', 'shadow-md')}>
+                            <img src={r.thumbnail || "/placeholder-playlist.png"} loading="eager" decoding="sync" className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
+                            <div className="absolute -bottom-1 -right-1 bg-black/80 p-0.5 rounded-full border border-white/10 shadow-md">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="#1DB954"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.371-.721.49-1.101.241-3.021-1.858-6.832-2.278-11.322-1.237-.418.092-.851-.179-.942-.601-.09-.421.18-.85.6-.942 4.909-1.121 9.121-.632 12.511 1.43.38.249.5.731.254 1.109zm1.47-3.27c-.301.459-.939.6-1.399.301-3.459-2.127-8.73-2.74-12.81-1.5-.521.157-1.07-.14-1.23-.66-.156-.52.14-1.07.661-1.23 4.669-1.42 10.47-.731 14.419 1.71.461.3.601.94.359 1.379zm.12-3.39C15.241 8.57 8.851 8.37 5.141 9.49c-.62.18-1.27-.17-1.451-.79-.179-.619.17-1.27.791-1.449 4.279-1.291 11.39-1.041 15.88 1.66.54.329.711 1.03.381 1.57-.33.53-1.03.7-1.569.37z" /></svg>
                             </div>
                           </div>
-                          <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
-                            <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{r.title}</div>
-                            <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.uploaderName}</div>
+                          <div className="space-y-1 min-w-0 flex-1 pl-1">
+                            <div className="text-white text-sm font-bold truncate">{r.title}</div>
+                            <div className="text-white/50 text-[10px] truncate">{r.uploaderName}</div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
-                              className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#1DB954] text-black hover:text-white active:scale-90"}`}>
-                              {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
-                                : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                              className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-ok-500 text-white" : "bg-white/10 hover:bg-[#1DB954] text-black hover:text-white active:scale-90"}`}>
+                              {enqueuing === r.url ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : isAdded ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                             </button>
                             {youtubeConnected && (
                               <button
@@ -1615,7 +1593,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                   let vId = "";
                                   if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
                                   else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
-                                  
+
                                   setTrackForPlaylistAdd({
                                     id: vId,
                                     title: r.title,
@@ -1623,7 +1601,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                     thumbnail: r.thumbnail,
                                   });
                                 }}
-                                className={cn('w-10', 'h-10', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                                className="w-10 h-10 flex items-center justify-center rounded-full transition-all bg-transparent hover:bg-white/10 text-white/50 hover:text-white active:scale-90"
                                 title="Add to YouTube Playlist"
                               >
                                 <MoreHorizontal className="w-5 h-5" />
@@ -1633,7 +1611,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                         </div>
                       );
                     })}
-                    <div className={cn('border-b', 'border-white/10', 'my-3')} />
+                    <div className="border-b border-white/10 my-3" />
                   </>
                 )}
 
@@ -1643,20 +1621,20 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                   return (
                     <div key={r.url}
                       onMouseEnter={() => setSelectedIndex(idx)}
-                      className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-green-500/20 border border-green-500/30" : selectedIndex === idx ? "bg-white/15 border border-white/20" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
+                      className={`flex items-center gap-3 p-2 rounded-xl transition-all duration-300 group shrink-0 ${isAdded ? "bg-ok-500/20 border border-ok-500/30" : selectedIndex === idx ? "bg-white/15 border border-white/20" : "bg-white/5 border border-transparent hover:bg-white/10"}`}>
                       <div className="relative">
-                        <img src={r.thumbnail} loading="eager" decoding="sync" className={cn('w-20', 'h-14', 'object-cover', 'rounded-lg', 'bg-black/50', 'shrink-0')} />
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#FF0000" className={cn('absolute', '-bottom-1', '-right-1', 'drop-shadow-md')}><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
+                        <img src={r.thumbnail} loading="eager" decoding="sync" className="w-20 h-14 object-cover rounded-lg bg-black/50 shrink-0" />
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#FF0000" className="absolute -bottom-1 -right-1 drop-shadow-md"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                       </div>
-                      <div className={cn('space-y-1', 'min-w-0', 'flex-1', 'pl-1')}>
-                        <div className={cn('text-white', 'text-sm', 'font-bold', 'truncate')}>{r.title}</div>
-                        <div className={cn('text-white/50', 'text-[10px]', 'uppercase', 'tracking-widest', 'truncate')}>{r.uploaderName}</div>
+                      <div className="space-y-1 min-w-0 flex-1 pl-1">
+                        <div className="text-white text-sm font-bold truncate">{r.title}</div>
+                        <div className="text-white/50 text-[10px] truncate">{r.uploaderName}</div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button onClick={() => !isAdded && handlePlay(r)} disabled={enqueuing === r.url || isAdded}
-                          className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-green-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
-                          {enqueuing === r.url ? <Loader2 className={cn('w-4', 'h-4', 'animate-spin')} />
-                            : isAdded ? <CheckCircle2 className={cn('w-5', 'h-5')} /> : <Plus className={cn('w-5', 'h-5')} />}
+                          className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isAdded ? "bg-ok-500 text-white" : "bg-white/10 hover:bg-[#FF0000] text-white active:scale-90"}`}>
+                          {enqueuing === r.url ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : isAdded ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                         </button>
                         {youtubeConnected && (
                           <button
@@ -1665,7 +1643,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                               let vId = "";
                               if (r.url.startsWith("youtube:")) vId = r.url.split(":")[1];
                               else vId = r.url.split("v=")[1]?.split("&")[0] || r.url.split("youtu.be/")[1]?.split("?")[0];
-                              
+
                               setTrackForPlaylistAdd({
                                 id: vId,
                                 title: r.title,
@@ -1673,7 +1651,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                                 thumbnail: r.thumbnail,
                               });
                             }}
-                            className={cn('w-10', 'h-10', 'flex', 'items-center', 'justify-center', 'rounded-full', 'transition-all', 'bg-transparent', 'hover:bg-white/10', 'text-white/50', 'hover:text-white', 'active:scale-90')}
+                            className="w-10 h-10 flex items-center justify-center rounded-full transition-all bg-transparent hover:bg-white/10 text-white/50 hover:text-white active:scale-90"
                             title="Add to YouTube Playlist"
                           >
                             <MoreHorizontal className="w-5 h-5" />
@@ -1685,34 +1663,34 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
                 })}
               </>
             ) : !query.trim() && mode !== "spotify" ? (
-              <div className={cn('space-y-6', 'mt-4')}>
+              <div className="space-y-6 mt-4">
                 {mode === "youtube" && youtubeConnected === null && (
-                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'py-12')}>
-                    <Loader2 className={cn('w-8', 'h-8', 'animate-spin', 'text-white/30')} />
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-white/30" />
                     <p className="mt-4 text-xs text-white/50">Checking connection...</p>
                   </div>
                 )}
-                
+
                 {mode === "youtube" && youtubeConnected === false && (
-                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'text-center', 'py-12', 'px-4', 'bg-white/5', 'rounded-2xl', 'border', 'border-white/10')}>
-                    <div className={cn('w-16', 'h-16', 'bg-[#FF0000]/10', 'rounded-full', 'flex', 'items-center', 'justify-center', 'mb-4')}>
+                  <div className="flex flex-col items-center justify-center text-center py-12 px-4 bg-white/5 rounded-2xl border border-white/10">
+                    <div className="w-16 h-16 bg-[#FF0000]/10 rounded-full flex items-center justify-center mb-4">
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                     </div>
-                    <h3 className={cn('text-white', 'text-lg', 'font-bold', 'mb-2')}>Connect YouTube</h3>
-                    <p className={cn('text-white/50', 'text-sm', 'mb-6', 'max-w-xs')}>Connect your YouTube account to seamlessly browse and import your saved playlists directly into SyncBeats.</p>
-                    <a href={youtubeApi.getConnectUrl()} className={cn('px-6', 'py-3', 'bg-[#FF0000]', 'hover:bg-[#ff3333]', 'text-white', 'font-bold', 'rounded-full', 'transition-all', 'active:scale-95')}>
+                    <h3 className="text-white text-lg font-bold mb-2">Connect YouTube</h3>
+                    <p className="text-white/50 text-sm mb-6 max-w-xs">Connect your YouTube account to seamlessly browse and import your saved playlists directly into SyncBeats.</p>
+                    <a href={youtubeApi.getConnectUrl()} className="px-6 py-3 bg-[#FF0000] hover:bg-[#ff3333] text-white font-bold rounded-full transition-all active:scale-95">
                       Connect Account
                     </a>
                   </div>
                 )}
-                
+
                 {/* Empty State when Connected but no Playlists */}
                 {mode === "youtube" && youtubeConnected === true && myYoutubePlaylists.length === 0 && !loadingPlaylists && (
-                  <div className={cn('flex', 'flex-col', 'items-center', 'justify-center', 'py-12', 'text-center')}>
-                    <div className={cn('w-12', 'h-12', 'bg-white/5', 'rounded-full', 'flex', 'items-center', 'justify-center', 'mb-4')}>
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-4">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-white/30"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
                     </div>
-                    <div className={cn('text-white/50', 'text-sm')}>
+                    <div className="text-white/50 text-sm">
                       {ytFetched
                         ? "No playlists found in your YouTube library."
                         : "Tap the YouTube icon in the search bar to load your playlists."}
@@ -1722,7 +1700,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
                 {/* Recent sections removed in favor of playlists */}
               </div>
-            ) : query && mode !== "spotify" ? <div className={cn('text-center', 'text-white/40', 'text-sm', 'mt-10')}>Press Enter to search</div> : null}
+            ) : query && mode !== "spotify" ? <div className="text-center text-white/40 text-sm mt-10">Press Enter to search</div> : null}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1732,7 +1710,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
         {playlistToDelete && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className={cn('absolute', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'bg-black/60', 'backdrop-blur-sm', 'p-4')}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             onClick={(e) => { e.stopPropagation(); if (!isDeletingPlaylist) setPlaylistToDelete(null); }}
           >
             <motion.div
@@ -1740,34 +1718,34 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className={cn('bg-[#1A1A1A]', 'border', 'border-white/10', 'rounded-2xl', 'p-6', 'max-w-sm', 'w-full', 'shadow-2xl', 'flex', 'flex-col', 'items-center', 'text-center', 'gap-4')}
+              className="bg-[#1A1A1A] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4"
             >
-              <div className={cn('w-12', 'h-12', 'rounded-full', 'bg-red-500/20', 'flex', 'items-center', 'justify-center', 'text-red-400', 'mb-2')}>
-                {isDeletingPlaylist ? <Loader2 className={cn('w-6', 'h-6', 'animate-spin', 'text-red-400')} /> : <Trash2 className={cn('w-6', 'h-6')} />}
+              <div className="w-12 h-12 rounded-full bg-bad-500/20 flex items-center justify-center text-bad-400 mb-2">
+                {isDeletingPlaylist ? <Loader2 className="w-6 h-6 animate-spin text-bad-400" /> : <Trash2 className="w-6 h-6" />}
               </div>
-              <h3 className={cn('text-white', 'font-bold', 'text-lg')}>
+              <h3 className="text-white font-bold text-lg">
                 {isDeletingPlaylist ? "Deleting Playlist..." : "Delete Playlist?"}
               </h3>
-              <p className={cn('text-white/60', 'text-sm')}>
+              <p className="text-white/60 text-sm">
                 {isDeletingPlaylist ? "Removing playlist catalog and cached tracks..." : "Are you sure you want to delete this playlist entirely? This action cannot be undone."}
               </p>
 
-              <div className={cn('flex', 'items-center', 'gap-3', 'w-full', 'mt-2')}>
+              <div className="flex items-center gap-3 w-full mt-2">
                 <button
                   onClick={() => !isDeletingPlaylist && setPlaylistToDelete(null)}
                   disabled={isDeletingPlaylist}
-                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-white/10', 'hover:bg-white/15', 'text-white', 'font-medium', 'transition-colors', 'disabled:opacity-50', 'disabled:cursor-not-allowed')}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDeletePlaylist}
                   disabled={isDeletingPlaylist}
-                  className={cn('flex-1', 'py-2.5', 'rounded-xl', 'bg-red-500', 'hover:bg-red-600', 'text-white', 'font-medium', 'transition-colors', 'flex', 'items-center', 'justify-center', 'gap-2', 'disabled:opacity-75', 'disabled:cursor-not-allowed')}
+                  className="flex-1 py-2.5 rounded-xl bg-bad-500 hover:bg-bad-600 text-white font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
                 >
                   {isDeletingPlaylist ? (
                     <>
-                      <Loader2 className={cn('w-4', 'h-4', 'animate-spin', 'text-white')} />
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
                       <span>Deleting...</span>
                     </>
                   ) : (

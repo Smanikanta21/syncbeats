@@ -34,7 +34,7 @@ function VerifyEmailContent() {
         setMessage("Email verified successfully. Redirecting to your hub...");
 
         // Force a navigation that rehydrates auth state from storage immediately.
-        window.location.assign("/room/default");
+        window.location.assign("/hub");
       })
       .catch((err) => {
         if (cancelled) return;
@@ -80,16 +80,16 @@ function VerifyEmailContent() {
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-2xl bg-foreground/5 border border-foreground/10 flex items-center justify-center">
             {status === "loading" && <Loader2 className="h-5 w-5 text-foreground/80 animate-spin" />}
-            {status === "success" && <CheckCircle2 className="h-5 w-5 text-emerald-300" />}
-            {status === "error" && <AlertCircle className="h-5 w-5 text-red-300" />}
+            {status === "success" && <CheckCircle2 className="h-5 w-5 text-ok-600 dark:text-ok-300" />}
+            {status === "error" && <AlertCircle className="h-5 w-5 text-bad-600 dark:text-bad-300" />}
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight text-foreground">Verify Your Email</h1>
-            <p className="text-xs uppercase tracking-[0.24em] text-foreground/50 font-semibold">SyncBeats Account Setup</p>
+            <p className="micro-label">SyncBeats account setup</p>
           </div>
         </div>
 
-        <p className={`mt-6 text-sm leading-relaxed ${status === "success" ? "text-emerald-300" : status === "error" ? "text-red-300" : "text-foreground/80"}`}>
+        <p className={`mt-6 text-sm leading-relaxed ${status === "success" ? "text-ok-600 dark:text-ok-300" : status === "error" ? "text-bad-600 dark:text-bad-300" : "text-foreground/80"}`}>
           {message}
         </p>
 
@@ -102,7 +102,7 @@ function VerifyEmailContent() {
 
         {status === "error" && (
           <div className="mt-6 rounded-2xl border border-foreground/10 bg-white/[0.02] p-4 sm:p-5">
-            <label className="text-xs uppercase tracking-[0.2em] text-foreground/50 font-semibold">Resend Verification Email</label>
+            <label className="text-data font-semibold text-foreground/55">Resend verification email</label>
             <div className="mt-3 flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Mail className="h-4 w-4 text-foreground/50 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -124,8 +124,8 @@ function VerifyEmailContent() {
               </button>
             </div>
 
-            {resendMessage && <p className="mt-3 text-sm text-emerald-300">{resendMessage}</p>}
-            {resendError && <p className="mt-3 text-sm text-red-300">{resendError}</p>}
+            {resendMessage && <p className="mt-3 text-sm text-ok-600 dark:text-ok-300">{resendMessage}</p>}
+            {resendError && <p className="mt-3 text-sm text-bad-600 dark:text-bad-300">{resendError}</p>}
           </div>
         )}
 

@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /dev/frontend
+    target-branch: nodejs-dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      development:
+        dependency-type: development
+  - package-ecosystem: npm
+    directory: /dev/syncbeats-server
+    target-branch: nodejs-dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      development:
+        dependency-type: development
+  - package-ecosystem: npm
+    directory: /dev/db-visualizer
+    target-branch: nodejs-dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      development:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: nodejs-dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

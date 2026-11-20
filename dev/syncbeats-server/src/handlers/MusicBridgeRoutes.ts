@@ -43,7 +43,7 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
             },
           }
         );
-        
+
         if (res.status === 429 || res.status === 403) {
           continue; 
         }
@@ -68,7 +68,7 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
   try {
     const searchStr = `${title} ${artist} audio`;
     const ytResult = await play.search(searchStr, { limit: 1 });
-    
+
     if (ytResult.length > 0) {
       const video = ytResult[0];
       return {
@@ -79,38 +79,6 @@ export async function matchToYouTubeFallback(title: string, artist: string): Pro
     return null;
   } catch (error) {
     return null;
-  }
-}
-
-// Fetch a track's real album cover via Spotify's free oEmbed endpoint (no API key).
-async function fetchTrackArtwork(spotifyId: string): Promise<string | null> {
-  try {
-    const res = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${spotifyId}`);
-    if (!res.ok) return null;
-    const data: any = await res.json();
-    return data.thumbnail_url ? sanitizeNullBytes(data.thumbnail_url) : null;
-  } catch {
-    return null;
-  }
-}
-
-// Replace shared playlist-cover placeholders with per-track album art. Runs post-response,
-// so any failure here must never propagate to the import request.
-async function backfillTrackArtwork(songs: { songId: string; spotifyId?: string }[]): Promise<void> {
-  const targets = songs.filter((s) => s.spotifyId);
-  const BATCH = 5;
-  for (let i = 0; i < targets.length; i += BATCH) {
-    const batch = targets.slice(i, i + BATCH);
-    await Promise.all(batch.map(async (s) => {
-      try {
-        const artUrl = await fetchTrackArtwork(s.spotifyId as string);
-        if (artUrl) {
-          await prisma.song.update({ where: { id: s.songId }, data: { albumArt: artUrl } });
-        }
-      } catch (e) {
-        console.warn(`[BridgeRoutes] Artwork backfill failed for song ${s.songId}:`, (e as Error).message);
-      }
-    }));
   }
 }
 
@@ -141,8 +109,7 @@ async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000)
 // Enrich songs with album name + high-res artwork via the free iTunes Search API.
 // Runs as a background task after import response is sent.
 async function enrichFromItunes(
-  songs: { songId: string; title: string; artist: string; spotifyId?: string }[],
-  playlistId: string
+  songs: { songId: string; title: string; artist: string; spotifyId?: string }[]
 ): Promise<void> {
   console.log(`[Enrich] Starting iTunes enrichment for ${songs.length} songs...`);
   const BATCH = 5;
@@ -544,7 +511,7 @@ export function createMusicBridgeRoutes(): Router {
       }
 
       const elapsed = Date.now() - t0;
-      const reused = tracks.length - needsEnrichment.filter(e => !existingSongs.find(s => s.id === e.songId)).length;
+
       console.log(`[Import] Done in ${elapsed}ms — ${existingSongs.length} reused, ${needsYouTube.length} need YouTube, ${needsEnrichment.length} need enrichment`);
 
       res.status(200).json({
@@ -561,7 +528,7 @@ export function createMusicBridgeRoutes(): Router {
 
       // 6a. Enrich missing album + artwork via iTunes Search API (fast, no API key)
       if (needsEnrichment.length > 0) {
-        void enrichFromItunes(needsEnrichment, playlist.id);
+        void enrichFromItunes(needsEnrichment);
       }
 
       // 6b. Resolve missing YouTube IDs via RapidAPI / play-dl
@@ -611,7 +578,7 @@ export function createMusicBridgeRoutes(): Router {
           const parsed = lines.map(l => {
             try { return JSON.parse(l); } catch(e) { return null; }
           }).filter(Boolean);
-          
+
           if (parsed.length === 0 && error) reject(error);
           else resolve(parsed);
         });
@@ -634,7 +601,7 @@ export function createMusicBridgeRoutes(): Router {
       const playlistName = (userProvidedName && userProvidedName !== 'Imported Playlist') 
         ? userProvidedName 
         : cleanStr(fetchedPlaylistTitle);
-        
+
       const coverUrl = videos[0]?.thumbnails?.[0]?.url || null;
       const cleanSourceId = cleanStr(playlistUrl);
 
@@ -806,7 +773,7 @@ export function createMusicBridgeRoutes(): Router {
   // Finds songs with shared or missing album art and fetches individual
   // covers via Spotify oEmbed. No API key needed.
   // ─────────────────────────────────────────────────────────────────────
-  router.post('/backfill-artwork', requireAuth, async (req: any, res: any): Promise<void> => {
+  router.post('/backfill-artwork', requireAuth, async (_req: any, res: any): Promise<void> => {
     try {
       // 1. Fetch all songs
       const allSongs = await prisma.song.findMany({

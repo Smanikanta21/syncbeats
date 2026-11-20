@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useEffect, ReactNode } from "react";
+import { createContext, useContext, useRef, useEffect, useMemo, ReactNode } from "react";
 import { useAudio } from "./AudioContext";
 
 // We'll store the visualizer data in a mutable ref to avoid React re-renders on every frame.
@@ -72,8 +72,15 @@ export function VisualizerProvider({ children }: { children: ReactNode }) {
     };
   }, [getRawAudioData, isPlaying]);
 
+  // Memoised because `dataRef` is a stable ref and the context value must be
+  // stable too. As a bare `{{ dataRef }}` literal this allocated a new object on
+  // every provider render, so any consumer listing the context in an effect's
+  // dependency array re-ran that effect constantly — which for FluidField meant
+  // tearing down and reallocating every GPU framebuffer several times a second.
+  const value = useMemo(() => ({ dataRef }), []);
+
   return (
-    <VisualizerContext.Provider value={{ dataRef }}>
+    <VisualizerContext.Provider value={value}>
       {children}
     </VisualizerContext.Provider>
   );

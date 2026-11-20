@@ -18,7 +18,7 @@ export default function Home() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [activeTable, setActiveTable] = useState<TableInfo | null>(null);
   const [tableData, setTableData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
   const [dataLoading, setDataLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -49,10 +49,7 @@ export default function Home() {
     setIsUnlocked(false);
   };
 
-
-
   const fetchTables = () => {
-    setLoading(true);
     fetch('/api/tables')
       .then(res => res.json())
       .then(data => {
@@ -62,11 +59,9 @@ export default function Home() {
             setActiveTable(data.tables[0]);
           }
         }
-        setLoading(false);
       })
       .catch(err => {
         console.error(err);
-        setLoading(false);
       });
   };
 
@@ -101,7 +96,7 @@ export default function Home() {
       fetchTableData();
     }
   }, [activeTable, viewMode]);
-  
+
   useEffect(() => {
     if (viewMode === 'recycle_bin') {
       fetchRecycleBin();
@@ -124,20 +119,20 @@ export default function Home() {
 
   const saveEdit = async () => {
     if (!editingCell || !activeTable) return;
-    
+
     // We used 'i' in map for rowIndex, which means tableData[rowIndex] might be affected by sorting!
     // We should use the row's ID instead of rowIndex to be safe.
     // Wait, the edit is triggered from the map. It's better to store rowId and find it.
     // For now, let's keep it simple: we pass the actual row object's PK to editingCell.rowId
     const { rowId, field, value } = editingCell as any;
-    
+
     try {
       const res = await fetch(`/api/data/${activeTable.name}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: rowId, data: { [field]: value } })
       });
-      
+
       if (res.ok) {
         fetchTableData();
         setEditingCell(null);
@@ -154,16 +149,16 @@ export default function Home() {
   const deleteSelected = async () => {
     if (!activeTable || selectedRows.size === 0) return;
     setDeleteLoading(true);
-    
+
     const idsToDelete = Array.from(selectedRows).map(rowId => rowId); // selectedRows now stores actual IDs!
-    
+
     try {
       const res = await fetch(`/api/data/${activeTable.name}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: idsToDelete })
       });
-      
+
       if (res.ok) {
         setShowDeleteModal(false);
         setSelectedRows(new Set());
@@ -179,8 +174,6 @@ export default function Home() {
       setDeleteLoading(false);
     }
   };
-
-
 
   if (checkingAuth) {
     return (
@@ -198,12 +191,12 @@ export default function Home() {
   }
 
   return (
-    <div className={cn('flex', 'h-screen', 'bg-background', 'text-foreground', 'font-sans', 'overflow-hidden')}>
-      
+    <div className="flex h-screen bg-background text-foreground font-sans overflow-hidden">
+
       {/* Sidebar Overlay (Mobile) */}
       {sidebarOpen && (
         <div 
-          className={cn('fixed', 'inset-0', 'bg-background/80', 'backdrop-blur-sm', 'z-30', 'md:hidden')} 
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-30 md:hidden" 
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -215,13 +208,13 @@ export default function Home() {
         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         'md:relative', 'md:translate-x-0'
       )}>
-        <div className={cn('p-4', 'border-b', 'border-(--glass-border)', 'flex', 'items-center', 'justify-between')}>
+        <div className="p-4 border-b border-(--glass-border) flex items-center justify-between">
           {!sidebarCollapsed && (
-            <h1 className={cn('text-xl', 'font-black', 'tracking-tighter', 'text-foreground', 'truncate')}>
+            <h1 className="text-xl font-black tracking-tighter text-foreground truncate">
               SYNC<span className="text-emerald-400">DB</span>
             </h1>
           )}
-          
+
           <div className="flex items-center gap-1 mx-auto md:mx-0">
             {/* Desktop Hamburger Collapse Toggle */}
             <button
@@ -234,16 +227,16 @@ export default function Home() {
 
             {/* Mobile Close Button */}
             <button 
-              className={cn('md:hidden', 'p-2', 'text-zinc-400', 'hover:text-foreground')}
+              className="md:hidden p-2 text-zinc-400 hover:text-foreground"
               onClick={() => setSidebarOpen(false)}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
         </div>
-        
+
         {/* Navigation list */}
-        <div className={cn('flex', 'flex-col', 'flex-1', 'overflow-y-auto', 'p-2', 'space-y-1.5')}>
+        <div className="flex flex-col flex-1 overflow-y-auto p-2 space-y-1.5">
           {/* Main Dashboard view button */}
           <button
             onClick={() => {
@@ -328,7 +321,7 @@ export default function Home() {
             )}
           </button>
 
-          <div className={cn('mt-auto', 'pt-4', 'border-t', 'border-(--glass-border)', 'text-xs', 'text-zinc-500', 'flex', 'flex-col', 'gap-1')}>
+          <div className="mt-auto pt-4 border-t border-(--glass-border) text-xs text-zinc-500 flex flex-col gap-1">
             <button 
               onClick={() => {
                 setViewMode('recycle_bin');
@@ -380,36 +373,36 @@ export default function Home() {
           <EmailDesignerView onOpenSidebar={() => setSidebarOpen(true)} />
         </div>
       ) : (
-        <div className={cn('flex-1', 'flex', 'flex-col', 'min-w-0', 'min-h-0', 'bg-transparent', 'relative', 'z-10', 'p-2', 'md:p-2')}>
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-transparent relative z-10 p-2 md:p-2">
           {/* Header */}
-          <div className={cn('py-2' , 'px-4' , 'shrink-0', 'flex', 'items-center', 'justify-between', 'glass-panel', 'rounded-t-3xl', 'border-b-0')}>
+          <div className="py-2 px-4 shrink-0 flex items-center justify-between glass-panel rounded-t-3xl border-b-0">
             <div className="flex items-center gap-4">
               <button 
-                className={cn('md:hidden', 'p-2', '-ml-2', 'text-zinc-400', 'hover:text-foreground', 'transition-colors')}
+                className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-foreground transition-colors"
                 onClick={() => setSidebarOpen(true)}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
               </button>
               <div>
-                <h2 className={cn('text-xl', 'md:text-2xl', 'font-black', 'tracking-tight', 'text-foreground')}>
+                <h2 className="text-xl md:text-2xl font-black tracking-tight text-foreground">
                   {viewMode === 'recycle_bin' ? 'Recycle Bin' : (activeTable?.name || 'Select a table')}
                 </h2>
               {viewMode === 'tables' && (
-                <div className={cn('text-sm', 'text-zinc-400', 'mt-1', 'flex', 'items-center', 'gap-2')}>
+                <div className="text-sm text-zinc-400 mt-1 flex items-center gap-2">
                   {selectedRows.size > 0 ? (
                     <>
-                      <span className={cn('text-blue-400', 'font-bold', 'bg-blue-500/10', 'px-2', 'py-0.5', 'rounded-md')}>
+                      <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded-md">
                         {selectedRows.size} selected
                       </span>
                       <button 
                         onClick={() => setShowDeleteModal(true)}
-                        className={cn('px-2', 'py-0.5', 'rounded-md', 'bg-red-500/20', 'text-red-400', 'hover:bg-red-500/30', 'font-bold', 'text-xs', 'transition-colors')}
+                        className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 font-bold text-xs transition-colors"
                       >
                         Delete
                       </button>
                       <button 
                         onClick={() => setSelectedRows(new Set())}
-                        className={cn('text-xs', 'hover:text-foreground', 'underline', 'decoration-dotted', 'underline-offset-2')}
+                        className="text-xs hover:text-foreground underline decoration-dotted underline-offset-2"
                       >
                         Clear selection
                       </button>
@@ -464,39 +457,39 @@ export default function Home() {
 
         {/* Search bar between title and tables */}
         {viewMode === 'tables' && (
-          <div className={cn('p-4', 'glass-panel', 'border-y-0', 'bg-foreground/2')}>
-            <div className={cn('relative', 'flex', 'items-center')}>
-              <svg className={cn('absolute', 'left-3', 'text-zinc-500')} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <div className="p-4 glass-panel border-y-0 bg-foreground/2">
+            <div className="relative flex items-center">
+              <svg className="absolute left-3 text-zinc-500" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input 
                 type="text" 
                 placeholder={`Search in ${activeTable?.name || 'table'}...`} 
                 value={rowSearch}
                 onChange={(e) => setRowSearch(e.target.value)}
-                className={cn('w-full', 'bg-foreground/5', 'text-sm', 'text-foreground', 'placeholder:text-zinc-500', 'pl-9', 'pr-4', 'py-2', 'rounded-lg', 'outline-none', 'focus:ring-1', 'focus:ring-foreground/20', 'transition-all')}
+                className="w-full bg-foreground/5 text-sm text-foreground placeholder:text-zinc-500 pl-9 pr-4 py-2 rounded-lg outline-none focus:ring-1 focus:ring-foreground/20 transition-all"
               />
             </div>
           </div>
         )}
 
         {/* Data Table */}
-        <div className={cn('flex-1', 'overflow-auto', 'p-2', 'md:p-6', 'custom-scrollbar', 'glass-panel', 'rounded-b-3xl')}>
+        <div className="flex-1 overflow-auto p-2 md:p-6 custom-scrollbar glass-panel rounded-b-3xl">
           {viewMode === 'recycle_bin' ? (
-            <div className={cn('inline-block', 'min-w-full', 'align-middle', 'border', 'border-(--glass-border)', 'rounded-2xl', 'overflow-hidden', 'bg-background/50', 'backdrop-blur-md', 'shadow-2xl')}>
-               <table className={cn('min-w-full', 'divide-y', 'divide-(--glass-border)')}>
-                  <thead className={cn('bg-foreground/5', 'backdrop-blur-xl', 'sticky', 'top-0', 'z-10')}>
-                    <tr className={cn('divide-x', 'divide-(--glass-border)')}>
-                      <th className={cn('px-4', 'py-3', 'text-left', 'text-xs', 'font-semibold', 'text-gray-400', 'uppercase')}>Deleted At</th>
-                      <th className={cn('px-4', 'py-3', 'text-left', 'text-xs', 'font-semibold', 'text-gray-400', 'uppercase')}>Table</th>
-                      <th className={cn('px-4', 'py-3', 'text-left', 'text-xs', 'font-semibold', 'text-gray-400', 'uppercase')}>Data Snapshot</th>
+            <div className="inline-block min-w-full align-middle border border-(--glass-border) rounded-2xl overflow-hidden bg-background/50 backdrop-blur-md shadow-2xl">
+               <table className="min-w-full divide-y divide-(--glass-border)">
+                  <thead className="bg-foreground/5 backdrop-blur-xl sticky top-0 z-10">
+                    <tr className="divide-x divide-(--glass-border)">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Deleted At</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Table</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Data Snapshot</th>
                     </tr>
                   </thead>
-                  <tbody className={cn('divide-y', 'divide-(--glass-border)', 'bg-transparent')}>
+                  <tbody className="divide-y divide-(--glass-border) bg-transparent">
                     {recycleBinData.map((record, i) => (
-                      <tr key={i} className={cn('hover:bg-foreground/5', 'transition-colors', 'divide-x', 'divide-(--glass-border)')}>
-                        <td className={cn('px-4', 'py-3', 'text-sm', 'text-foreground/80', 'whitespace-nowrap', 'align-top')}>{new Date(record.deletedAt).toLocaleString()}</td>
-                        <td className={cn('px-4', 'py-3', 'text-sm', 'text-blue-400', 'font-bold', 'align-top')}>{record.tableName}</td>
-                        <td className={cn('px-4', 'py-3', 'text-sm', 'text-foreground/60', 'max-w-3xl')}>
-                          <pre className={cn('overflow-x-auto', 'text-xs', 'bg-black/30', 'p-4', 'rounded-xl', 'border', 'border-(--glass-border)')}>{JSON.stringify(record.data, null, 2)}</pre>
+                      <tr key={i} className="hover:bg-foreground/5 transition-colors divide-x divide-(--glass-border)">
+                        <td className="px-4 py-3 text-sm text-foreground/80 whitespace-nowrap align-top">{new Date(record.deletedAt).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-blue-400 font-bold align-top">{record.tableName}</td>
+                        <td className="px-4 py-3 text-sm text-foreground/60 max-w-3xl">
+                          <pre className="overflow-x-auto text-xs bg-black/30 p-4 rounded-xl border border-(--glass-border)">{JSON.stringify(record.data, null, 2)}</pre>
                         </td>
                       </tr>
                     ))}
@@ -507,18 +500,18 @@ export default function Home() {
                </table>
             </div>
           ) : dataLoading ? (
-            <div className={cn('flex', 'items-center', 'justify-center', 'h-full', 'text-zinc-500', 'font-medium')}>Loading data...</div>
+            <div className="flex items-center justify-center h-full text-zinc-500 font-medium">Loading data...</div>
           ) : tableData.length === 0 ? (
-            <div className={cn('flex', 'items-center', 'justify-center', 'h-full', 'text-zinc-500', 'font-medium')}>No data found in this table.</div>
+            <div className="flex items-center justify-center h-full text-zinc-500 font-medium">No data found in this table.</div>
           ) : (
-            <div className={cn('inline-block', 'min-w-full', 'align-middle', 'border', 'border-(--glass-border)', 'rounded-2xl', 'overflow-hidden', 'bg-background/50', 'backdrop-blur-md', 'shadow-2xl')}>
-              <table className={cn('min-w-full', 'divide-y', 'divide-(--glass-border)')}>
-                <thead className={cn('bg-foreground/5', 'backdrop-blur-xl', 'sticky', 'top-0', 'z-10')}>
-                  <tr className={cn('divide-x', 'divide-(--glass-border)')}>
-                    <th scope="col" className={cn('px-4', 'py-3', 'w-12', 'text-center')}>
+            <div className="inline-block min-w-full align-middle border border-(--glass-border) rounded-2xl overflow-hidden bg-background/50 backdrop-blur-md shadow-2xl">
+              <table className="min-w-full divide-y divide-(--glass-border)">
+                <thead className="bg-foreground/5 backdrop-blur-xl sticky top-0 z-10">
+                  <tr className="divide-x divide-(--glass-border)">
+                    <th scope="col" className="px-4 py-3 w-12 text-center">
                       <input 
                         type="checkbox" 
-                        className={cn('rounded', 'border-zinc-500', 'bg-transparent', 'text-foreground', 'focus:ring-foreground/20')}
+                        className="rounded border-zinc-500 bg-transparent text-foreground focus:ring-foreground/20"
                         checked={selectedRows.size > 0 && selectedRows.size === tableData.length}
                         onChange={(e) => {
                           if (e.target.checked) {
@@ -540,13 +533,13 @@ export default function Home() {
                           }
                           setSortConfig({ key: field.name, direction });
                         }}
-                        className={cn('px-4', 'py-3', 'text-left', 'text-xs', 'font-semibold', 'text-gray-400', 'uppercase', 'tracking-wider', 'whitespace-nowrap', 'cursor-pointer', 'hover:text-foreground', 'transition-colors')}
+                        className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-foreground transition-colors"
                       >
-                        <div className={cn('flex', 'items-center', 'gap-2')}>
+                        <div className="flex items-center gap-2">
                           <span>{field.name}</span>
-                          {field.isId && <span className={cn('text-blue-500')} title="Primary Key">🔑</span>}
-                          {field.kind === 'object' && <span className={cn('text-zinc-400')} title="Relation (Foreign Key)">🔗</span>}
-                          
+                          {field.isId && <span className="text-blue-500" title="Primary Key">🔑</span>}
+                          {field.kind === 'object' && <span className="text-zinc-400" title="Relation (Foreign Key)">🔗</span>}
+
                           {/* Sort Icon */}
                           <div className={cn('text-zinc-500', sortConfig?.key === field.name ? 'text-foreground' : 'opacity-50 group-hover:opacity-100')}>
                             {sortConfig?.key === field.name ? (
@@ -564,7 +557,7 @@ export default function Home() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className={cn('divide-y', 'divide-(--glass-border)', 'bg-transparent')}>
+                <tbody className="divide-y divide-(--glass-border) bg-transparent">
                   {dataLoading ? (
                     <>
                       <TableRowSkeleton />
@@ -580,16 +573,16 @@ export default function Home() {
                       if (!sortConfig) return 0;
                       const aVal = a[sortConfig.key];
                       const bVal = b[sortConfig.key];
-                      
+
                       if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
                       if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
-                      
+
                       if (typeof aVal === 'string' && typeof bVal === 'string') {
                         return sortConfig.direction === 'asc' 
                           ? aVal.localeCompare(bVal) 
                           : bVal.localeCompare(aVal);
                       }
-                      
+
                       return sortConfig.direction === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
                     })
                     .map((row, i) => {
@@ -598,7 +591,7 @@ export default function Home() {
                       // Let's just use the 'id' field if it exists, otherwise the mapped index.
                       const rowId = row.id !== undefined ? row.id : i;
                       const isSelected = selectedRows.has(rowId);
-                      
+
                       return (
                       <tr 
                         key={i} 
@@ -613,24 +606,24 @@ export default function Home() {
                           isSelected ? 'bg-foreground/10' : 'hover:bg-foreground/5'
                         )}
                       >
-                        <td className={cn('px-4', 'py-3', 'text-center')}>
+                        <td className="px-4 py-3 text-center">
                           <input 
                             type="checkbox" 
                             checked={isSelected}
                             readOnly
-                            className={cn('rounded', 'border-zinc-500', 'bg-transparent', 'text-foreground')}
+                            className="rounded border-zinc-500 bg-transparent text-foreground"
                           />
                         </td>
                         {activeTable?.fields.map(field => {
                           const val = row[field.name];
                           const isNull = val === null || val === undefined;
                           let displayVal = String(val);
-                          
+
                           if (field.kind === 'object' && isNull) {
                             displayVal = '';
                           } else if (field.type === 'DateTime' && val) {
                           const date = new Date(val);
-                          
+
                           if (!isNaN(date.getTime())) {
                             const getOrdinalSuffix = (d: number) => {
                               if (d > 3 && d < 21) return 'th';
@@ -641,22 +634,22 @@ export default function Home() {
                                 default: return 'th';
                               }
                             };
-                            
+
                             const dayStr = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric' }).format(date);
                             const day = parseInt(dayStr, 10);
                             const month = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', month: 'long' }).format(date).toLowerCase();
                             const year = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' }).format(date);
                             const time = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }).format(date);
-                            
+
                             displayVal = `${day}${getOrdinalSuffix(day)} ${month} ${year}, ${time.toLowerCase()}`;
                           }
                         } else if (typeof val === 'string' && val.length > 50) {
                           // Truncate long strings
                           displayVal = val.substring(0, 50) + '...';
                         }
-                        
+
                         const isEditing = editingCell?.rowIndex === i && editingCell?.field === field.name;
-                        
+
                         return (
                           <td 
                             key={field.name} 
@@ -675,7 +668,7 @@ export default function Home() {
                                   checked={field.type === 'Boolean' ? editingCell.value : undefined}
                                   value={field.type === 'Boolean' ? undefined : editingCell.value}
                                   onChange={(e) => setEditingCell({ ...editingCell, value: field.type === 'Boolean' ? e.target.checked : e.target.value })}
-                                  className={cn('bg-background', 'text-foreground', 'border', 'border-zinc-500', 'rounded', 'px-2', 'py-1', 'text-xs', 'w-full', 'min-w-25')}
+                                  className="bg-background text-foreground border border-zinc-500 rounded px-2 py-1 text-xs w-full min-w-25"
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') saveEdit();
                                     if (e.key === 'Escape') setEditingCell(null);
@@ -709,12 +702,12 @@ export default function Home() {
                                      setRowSearch(searchTerm);
                                    }
                                  }}
-                                 className={cn('px-2', 'py-1', 'rounded', 'bg-zinc-500/10', 'text-zinc-400', 'hover:bg-blue-500/20', 'hover:text-blue-400', 'transition-colors', 'text-[10px]', 'uppercase', 'tracking-widest', 'font-bold', 'cursor-pointer')}
+                                 className="px-2 py-1 rounded bg-zinc-500/10 text-zinc-400 hover:bg-blue-500/20 hover:text-blue-400 transition-colors text-[10px] uppercase tracking-widest font-bold cursor-pointer"
                                >
                                  View {field.type}
                                </button>
                             ) : isNull ? (
-                              <span className={cn('text-zinc-600', 'italic')}>null</span>
+                              <span className="text-zinc-600 italic">null</span>
                             ) : typeof val === 'boolean' ? (
                               <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-wider ${val ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                                 {val ? 'TRUE' : 'FALSE'}
@@ -748,20 +741,20 @@ export default function Home() {
         </div>
       </div>
       )}
-      
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className={cn('fixed', 'inset-0', 'bg-background/80', 'backdrop-blur-sm', 'z-50', 'flex', 'items-center', 'justify-center', 'p-4')}>
-          <div className={cn('glass-panel', 'max-w-sm', 'w-full', 'rounded-2xl', 'p-6', 'shadow-2xl', 'border', 'border-(--glass-border)')}>
-            <h3 className={cn('text-xl', 'font-black', 'tracking-tight', 'text-foreground', 'mb-2')}>Confirm Deletion</h3>
-            <p className={cn('text-zinc-400', 'text-sm', 'mb-6')}>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-panel max-w-sm w-full rounded-2xl p-6 shadow-2xl border border-(--glass-border)">
+            <h3 className="text-xl font-black tracking-tight text-foreground mb-2">Confirm Deletion</h3>
+            <p className="text-zinc-400 text-sm mb-6">
               Are you sure you want to delete <strong className="text-foreground">{selectedRows.size}</strong> row(s) from <strong className="text-foreground">{activeTable?.name}</strong>? 
               They will be moved to the Recycle Bin.
             </p>
-            <div className={cn('flex', 'justify-end', 'gap-3')}>
+            <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setShowDeleteModal(false)}
-                className={cn('px-4', 'py-2', 'rounded-lg', 'text-sm', 'font-medium', 'text-zinc-300', 'hover:bg-foreground/10', 'transition-colors')}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-foreground/10 transition-colors"
                 disabled={deleteLoading}
               >
                 Cancel
@@ -769,7 +762,7 @@ export default function Home() {
               <button 
                 onClick={deleteSelected}
                 disabled={deleteLoading}
-                className={cn('px-4', 'py-2', 'rounded-lg', 'text-sm', 'font-bold', 'bg-red-500', 'text-white', 'hover:bg-red-600', 'transition-colors', 'flex', 'items-center', 'gap-2')}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-2"
               >
                 {deleteLoading ? (
                   <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -782,7 +775,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      
+
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

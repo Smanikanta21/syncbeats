@@ -6,7 +6,7 @@ import { ArrowLeft, Mail } from "lucide-react";
 import { InstagramIcon } from "../../components/InstagramFollowButton";
 import { Footer } from "../../components/Footer";
 import { ThemeToggle } from "../../components/ThemeToggle";
-import { MouseGradient } from "../../components/MouseGradient";
+import { AmbientField } from "../../components/landing/AmbientField";
 
 const GithubIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,7 +25,7 @@ const LinkedinIcon = ({ className }: { className?: string }) => (
 export default function ContactPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col relative overflow-hidden">
-      <MouseGradient />
+      <AmbientField />
       {/* Dynamic Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-foreground/5 blur-[120px] rounded-full" />
@@ -63,9 +63,9 @@ export default function ContactPage() {
           transition={{ duration: 0.6 }}
           className="w-full text-center mb-16"
         >
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-6">Get in Touch</h1>
+          <h1 className="font-display text-display font-semibold mb-6">Get in touch</h1>
           <p className="text-lg text-foreground/60 max-w-2xl mx-auto">
-            Have a question, feedback, or just want to say hi? We'd love to hear from you. 
+            Have a question, feedback, or just want to say hi? We’d love to hear from you.
             Reach out using any of the platforms below.
           </p>
         </motion.div>
@@ -82,7 +82,7 @@ export default function ContactPage() {
             </div>
             <h3 className="text-xl font-bold mb-2">Instagram</h3>
             <p className="text-foreground/60">Follow our official updates</p>
-            <p className="mt-4 font-mono text-sm text-pink-500 dark:text-pink-400 font-semibold">@syncbeats.in</p>
+            <p className="mt-4 text-sm text-foreground/60 font-semibold">@syncbeats.in</p>
           </a>
 
           <a href="mailto:siraparapuabhinay21@gmail.com" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl transition-all duration-500 text-center flex flex-col items-center">
@@ -91,7 +91,7 @@ export default function ContactPage() {
             </div>
             <h3 className="text-xl font-bold mb-2">Email</h3>
             <p className="text-foreground/60">Drop us a line anytime</p>
-            <p className="mt-4 font-mono text-sm">siraparapuabhinay21@gmail.com</p>
+            <p className="mt-4 text-sm">siraparapuabhinay21@gmail.com</p>
           </a>
 
           <a href="https://github.com/Smanikanta21/syncbeats/issues" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl transition-all duration-500 text-center flex flex-col items-center">
@@ -100,7 +100,7 @@ export default function ContactPage() {
             </div>
             <h3 className="text-xl font-bold mb-2">GitHub</h3>
             <p className="text-foreground/60">Report bugs or request features</p>
-            <p className="mt-4 font-mono text-sm">@Smanikanta21/syncbeats</p>
+            <p className="mt-4 text-sm">@Smanikanta21/syncbeats</p>
           </a>
 
           <a href="https://www.linkedin.com/in/siraparapu-shiva-sankar-mani-kanta-622a85323/" target="_blank" rel="noreferrer" className="group p-8 rounded-3xl glass-panel bg-foreground/5 border border-foreground/10 hover:bg-background/20 dark:hover:bg-black/20 hover:backdrop-blur-3xl transition-all duration-500 text-center flex flex-col items-center">
@@ -109,7 +109,7 @@ export default function ContactPage() {
             </div>
             <h3 className="text-xl font-bold mb-2">LinkedIn</h3>
             <p className="text-foreground/60">Connect professionally</p>
-            <p className="mt-4 font-mono text-sm">Abhinay Siraparapu</p>
+            <p className="mt-4 text-sm">Abhinay Siraparapu</p>
           </a>
         </motion.div>
       </main>

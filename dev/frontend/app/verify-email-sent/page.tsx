@@ -10,6 +10,9 @@ function VerifyEmailSentContent() {
   const email = useMemo(() => params.get("email") ?? "", [params]);
   const resentParam = useMemo(() => params.get("resent") === "true", [params]);
   const { resendVerification } = useAuth();
+  const returnTo = params.get("returnTo") || "";
+  const loginHref = /^\/room\/(default|\d{6})$/.test(returnTo)
+    ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login";
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(resentParam ? "We noticed your email wasn't verified, so we just sent a new verification link to your inbox." : null);
@@ -47,13 +50,13 @@ function VerifyEmailSentContent() {
           >
             {loading ? "Resending..." : "Resend verification email"}
           </button>
-          <Link href="/login" className="text-sm text-zinc-200 hover:text-white">
+          <Link href={loginHref} className="text-sm text-zinc-200 hover:text-white">
             Back to login
           </Link>
         </div>
 
-        {message && <p className="mt-4 text-sm text-emerald-300">{message}</p>}
-        {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+        {message && <p className="mt-4 text-sm text-ok-600 dark:text-ok-300">{message}</p>}
+        {error && <p className="mt-4 text-sm text-bad-600 dark:text-bad-400">{error}</p>}
       </div>
     </main>
   );

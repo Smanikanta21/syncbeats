@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { useAudio } from "../../context/AudioContext";
 import { useVisualizer } from "../../context/VisualizerContext";
 
 export const AudioBars = ({
@@ -12,7 +11,7 @@ export const AudioBars = ({
   isSmall?: boolean;
   isVisible?: boolean;
 }) => {
-  const audio = useAudio();
+
   const { dataRef } = useVisualizer();
   const barsRef = useRef<HTMLDivElement>(null);
 
