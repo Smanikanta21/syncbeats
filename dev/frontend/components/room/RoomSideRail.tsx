@@ -61,6 +61,15 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
     try { localStorage.setItem(PIN_KEY, "false"); } catch {}
     trigger.current?.focus(); queueMicrotask(() => { suppressFocus.current = false; });
   };
+  const previewTab = (value: PanelTab) => {
+    cancelTimers();
+    if (!finePointer() || interacting.current) return;
+    enterTimer.current = setTimeout(() => {
+      enterTimer.current = null;
+      onTabChange(value);
+      setOpen(true);
+    }, 120);
+  };
   const togglePin = () => {
     const next = !pinned; setPinned(next); setOpen(true);
     try { localStorage.setItem(PIN_KEY, String(next)); } catch {}
@@ -73,7 +82,7 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
   };
 
   return <div ref={root} className={`${styles.root} ${side === "right" ? styles.right : styles.left} ${pinned ? styles.pinned : ""}`}
-    onPointerEnter={event => { cancelTimers(); if (event.pointerType !== "touch" && finePointer()) enterTimer.current = setTimeout(() => setOpen(true), 120); }}
+    onPointerEnter={cancelTimers}
     onPointerLeave={scheduleClose}
     onFocusCapture={() => { cancelTimers(); if (!suppressFocus.current && finePointer()) setOpen(true); }}
     onBlurCapture={scheduleClose}
@@ -95,6 +104,9 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
       ] as const).map(([value, Icon, label, count]) => <button key={value} ref={value === tab ? trigger : undefined}
         type="button" aria-label={label} aria-controls="room-side-panel" aria-expanded={expanded && value === tab}
         className={tab === value ? styles.active : ""}
+        onPointerEnter={event => { if (event.pointerType !== "touch") previewTab(value); }}
+        onPointerLeave={() => { if (enterTimer.current) clearTimeout(enterTimer.current); enterTimer.current = null; }}
+        onFocus={() => { if (finePointer() && !suppressFocus.current) { cancelTimers(); onTabChange(value); setOpen(true); } }}
         onClick={() => {
           cancelTimers();
           if (!finePointer() && expanded && tab === value && !pinned) { close(); return; }
@@ -110,6 +122,7 @@ export function RoomSideRail({ side, tab, onTabChange, participants, queueCount,
     </nav>
     <div id="room-side-panel" ref={panel} tabIndex={-1} inert={!expanded} role="region" aria-label={`${tab} panel`}
       className={`${styles.panel} ${expanded ? styles.expanded : ""}`}
+      onPointerEnter={cancelTimers}
       onPointerDownCapture={() => { interacting.current = true; }}
       onPointerUpCapture={() => { interacting.current = false; scheduleClose(); }}
       onPointerCancel={() => { interacting.current = false; scheduleClose(); }}>
