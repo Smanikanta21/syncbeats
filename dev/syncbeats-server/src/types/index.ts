@@ -11,6 +11,7 @@ export interface Participant {
   isBlocked?:  boolean;
   userId?:     string;
   deviceId?:   string;
+  deviceName?: string;
   outputDeviceName?: string;
   outputDeviceType?: string;
   latency?:    number;
@@ -90,7 +91,7 @@ export interface DeviceSpatialState {
   position: SpatialPosition;
 }
 
-export interface JoinPayload  { roomId: string; displayName: string; userId?: string; deviceId?: string; isReady?: boolean; }
+export interface JoinPayload  { roomId: string; displayName: string; userId?: string; deviceId?: string; deviceName?: string; isReady?: boolean; }
 export interface LeavePayload { roomId: string; }
 export interface SeekPayload  { roomId: string; position: number; }
 export interface SetParticipantVolumePayload { roomId: string; targetSocketId?: string; volume: number; }

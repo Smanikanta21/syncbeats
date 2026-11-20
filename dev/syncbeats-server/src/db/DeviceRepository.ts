@@ -15,6 +15,14 @@ export interface PublicDevice {
 }
 
 export class DeviceRepository {
+  async nameForUserDevice(userId: string, deviceKey: string): Promise<string | undefined> {
+    const device = await prisma.device.findFirst({
+      where: { userId, deviceKey },
+      select: { name: true },
+    });
+    return device?.name?.trim() || undefined;
+  }
+
   async ensureForUser(
     userId: string,
     deviceKey: string,

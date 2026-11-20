@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
+import { DeviceRepository } from '../db/DeviceRepository';
 import { RoomPersistence } from '../core/RoomPersistence';
 
 import { UserRepository } from '../auth/UserRepository';
@@ -16,6 +17,7 @@ function emitSafeError(socket: Socket, err: unknown, source: string, payload?: u
 }
 
 export class SocketHandler {
+  private deviceRepo = new DeviceRepository();
   private userRepo: UserRepository = new UserRepository();
   private readonly persistence: RoomPersistence;
 
@@ -133,7 +135,7 @@ export class SocketHandler {
 
     // ── Room management ──────────────────────────────────────────────────
 
-    socket.on('room:join', async ({ roomId, displayName, userId, deviceId, isReady = false }: JoinPayload) => {
+    socket.on('room:join', async ({ roomId, displayName, userId, deviceId, deviceName, isReady = false }: JoinPayload) => {
       try {
         // The room code is checked against the DB on EVERY join, before getOrCreate.
         // The old code only checked when the in-memory room looked untouched, so a
@@ -172,6 +174,12 @@ export class SocketHandler {
         if (deviceId) {
           socket.data.deviceId = deviceId;
         }
+        const reportedDeviceName = typeof deviceName === 'string' ? deviceName.trim().slice(0, 100) : undefined;
+        const registeredDeviceName = userId && deviceId
+          ? await this.deviceRepo.nameForUserDevice(userId, deviceId).catch(() => undefined)
+          : undefined;
+        const participantDeviceName = reportedDeviceName || registeredDeviceName;
+        socket.data.deviceName = participantDeviceName;
         const room = this.roomManager.getOrCreate(roomId);
 
         // Allow multiple devices per user. Duplicate socket joins will simply overwrite in the Map.
@@ -240,7 +248,7 @@ export class SocketHandler {
 
         socket.join(roomId);
         this.roomManager.trackSocket(socket.id, roomId);
-        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, deviceId: socket.data.deviceId, joinedAt: Date.now(), isReady, volume: 100 });
+        room.addParticipant({ socketId: socket.id, displayName, userId: socket.data.userId, deviceId: socket.data.deviceId, deviceName: participantDeviceName, joinedAt: Date.now(), isReady, volume: 100 });
         socket.emit('room:snapshot', room.snapshot());
         socket.emit('room:chat_history', { roomId, messages: room.getChatHistory() });
         console.log(`[Room ${roomId}] ${displayName} (${socket.id}) joined`);
@@ -278,7 +286,7 @@ export class SocketHandler {
 
       targetSocket.join(roomId);
       this.roomManager.trackSocket(targetSocketId, roomId);
-      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, deviceId: targetSocket.data.deviceId, joinedAt: Date.now(), isReady: false, volume: 100 });
+      room.addParticipant({ socketId: targetSocketId, displayName, userId: targetSocket.data.userId, deviceId: targetSocket.data.deviceId, deviceName: targetSocket.data.deviceName, joinedAt: Date.now(), isReady: false, volume: 100 });
       targetSocket.emit('room:joinApproved');
       targetSocket.emit('room:snapshot', room.snapshot());
       console.log(`[Room ${roomId}] Host approved ${displayName} (${targetSocketId})`);
