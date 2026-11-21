@@ -56,12 +56,12 @@ assumptions:
     claim: Selecting a library song sends its canonical title, artist and cover even when the same YouTube audio is already queued.
     reason: The real Swift HTTP caller ran against the controlled room fixture and selected a song whose title includes a hyphen and live-version suffix.
     verification: On 2026-11-21, 22 native home API checks and 19 artwork checks passed. Separately, 95 native library checks covered local-artwork omission and remote-cover fallback; nine real local HTTP checks covered queue enrichment and validation. Live MusicKit import, production provider responses and locked-device audio were not exercised.
-    source: NativeHomeVerification.swift; NativeLibraryVerification.swift; postman/mocks/native-room/default.js; ../Syncbeats/Syncbeats/Features/Library/NativeLibraryAPI.swift; ../Syncbeats/Syncbeats/Features/Room/RoomHomeAPI.swift; ../../../dev/syncbeats-server/src/handlers/RoomMetadata.tests.ts
+    source: NativeHomeVerification.swift; NativeLibraryVerification.swift; postman/mocks/native-room/default.js; ../Syncbeats/Syncbeats/Features/Library/NativeLibraryAPI.swift; ../Syncbeats/Syncbeats/Features/Room/RoomHomeAPI.swift; ../../dev/syncbeats-server/src/handlers/RoomMetadata.tests.ts
     updated_at: "2026-11-21"
 fingerprints:
   - id: apple-library-metadata-20261121
     date: "2026-11-21"
-    commit: 4de74425 plus the Apple Music metadata fix
+    commit: 370c666f
     cli: "1.80.0"
   - id: native-home-20261121-push-review
     date: "2026-11-21"
