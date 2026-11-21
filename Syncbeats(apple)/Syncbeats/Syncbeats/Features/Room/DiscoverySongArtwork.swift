@@ -88,6 +88,8 @@ actor DiscoverySongArtworkResolver {
         self.session = session; self.endpoint = endpoint
     }
 
+    func retryMissing() { cache = cache.filter { $0.value.url != nil } }
+
     func imageData(for request: DiscoverySongArtworkRequest, images: AlbumArtworkResolver = .shared) async -> Data? {
         let primary = await coverURL(for: request)
         if let primary, let data = await images.imageData(at: primary), DiscoveryArtworkDecoder.decode(data) != nil { return data }
@@ -114,7 +116,7 @@ actor DiscoverySongArtworkResolver {
                                          .init(name: "media", value: "music"), .init(name: "limit", value: "50"), .init(name: "country", value: country)]
                 guard let url = components.url else { continue }
                 var query = URLRequest(url: url); query.timeoutInterval = 8
-                guard let (data, response) = try? await session.data(for: query),
+                guard let (data, response) = try? await NativeDiagnostics.data(for: query, using: session, operation: "Artwork catalog"),
                       (response as? HTTPURLResponse)?.statusCode == 200,
                       let results = try? JSONDecoder().decode(AlbumArtworkSearchResponse.self, from: data) else { continue }
                 if let cover = request.matchedCover(in: results) { return cover }

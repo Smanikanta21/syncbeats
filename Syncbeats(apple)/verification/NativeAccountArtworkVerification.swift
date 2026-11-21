@@ -122,6 +122,28 @@ struct NativeAccountArtworkVerification {
         let destination = CGImageDestinationCreateWithData(imageData, "public.png" as CFString, 1, nil)!
         CGImageDestinationAddImage(destination, context.makeImage()!, nil); check(CGImageDestinationFinalize(destination), "Artwork fixture encodes as a real image")
         ArtworkHTTPProtocol.state.image = imageData as Data
+        let uncachedImages = AlbumArtworkResolver(session: session, endpoint: endpoint)
+        ArtworkHTTPProtocol.state.image = Data("broken image".utf8)
+        let broken = await uncachedImages.imageData(at: actual)
+        ArtworkHTTPProtocol.state.image = imageData as Data
+        let repaired = await uncachedImages.imageData(at: actual)
+        check(broken == nil && repaired != nil, "A corrupt image response is never cached and can recover on retry")
+        let suppliedPreview = DiscoverySongArtworkRequest(title: "The Song", artist: "Fixture Artist",
+            album: .init(title: "The Song", artist: "Fixture Artist", suppliedURL: actual), thumbnail: nil)
+        let imageStore = AlbumArtworkResolver(session: session, endpoint: endpoint)
+        let artistLookups = ArtworkHTTPProtocol.state.count("album:Supplied Artist")
+        let suppliedArtistImage = await artists.imageData(for: "Supplied Artist", preview: suppliedPreview, images: imageStore)
+        check(suppliedArtistImage != nil && ArtworkHTTPProtocol.state.count("album:Supplied Artist") == artistLookups,
+              "Artist tiles use their group's existing cover without a catalog lookup")
+        let thumbnailPreview = DiscoverySongArtworkRequest(title: "No Match", artist: "No Catalog Match",
+            album: .init(title: "No Match", artist: "No Catalog Match", suppliedURL: nil), thumbnail: actual.absoluteString)
+        let fallbackAlbumImage = await artists.imageData(for: "No Catalog Match", album: "Missing Album", preview: thumbnailPreview, images: imageStore)
+        check(fallbackAlbumImage != nil, "Albums retain a usable thumbnail when catalog artwork is unavailable")
+        await artists.retryMissing()
+        let missingLookups = ArtworkHTTPProtocol.state.count("album:No Catalog Match")
+        _ = await artists.coverURL(for: "No Catalog Match")
+        check(ArtworkHTTPProtocol.state.count("album:No Catalog Match") > missingLookups,
+              "Library refresh permits retrying a previously failed catalog lookup")
         let stale = URL(string: "https://fixture.invalid/expired-cover.jpg")!
         let recovery = DiscoverySongArtworkResolver(session: session, endpoint: endpoint)
         let images = AlbumArtworkResolver(session: session, endpoint: endpoint)

@@ -58,6 +58,7 @@ struct NativeCollectionWorkspace: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .environment(\.artworkRefreshID, library.artworkRefreshID)
     }
     private func navigation(_ target: NativeLibrarySection, compact: Bool = false) -> some View {
         NativeCollectionNavigationButton(target: target, selected: section == target,
@@ -318,7 +319,7 @@ struct NativeLibraryPage: View {
                         VStack(alignment: .leading, spacing: 12) {
                             if artists, let cover = group.artworkSong, cover.discoveryRequest.album.suppliedURL != nil {
                                 DiscoveryArtwork(source: .song(cover.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit)
-                            } else if artists { DiscoveryArtwork(source: .artist(group.name), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit) }
+                            } else if artists { DiscoveryArtwork(source: .artist(group.name, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit) }
                             else { DiscoveryArtwork(source: .album(name: group.name, artist: group.subtitle, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit) }
                             Text(group.name).font(.system(size: 14, weight: .medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                             Text(artists ? group.subtitle : group.subtitle + " · \(group.songs.count) songs").font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(2)
