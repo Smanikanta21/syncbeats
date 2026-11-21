@@ -51,7 +51,7 @@ export async function libraryCatalog(userId: string, query: Record<string, unkno
   const groupBy = view === 'albums' ? Prisma.sql`LOWER(TRIM(album)),LOWER(TRIM(artist))` : Prisma.sql`LOWER(TRIM(artist))`;
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>(Prisma.sql`${catalog}, groups AS (
     SELECT MIN(artist) AS artist, ${view === 'albums' ? Prisma.sql`MIN(album)` : Prisma.sql`NULL::text`} AS album,
-      COUNT(*)::int AS count, (ARRAY_AGG(ROW_TO_JSON(catalog) ORDER BY LOWER(title),id))[1] AS preview
+      COUNT(*)::int AS count, (ARRAY_AGG(ROW_TO_JSON(catalog) ORDER BY CASE WHEN artwork ~* '^https?://' THEN 0 WHEN thumbnail ~* '^https?://' THEN 1 ELSE 2 END, LOWER(title),id))[1] AS preview
     FROM catalog WHERE artist<>'' AND (${view !== 'albums'} OR COALESCE(TRIM(album),'')<>'')
     AND (${text}='' OR artist ILIKE ${'%' + text + '%'} OR COALESCE(album,'') ILIKE ${'%' + text + '%'})
     GROUP BY ${groupBy}

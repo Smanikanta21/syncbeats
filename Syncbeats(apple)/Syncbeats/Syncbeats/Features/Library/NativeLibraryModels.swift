@@ -71,6 +71,10 @@ nonisolated struct NativeLibraryGroup: Identifiable, Sendable {
     let name: String
     let subtitle: String
     let songs: [NativeLibrarySong]
+    var artworkSong: NativeLibrarySong? {
+        songs.first(where: { $0.discoveryRequest.album.suppliedURL != nil })
+            ?? songs.first(where: { $0.discoveryRequest.thumbnail != nil }) ?? songs.first
+    }
     var filter: NativeLibraryGroupFilter? = nil
     var total: Int? = nil
 }

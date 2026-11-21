@@ -31,6 +31,7 @@ struct FullScreenRoomPlayer: View {
     @State private var compactPanel = false
     @State private var artworkOnly = false
     @State private var showsEqualizer = false
+    @AppStorage("native.videoCoverEnabled") private var videoCoverEnabled = false
     @State private var lyrics = RoomLyrics()
     private let palette = NativePalette(light: false)
     private var artistLabel: String { lyrics.resolvedArtist.isEmpty ? room.currentTrack?.artistLabel ?? "Music for your room" : lyrics.resolvedArtist }
@@ -104,6 +105,14 @@ struct FullScreenRoomPlayer: View {
             }
             Spacer()
             RoomConnectionBadge(room: room, palette: palette)
+            Button { videoCoverEnabled.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: videoCoverEnabled ? "play.rectangle.fill" : "play.rectangle")
+                    if !compactDetails { Text("Video cover").font(.system(size: 12)) }
+                }.frame(minWidth: 40, minHeight: 40).foregroundStyle(videoCoverEnabled ? palette.gold : .white)
+            }.accessibilityLabel(videoCoverEnabled ? "Turn off video cover" : "Turn on video cover")
+                .help("Video cover · muted YouTube video while playing")
+                .disabled(room.currentTrack.flatMap { YouTubeIdentity.id(in: $0.trackUrl) } == nil)
             if compactDetails {
                 Menu {
                     ForEach(FullScreenDetail.allCases, id: \.self) { tab in
@@ -125,7 +134,7 @@ struct FullScreenRoomPlayer: View {
     }
     private func artwork(size: CGFloat, compressed: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: compressed ? 10 : 20) {
-            RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette)
+            RoomVideoArtwork(room: room, palette: palette, enabled: videoCoverEnabled, size: size)
                 .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: 13))
                 .shadow(color: .black.opacity(0.23), radius: 35, y: 20)
             VStack(alignment: .leading, spacing: 9) {
@@ -359,6 +368,7 @@ private struct FullScreenQueueRow: View {
     let track: RoomTrack
     @Bindable var room: RoomSession
     private let palette = NativePalette(light: false)
+    @State private var hovered = false
     var body: some View {
         Button { room.jump(to: track) } label: {
             HStack(spacing: 13) {
@@ -371,7 +381,8 @@ private struct FullScreenQueueRow: View {
                 Text(FullScreenTime.format(room.duration(for: track))).font(.system(size: 11)).monospacedDigit().foregroundStyle(.white.opacity(0.6))
                 if track.id == room.currentTrack?.id { Image(systemName: room.isPlaying ? "waveform" : "pause.fill").font(.system(size: 12)) }
             }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
-                .background(track.id == room.currentTrack?.id ? Color.white.opacity(0.09) : Color.clear, in: RoundedRectangle(cornerRadius: 13))
+                .background(track.id == room.currentTrack?.id || hovered ? Color.white.opacity(0.09) : Color.clear, in: RoundedRectangle(cornerRadius: 13))
         }.buttonStyle(.plain).disabled(!room.canControl).accessibilityLabel("Play \(track.title) in the room")
+            .onHover { hovered = $0 }
     }
 }

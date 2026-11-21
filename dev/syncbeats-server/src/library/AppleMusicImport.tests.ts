@@ -73,6 +73,16 @@ async function main() {
     const song = catalog.body.songs.find((s: any) => s.title === `Corrected ${suffix}`);
     check(song?.source === 'APPLE_MUSIC' && song.sourceSongID && song.artwork === track(0).albumArt, 'Shared catalog exposes imported metadata, artwork and Song identity');
     check((await call('/api/playlists/catalog?view=albums&limit=60')).body.groups.some((g: any) => g.album === 'Updated album'), 'Imported albums appear in account catalog');
+    const coverBatch = await call(endpoint, 'POST', { sourceId: 'p.cover-fixture', name: 'Cover fixtures', tracks: [
+      { ...track(10000), title: 'A missing cover', artist: 'Cover fixture artist', album: 'Cover fixture album', albumArt: undefined },
+      { ...track(10001), title: 'Z available cover', artist: 'Cover fixture artist', album: 'Cover fixture album', albumArt: 'https://example.invalid/later-cover.jpg' },
+    ] });
+    check(coverBatch.status === 200, 'Artwork preview fixture imports without requiring every song to have a cover');
+    for (const view of ['albums', 'artists']) {
+      const groups = (await call(`/api/playlists/catalog?view=${view}&limit=60`)).body.groups;
+      const group = groups.find((g: any) => g.artist === 'Cover fixture artist');
+      check(group?.preview?.artwork === 'https://example.invalid/later-cover.jpg', `${view} preview prefers available artwork over the first alphabetical song`);
+    }
     const count = await db.playlist.count({ where: { userId: users[0].id } });
     for (const bad of [
       { ...payload, sourceId: 'invalid', tracks: Array.from({ length: 101 }, (_, i) => track(i)) },

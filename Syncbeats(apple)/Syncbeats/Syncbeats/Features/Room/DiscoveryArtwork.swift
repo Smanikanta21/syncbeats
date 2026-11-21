@@ -10,13 +10,20 @@ nonisolated struct ArtistArtworkResponse: Decodable, Sendable {
     }
     let results: [Album]
 
-    func coverURL(for name: String) -> URL? {
+    func coverURL(for name: String, album: String? = nil) -> URL? {
         let identity = AlbumArtworkRequest.normalized(AlbumArtworkRequest.cleanArtist(name))
         guard !identity.isEmpty else { return nil }
-        return results.first { album in
-            album.artistName.map { AlbumArtworkRequest.normalized($0) == identity } == true &&
-            AlbumArtworkRequest.firstCover(in: [album.artworkUrl100]) != nil
-        }.flatMap { AlbumArtworkRequest.firstCover(in: [$0.artworkUrl100]) }
+        let credits = name.components(separatedBy: ",").flatMap { $0.components(separatedBy: " & ") }
+            .map { AlbumArtworkRequest.normalized(AlbumArtworkRequest.cleanArtist($0)) }.filter { $0.count >= 3 }
+        let albumIdentity = album.map(AlbumArtworkRequest.normalized)
+        return results.compactMap { candidate -> (URL, Int)? in
+            guard let artist = candidate.artistName else { return nil }
+            let match = AlbumArtworkRequest.normalized(artist)
+            guard match == identity || credits.contains(match),
+                  albumIdentity == nil || candidate.collectionName.map(AlbumArtworkRequest.normalized) == albumIdentity,
+                  let cover = AlbumArtworkRequest.firstCover(in: [candidate.artworkUrl100]) else { return nil }
+            return (cover, match == identity ? 1 : 0)
+        }.sorted { $0.1 > $1.1 }.first?.0
     }
 }
 
@@ -32,25 +39,27 @@ actor ArtistArtworkResolver {
         self.session = session; self.endpoint = endpoint
     }
 
-    func coverURL(for artist: String) async -> URL? {
+    func coverURL(for artist: String, album: String? = nil) async -> URL? {
         let name = AlbumArtworkRequest.cleanArtist(artist)
-        let key = AlbumArtworkRequest.normalized(name)
-        guard !key.isEmpty else { return nil }
+        let identity = AlbumArtworkRequest.normalized(name)
+        guard !identity.isEmpty else { return nil }
+        let key = identity + (album.map { "|" + AlbumArtworkRequest.normalized($0) } ?? "")
         if let cached = cache[key], cached.expires > Date() { return cached.url }
         if let task = pending[key] { return await task.value }
         let session = session, endpoint = endpoint
         let task = Task<URL?, Never> {
             for country in ["US", "IN"] {
                 var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
-                components.queryItems = [.init(name: "term", value: name), .init(name: "entity", value: "album"),
-                                         .init(name: "attribute", value: "artistTerm"), .init(name: "media", value: "music"),
+                components.queryItems = [.init(name: "term", value: album.map { name + " " + $0 } ?? name), .init(name: "entity", value: "album"),
+                                         .init(name: "media", value: "music"),
                                          .init(name: "limit", value: "25"), .init(name: "country", value: country)]
+                if album == nil { components.queryItems?.append(.init(name: "attribute", value: "artistTerm")) }
                 guard let url = components.url else { continue }
                 var request = URLRequest(url: url); request.timeoutInterval = 10
                 guard let (data, response) = try? await session.data(for: request),
                       (response as? HTTPURLResponse)?.statusCode == 200,
                       let albums = try? JSONDecoder().decode(ArtistArtworkResponse.self, from: data) else { continue }
-                if let url = albums.coverURL(for: name) { return url }
+                if let url = albums.coverURL(for: name, album: album) { return url }
             }
             return nil
         }
@@ -86,6 +95,7 @@ struct DiscoveryArtwork: View {
     enum Source: Hashable {
         case song(DiscoverySongArtworkRequest)
         case artist(String)
+        case album(name: String, artist: String, preview: DiscoverySongArtworkRequest?)
     }
     let source: Source
     let palette: NativePalette
@@ -132,11 +142,16 @@ struct DiscoveryArtwork: View {
                     guard !Task.isCancelled, source == requested else { return }
                     artwork = preview; loading = false; isVideoArtwork = true
                 }
-                if let url = await DiscoverySongArtworkResolver.shared.coverURL(for: request) {
-                    data = await AlbumArtworkResolver.shared.imageData(at: url)
-                } else { data = nil }
+                data = await DiscoverySongArtworkResolver.shared.imageData(for: request)
             case .artist(let name):
                 if let url = await ArtistArtworkResolver.shared.coverURL(for: name) {
+                    data = await AlbumArtworkResolver.shared.imageData(at: url)
+                } else { data = nil }
+            case .album(let name, let artist, let preview):
+                if let cover = preview?.album.suppliedURL, let image = await AlbumArtworkResolver.shared.imageData(at: cover),
+                   DiscoveryArtworkDecoder.decode(image) != nil {
+                    data = image
+                } else if let url = await ArtistArtworkResolver.shared.coverURL(for: artist, album: name) {
                     data = await AlbumArtworkResolver.shared.imageData(at: url)
                 } else { data = nil }
             }
@@ -160,6 +175,7 @@ struct DiscoveryArtwork: View {
         switch source {
         case .artist(let name): return "Album artwork by \(name)"
         case .song(let request): return "\(isVideoArtwork ? "Video artwork for" : "Album artwork for") \(request.videoTitle)"
+        case .album(let name, _, _): return "Album artwork for \(name)"
         }
     }
 }

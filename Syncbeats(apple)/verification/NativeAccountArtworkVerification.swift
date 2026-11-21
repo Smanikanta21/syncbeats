@@ -91,6 +91,11 @@ struct NativeAccountArtworkVerification {
         let albums = try JSONDecoder().decode(ArtistArtworkResponse.self, from: Data(#"{"results":[{"artistName":"Björk Tribute","artworkUrl100":"https://fixture.invalid/wrong"},{"artistName":"Björk","artworkUrl100":"https://fixture.invalid/image"}]}"#.utf8))
         check(albums.coverURL(for: "Bjork") == actual, "Artist artwork matches identity and ignores tribute artists")
         check(albums.coverURL(for: "Unrelated") == nil, "Unrelated album artwork is never assigned to an artist")
+        let albumMatch = ArtistArtworkResponse(results: [.init(artistName: "Fixture Artist", collectionName: "The Album", artworkUrl100: actual.absoluteString)])
+        check(albumMatch.coverURL(for: "Fixture Artist, Second Artist", album: "The Album") == actual,
+              "Album matching accepts a credited collaborator without requiring the full multi-artist label")
+        check(albumMatch.coverURL(for: "Fixture Artist", album: "Another Album") == nil,
+              "An unrelated album from the same artist is not used as the album cover")
         let artists = ArtistArtworkResolver(session: session, endpoint: endpoint)
         async let first = artists.coverURL(for: "Fixture Artist")
         async let second = artists.coverURL(for: "Fixture Artist")
@@ -117,6 +122,18 @@ struct NativeAccountArtworkVerification {
         let destination = CGImageDestinationCreateWithData(imageData, "public.png" as CFString, 1, nil)!
         CGImageDestinationAddImage(destination, context.makeImage()!, nil); check(CGImageDestinationFinalize(destination), "Artwork fixture encodes as a real image")
         ArtworkHTTPProtocol.state.image = imageData as Data
+        let stale = URL(string: "https://fixture.invalid/expired-cover.jpg")!
+        let recovery = DiscoverySongArtworkResolver(session: session, endpoint: endpoint)
+        let images = AlbumArtworkResolver(session: session, endpoint: endpoint)
+        let staleRequest = DiscoverySongArtworkRequest(title: "The Song", artist: "Fixture Artist",
+            album: .init(title: "The Song", artist: "Fixture Artist", suppliedURL: stale), thumbnail: nil)
+        let recoveredImage = await recovery.imageData(for: staleRequest, images: images)
+        check(recoveredImage == imageData as Data, "Expired discovery covers recover through a fresh matching catalog lookup")
+        let noCover = NativeLibrarySong(id: "missing", title: "A song", artist: "Fixture Artist", source: "APPLE_MUSIC")
+        let withCover = NativeLibrarySong(id: "available", title: "Z song", artist: "Fixture Artist", artwork: actual.absoluteString, source: "APPLE_MUSIC")
+        let group = NativeLibraryGroup(id: "group", name: "Album", subtitle: "Fixture Artist", songs: [noCover, withCover])
+        check(group.artworkSong?.id == withCover.id, "Album and artist groups use an available cover even when the first song has none")
+
         let fallback = await resolver.imageData(for: AlbumArtworkRequest(title: "The Song", artist: "Fixture Artist", suppliedURL: URL(string: "https://fixture.invalid/broken")))
         check(fallback == imageData as Data, "Failed supplied artwork falls back to matched metadata")
         let sparse = await resolver.imageData(for: AlbumArtworkRequest(title: "The Song", artist: nil, suppliedURL: URL(string: "https://fixture.invalid/broken"), sourceID: "abcdefghijk"))
@@ -142,11 +159,12 @@ struct NativeAccountArtworkVerification {
         check(discovery("Unmatched recording").thumbnail?.absoluteString == "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg", "Sparse video results have a source thumbnail fallback")
         let searchMetadata = try JSONDecoder().decode(RoomSearchResult.self, from: Data(#"{"url":"https://youtu.be/abcdefghijk","title":"The Song","uploaderName":"Fixture Artist","albumArt":"","thumbnail":"https://fixture.invalid/image"}"#.utf8))
         check(searchMetadata.artworkRequest.suppliedURL == actual, "An empty album field does not hide valid search-result artwork")
+        let discoveryBeforeCount = ArtworkHTTPProtocol.state.count("song:The Song")
         let discoveryResolver = DiscoverySongArtworkResolver(session: session, endpoint: endpoint)
         async let discoveryFirst = discoveryResolver.coverURL(for: discovery("The Song", "Fixture Artist"))
         async let discoverySecond = discoveryResolver.coverURL(for: discovery("The Song", "Fixture Artist"))
         let discoveryURLs = await (discoveryFirst, discoverySecond)
-        check(discoveryURLs.0 == actual && discoveryURLs.1 == actual && ArtworkHTTPProtocol.state.count("song:The Song") == 1, "Discovery requests coalesce and return matched artwork")
+        check(discoveryURLs.0 == actual && discoveryURLs.1 == actual && ArtworkHTTPProtocol.state.count("song:The Song") == discoveryBeforeCount + 1, "Discovery requests coalesce and return matched artwork")
         let skippedCollection = await discoveryResolver.coverURL(for: collection)
         check(skippedCollection == nil && ArtworkHTTPProtocol.state.count("song:" + collection.searchTerm) == 0, "Jukebox artwork avoids fruitless album-provider requests")
         let suite = "SyncBeats.AccountArtworkVerification.\(UUID().uuidString)"
