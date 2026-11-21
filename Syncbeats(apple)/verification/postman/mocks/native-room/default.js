@@ -70,11 +70,13 @@ http.createServer(async (req,res) => {
     return reply(200,{ok:true,queue});
   }
   if(/^\/rooms\/[0-9]{6}\/enqueue-youtube$/.test(url.pathname)&&req.method==='POST') {
-    const {youtubeUrl,title}=req.body||{};
+    const {youtubeUrl,title,artist,thumbnail,metadataSource}=req.body||{};
     if(!youtubeUrl||!title)return reply(400,{error:'youtubeUrl and title are required'});
     const youtubeId=new URL(youtubeUrl).searchParams.get('v');
     let match=queue.find(x=>x.trackUrl==='youtube:'+youtubeId),duplicate=!!match;
-    if(!match){match=item({url:youtubeUrl,title,uploaderName:'YouTube',duration:null,thumbnail:null},queue.length);queue.push(match);await pm.state.set(namespace+'.queue',queue)}
+    if(!match){match=item({url:youtubeUrl,title,uploaderName:artist||'YouTube',duration:null,thumbnail:thumbnail||null},queue.length);queue.push(match)}
+    if(metadataSource==='library'){match.title=title;match.artist=artist||'';match.thumbnail=thumbnail||match.thumbnail;match.metadataSource='library'}
+    await pm.state.set(namespace+'.queue',queue);
     return reply(201,{item:match,queued:!duplicate,duplicate});
   }
   reply(501,{error:'Endpoint not modeled by native home verification'});

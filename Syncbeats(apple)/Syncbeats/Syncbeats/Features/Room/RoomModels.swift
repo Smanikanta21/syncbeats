@@ -62,6 +62,7 @@ struct RoomSearchResult: Decodable, Identifiable {
     let title: String
     let thumbnail: String?
     var albumArt: String? = nil
+    var metadataSource: String? = nil
     let uploaderName: String?
     let duration: Double?
     var id: String { url }

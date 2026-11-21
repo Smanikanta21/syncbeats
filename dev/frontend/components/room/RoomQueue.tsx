@@ -171,13 +171,16 @@ export function RoomQueue({
     trackUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(song.youtubeId || '')}`,
     fileName: song.title, queueIndex: 0, isCurrent: false, addedBy: '', createdAt: 0,
     thumbnail: song.thumbnail || undefined,
+    metadataSource: 'library',
   });
 
   const [promptTrack, setPromptTrack] = useState<TrackQueueItem | null>(null);
 
   const executeEnqueueAndPlay = async (track: TrackQueueItem, playNow: boolean) => {
     try {
-      const res = await roomsApi.enqueueYoutube(roomId, track.trackUrl || "", track.title);
+      const res = await roomsApi.enqueueYoutube(roomId, track.trackUrl || "", track.title, {
+        artist: track.artist, thumbnail: track.thumbnail, metadataSource: track.metadataSource,
+      });
       if (playNow && res?.item?.id) {
         getSocket().emit("playback:jumpTo", { roomId, trackId: res.item.id });
       }

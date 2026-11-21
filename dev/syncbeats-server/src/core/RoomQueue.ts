@@ -8,7 +8,7 @@
 //   1. `items` (user order) and `order` (playback order) always hold the same ids.
 //   2. Exactly one `currentId` — never a per-item `isCurrent` flag that can be 0 or 2.
 //   3. One item per normalized `key` — dedup is a Map lookup, not fuzzy matching.
-//   4. Items are immutable once added; metadata is resolved before insertion.
+//   4. Audio identity stays stable; explicit library selections can enrich display metadata.
 
 import { randomUUID } from 'crypto';
 import { QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
@@ -112,6 +112,7 @@ export class RoomQueue {
    */
   add(tracks: QueueTrackInput[], addedBy: string, mode: 'end' | 'next' = 'end'): AddResult {
     const added: QueueItem[] = [];
+    let metadataChanged = false;
     let skipped = 0;
     let first: QueueItem | null = null;
 
@@ -122,8 +123,18 @@ export class RoomQueue {
       const key = trackKey(url);
       const existingId = this.byKey.get(key);
       if (existingId) {
+        const existing = this.byId(existingId)!;
+        if (t.metadataSource === 'library') {
+          const title = t.title?.trim() || existing.title;
+          const artist = t.artist?.trim() ?? existing.artist;
+          const thumbnail = t.thumbnail || existing.thumbnail;
+          if (existing.title !== title || existing.artist !== artist || existing.thumbnail !== thumbnail || existing.metadataSource !== 'library') {
+            Object.assign(existing, { title, artist, thumbnail, metadataSource: 'library' as const });
+            metadataChanged = true;
+          }
+        }
         skipped++;
-        if (!first) first = this.byId(existingId);
+        if (!first) first = existing;
         continue;
       }
 
@@ -138,6 +149,7 @@ export class RoomQueue {
         addedBy,
         createdAt: Date.now(),
         durationSec: t.durationSec,
+        ...(t.metadataSource ? { metadataSource: t.metadataSource } : {}),
       };
       this.byKey.set(key, item.id);
       added.push(item);
@@ -155,8 +167,8 @@ export class RoomQueue {
         this.order.push(...ids);
       }
       if (!this.currentId) this.currentId = ids[0];
-      this.bump();
     }
+    if (added.length > 0 || metadataChanged) this.bump();
 
     return { added, skipped, first };
   }

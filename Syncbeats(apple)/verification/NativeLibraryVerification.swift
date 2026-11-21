@@ -416,6 +416,18 @@ nonisolated private final class LibraryHTTPFixture: URLProtocol, @unchecked Send
         let cloudResponse = try await api.importApplePlaylist(reviewed, songs: reviewed.songs)
         let sentTracks = LibraryHTTPFixture.importBody["tracks"] as? [[String: Any]]
         check(cloudResponse.processed == 2 && LibraryHTTPFixture.importBody["sourceId"] as? String == reviewed.id && sentTracks?.first?["sourceId"] as? String == apple.id && sentTracks?.first?["youtubeId"] as? String == "ABCDEFGHIJK", "Native API sends stable IDs and reviewed metadata, without audio")
+        var localCover = apple; localCover.artwork = "file:///private/album.jpg"; localCover.thumbnail = nil
+        var fallbackCover = apple; fallbackCover.artwork = "musickit://artwork/local"; fallbackCover.thumbnail = "https://is1-ssl.mzstatic.com/image/thumb/album/300x300bb.jpg"
+        var remoteCover = apple; remoteCover.artwork = "https://example.invalid/cover.jpg"
+        var localPlaylist = reviewed; localPlaylist.artwork = "file:///private/playlist.jpg"
+        let artworkImport = try await api.importApplePlaylist(localPlaylist, songs: [localCover, fallbackCover, remoteCover])
+        let artworkTracks = LibraryHTTPFixture.importBody["tracks"] as! [[String: Any]]
+        check(artworkImport.processed == 3 && artworkTracks[0]["albumArt"] == nil && LibraryHTTPFixture.importBody["coverUrl"] == nil,
+              "Local song and playlist covers do not block metadata imports or leak device paths")
+        check(artworkTracks[1]["albumArt"] as? String == "https://is1-ssl.mzstatic.com/image/thumb/album/600x600bb.jpg" && artworkTracks[2]["albumArt"] as? String == remoteCover.artwork,
+              "Imports retain remote album covers and use valid fallback artwork")
+        check(artworkTracks[0]["title"] as? String == apple.title && artworkTracks[0]["artist"] as? String == apple.artist,
+              "Omitting unavailable artwork preserves original song metadata")
         LibraryHTTPFixture.importStatus = 404
         do { _ = try await api.appleImportLimit(); check(false, "Old HTTP server receives a useful import error") }
         catch { check(error.localizedDescription.contains("server"), "Old HTTP server receives a useful import error") }

@@ -739,7 +739,10 @@ export function useRoom({ roomId, displayName, userId, authLoading = false }: Us
       const detail = (e as CustomEvent).detail;
       if (detail?.ytId && detail?.title && audioRef.current.trackUrl) {
         if (audioRef.current.trackUrl.includes(detail.ytId)) {
-          loadAndSetTrack(audioRef.current.trackUrl, detail.title);
+          const queue = snapshotRef.current?.queue ?? [];
+          const current = queue.find(item => isSameTrack(item.trackUrl, audioRef.current.trackUrl));
+          // A fallback lookup must never overwrite the room's library metadata.
+          loadAndSetTrack(audioRef.current.trackUrl, getTrackTitle(audioRef.current.trackUrl, queue), current?.artist || '');
         }
       }
     };

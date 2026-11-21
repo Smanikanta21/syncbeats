@@ -28,6 +28,7 @@ export interface QueueTrackInput {
   thumbnail?:   string;
   fileName?:    string;
   durationSec?: number;
+  metadataSource?: 'library';
 }
 
 export interface QueueItem {
@@ -45,6 +46,7 @@ export interface QueueItem {
    *  pointer skips over are never stamped, so jumping ahead doesn't fake a listen. */
   playedAt?:    number;
   durationSec?: number;
+  metadataSource?: 'library';
 }
 
 /** Queue item as broadcast to clients — position and current flag are derived, never stored. */

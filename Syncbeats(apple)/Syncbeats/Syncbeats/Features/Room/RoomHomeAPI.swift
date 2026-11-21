@@ -40,7 +40,13 @@ struct RoomHomeAPI {
     }
     func enqueue(_ result: RoomSearchResult) async throws -> RoomTrack {
         struct Response: Decodable { let item: RoomTrack }
-        let data = try await request(path: "rooms/\(credentials.roomID)/enqueue-youtube", method: "POST", body: ["youtubeUrl": result.url, "title": result.title, "durationSec": result.duration ?? 0])
+        var body: [String: Any] = ["youtubeUrl": result.url, "title": result.title, "durationSec": result.duration ?? 0]
+        if result.metadataSource == "library" {
+            body["metadataSource"] = "library"
+            body["artist"] = result.uploaderName ?? ""
+            if let cover = NativeLibraryArtwork.remoteURL(in: [result.albumArt, result.thumbnail]) { body["thumbnail"] = cover }
+        }
+        let data = try await request(path: "rooms/\(credentials.roomID)/enqueue-youtube", method: "POST", body: body)
         return try JSONDecoder().decode(Response.self, from: data).item
     }
     private func request(path: String, method: String = "GET", query: [URLQueryItem] = [], body: [String: Any]? = nil) async throws -> Data {
