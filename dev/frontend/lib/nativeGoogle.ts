@@ -10,8 +10,13 @@ export function nativeGoogleRequest(values: Record<string, string | string[] | u
     ? { state: values.state, nonce: values.nonce, challenge: values.code_challenge } : null;
 }
 export function googleNativeAuthorization(flow: NativeGoogleRequest, clientID: string, origin: string): string {
+  const redirect = new URL(origin);
+  // Match web login's registered root callback even when the site serves on www.
+  if (redirect.hostname === 'www.syncbeats.in' || redirect.hostname === 'www.syncbeats.app') {
+    redirect.hostname = redirect.hostname.slice(4);
+  }
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  url.search = new URLSearchParams({ client_id: clientID, redirect_uri: origin, response_type: 'id_token',
+  url.search = new URLSearchParams({ client_id: clientID, redirect_uri: redirect.origin, response_type: 'id_token',
     scope: 'openid email profile', state: nativeGoogleStatePrefix + flow.state, nonce: flow.nonce, prompt: 'select_account' }).toString();
   return url.toString();
 }
