@@ -29,10 +29,11 @@ nonisolated enum VideoCoverDocument {
         function onYouTubeIframeAPIReady() {
           player = new YT.Player('video',{host:'https://www.youtube-nocookie.com',videoId:'\(videoID)',
             playerVars:{autoplay:1,mute:1,controls:0,disablekb:1,playsinline:1,
-              origin:'https://syncbeats.in',rel:0},events:{
+              origin:'https://syncbeats.in',widget_referrer:'https://syncbeats.in',rel:0},events:{
               onReady:e=>{e.target.mute();e.target.seekTo(expected,true);e.target.playVideo()},
               onStateChange:e=>{if(e.data===1){e.target.mute();notify('playing')}else if(e.data===0)notify('unavailable')},
-              onError:()=>notify('unavailable'),onAutoplayBlocked:()=>notify('unavailable')
+              onError:e=>{notify('diagnostic:youtube:'+e.data);notify('unavailable')},
+              onAutoplayBlocked:()=>{notify('diagnostic:autoplay');notify('unavailable')}
             }});
         }
         </script><script src="https://www.youtube.com/iframe_api" onerror="notify('unavailable')"></script></body></html>
@@ -67,6 +68,8 @@ struct RoomVideoArtwork: View {
                     }
                 }
                 .id(videoID)
+                .opacity(playing ? 1 : 0)
+                .allowsHitTesting(false)
                 .task(id: videoID) {
                     // Do not leave a black player when a network/provider never responds.
                     try? await Task.sleep(for: .seconds(15))
@@ -91,7 +94,12 @@ private final class VideoCoverCoordinator: NSObject, WKScriptMessageHandler, WKN
     var videoID: String?
     init(onState: @escaping (String) -> Void) { self.onState = onState }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if let state = message.body as? String, state.hasPrefix("diagnostic:") {
+            NativeDiagnostics.info("Video cover", String(state.prefix(80)))
+            return
+        }
         guard let state = message.body as? String, ["playing", "unavailable"].contains(state) else { return }
+        NativeDiagnostics.info("Video cover", state == "playing" ? "Muted video playing" : "Static artwork fallback")
         onState(state)
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { onState("unavailable") }

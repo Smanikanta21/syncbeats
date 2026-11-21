@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 /// Artwork identity is independent of queue IDs, so every player mode shares the same cover.
 nonisolated struct AlbumArtworkRequest: Hashable, Sendable {
@@ -109,6 +110,8 @@ actor AlbumArtworkResolver {
     private var images: [URL: Data] = [:]
     private var downloads: [URL: Task<Data?, Never>] = [:]
 
+    func retryMissing() { covers = covers.filter { $0.value.url != nil }; unavailableIdentities.removeAll() }
+
     init(session: URLSession = .shared, endpoint: URL = URL(string: "https://itunes.apple.com/search")!,
          videoMetadataEndpoint: URL = URL(string: "https://www.youtube.com/oembed")!) {
         self.session = session
@@ -179,7 +182,7 @@ actor AlbumArtworkResolver {
                                      URLQueryItem(name: "format", value: "json")]
             guard let url = components.url else { return nil }
             var query = URLRequest(url: url); query.timeoutInterval = 10
-            guard let (data, response) = try? await session.data(for: query),
+            guard let (data, response) = try? await NativeDiagnostics.data(for: query, using: session, operation: "Artwork video identity"),
                   let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let title = object["title"] as? String, let artist = object["author_name"] as? String else { return nil }
@@ -212,9 +215,14 @@ actor AlbumArtworkResolver {
         let session = session
         let download = Task<Data?, Never> {
             var query = URLRequest(url: url); query.timeoutInterval = 15
-            guard let (data, response) = try? await session.data(for: query),
+            guard let (data, response) = try? await NativeDiagnostics.data(for: query, using: session, operation: "Artwork image"),
                   let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  http.mimeType?.hasPrefix("image/") == true, !data.isEmpty, data.count < 10_000_000 else { return nil }
+                  http.mimeType?.hasPrefix("image/") == true, !data.isEmpty, data.count < 10_000_000,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 32
+                  ] as CFDictionary) != nil else { return nil }
             return data
         }
         downloads[url] = download

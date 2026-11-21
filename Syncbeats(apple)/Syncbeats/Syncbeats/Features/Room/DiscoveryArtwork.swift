@@ -39,6 +39,23 @@ actor ArtistArtworkResolver {
         self.session = session; self.endpoint = endpoint
     }
 
+    func retryMissing() { cache = cache.filter { $0.value.url != nil } }
+
+    func imageData(for artist: String, album: String? = nil, preview: DiscoverySongArtworkRequest?,
+                   images: AlbumArtworkResolver = .shared) async -> Data? {
+        // The group's own cover is both faster and more reliable than a second catalog lookup.
+        if let supplied = preview?.album.suppliedURL, let data = await images.imageData(at: supplied),
+           DiscoveryArtworkDecoder.decode(data) != nil { return data }
+        if let cover = await coverURL(for: artist, album: album), let data = await images.imageData(at: cover),
+           DiscoveryArtworkDecoder.decode(data) != nil { return data }
+        if let preview {
+            if let data = await DiscoverySongArtworkResolver.shared.imageData(for: preview, images: images) { return data }
+            if let thumbnail = preview.thumbnail, let data = await images.imageData(at: thumbnail),
+               DiscoveryArtworkDecoder.decode(data) != nil { return data }
+        }
+        return nil
+    }
+
     func coverURL(for artist: String, album: String? = nil) async -> URL? {
         let name = AlbumArtworkRequest.cleanArtist(artist)
         let identity = AlbumArtworkRequest.normalized(name)
@@ -56,7 +73,7 @@ actor ArtistArtworkResolver {
                 if album == nil { components.queryItems?.append(.init(name: "attribute", value: "artistTerm")) }
                 guard let url = components.url else { continue }
                 var request = URLRequest(url: url); request.timeoutInterval = 10
-                guard let (data, response) = try? await session.data(for: request),
+                guard let (data, response) = try? await NativeDiagnostics.data(for: request, using: session, operation: "Artwork catalog"),
                       (response as? HTTPURLResponse)?.statusCode == 200,
                       let albums = try? JSONDecoder().decode(ArtistArtworkResponse.self, from: data) else { continue }
                 if let url = albums.coverURL(for: name, album: album) { return url }
@@ -69,6 +86,14 @@ actor ArtistArtworkResolver {
         if cache.count >= 300 { cache.removeAll() }
         cache[key] = Cached(url: url, expires: Date().addingTimeInterval(url == nil ? 60 : 86400))
         return url
+    }
+}
+
+private struct ArtworkRefreshKey: EnvironmentKey { static let defaultValue = UUID() }
+extension EnvironmentValues {
+    var artworkRefreshID: UUID {
+        get { self[ArtworkRefreshKey.self] }
+        set { self[ArtworkRefreshKey.self] = newValue }
     }
 }
 
@@ -94,7 +119,7 @@ nonisolated enum DiscoveryArtworkDecoder {
 struct DiscoveryArtwork: View {
     enum Source: Hashable {
         case song(DiscoverySongArtworkRequest)
-        case artist(String)
+        case artist(String, preview: DiscoverySongArtworkRequest? = nil)
         case album(name: String, artist: String, preview: DiscoverySongArtworkRequest?)
     }
     let source: Source
@@ -105,6 +130,8 @@ struct DiscoveryArtwork: View {
     @State private var artwork: DiscoveryArtworkImage?
     @State private var loading = true
     @State private var isVideoArtwork = false
+    @Environment(\.artworkRefreshID) private var refreshID
+    private struct LoadIdentity: Equatable { let source: Source; let refreshID: UUID }
 
     var body: some View {
         GeometryReader { geometry in
@@ -129,7 +156,7 @@ struct DiscoveryArtwork: View {
         .accessibilityAddTraits(.isImage)
         .accessibilityLabel(accessibilityName)
         .help(accessibilityName)
-        .task(id: source) {
+        .task(id: LoadIdentity(source: source, refreshID: refreshID)) {
             artwork = nil; loading = true; isVideoArtwork = false
             let requested = source
             let data: Data?
@@ -143,17 +170,10 @@ struct DiscoveryArtwork: View {
                     artwork = preview; loading = false; isVideoArtwork = true
                 }
                 data = await DiscoverySongArtworkResolver.shared.imageData(for: request)
-            case .artist(let name):
-                if let url = await ArtistArtworkResolver.shared.coverURL(for: name) {
-                    data = await AlbumArtworkResolver.shared.imageData(at: url)
-                } else { data = nil }
+            case .artist(let name, let preview):
+                data = await ArtistArtworkResolver.shared.imageData(for: name, preview: preview)
             case .album(let name, let artist, let preview):
-                if let cover = preview?.album.suppliedURL, let image = await AlbumArtworkResolver.shared.imageData(at: cover),
-                   DiscoveryArtworkDecoder.decode(image) != nil {
-                    data = image
-                } else if let url = await ArtistArtworkResolver.shared.coverURL(for: artist, album: name) {
-                    data = await AlbumArtworkResolver.shared.imageData(at: url)
-                } else { data = nil }
+                data = await ArtistArtworkResolver.shared.imageData(for: artist, album: name, preview: preview)
             }
             let decoded: DiscoveryArtworkImage?
             if let data { decoded = await Task.detached(priority: .utility) { DiscoveryArtworkDecoder.decode(data) }.value }
@@ -161,11 +181,12 @@ struct DiscoveryArtwork: View {
             guard !Task.isCancelled, source == requested else { return }
             if let decoded { artwork = decoded; isVideoArtwork = false }
             loading = false
+            if artwork == nil { NativeDiagnostics.info("Artwork", "Card has no decodable cover after fallbacks") }
         }
     }
 
     @ViewBuilder private var placeholder: some View {
-        if case .artist(let name) = source {
+        if case .artist(let name, _) = source {
             Text(name.split(whereSeparator: { $0.isWhitespace }).prefix(2).compactMap(\.first).map(String.init).joined().uppercased())
         } else { Image(systemName: "music.note") }
     }
@@ -173,7 +194,7 @@ struct DiscoveryArtwork: View {
         if loading { return "Loading artwork" }
         guard artwork != nil else { return "Artwork unavailable" }
         switch source {
-        case .artist(let name): return "Album artwork by \(name)"
+        case .artist(let name, _): return "Album artwork by \(name)"
         case .song(let request): return "\(isVideoArtwork ? "Video artwork for" : "Album artwork for") \(request.videoTitle)"
         case .album(let name, _, _): return "Album artwork for \(name)"
         }

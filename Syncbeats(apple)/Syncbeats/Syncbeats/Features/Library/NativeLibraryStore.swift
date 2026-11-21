@@ -32,6 +32,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
     private(set) var imported = NativeImportedLibrary()
     private var acknowledgedSaves: [NativeLibrarySong] = []
     private(set) var loading = false
+    private(set) var artworkRefreshID = UUID()
     private(set) var requiresServerUpdate = false
     private(set) var saving: Set<String> = []
     private(set) var matching: Set<String> = []
@@ -121,6 +122,11 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
                 if refreshAgain { refreshAgain = false; Task { await refresh() } }
             }
         }
+        await AlbumArtworkResolver.shared.retryMissing()
+        await DiscoverySongArtworkResolver.shared.retryMissing()
+        await ArtistArtworkResolver.shared.retryMissing()
+        guard generation == active, revision == requested, !Task.isCancelled else { return }
+        artworkRefreshID = UUID()
         do {
             let api = factory(credentials)
             let index = try await api.indexPage(cursor: nil)
