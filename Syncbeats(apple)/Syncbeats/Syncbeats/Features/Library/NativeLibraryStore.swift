@@ -473,7 +473,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         for song in songs {
             guard generation == active, !Task.isCancelled, room.canControl else { return }
             guard let result = song.result else { skipped += 1; continue }
-            if room.queuedTrack(for: result) != nil { continue }
+            if result.metadataSource != "library", room.queuedTrack(for: result) != nil { continue }
             await room.add(result)
             guard room.errorMessage == nil else { error = room.errorMessage; return }
             added += 1

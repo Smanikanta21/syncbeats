@@ -42,6 +42,11 @@ struct NativeHomeVerification {
         let item = try await api.enqueue(suggestions[0])
         check(item.id == "track-0" && item.title == "A Walk", "Enqueue returns the server track used for playback commands")
         check(YouTubeIdentity.id(in: item.trackUrl) == YouTubeIdentity.id(in: suggestions[0].url), "Discovery and queue use the same source identity")
+        let librarySong = NativeLibrarySong(id: "apple-song:fixture", title: "Original Song - Reprise (Live)", artist: "Original Artist",
+            artwork: "https://example.invalid/album.jpg", youtubeID: YouTubeIdentity.id(in: suggestions[0].url), source: "APPLE_MUSIC")
+        let libraryItem = try await api.enqueue(librarySong.result!)
+        check(libraryItem.id == item.id && libraryItem.title == librarySong.title && libraryItem.artist == librarySong.artist && libraryItem.thumbnail == librarySong.artwork,
+              "Selecting a library song retains its full metadata when its YouTube audio is already queued")
         try await api.reorder(itemID: "track-1", newIndex: 2)
         let (callData, _) = try await http.data(from: base.appendingPathComponent("__calls"))
         let calls = try JSONSerialization.jsonObject(with: callData) as! [[String: Any]]

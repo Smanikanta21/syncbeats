@@ -49,13 +49,13 @@ struct NativeLibraryAPI: NativeLibraryServing {
         let tracks: [[String: Any]] = songs.map { song in
             var item: [String: Any] = ["sourceId": song.id, "title": song.title, "artist": song.artist]
             if let album = song.album { item["album"] = album }
-            if let artwork = song.artwork ?? song.thumbnail, !artwork.isEmpty { item["albumArt"] = artwork }
+            if let artwork = NativeLibraryArtwork.remoteURL(in: [song.artwork, song.thumbnail]) { item["albumArt"] = artwork }
             if let duration = song.duration { item["duration"] = duration }
             if let video = song.youtubeID { item["youtubeId"] = video }
             return item
         }
         var body: [String: Any] = ["sourceId": playlist.id, "name": playlist.name, "tracks": tracks]
-        if let artwork = playlist.artwork, !artwork.isEmpty { body["coverUrl"] = artwork }
+        if let artwork = NativeLibraryArtwork.remoteURL(in: [playlist.artwork]) { body["coverUrl"] = artwork }
         if let description = playlist.description { body["description"] = description }
         let response: NativeAppleImportBatch = try decode(await request("api/playlists/apple-music/import", method: "POST", body: body))
         guard response.version == 1 else { throw AuthFailure.invalidResponse }

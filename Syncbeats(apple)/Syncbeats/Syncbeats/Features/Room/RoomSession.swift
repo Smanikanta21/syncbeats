@@ -530,7 +530,7 @@ final class RoomSession {
     }
 
     func play(_ result: RoomSearchResult) async {
-        if let track = queuedTrack(for: result) { jump(to: track); return }
+        if result.metadataSource != "library", let track = queuedTrack(for: result) { jump(to: track); return }
         await enqueue(result, startPlayback: true)
     }
 

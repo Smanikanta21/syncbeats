@@ -8,6 +8,19 @@ enum NativeLibrarySection: String, CaseIterable, Identifiable {
     }
 }
 
+nonisolated enum NativeLibraryArtwork {
+    /// Only share remote covers; MusicKit may return artwork local to this device.
+    static func remoteURL(in candidates: [String?]) -> String? {
+        for candidate in candidates {
+            guard let candidate, candidate.utf8.count <= 4096,
+                  let url = URL(string: candidate), url.user == nil, url.password == nil,
+                  let cover = AlbumArtworkRequest.coverURL(url), cover.absoluteString.utf8.count <= 4096 else { continue }
+            return cover.absoluteString
+        }
+        return nil
+    }
+}
+
 nonisolated struct NativeLibrarySong: Codable, Identifiable, Hashable, Sendable {
     let id: String
     var title: String
@@ -25,7 +38,7 @@ nonisolated struct NativeLibrarySong: Codable, Identifiable, Hashable, Sendable 
     var result: RoomSearchResult? {
         guard let youtubeID, youtubeID.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil else { return nil }
         return RoomSearchResult(url: "https://www.youtube.com/watch?v=\(youtubeID)", title: title, thumbnail: thumbnail,
-                                albumArt: artwork, uploaderName: artist, duration: duration)
+                                albumArt: artwork, metadataSource: "library", uploaderName: artist, duration: duration)
     }
     var discoveryRequest: DiscoverySongArtworkRequest {
         let cover = AlbumArtworkRequest(title: title, artist: artist, suppliedURL: AlbumArtworkRequest.firstCover(in: [artwork, thumbnail]), sourceID: youtubeID)
