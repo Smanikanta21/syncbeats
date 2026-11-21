@@ -63,6 +63,8 @@ jobs:
 
       - name: Install Backend Dependencies & Generate Prisma Client
         working-directory: ./dev/syncbeats-server
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           npm ci
           DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" npx prisma generate
