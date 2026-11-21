@@ -1,6 +1,6 @@
 # iPhone and iPad development
 
-Branch: `ios-ipados-dev`, based on the macOS/account-library merge in `main` (`f55edda2`). Open the Xcode project from this checkout, rather than the older `macos-dev` checkout:
+Branch: `ios-ipados-dev`, based on the macOS/account-library merge in `main` (`f55edda2`). The mobile source has also been copied into the original `macos-dev` checkout so its Xcode project includes the same background audio configuration. The dedicated mobile checkout is:
 
 ```sh
 open '/Users/abhinay/syncbeats-ios-ipados/Syncbeats(apple)/Syncbeats/Syncbeats.xcodeproj'
@@ -14,6 +14,7 @@ open '/Users/abhinay/syncbeats-ios-ipados/Syncbeats(apple)/Syncbeats/Syncbeats.x
 - Album-colour ambience, measured-audio spectrum and equalizer, lyrics and the shared queue reuse the native player.
 - Native downloaded-file playback using the existing server epoch, clock-offset measurement, readiness gate and drift correction. Participants identify as iPhone, iPad or Mac.
 - Playback audio session, background audio declaration, lock-screen/Control Center metadata with artwork, and remote play/pause/next/previous/seek. Commands round-trip through the room server.
+- A bounded iOS background task covers audio download/decode gaps. Expiration cancels preparation with an instruction to reopen the app. Returning to the foreground reconnects the room or refreshes clock sync and follows its current timeline. Idle paused apps can still be suspended by iOS.
 - Call interruptions suspend local output so the drift loop cannot restart it. System-approved recovery follows the current room timeline. Disconnected headphones require an explicit Play to resume. Media-service resets rebuild the audio graph.
 - System output picker for AirPlay. Wireless output latency is not compensated or verified; use built-in or wired output when evaluating close room sync.
 
@@ -43,9 +44,13 @@ xcodebuild -project 'Syncbeats(apple)/Syncbeats/Syncbeats.xcodeproj' \
   -derivedDataPath /tmp/syncbeats-mobile-device CODE_SIGNING_ALLOWED=NO build
 ```
 
-Simulator and unsigned device builds verify compilation/linking for both device families, not installation, playback or UI on those devices. The installed Xcode SDK is 27.2; iOS runtime downloads currently fail on this Mac, so simulator launch and physical-device tests are outstanding. The macOS target also receives a signed Debug regression build.
+Simulator and unsigned device builds verify compilation/linking for both device families. The installed Xcode SDK is 27.2; simulator runtime downloads currently fail on this Mac. Signed Debug builds have now also passed and been installed/launched on an iPhone 14 Plus (iOS 27.2) and iPad A16 (iPadOS 27.2.1), using the Personal Team. The original checkout received a signed macOS Debug regression build.
 
 On 2026-11-21, all three builds passed. Native verification passed 62 audio checks, 92 room/layout checks (including nine mobile window sizes), 92 library checks and 40 account/artwork checks. Both built mobile Info.plists include iPhone/iPad device families, background audio, Google callback, Bonjour service declaration and the expected deployment/orientation settings.
+
+The latest physical-device builds restore the account and room, connect to the production service and prepare downloaded audio. Both last observed room states were paused with audio loaded and no error; leaving-app and locked-screen playback have not yet been verified. Debug builds publish a playback diagnostic every second, including actual rendered position, so background checks can distinguish audio progress from extrapolated room time. Continuous audio, track transitions, and audible output while locked still require a playing-device test.
+
+The native Google browser flow now normalizes `www.syncbeats.in` to the registered `https://syncbeats.in` root redirect, matching website login. This frontend fix is deployed on `main`. Google Cloud Console must register that exact root URL on the existing Web application OAuth client; `syncbeats://google/callback` is only the app callback, not Google's redirect URI. A real Google account sign-in remains to be verified.
 
 Local native audio checks exercise real URLSession, Socket.IO and AVAudioEngine against the existing synthetic-audio simulation and the backend Room state object. They cover interruption suspension, resumed timeline alignment, graph reconstruction and room-pause recovery on the Mac host. They do not simulate an actual phone call, iOS audio routing, Google credentials, MusicKit access or multi-device hardware latency.
 

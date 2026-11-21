@@ -272,8 +272,17 @@ final class RoomSession {
 
     func retryAudio() { audio.reset(); synchronizeAudio() }
     func recoverAudioOutput() { audio.rebuildOutput(); synchronizeAudio() }
+    func returnToForeground() {
+        guard credentials != nil else { return }
+        if canControl {
+            startClockSync()
+            synchronizeAudio()
+        } else if socket?.status == .disconnected || socket?.status == .notConnected {
+            socket?.connect()
+        }
+    }
 
-    private func recordPlaybackState() {
+    func recordPlaybackState() {
         #if DEBUG
         let energy = audio.meter.read()
         let state: [String: Any] = [
@@ -285,7 +294,9 @@ final class RoomSession {
             "ambientLevel": energy.level, "ambientBass": energy.bass, "ambientBeat": energy.transient,
             "position": position(), "updatedAt": Date().timeIntervalSince1970
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) {
+        var diagnostic = state
+        diagnostic["renderedPosition"] = audio.renderedPosition() ?? -1
+        if let data = try? JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]) {
             try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("syncbeats-native-playback-state.json"), options: .atomic)
         }
         #endif

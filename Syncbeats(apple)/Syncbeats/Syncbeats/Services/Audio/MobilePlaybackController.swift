@@ -97,6 +97,9 @@ import UIKit
     }
 
     private func publish(room: RoomSession) {
+        #if DEBUG
+        room.recordPlaybackState()
+        #endif
         let enabled = room.canControl && room.currentTrack != nil
         for (command, _) in commands { command.isEnabled = enabled }
         MPRemoteCommandCenter.shared().changePlaybackPositionCommand.isEnabled = enabled && room.duration != nil

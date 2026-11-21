@@ -34,6 +34,7 @@ struct SyncBeatsApp: App {
 }
 
 struct NativeEntryView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Bindable var model: AppModel
     var room = RoomSession()
     var runsLifecycle = true
@@ -66,6 +67,11 @@ struct NativeEntryView: View {
             if model.phase == .signedIn, let credentials = model.roomCredentials { room.connect(credentials) }
             else { room.disconnect() }
         }
+        #if os(iOS)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, model.phase == .signedIn { room.returnToForeground() }
+        }
+        #endif
     }
     private var chrome: some View {
         HStack(spacing: 8) {

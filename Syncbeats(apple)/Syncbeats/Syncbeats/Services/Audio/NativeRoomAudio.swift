@@ -275,6 +275,14 @@ final class NativeRoomAudio {
         let loadGeneration = generation
         loadTask = Task { [weak self] in
             guard let self else { return }
+            #if os(iOS)
+            let backgroundWork = NativeBackgroundAudioWork { [weak self] in
+                guard let self, self.generation == loadGeneration else { return }
+                self.reset()
+                self.error = "Open SyncBeats to finish preparing audio."
+            }
+            defer { backgroundWork.end() }
+            #endif
             do {
                 let source: URL
                 if let video = YouTubeIdentity.id(in: track.trackUrl) {
