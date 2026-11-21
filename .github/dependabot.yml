@@ -1,11 +1,14 @@
 version: 2
+# Pause routine version-update PRs to avoid recurring bot branches.
+# This limit does not disable Dependabot security updates; those use a separate
+# repository setting and can still create branches when enabled.
 updates:
   - package-ecosystem: npm
     directory: /dev/frontend
     target-branch: nodejs-dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       development:
         dependency-type: development
@@ -14,7 +17,7 @@ updates:
     target-branch: nodejs-dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       development:
         dependency-type: development
@@ -23,7 +26,7 @@ updates:
     target-branch: nodejs-dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       development:
         dependency-type: development
@@ -32,4 +35,4 @@ updates:
     target-branch: nodejs-dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0

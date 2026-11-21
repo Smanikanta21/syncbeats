@@ -24,7 +24,7 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-Backend: `http://localhost:4000`. Check `curl http://localhost:4000/health` once it starts. Prisma 7 reads `DATABASE_URL` through `prisma.config.ts`; keep the environment setting above for Prisma commands too.
+Backend: `http://localhost:4000`. Check `curl http://localhost:4000/health` once it starts. Prisma reads `DATABASE_URL` through `prisma.config.ts`; keep the environment setting above for Prisma commands too.
 
 Use `npm run prisma:migrate` when creating a schema migration for a contribution. Commit the resulting SQL and regenerate Prisma. The seed command is optional; review `prisma/seed.ts` before running it. Do not point development commands at production data.
 

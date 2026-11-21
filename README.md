@@ -1,10 +1,11 @@
 # SyncBeats
 
-Listen together, on your own devices. SyncBeats lets a group join one room, build a shared queue, and control synchronized music playback from their browsers.
+Listen together, on your own devices. SyncBeats is an open-source, self-hostable music app that lets a group join one room, build a shared queue, and control synchronized playback from their browsers.
 
-[Try SyncBeats](https://syncbeats.in) · [Get started locally](dev/LOCAL_DEVELOPMENT.md) · [Contribute](CONTRIBUTING.md) · [Roadmap](docs/ROADMAP.md)
+[Try SyncBeats](https://www.syncbeats.in) · [Join the Mac beta list](https://www.syncbeats.in/mac-beta) · [Get started locally](dev/LOCAL_DEVELOPMENT.md) · [Contribute](CONTRIBUTING.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Smanikanta21/syncbeats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Smanikanta21/syncbeats/actions/workflows/ci.yml)
 
 ## What you can do
 
@@ -22,6 +23,12 @@ The server owns room state and broadcasts a shared playback timeline. Each brows
 
 **Less than 25 ms is a design target, not a guarantee.** Network jitter, browser behavior, device audio latency, and the first seconds after joining affect results. See the [architecture diagrams](docs/SYSTEM_DESIGN_DIAGRAMS.md) and [global sync design](docs/GLOBAL_SYNC_DESIGN.md).
 
+## Mac app and beta testing
+
+The native Swift Mac app is in development. [Request a beta invitation](https://www.syncbeats.in/mac-beta) with your email and consent; you can optionally share your Mac chip, macOS version, and testing interests. Joining the list does not create an account or provide an app download. Invitations will be sent when a test build is available.
+
+Follow the [roadmap](docs/ROADMAP.md) for contribution areas and planned work. Native playback and local relay features still need their own device testing.
+
 ## Run it locally
 
 Use Node.js 24 LTS and npm. PostgreSQL is needed for rooms and accounts; Docker Compose can provide a disposable local database.
@@ -29,7 +36,9 @@ Use Node.js 24 LTS and npm. PostgreSQL is needed for rooms and accounts; Docker 
 These commands are for a fresh clone. Keep any existing environment files if you already have local configuration.
 
 ```bash
-# From the repository root
+git clone https://github.com/Smanikanta21/syncbeats.git
+cd syncbeats
+
 cp .env.example .env
 cp dev/frontend/.env.example dev/frontend/.env
 # Edit .env and replace JWT_SECRET with your own random value.
@@ -63,16 +72,28 @@ The landing-page demo works without provider accounts. Account registration and 
 | `dev/frontend/` | Next.js 16, React 19, Tailwind CSS 4 web client |
 | `dev/syncbeats-server/` | Express, Socket.IO, Prisma and PostgreSQL backend |
 | `dev/db-visualizer/` | Optional database inspection app; keep it on a trusted network |
-| `Syncbeats(apple)/` | Experimental Swift client; see its README for current status |
+| `Syncbeats(apple)/` | Native Swift client in development |
 | `docs/` | Architecture, roadmap, release checks and investigation notes |
 
-Native clients and local relay work are experimental. Browser functionality does not establish native playback readiness.
+## Branches and releases
+
+| Branch | Purpose |
+| --- | --- |
+| `main` | Production web release at [syncbeats.in](https://www.syncbeats.in) |
+| `nodejs-dev` | Web development and staging at [dev.syncbeats.in](https://dev.syncbeats.in) |
+| `macos-dev` | Native Apple client development |
+
+Start web contributions from `nodejs-dev` in your fork and open a focused pull request against that branch. Production changes reach `main` after review and staging checks. Routine Dependabot version-update PRs are paused; dependency upgrades should be proposed and tested deliberately.
 
 ## Help improve SyncBeats
 
 Start with a reproducible bug report, a documentation fix, or an accessibility improvement. The [contribution guide](CONTRIBUTING.md) explains branches, package checks, and multi-device verification. Use the GitHub issue templates for bugs and feature ideas. Maintainers will mark suitable issues `good first issue` or `help wanted` as they are scoped.
 
 Please follow the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately using the [security policy](SECURITY.md).
+
+## Privacy and service terms
+
+The hosted service publishes its [privacy policy](https://www.syncbeats.in/privacy-policy), [terms of service](https://www.syncbeats.in/terms-of-service), and [cookie settings](https://www.syncbeats.in/cookie-settings). Optional usage analytics require opt-in. Mac beta requests are saved only with consent and retained for up to 180 days. Self-hosters are responsible for their own deployment's policies and configuration.
 
 ## License
 
