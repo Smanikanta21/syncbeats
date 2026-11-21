@@ -88,6 +88,19 @@ actor DiscoverySongArtworkResolver {
         self.session = session; self.endpoint = endpoint
     }
 
+    func imageData(for request: DiscoverySongArtworkRequest, images: AlbumArtworkResolver = .shared) async -> Data? {
+        let primary = await coverURL(for: request)
+        if let primary, let data = await images.imageData(at: primary), DiscoveryArtworkDecoder.decode(data) != nil { return data }
+        // Expired or local-only artwork must not prevent an independent catalog match.
+        let fallback = DiscoverySongArtworkRequest(title: request.videoTitle, artist: request.channel,
+            album: .init(title: request.album.title, artist: request.album.artist, suppliedURL: nil, sourceID: request.album.sourceID),
+            thumbnail: request.thumbnail?.absoluteString)
+        if let replacement = await coverURL(for: fallback), replacement != primary,
+           let data = await images.imageData(at: replacement), DiscoveryArtworkDecoder.decode(data) != nil { return data }
+        // The card already retains its source preview if no catalog cover is available.
+        return nil
+    }
+
     func coverURL(for request: DiscoverySongArtworkRequest) async -> URL? {
         if let supplied = request.album.suppliedURL { return supplied }
         guard !request.isCollection, !request.searchTerm.isEmpty else { return nil }
