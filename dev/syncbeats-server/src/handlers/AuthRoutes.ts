@@ -2,6 +2,7 @@
 
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../auth/AuthService';
+import { nativeGoogleRoutes } from '../auth/NativeGoogleSignIn';
 import { requireAuth } from '../auth/authMiddleware';
 import { loginLimiter, registerLimiter, forgotPasswordLimiter, verificationResendLimiter } from '../middleware/rateLimiter';
 import { sendError, isInternalError } from '../utils/errorHandler';
@@ -30,6 +31,7 @@ function getDeviceContext(req: Request): { deviceKey: string | null; userAgent: 
 
 export function createAuthRoutes(): Router {
   const router = Router();
+  router.use('/native/google', nativeGoogleRoutes(authService));
 
   // POST /auth/register — rate limited
   router.post('/register', registerLimiter, async (req: Request, res: Response) => {

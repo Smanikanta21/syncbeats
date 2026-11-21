@@ -4,6 +4,8 @@ struct RoomHomeView: View {
     @Bindable var room: RoomSession
     let palette: NativePalette
     var onOpenPlayer: () -> Void
+    var onSaveSong: ((RoomSearchResult) -> Void)? = nil
+    var savedSongIDs: Set<String> = []
     @State private var genre = DiscoveryGenre.all
     @State private var didSearch = false
     @State private var submittedQuery = ""
@@ -12,11 +14,11 @@ struct RoomHomeView: View {
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-            searchField.padding(.horizontal, 28).padding(.vertical, 18)
+            searchField.padding(.horizontal, geometry.size.width < 600 ? 16 : 28).padding(.vertical, 16)
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     if didSearch { searchResults } else { discoveryFeed(compact: geometry.size.height < 480) }
-                }.padding(.horizontal, 28).padding(.top, 4).padding(.bottom, 28)
+                }.padding(.horizontal, geometry.size.width < 600 ? 16 : 28).padding(.top, 4).padding(.bottom, 28)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -43,7 +45,7 @@ struct RoomHomeView: View {
             Button(room.isSearching ? "Searching…" : "Search", action: runSearch)
                 .font(.system(size: 12, weight: .medium)).buttonStyle(NativeButtonStyle(palette: palette))
                 .disabled(room.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || room.isSearching || !room.canControl)
-        }.padding(14).background(palette.panel, in: RoundedRectangle(cornerRadius: 10))
+        }.padding(12).background(palette.panel, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(searchFocused ? palette.gold : palette.line))
     }
 
@@ -51,7 +53,7 @@ struct RoomHomeView: View {
         VStack(alignment: .leading, spacing: compact ? 16 : 28) {
             VStack(alignment: .leading, spacing: 8) {
                 if !compact { Text("Music discovery").font(.system(size: 12)).foregroundStyle(palette.gold) }
-                Text("For your room").font(.system(size: compact ? 27 : 32, weight: .medium, design: .serif))
+                Text("For your room").font(.system(size: compact ? 28 : 32, weight: .medium, design: .serif))
                 if !compact { Text("Find the next track. Keep everyone listening together.").font(.system(size: 14)).foregroundStyle(palette.secondary) }
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -68,7 +70,7 @@ struct RoomHomeView: View {
             if !compact, let current = room.currentTrack {
                 Button(action: onOpenPlayer) {
                     HStack(spacing: 18) {
-                        RoomArtwork(request: current.artworkRequest, palette: palette).frame(width: 84, height: 84).clipShape(RoundedRectangle(cornerRadius: 8))
+                        DiscoveryArtwork(source: .song(current.discoveryArtworkRequest), palette: palette, radius: 8).frame(width: 84, height: 84)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(room.pendingPlay ? "Preparing playback" : room.isPlaying ? "Playing in your room" : "On the turntable").font(.system(size: 12)).foregroundStyle(palette.gold)
                             Text(current.title).font(.system(size: 19, weight: .medium)).lineLimit(2)
@@ -98,7 +100,7 @@ struct RoomHomeView: View {
                     Text("Played in this room").font(.system(size: 21, weight: .medium, design: .serif))
                     ForEach(room.recentRoomTracks) { track in
                         HStack(spacing: 12) {
-                            RoomArtwork(request: track.artworkRequest, palette: palette).frame(width: 38, height: 38).clipShape(RoundedRectangle(cornerRadius: 6))
+                            DiscoveryArtwork(source: .song(track.discoveryArtworkRequest), palette: palette, radius: 6).frame(width: 38, height: 38)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(track.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                 Text(track.artistLabel).font(.system(size: 11)).foregroundStyle(palette.quiet)
@@ -118,13 +120,14 @@ struct RoomHomeView: View {
     private func musicGrid(_ tracks: [RoomSearchResult], compact: Bool = false) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: compact ? 130 : 150, maximum: compact ? 180 : 250), spacing: 18)], alignment: .leading, spacing: 24) {
             ForEach(tracks) { result in
-                RoomDiscoveryCard(result: result, room: room, palette: palette)
+                RoomDiscoveryCard(result: result, room: room, palette: palette, onSaveSong: onSaveSong,
+                                  saved: YouTubeIdentity.id(in: result.url).map { savedSongIDs.contains($0) } ?? false)
             }
         }
     }
     private func recentRow(_ result: RoomSearchResult) -> some View {
         HStack(spacing: 12) {
-            RoomArtwork(request: result.artworkRequest, palette: palette).frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 6))
+            DiscoveryArtwork(source: .song(result.discoveryArtworkRequest), palette: palette, radius: 6).frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 4) {
                 Text(result.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                 Text(result.uploaderName ?? "YouTube").font(.system(size: 11)).foregroundStyle(palette.quiet).lineLimit(1)
@@ -132,7 +135,7 @@ struct RoomHomeView: View {
             Button { Task { await room.play(result) } } label: { Image(systemName: "play.fill").frame(width: 30, height: 30) }
                 .buttonStyle(NativeButtonStyle(palette: palette)).disabled(!room.canControl || room.addingURLs.contains(result.url))
                 .accessibilityLabel("Play \(result.title) again")
-        }.padding(14).background(palette.panel, in: RoundedRectangle(cornerRadius: 8))
+        }.padding(12).background(palette.panel, in: RoundedRectangle(cornerRadius: 8))
     }
     private var searchResults: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -171,27 +174,34 @@ private struct RoomDiscoveryCard: View {
     let result: RoomSearchResult
     @Bindable var room: RoomSession
     let palette: NativePalette
+    var onSaveSong: ((RoomSearchResult) -> Void)? = nil
+    var saved = false
     private var queued: Bool { room.queuedTrack(for: result) != nil }
     private var adding: Bool { room.addingURLs.contains(result.url) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Button { Task { await room.play(result) } } label: {
-                RoomArtwork(request: result.artworkRequest, palette: palette).aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 9))
+                DiscoveryArtwork(source: .song(result.discoveryArtworkRequest), palette: palette, radius: 8).aspectRatio(1, contentMode: .fit)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "play.fill").font(.system(size: 12)).padding(10)
                             .foregroundStyle(palette.buttonText).background(palette.gold, in: Circle()).padding(10)
                     }
             }.buttonStyle(NativeButtonStyle(palette: palette)).disabled(!room.canControl || adding).accessibilityLabel("Play \(result.title) in the room")
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(result.title).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(height: 34, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.title).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(height: 36, alignment: .topLeading)
                     Text(result.uploaderName ?? "YouTube").font(.system(size: 12)).foregroundStyle(palette.quiet).lineLimit(1)
                     Text(result.duration.map { playbackTime($0) + " · YouTube" } ?? "YouTube").font(.system(size: 10)).foregroundStyle(palette.quiet)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Button { Task { await room.add(result) } } label: {
-                    Image(systemName: adding ? "hourglass" : queued ? "checkmark" : "plus").font(.system(size: 12)).frame(width: 26, height: 28)
+                    Image(systemName: adding ? "hourglass" : queued ? "checkmark" : "plus").font(.system(size: 12)).frame(width: 28, height: 28)
                 }.buttonStyle(NativeButtonStyle(palette: palette)).foregroundStyle(palette.gold).disabled(!room.canControl || queued || adding)
                     .accessibilityLabel(queued ? "Already queued: \(result.title)" : "Add \(result.title) to queue")
+            }
+            if let onSaveSong {
+                Button { onSaveSong(result) } label: { Label(saved ? "Saved" : "Save to Library", systemImage: saved ? "bookmark.fill" : "bookmark") }
+                    .font(.system(size: 12)).foregroundStyle(palette.secondary).buttonStyle(NativeButtonStyle(palette: palette))
+                    .disabled(saved).accessibilityLabel(saved ? "Saved in Library: \(result.title)" : "Save \(result.title) to Library")
             }
         }
     }

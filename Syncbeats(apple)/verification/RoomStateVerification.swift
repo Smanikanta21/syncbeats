@@ -59,9 +59,27 @@ struct RoomStateVerification {
 
         let notch = NotchGeometry.preview
         check(notch.cameraWidth == 192, "Camera gap derived from unobscured screen areas")
-        check(notch.closedWidth == 236 && notch.closedHeight == 34, "Resting island hugs camera with a small clickable lip")
+        check(notch.closedWidth == 332 && notch.closedHeight == 32, "Resting island hugs the hardware height with roomier camera-safe content wings")
+        check(notch.closedWidth == notch.cameraWidth + NotchGeometry.cameraClearance * 2 + NotchGeometry.sideWingWidth * 2,
+              "Artwork and bars occupy separate wings outside the camera clearance")
+        for safeTop in [28.0, 32.0, 38.0] {
+            let fitted = NotchGeometry(frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                       visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 982 - safeTop), safeTop: safeTop,
+                                       leftArea: CGRect(x: 0, y: 982 - safeTop, width: 660, height: safeTop),
+                                       rightArea: CGRect(x: 852, y: 982 - safeTop, width: 660, height: safeTop))
+            let size = fitted.compactArtworkSize
+            let artwork = CGRect(x: (NotchGeometry.sideWingWidth - size) / 2,
+                                 y: (fitted.closedHeight - size) / 2, width: size, height: size)
+            let outline = IslandShape(attached: true, expansion: 0).path(in: CGRect(x: 0, y: 0, width: fitted.closedWidth, height: fitted.closedHeight))
+            let corners = [CGPoint(x: artwork.minX, y: artwork.minY), CGPoint(x: artwork.maxX, y: artwork.minY),
+                           CGPoint(x: artwork.minX, y: artwork.maxY), CGPoint(x: artwork.maxX, y: artwork.maxY)]
+            check(corners.allSatisfy { outline.contains($0) } && artwork.minY >= 4,
+                  "Album cover clears both island curves with vertical padding at camera height \(safeTop)")
+            check(NotchGeometry.sideWingWidth + NotchGeometry.cameraClearance - artwork.maxX >= 20,
+                  "Album cover has breathing room before the hardware camera at height \(safeTop)")
+        }
         let hovered = notch.panelFrame(expansion: 0, hover: 1)
-        check(abs(hovered.width / notch.closedWidth - 1.025) < 0.0001 && abs(hovered.height / notch.closedHeight - 1.025) < 0.0001, "Hover scales the same cap by only 2.5 percent in both dimensions")
+        check(abs(hovered.width / notch.closedWidth - 1.025) < 0.0001 && abs(hovered.height - (notch.closedHeight * 1.025 + 2)) < 0.0001, "Hover zooms sideways and reveals a small lip below the camera")
         check(hovered.maxY == notch.panelFrame(expanded: false).maxY && hovered.midX == notch.centerX, "Hover grows symmetrically below the menu bar")
         check(notch.panelFrame(expanded: false).maxY == notch.panelFrame(expanded: true).maxY, "Expansion stays anchored to screen top")
         let external = NotchGeometry(frame: CGRect(x: -1920, y: 0, width: 1920, height: 1080),
@@ -77,14 +95,23 @@ struct RoomStateVerification {
         check(opening.value > 0 && opening.value < 0.2, "Opening starts progressively rather than jumping")
         let startingValue = opening.value
         let startingVelocity = opening.velocity
+        let halfway = notch.panelFrame(expansion: 0.5, contentHeight: 256)
+        check(abs((halfway.width - notch.closedWidth) / (notch.expandedWidth - notch.closedWidth) - 0.5) < 0.0001,
+              "Opening grows sideways in step with its downward expansion")
+        check(halfway.midX == notch.centerX && halfway.maxY == notch.topY && halfway.height > notch.closedHeight,
+              "Opening grows down and out while remaining attached to the camera")
         opening.move(to: 0)
         check(opening.value == startingValue && opening.velocity == startingVelocity, "Mid-animation reversal preserves position and velocity")
         for _ in 0..<240 { opening.advance(by: 1.0 / 120) }
         check(opening.isSettled && opening.value == 0, "Interrupted opening settles fully closed")
         opening.move(to: 1)
-        var peak: Double = 0
-        for _ in 0..<240 { opening.advance(by: 1.0 / 120); peak = max(peak, opening.value) }
-        check(opening.isSettled && opening.value == 1 && peak <= 1.025, "Opening spring settles with bounded overshoot")
+        var peak: Double = 0, peakTime: Double = 0
+        for frame in 0..<240 {
+            opening.advance(by: 1.0 / 120)
+            if opening.value > peak { peak = opening.value; peakTime = Double(frame + 1) / 120 }
+        }
+        check((0.25...0.32).contains(peakTime), "Opening bounce peaks near the reference recording's 0.3-second mark")
+        check(opening.isSettled && opening.value == 1 && peak > 1.06 && peak <= NotchGeometry.maximumExpansion, "Opening spring matches the recorded bounce and settles with bounded overshoot")
         opening.move(to: 0)
         var previous = opening.value
         var closesMonotonically = true
@@ -96,11 +123,32 @@ struct RoomStateVerification {
         check(closesMonotonically && opening.isSettled, "Closing eases into the hardware notch without undershoot")
         opening.move(to: 1, immediately: true)
         check(opening.isSettled && opening.value == 1, "Reduced-motion mode immediately reaches the target")
+        var hoverMotion = NotchMotion(openingDamping: 1, openingFrequency: 21, closingFrequency: 26)
+        hoverMotion.move(to: 1)
+        var hoverPrevious = 0.0
+        var hoversMonotonically = true
+        for _ in 0..<120 {
+            hoverMotion.advance(by: 1.0 / 120)
+            hoversMonotonically = hoversMonotonically && hoverMotion.value >= hoverPrevious && hoverMotion.value <= 1
+            hoverPrevious = hoverMotion.value
+        }
+        check(hoversMonotonically && hoverMotion.isSettled, "Hover approaches its tiny zoom smoothly without bounce or overshoot")
         for progress in [0.0, 0.25, 0.5, 0.75, 1.0, 1.01] {
             let frame = notch.panelFrame(expansion: progress)
             check(abs(frame.midX - notch.centerX) < 0.001 && abs(frame.maxY - notch.topY) < 0.001,
                   "Animation keeps the notch anchored at progress \(progress)")
         }
+        let presentation = FullScreenPlayerController.playerPresentationOptions(from: [.autoHideMenuBar, .autoHideDock])
+        check(presentation.contains(.hideMenuBar) && presentation.contains(.hideDock)
+              && !presentation.contains(.autoHideMenuBar) && !presentation.contains(.autoHideDock),
+              "Full-screen player hides system bars instead of revealing them on notch hover")
+        let coveringWindow = FullScreenPlayerWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+        for display in [CGRect(x: 0, y: 0, width: 1800, height: 1169), CGRect(x: -1920, y: 0, width: 1920, height: 1080)] {
+            check(coveringWindow.constrainFrameRect(display, to: nil) == display,
+                  "Player window covers the physical display without a menu-bar gap at origin \(display.origin)")
+        }
+        check(coveringWindow.canBecomeKey && coveringWindow.canBecomeMain,
+              "Borderless full-screen player receives keyboard focus for Escape and transport")
         let rect = CGRect(x: 0, y: 0, width: 304, height: 32)
         let shape = IslandShape(attached: true, expansion: 0).path(in: rect)
         check(shape.contains(CGPoint(x: 8, y: 1)) && !shape.contains(CGPoint(x: 8, y: 12)), "Top-left shoulder flares outward into the screen edge")
@@ -110,6 +158,17 @@ struct RoomStateVerification {
         let floating = FloatingPlayerController()
         var closeCount = 0
         floating.show(room: room, palette: NativePalette(light: false), onExpand: { _ in }, onClose: { closeCount += 1 })
+        let player = FullScreenPlayerController()
+        let originalPresentation = NSApp.presentationOptions
+        player.show(room: room)
+        let playerWindow = NSApp.windows.first { $0.identifier?.rawValue == "syncbeats.full-screen-player" && $0.isVisible }
+        check(playerWindow != nil && playerWindow?.frame == playerWindow?.screen?.frame,
+              "Opened full-screen player fills its screen frame including the top menu strip")
+        check(playerWindow?.styleMask == .borderless && playerWindow?.hasShadow == false,
+              "Full-screen player has no title bar or desktop frame around the content")
+        player.close()
+        check(playerWindow?.isVisible == false && NSApp.presentationOptions == originalPresentation,
+              "Closing full-screen player restores the previous system-bar presentation")
         let firstPanel = NSApp.windows.first { $0.title == "SyncBeats player" && $0.isVisible }
         check(firstPanel != nil && firstPanel!.level == .floating, "Floating player stays above ordinary windows")
         check(!(firstPanel as? NSPanel)!.hidesOnDeactivate, "Floating player remains visible outside the app")

@@ -44,7 +44,18 @@ assumptions:
     verification: On 2026-11-19, 21 native home API checks and 19 artwork checks passed. Simulation request records confirmed catalog/feed, profile writes, feedback, search/history, enqueue and reorder calls. A separate live localhost backend check returned 200 for catalog and feed after the pending recommendation migration was applied. Xcode debugger attachment and full UI interaction were not exercised.
     source: NativeHomeVerification.swift; ../Syncbeats/Syncbeats/Infrastructure/NativeDiagnostics.swift; /tmp/syncbeats-diagnostics-native-checks.log; /tmp/syncbeats-diagnostics-simulation.ndjson
     updated_at: "2026-11-19"
+  - id: native-home-account-library-push-review
+    status: supported
+    claim: The native home API and album resolver retain request serialization, error handling, identity matching and caching in the exercised local scenarios after the account and library changes.
+    reason: The real Swift URLSession callers completed the existing home and artwork checks against the repository fixture, with matching simulation request records.
+    verification: On 2026-11-21, 21 native home API checks and 19 album artwork checks passed. The fixture exercised search, history, discovery, music profile, feedback, queue writes, cover lookup and failure responses. No live Google account, Apple catalog, YouTube extraction or production recommendation availability was verified by this simulation.
+    source: NativeHomeVerification.swift; AlbumArtworkVerification.swift; postman/mocks/native-room/default.js; ../Syncbeats/Syncbeats/Features/Room/RoomHomeAPI.swift; ../Syncbeats/Syncbeats/Features/Room/AlbumArtworkResolver.swift; /tmp/syncbeats-push-native-home.log; /tmp/syncbeats-push-home-sim.ndjson
+    updated_at: "2026-11-21"
 fingerprints:
+  - id: native-home-20261121-push-review
+    date: "2026-11-21"
+    commit: 1708b075 plus staged macos-dev app changes
+    cli: "1.80.0"
   - id: native-home-macos-push-review
     date: "2026-11-19"
     commit: 4dc9a09c plus the staged native rebuild

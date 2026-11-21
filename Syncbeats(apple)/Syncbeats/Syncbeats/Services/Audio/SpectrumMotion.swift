@@ -1,6 +1,14 @@
 import Foundation
 
 nonisolated struct SpectrumMotion {
+    /// Fold the real FFT bands into five readable compact-player bars.
+    static func compactBands(_ spectrum: [Double]) -> [Double] {
+        (0..<5).map { bar in
+            let start = bar * spectrum.count / 5
+            let end = (bar + 1) * spectrum.count / 5
+            return spectrum[start..<end].filter(\.isFinite).map { min(1, max(0, $0)) }.max() ?? 0
+        }
+    }
     private(set) var bands = [Double](repeating: 0, count: AudioSpectrumAnalyzer.bandCount)
     private var lastTime: Double?
     mutating func update(target: [Double], time: Double, playing: Bool) {

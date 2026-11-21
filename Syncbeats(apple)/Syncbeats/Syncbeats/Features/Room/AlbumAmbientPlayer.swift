@@ -140,30 +140,96 @@ struct AlbumAmbientBackground: View {
 }
 
 #if os(macOS)
+/// Cover the physical display, including the menu-bar strip on a notched Mac.
+/// AppKit normally constrains borderless windows to the desktop's visible frame.
+@MainActor final class FullScreenPlayerWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 @MainActor final class FullScreenPlayerController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private var savedPresentationOptions: NSApplication.PresentationOptions?
+    private var observers: [NSObjectProtocol] = []
+
     func show(room: RoomSession) {
         if let window { window.makeKeyAndOrderFront(nil); return }
-        let frame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
-        let window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "SyncBeats full-screen player"; window.isReleasedWhenClosed = false
-        window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
-        window.collectionBehavior = [.fullScreenPrimary]; window.delegate = self
-        window.styleMask.insert(.fullSizeContentView)
-        window.toolbar = nil
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
-        window.contentView = NSHostingView(rootView: FullScreenRoomPlayer(room: room, onClose: { [weak self] in self?.close() }))
-        window.appearance = NSAppearance(named: .darkAqua)
-        self.window = window; window.makeKeyAndOrderFront(nil); window.toggleFullScreen(nil)
+        let screen = NSApp.keyWindow?.screen ?? NSScreen.main
+        let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
+        let window = FullScreenPlayerWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.title = "SyncBeats full-screen player"
+        window.identifier = NSUserInterfaceItemIdentifier("syncbeats.full-screen-player")
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = .black
+        window.hasShadow = false
+        window.collectionBehavior = [.managed, .fullScreenAuxiliary]
+        window.delegate = self
+        let host = NSHostingView(rootView: FullScreenRoomPlayer(room: room, onClose: { [weak self] in self?.close() },
+                                                              cameraTopInset: screen?.safeAreaInsets.top ?? 0)
+            .ignoresSafeArea(.container, edges: .all))
+        window.contentView = host
+        window.setFrame(frame, display: false)
+        self.window = window
+        observePresentation()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        applyPresentation()
     }
-    func close() { window?.close(); window = nil }
-    func windowDidEnterFullScreen(_ notification: Notification) {
-        window?.standardWindowButton(.closeButton)?.isHidden = true
-        window?.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window?.standardWindowButton(.zoomButton)?.isHidden = true
+
+    private func observePresentation() {
+        let center = NotificationCenter.default
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
+                     NSWindow.didBecomeKeyNotification, NSApplication.didChangeScreenParametersNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if notification.name == NSApplication.didChangeScreenParametersNotification,
+                       let window = self.window, let screen = window.screen ?? NSScreen.main {
+                        window.setFrame(screen.frame, display: true)
+                    }
+                    self.applyPresentation()
+                }
+            })
+        }
     }
-    func windowWillClose(_ notification: Notification) { window = nil }
+
+    private func applyPresentation() {
+        guard let window, window.isVisible, NSApp.isActive,
+              NSApp.keyWindow === window || NSApp.keyWindow is IslandPanel else {
+            restorePresentation()
+            return
+        }
+        if savedPresentationOptions == nil { savedPresentationOptions = NSApp.presentationOptions }
+        NSApp.presentationOptions = Self.playerPresentationOptions(from: NSApp.presentationOptions)
+    }
+
+    static func playerPresentationOptions(from baseline: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
+        var options = baseline
+        options.subtract([.autoHideMenuBar, .autoHideDock])
+        options.formUnion([.hideMenuBar, .hideDock])
+        return options
+    }
+
+    private func restorePresentation() {
+        if let savedPresentationOptions {
+            NSApp.presentationOptions = savedPresentationOptions
+            self.savedPresentationOptions = nil
+        }
+    }
+
+    func close() {
+        window?.orderOut(nil)
+        window?.close()
+        finishClosing()
+    }
+    func windowWillClose(_ notification: Notification) { finishClosing() }
+    private func finishClosing() {
+        window = nil
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers.removeAll()
+        restorePresentation()
+    }
 }
+
 #endif

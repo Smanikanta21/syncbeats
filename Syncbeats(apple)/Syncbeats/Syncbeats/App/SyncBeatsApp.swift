@@ -7,7 +7,7 @@ struct SyncBeatsApp: App {
     var body: some Scene {
         #if os(macOS)
         Window("SyncBeats", id: "main") {
-            NativeEntryView(model: model, room: room).frame(minWidth: 720, minHeight: 560)
+            NativeEntryView(model: model, room: room).frame(minWidth: 520, minHeight: 420)
                 .background { NotchLifecycle(model: model, room: room) }
         }
         .defaultSize(width: 960, height: 720)
@@ -46,7 +46,7 @@ struct NativeEntryView: View {
                 case .signedIn:
                     NativeMusicOnboardingGate(room: room, palette: palette, content: {
                         RoomWorkspaceView(model: model, room: room, palette: palette)
-                    }, entryError: model.errorMessage).id(model.account?.id)
+                    }, entryError: model.errorMessage, allowsAccountNavigation: model.accountPage != nil || model.workspaceSection != .home).id(model.account?.id)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -67,24 +67,32 @@ struct NativeEntryView: View {
             Text("SyncBeats").font(.system(size: 12, weight: .medium))
             Spacer()
             Text(model.phase == .signedIn ? "Your listening room" : "Welcome to SyncBeats")
-                .font(.system(size: 10)).tracking(0.5).foregroundStyle(palette.quiet)
+                .font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
             Spacer()
-            HStack(spacing: 2) {
-                ForEach(["dark", "light"], id: \.self) { choice in
-                    Button { model.appearance = choice } label: {
-                        Text(choice.capitalized).font(.system(size: 10))
-                            .foregroundStyle(model.appearance == choice ? palette.gold : palette.secondary)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(model.appearance == choice ? palette.gold.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel(choice.capitalized + " appearance")
-                        .accessibilityAddTraits(model.appearance == choice ? .isSelected : [])
-                }
-            }.padding(2).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(palette.line))
+            if model.phase == .signedIn {
+                Button("Library") { model.accountPage = nil; model.workspaceSection = .songs }
+                    .font(.system(size: 12, weight: .medium)).buttonStyle(NativeButtonStyle(palette: palette))
+                    .foregroundStyle(model.workspaceSection == .home ? palette.secondary : palette.gold)
+                    .accessibilityIdentifier("open-library")
+                AccountMenu(model: model, room: room, palette: palette)
+            } else {
+                HStack(spacing: 2) {
+                    ForEach(["dark", "light"], id: \.self) { choice in
+                        Button { model.appearance = choice } label: {
+                            Text(choice.capitalized).font(.system(size: 10))
+                                .foregroundStyle(model.appearance == choice ? palette.gold : palette.secondary)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(model.appearance == choice ? palette.gold.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(choice.capitalized + " appearance")
+                            .accessibilityAddTraits(model.appearance == choice ? .isSelected : [])
+                    }
+                }.padding(2).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(palette.line))
+            }
         }
-        .padding(.trailing, 21).padding(.vertical, 11)
+        .padding(.trailing, 28).padding(.vertical, 12)
         #if os(macOS)
-        .padding(.leading, 24)
+        .padding(.leading, 28)
         #else
         .padding(.leading, 20)
         #endif

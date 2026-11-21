@@ -1,3 +1,4 @@
+import { currentBrowserDevice } from "./browserDevice";
 import type { RoomSnapshot, Participant, TrackQueueItem } from './types';
 export type { Participant, TrackQueueItem } from './types';
 
@@ -104,7 +105,7 @@ function notifyServerError(message: string) {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   auth = false,
@@ -116,6 +117,7 @@ async function request<T>(
   };
   const deviceId = getDeviceId();
   if (deviceId) headers['X-Device-Id'] = deviceId;
+  if (currentBrowserDevice().name === 'iPad') headers['x-client-device'] = 'ipad';
   if (auth) {
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -525,4 +527,37 @@ export const historyApi = {
 
   getRecent: (userId: string) =>
     request<{ listens: any[]; searches: any[] }>(`/history/recent?userId=${encodeURIComponent(userId)}`, {}, true),
+};
+
+
+export interface AccountPlaylistTrack {
+  id: string;
+  title: string;
+  artist?: string | null;
+  youtubeId?: string | null;
+  thumbnail?: string | null;
+}
+
+export interface AccountPlaylist {
+  id: string;
+  name: string;
+  tracks: AccountPlaylistTrack[];
+}
+
+export interface AccountCatalogSong {
+  id: string; title: string; artist: string; album?: string | null; artwork?: string | null;
+  thumbnail?: string | null; duration?: number | null; youtubeID?: string | null; source: string; sourceSongID?: string | null;
+}
+export interface AccountCatalogPage { songs: AccountCatalogSong[]; nextCursor: string | null; total: number }
+
+export const accountLibraryApi = {
+  getPlaylists: () => request<{ playlists: AccountPlaylist[] }>('/api/playlists', {}, true),
+  getSongs: (query = '', cursor: string | null = null) => {
+    const params = new URLSearchParams({ view: 'songs', limit: '60', q: query });
+    if (cursor) params.set('cursor', cursor);
+    return request<AccountCatalogPage>(`/api/playlists/catalog?${params}`, {}, true);
+  },
+  resolveSong: (song: AccountCatalogSong) => request<{ youtubeId: string; thumbnail?: string }>('/api/bridge/resolve', {
+    method: 'POST', body: JSON.stringify({ title: song.title, artist: song.artist, songId: song.sourceSongID || undefined }),
+  }, true),
 };

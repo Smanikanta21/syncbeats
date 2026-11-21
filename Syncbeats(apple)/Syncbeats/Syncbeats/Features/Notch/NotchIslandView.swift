@@ -8,22 +8,31 @@ struct NotchIslandView: View {
     private let palette = NativePalette(light: false)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var reveal: Double { min(1, max(0, (controller.expansion - 0.18) / 0.72)) }
-    private var capHeight: CGFloat { controller.geometry.closedHeight + (controller.geometry.hoveredHeight - controller.geometry.closedHeight) * CGFloat(controller.hoverExpansion) * CGFloat(1 - min(1, controller.expansion)) }
-    private var capScale: CGFloat { 1 + (NotchGeometry.hoverScale - 1) * CGFloat(controller.hoverExpansion) * CGFloat(1 - min(1, controller.expansion)) }
-    private var capBaseWidth: CGFloat { controller.geometry.closedWidth + (controller.geometry.expandedWidth - controller.geometry.closedWidth) * CGFloat(min(1, controller.expansion)) }
+    private var compactReveal: Double { 1 - min(1, max(0, controller.expansion / 0.22)) }
     private var shape: IslandShape { IslandShape(attached: controller.geometry.hasCameraCutout, expansion: controller.expansion) }
 
     var body: some View {
-        let size = controller.geometry.panelFrame(expansion: controller.expansion).size
+        // Lay out at rest, then zoom the outline and content together around the
+        // top center. The native viewport stays fixed throughout hover.
+        let size = controller.restingFrame.size
+        let scale = controller.presentationScale
+        let presentationSize = controller.presentationFrame.size
         ZStack(alignment: .top) {
             shape.fill(.black)
             VStack(spacing: 0) {
+                // Keep the camera spacer, but let the expanded header replace
+                // the compact artwork/indicator instead of showing both rows.
                 cap.frame(width: size.width)
+                    .opacity(compactReveal)
+                    .allowsHitTesting(!controller.expanded && compactReveal > 0.95)
+                    .accessibilityHidden(controller.expanded || compactReveal < 0.95)
                 // Keep the open layout stable while its silhouette grows around it.
                 // Content remains mounted for the entire closing animation as well.
                 expandedContent
-                    .frame(width: controller.geometry.expandedWidth - 80)
-                    .padding(.top, 12).padding(.bottom, 20)
+                    .frame(width: controller.geometry.expandedWidth - NotchGeometry.contentSideInset * 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }, action: controller.updateContentHeight)
+                    .padding(.top, NotchGeometry.contentTopInset).padding(.bottom, NotchGeometry.contentBottomInset)
                     .opacity(reveal)
                     .offset(y: reduceMotion ? 0 : -8 * (1 - reveal))
                     .scaleEffect(reduceMotion ? 1 : 0.97 + reveal * 0.03, anchor: .top)
@@ -31,14 +40,22 @@ struct NotchIslandView: View {
                     .accessibilityHidden(!controller.expanded || reveal < 0.95)
             }.frame(width: size.width)
         }
-        .frame(width: size.width, height: size.height, alignment: .top)
-        .overlay(alignment: .bottom) {
-            Capsule().fill(palette.secondary.opacity(0.35)).frame(width: 32, height: 4).padding(.bottom, 8).opacity(reveal)
+        .frame(width: size.width, height: presentationSize.height / scale, alignment: .top)
+        .overlay(alignment: .top) {
+            Capsule().fill(palette.secondary.opacity(0.35)).frame(width: 32, height: 4)
+                .offset(y: controller.geometry.closedHeight + NotchGeometry.contentTopInset + controller.expandedContentHeight + 12)
+                .opacity(reveal)
         }
         .clipShape(shape)
         .contentShape(shape)
         .foregroundStyle(palette.text)
         .preferredColorScheme(.dark)
+        .shadow(color: .black.opacity(0.16), radius: 5, x: 0, y: 3)
+        .scaleEffect(scale, anchor: .top)
+        .frame(width: presentationSize.width, height: presentationSize.height, alignment: .top)
+        .padding(.horizontal, NotchGeometry.shadowInset)
+        .padding(.bottom, NotchGeometry.shadowBottomInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea(.container, edges: .all)
         .onHover(perform: controller.hover)
         .onExitCommand(perform: controller.collapse)
@@ -50,35 +67,48 @@ struct NotchIslandView: View {
         .accessibilityLabel("SyncBeats notch player")
     }
 
-    /// One full-width button includes the visible lip below the camera. Artwork and
-    /// the music indicator stay in the wings; the hardware camera region is empty.
+    /// The camera/artwork opens the island; the right wing controls playback.
     private var cap: some View {
-        Button(action: controller.toggleFromClick) {
-            HStack(spacing: 0) {
+        HStack(spacing: 0) {
+            Button(action: controller.toggleFromClick) {
                 RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette)
-                    .frame(width: 16, height: 16).frame(maxWidth: .infinity)
-                if controller.geometry.hasCameraCutout {
-                    Color.clear.frame(width: controller.geometry.cameraWidth)
+                    .frame(width: controller.geometry.compactArtworkSize,
+                           height: controller.geometry.compactArtworkSize)
+                    .frame(width: NotchGeometry.sideWingWidth, height: controller.geometry.closedHeight)
+                    .contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Open notch player")
+            Button(action: controller.toggleFromClick) {
+                Color.clear
+                    .frame(width: controller.geometry.cameraWidth + NotchGeometry.cameraClearance * 2,
+                           height: controller.geometry.closedHeight)
+                    .contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Open notch player")
+            Button(action: controller.togglePlayback) {
+                ZStack {
+                    AudioSpectrumView(audio: room.audio, compact: true)
+                        .frame(width: 24, height: 18)
+                        .opacity(room.isPlaying && !controller.pointerInside ? 1 : 0)
+                    Image(systemName: room.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .opacity(!room.isPlaying || controller.pointerInside ? 1 : 0)
                 }
-                Image(systemName: room.isPlaying ? "waveform" : "music.note")
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(palette.gold)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, controller.geometry.hasCameraCutout ? 3 : 12)
-            .frame(width: capBaseWidth, height: controller.geometry.closedHeight)
-            .scaleEffect(capScale, anchor: .top)
-            .frame(maxWidth: .infinity)
-            .frame(height: capHeight, alignment: .top)
-            .contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .accessibilityLabel(controller.expanded ? "Close SyncBeats notch player" : "Open SyncBeats notch player")
-            .help(controller.expanded ? "Click to close" : "Click to open")
+                .foregroundStyle(palette.gold)
+                .frame(width: NotchGeometry.sideWingWidth, height: controller.geometry.closedHeight)
+                .contentShape(Rectangle())
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: controller.pointerInside)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: room.isPlaying)
+            }.buttonStyle(.plain).disabled(room.currentTrack == nil)
+                .accessibilityLabel(room.isPlaying ? "Pause" : "Play")
+        }
+        .frame(width: controller.geometry.closedWidth, height: controller.geometry.closedHeight)
+        .frame(maxWidth: .infinity)
+        .frame(height: controller.geometry.closedHeight, alignment: .top)
     }
 
     private var expandedContent: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette).frame(width: 52, height: 52)
+                RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette).frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(room.currentTrack?.title ?? "Your listening room")
                         .font(.system(size: 14, weight: .medium)).lineLimit(1)

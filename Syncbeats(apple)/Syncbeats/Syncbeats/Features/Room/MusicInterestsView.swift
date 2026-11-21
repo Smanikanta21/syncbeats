@@ -6,13 +6,14 @@ struct NativeMusicOnboardingGate<Content: View>: View {
     let palette: NativePalette
     @ViewBuilder var content: () -> Content
     var entryError: String? = nil
+    var allowsAccountNavigation = false
     @State private var bypassed = false
     private var needsSetup: Bool { room.musicFeed?.profile.onboardingStatus == "NEW" && !bypassed }
     private var checking: Bool { room.musicFeed == nil && !bypassed }
 
     var body: some View {
         Group {
-            if checking || needsSetup {
+            if (checking || needsSetup) && !allowsAccountNavigation {
                 VStack(spacing: 20) {
                     Text("SyncBeats").font(.system(size: 28, weight: .medium, design: .serif))
                     if let error = room.musicInterestsError ?? entryError, checking {
@@ -32,7 +33,7 @@ struct NativeMusicOnboardingGate<Content: View>: View {
             guard let roomID = room.roomID, !roomID.isEmpty, room.musicFeed == nil else { return }
             await room.loadMusicInterests()
         }
-        .sheet(isPresented: Binding(get: { needsSetup && room.musicCatalog != nil }, set: { _ in })) {
+        .sheet(isPresented: Binding(get: { needsSetup && room.musicCatalog != nil && !allowsAccountNavigation }, set: { _ in })) {
             MusicInterestsModal(room: room, palette: palette).interactiveDismissDisabled()
         }
     }
@@ -86,11 +87,10 @@ struct MusicInterestsView: View {
                 onSearch(pick.query)
             } label: {
                 HStack(spacing: 12) {
-                    Text(pick.name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-                        .font(.system(size: 15, weight: .medium)).frame(width: 44, height: 44).background(palette.raised, in: RoundedRectangle(cornerRadius: 8))
+                    DiscoveryArtwork(source: .artist(pick.name), palette: palette, radius: 8).frame(width: 56, height: 56)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(pick.name).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                        Text(pick.reason).font(.system(size: 11)).foregroundStyle(palette.secondary).lineLimit(2)
+                        Text(pick.name).font(.system(size: 14, weight: .medium)).lineLimit(2)
+                        Text(pick.reason).font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(2)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "arrow.up.right").font(.system(size: 12)).foregroundStyle(palette.quiet)
                 }
@@ -143,14 +143,16 @@ struct MusicInterestsModal: View {
                 HStack(spacing: 8) {
                     ForEach(stages.indices, id: \.self) { index in
                         Button { inputError = nil; stage = index } label: {
-                            HStack(spacing: 8) {
-                                Text("\(index + 1)").monospacedDigit().foregroundStyle(stage == index ? palette.gold : palette.quiet)
-                                Text(stages[index]).foregroundStyle(stage == index ? palette.text : palette.secondary)
-                            }.font(.system(size: 12)).padding(.vertical, 8).padding(.horizontal, 12)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) {
+                                    Text("\(index + 1)").monospacedDigit().foregroundStyle(stage == index ? palette.gold : palette.quiet)
+                                    Text(stages[index]).foregroundStyle(stage == index ? palette.text : palette.secondary)
+                                }.fixedSize()
+                                Text("\(index + 1)").monospacedDigit().foregroundStyle(stage == index ? palette.gold : palette.secondary)
+                            }.font(.system(size: 12)).padding(.vertical, 8).padding(.horizontal, 12).frame(maxWidth: .infinity)
                                 .background(stage == index ? palette.raised : .clear, in: RoundedRectangle(cornerRadius: 8))
-                        }.buttonStyle(.plain).accessibilityAddTraits(stage == index ? .isSelected : [])
+                        }.buttonStyle(.plain).accessibilityLabel(stages[index]).accessibilityAddTraits(stage == index ? .isSelected : [])
                     }
-                    Spacer()
                 }
             }.padding(24)
             Rectangle().fill(palette.line).frame(height: 1)
@@ -175,7 +177,7 @@ struct MusicInterestsModal: View {
         .disabled(room.isSavingMusicInterests).buttonStyle(NativeButtonStyle(palette: palette))
         .foregroundStyle(palette.text).background(palette.background).tint(palette.gold)
         #if os(macOS)
-        .frame(width: 640, height: 500)
+        .frame(minWidth: 300, idealWidth: 640, maxWidth: 640, minHeight: 340, idealHeight: 500, maxHeight: 640)
         #else
         .presentationDetents([.large])
         #endif

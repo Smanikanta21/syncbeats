@@ -118,23 +118,18 @@ struct NativeAuthVerification {
         let googleResponse = try await api.google(credential: "fixture-google-token")
         try check(googleResponse.user.email == "google@example.test", "Google token exchanges using backend contract")
 
-        let state = "verification-state", nonce = "verification-nonce"
-        let query = URLComponents(url: GoogleSignIn.authorizationURL(clientID: "fixture-client", state: state, nonce: nonce), resolvingAgainstBaseURL: false)!.queryItems!
-        try check(query.contains(URLQueryItem(name: "state", value: state)) && query.contains(URLQueryItem(name: "nonce", value: nonce)),
-                  "Google authorization binds state and nonce")
-        let payload = try JSONSerialization.data(withJSONObject: ["nonce": nonce]).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        let credential = "header." + payload + ".signature"
-        let callback = URL(string: "https://syncbeats.in/#state=\(state)&id_token=\(credential)")!
-        try check(try GoogleSignIn.credential(from: callback, state: state, nonce: nonce) == credential, "valid Google callback returns credential")
-        for (url, expectedState, expectedNonce) in [(callback, "wrong", nonce), (callback, state, "wrong"),
-            (URL(string: "https://other.example/#state=\(state)&id_token=\(credential)")!, state, nonce)] {
+        let state = try GoogleSignIn.randomToken(), nonce = try GoogleSignIn.randomToken(), verifier = try GoogleSignIn.randomToken()
+        let challenge = GoogleSignIn.challenge(for: verifier)
+        let query = URLComponents(url: GoogleSignIn.authorizationURL(state: state, nonce: nonce, challenge: challenge), resolvingAgainstBaseURL: false)!.queryItems!
+        try check(query.first { $0.name == "state" }?.value == state && query.first { $0.name == "code_challenge" }?.value == challenge, "Google browser request binds state and private PKCE verifier")
+        let code = String(repeating: "a", count: 43)
+        let callback = URL(string: "syncbeats://google/callback?state=\(state)&code=\(code)")!
+        try check(try GoogleSignIn.code(from: callback, state: state) == code, "valid custom callback returns only an exchange code")
+        for url in [URL(string: "syncbeats://google/callback?state=wrong&code=\(code)")!, URL(string: "https://other.example/?state=\(state)&code=\(code)")!, URL(string: "syncbeats://google/callback?state=\(state)&state=\(state)&code=\(code)")!] {
             var rejected = false
-            do { _ = try GoogleSignIn.credential(from: url, state: expectedState, nonce: expectedNonce) }
-            catch { rejected = true }
-            try check(rejected, "Google callback rejects mismatched origin/state/nonce")
+            do { _ = try GoogleSignIn.code(from: url, state: state) } catch { rejected = true }
+            try check(rejected, "invalid Google callback rejected")
         }
-
         let keychain = KeychainSessionStore(service: suite)
         defer { try? keychain.clear() }
         try keychain.save("fictional-keychain-token")

@@ -1,4 +1,5 @@
 import React from "react";
+import { HighlightedText } from "./HighlightedText";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TrackQueueItem } from "../lib/types";
@@ -62,6 +63,7 @@ export function ytThumb(trackUrl: string | null | undefined) {
 }
 
 export interface TrackItemRowProps {
+  searchQuery?: string;
   item: TrackQueueItem;
   idx: number;
   isCurrent: boolean;
@@ -84,7 +86,7 @@ export interface TrackItemRowProps {
 }
 
 export function TrackItemRow({
-  item, idx, isCurrent, isPlaying, isHovered, isHost,
+  searchQuery, item, idx, isCurrent, isPlaying, isHovered, isHost,
   onHoverStart, onHoverEnd, onTrackSelect, onAddTrack, onRemoveTrack, disableDrag, isHistory, isNew,
   isDragging, isJumping, style, dragHandleProps, setNodeRef
 }: TrackItemRowProps) {
@@ -196,11 +198,11 @@ export function TrackItemRow({
       {/* Title + Added by */}
       <div className="flex-1 min-w-0 pointer-events-none">
         <div className={`text-sm font-semibold truncate ${isCurrent ? "text-foreground dark:text-foreground" : "text-foreground/80"}`}>
-          {cleanTitle(item.title)}
+          <HighlightedText text={cleanTitle(item.title)} query={searchQuery} />
         </div>
         {item.artist && (
           <div className="text-[11px] text-foreground/50 truncate mt-[1px]">
-            {item.artist}
+            <HighlightedText text={item.artist} query={searchQuery} />
           </div>
         )}
         {item.addedByName && (

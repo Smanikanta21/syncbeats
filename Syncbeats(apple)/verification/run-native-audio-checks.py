@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run against native-audio.sim.yaml. Renders a quiet synthetic test tone."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 root = Path(__file__).resolve().parents[1]
@@ -11,4 +12,4 @@ binary = '/tmp/syncbeats-native-audio-verification'
 subprocess.run(['swiftc', '-swift-version', '5', '-default-isolation', 'MainActor', '-I', str(products),
                 *map(str, files), str(root/'verification'/'NativeAudioVerification.swift'),
                 str(products/'SocketIO.o'), str(products/'Starscream.o'), '-lz', '-o', binary], check=True)
-subprocess.run([binary], check=True)
+subprocess.run([binary, *sys.argv[1:]], check=True)

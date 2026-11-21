@@ -11,6 +11,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import SmoothScrolling from "../components/SmoothScrolling";
 
+import { RoomSearchProvider } from "../context/RoomSearchContext";
 import { ConnectionProvider } from "../context/ConnectionContext";
 import { ConnectionStatusModal } from "../components/ConnectionStatusModal";
 import { VisualizerProvider } from "../context/VisualizerContext";
@@ -245,6 +246,7 @@ export default function RootLayout({
                 <ConnectionStatusModal />
                 <AuthProvider>
                   <AudioProvider>
+                    <RoomSearchProvider>
                     <BeatProvider>
                       <VisualizerProvider>
                         <div className="relative z-10 w-full min-h-full flex flex-col">
@@ -252,6 +254,7 @@ export default function RootLayout({
                         </div>
                       </VisualizerProvider>
                     </BeatProvider>
+                    </RoomSearchProvider>
                   </AudioProvider>
                 </AuthProvider>
               </ConnectionProvider>

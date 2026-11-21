@@ -5,7 +5,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useUpload } from "../../context/UploadContext";
 import { useAsync } from "../../hooks/useAsync";
 import { roomsApi, getServerUrl, getAuthToken, youtubeApi, historyApi } from "../../lib/api";
-import { MusicRecommendations } from "../recommendations/MusicRecommendations";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Search, Upload, Loader2, CheckCircle2, AlertCircle, Plus, Play, Trash2, MoreHorizontal, Edit2, X, Check, Camera, Music, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -16,6 +15,8 @@ import { PlayOrEnqueueModal } from "./PlayOrEnqueueModal";
 import { AddToPlaylistModal } from "./AddToPlaylistModal";
 import { getSocket } from "../../lib/socket";
 import { useVisualizer } from "../../context/VisualizerContext";
+
+import { useRoomSearch } from "../../context/RoomSearchContext";
 
 interface SearchTabProps {
   roomId: string;
@@ -49,7 +50,7 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<"youtube" | "spotify" | null>(initialMode || "youtube");
-  const [query, setQuery] = useState("");
+  const { query, setQuery } = useRoomSearch(roomId);
 
   useEffect(() => {
     setMode(initialMode || "youtube");
@@ -267,9 +268,8 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  // Reset when mode changes
+  // Reset provider results when mode changes; keep the shared room query.
   useEffect(() => {
-    setQuery("");
     setYtResults([]);
     setSpResults([]);
     setDbResults([]);
@@ -895,7 +895,6 @@ export function SearchTab({ roomId, initialMode, onBack, onResultsCountChange, o
       className={`relative flex flex-col w-full h-auto ${containerPadding}`}
       style={{ maxHeight: isSearchOnly ? undefined : 'calc(100vh - 80px)' }}
     >
-      {!isSearchOnly && user?.id && !query.trim() && !selectedPlaylistId && mode !== "spotify" && <MusicRecommendations key={user.id} onSearch={q => { setQuery(q); void performSearch(q); }} />}
       <div role="group" aria-label="Music source" className="flex gap-2 mb-3">
         {(["youtube", "spotify"] as const).map(source => (
           <button

@@ -2,6 +2,8 @@ import Foundation
 import Observation
 
 enum EntryPhase { case launch, introduction, authentication, verification, restoring, restoreFailed, signedIn }
+enum AccountPage: String { case profile, settings }
+
 enum AccountMode: String, CaseIterable { case login, signup, forgot, reset }
 
 struct RoomCredentials: Equatable {
@@ -16,6 +18,8 @@ struct RoomCredentials: Equatable {
 @MainActor @Observable
 final class AppModel {
     var phase: EntryPhase = .launch
+    var accountPage: AccountPage?
+    var workspaceSection: NativeLibrarySection = .home
     var accountMode: AccountMode = .login
     var introIndex = 0
     var account: Account?
@@ -30,6 +34,11 @@ final class AppModel {
     var roomCredentials: RoomCredentials? {
         guard let roomID, let account, let token else { return nil }
         return RoomCredentials(roomID: roomID, userID: account.id, displayName: account.name,
+                               token: token, baseURL: api.baseURL, deviceID: api.deviceID)
+    }
+    var libraryCredentials: RoomCredentials? {
+        guard let account, let token else { return nil }
+        return RoomCredentials(roomID: roomID ?? "", userID: account.id, displayName: account.name,
                                token: token, baseURL: api.baseURL, deviceID: api.deviceID)
     }
 
@@ -169,8 +178,9 @@ final class AppModel {
         errorMessage = nil
         defer { isWorking = false }
         do {
-            let credential = try await google.signIn()
-            try accept(try await api.google(credential: credential))
+            try await api.nativeGoogleAvailable()
+            let grant = try await google.signIn()
+            try accept(try await api.nativeGoogle(code: grant.code, verifier: grant.verifier))
             phase = .signedIn
             await loadRoom()
         } catch AuthFailure.cancelled { }
@@ -183,6 +193,24 @@ final class AppModel {
         token = response.token
         account = response.user
         roomID = response.defaultRoomId
+    }
+
+    func updateProfileName(_ name: String) async throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 80 else { throw AuthFailure.invalidInput("Use a name between 1 and 80 characters.") }
+        guard let activeToken = token, let activeID = account?.id else { throw AuthFailure.invalidInput("Sign in to update your profile.") }
+        let updated = try await api.updateProfile(name: trimmed, token: activeToken)
+        guard token == activeToken, account?.id == activeID, updated.id == activeID else { throw AuthFailure.cancelled }
+        account = updated
+    }
+
+    func refreshProfile() async {
+        guard let activeToken = token, let activeID = account?.id else { return }
+        do {
+            let updated = try await api.me(token: activeToken).user
+            guard token == activeToken, account?.id == activeID, updated.id == activeID else { return }
+            account = updated
+        } catch { NativeDiagnostics.failure("Account", "Refresh profile", error: error) }
     }
 
     func loadRoom() async {
@@ -203,6 +231,8 @@ final class AppModel {
     }
 
     func signOut() {
+        accountPage = nil
+        workspaceSection = .home
         do {
             try store.clear()
             token = nil

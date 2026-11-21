@@ -164,7 +164,7 @@ export function RoomPreview({
       <div className="absolute inset-0 z-20 pointer-events-none">
         {/* Helper instruction text */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/80 border border-white/15 rounded-full px-3 py-1 text-[8px] font-semibold text-white/80 backdrop-blur-md shadow-lg">
-          ✦ Drag Nodes to Reposition Light Blobs ✦
+          Drag a point to move its light
         </div>
 
         <button
@@ -193,6 +193,7 @@ export function RoomPreview({
           return (
             <div
               key={`handle-${node.id}-${idx}`}
+              data-cursor="grab"
               onPointerDown={startDrag(idx)}
               className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border bg-black/90 flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing shadow-2xl select-none touch-none z-30 group"
               style={{

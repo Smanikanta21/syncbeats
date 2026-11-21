@@ -53,7 +53,7 @@ export default function StreamTest() {
           </button>
           {rangeResult && <p className="break-words text-xs text-foreground/60" role="status">{rangeResult}</p>}
         </div>
-        <p className="text-xs text-foreground/45">This test uses SyncBeats’ audio proxy. It does not establish that a fresh YouTube CDN URL will work, or that playback is synchronized.</p>
+        <p className="text-xs text-foreground/45">This development test uses SyncBeats’ cached audio proxy. It does not establish that a fresh YouTube CDN URL will work, or that playback is synchronized.</p>
         <Link href="/hub" className="inline-block text-sm text-foreground/70 underline underline-offset-4">Back to room hub</Link>
       </section>
     </main>

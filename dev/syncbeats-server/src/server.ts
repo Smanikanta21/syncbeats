@@ -23,6 +23,7 @@ import { createHistoryRoutes } from './handlers/HistoryRoutes';
 import { createSpotifyRoutes } from './handlers/SpotifyRoutes';
 import { createMusicBridgeRoutes } from './handlers/MusicBridgeRoutes';
 import playlistRoutes from './handlers/PlaylistRoutes';
+import { accountUpdateNotifications } from './library/AccountUpdates';
 import { createUserRoutes } from './handlers/UserRoutes';
 import { createFeedbackRoutes } from './handlers/FeedbackRoutes';
 import { createTelemetryRoutes } from './handlers/TelemetryRoutes';
@@ -249,6 +250,7 @@ export class SyncBeatsServer {
   }
 
   private setupRoutes(): void {
+    this.app.use(accountUpdateNotifications(this.io));
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', rooms: this.roomManager.list().length });

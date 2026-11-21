@@ -6,6 +6,8 @@ import AppKit
 struct RoomWorkspaceView: View {
     @Bindable var model: AppModel
     @Bindable var room: RoomSession
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var accountUpdates = NativeAccountUpdates()
     let palette: NativePalette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
@@ -13,6 +15,7 @@ struct RoomWorkspaceView: View {
     @State private var showsPlayer = false
     @State private var showsPlayerQueue = false
     @State private var isFloating = false
+    @State private var library = NativeLibraryStore()
     #if os(macOS)
     @State private var floatingPlayer = FloatingPlayerController()
     @State private var fullScreenPlayer = FullScreenPlayerController()
@@ -22,13 +25,26 @@ struct RoomWorkspaceView: View {
         GeometryReader { geometry in
             let presentation = RoomLayout.devices(width: geometry.size.width)
             VStack(spacing: 0) {
-                header(presentation: presentation).padding(.horizontal, 28).padding(.vertical, 14)
+                header(presentation: presentation).padding(.horizontal, geometry.size.width < 600 ? 16 : 28).padding(.vertical, 12)
                 Rectangle().fill(palette.line).frame(height: 1)
                 if let message = room.errorMessage ?? model.errorMessage { errorBanner(message) }
-                if model.isLoadingRoom || model.roomID == nil { openingRoom }
+                if model.accountPage == nil && model.workspaceSection == .home && (model.isLoadingRoom || model.roomID == nil) { openingRoom }
                 else {
                     HStack(spacing: 0) {
-                        RoomHomeView(room: room, palette: palette, onOpenPlayer: openListeningPlayer)
+                        Group {
+                            switch model.accountPage {
+                            case .profile: AccountProfileView(model: model, room: room, palette: palette)
+                            case .settings: AccountSettingsView(model: model, room: room, palette: palette)
+                            case nil: NativeCollectionWorkspace(section: $model.workspaceSection, library: library, room: room,
+                                palette: palette, onOpenPlayer: openListeningPlayer, onSave: { result in
+                                    Task {
+                                        await library.save(result)
+                                        if let error = library.error { room.errorMessage = error }
+                                        else { room.statusMessage = library.message }
+                                    }
+                                })
+                            }
+                        }
                         if showsDevices && presentation == .docked { deviceRail.frame(width: 270) }
                     }.overlay(alignment: .trailing) {
                         if showsDevices && presentation == .drawer {
@@ -68,7 +84,31 @@ struct RoomWorkspaceView: View {
                 try? await Task.sleep(for: .seconds(3))
                 if !Task.isCancelled { room.statusMessage = nil }
             }
-            .onDisappear { closeFloatingPlayer();
+            .task(id: model.libraryCredentials) {
+                accountUpdates.connect(model.libraryCredentials) { kind in
+                    Task {
+                        if kind == "library" || kind == "all" { await library.invalidate() }
+                        if kind == "profile" || kind == "all" { await model.refreshProfile() }
+                        if kind == "interests" || kind == "all" { await room.loadMusicInterests(); await room.loadDiscovery(.all, refresh: true) }
+                    }
+                }
+                await library.load(for: model.libraryCredentials)
+            }
+            .task(id: model.workspaceSection) { await library.open(model.workspaceSection) }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    guard !Task.isCancelled else { return }
+                    if scenePhase == .active { await library.invalidate(); await model.refreshProfile() }
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await library.invalidate(); await model.refreshProfile() } }
+            }
+            .onChange(of: model.accountPage) { _, page in
+                if page != nil { showsDevices = false; showsPlayer = false; Task { await model.refreshProfile() } }
+            }
+            .onDisappear { accountUpdates.disconnect(); closeFloatingPlayer();
                 #if os(macOS)
                 fullScreenPlayer.close()
                 #endif
@@ -79,14 +119,18 @@ struct RoomWorkspaceView: View {
     }
 
     private func header(presentation: RoomLayout.DevicePresentation) -> some View {
-        HStack(spacing: 14) {
-            Text("Home").font(.system(size: 15, weight: .medium))
+        HStack(spacing: 12) {
+            if model.accountPage != nil {
+                Button { model.accountPage = nil; model.workspaceSection = .home } label: { Label("Home", systemImage: "chevron.left") }
+                    .font(.system(size: 13)).buttonStyle(NativeButtonStyle(palette: palette))
+                    .accessibilityIdentifier("account-back-home")
+            } else { Text(model.workspaceSection.rawValue).font(.system(size: 15, weight: .medium)) }
             if let code = model.roomID ?? room.roomID {
                 Button { copyRoomCode(code) } label: {
                     HStack(spacing: 8) {
                         Text(code).font(.system(size: 12, weight: .medium, design: .monospaced))
                         Image(systemName: copied ? "checkmark" : "square.on.square").font(.system(size: 11))
-                    }.padding(9).background(palette.panel, in: RoundedRectangle(cornerRadius: 7))
+                    }.padding(8).background(palette.panel, in: RoundedRectangle(cornerRadius: 8))
                 }.buttonStyle(NativeButtonStyle(palette: palette)).help(copied ? "Copied room code" : "Copy room code")
                     .accessibilityLabel(copied ? "Room code copied" : "Copy room code \(code)")
                     .task(id: copied) { guard copied else { return }; try? await Task.sleep(for: .seconds(2)); if !Task.isCancelled { copied = false } }
@@ -99,17 +143,10 @@ struct RoomWorkspaceView: View {
                 }.buttonStyle(NativeButtonStyle(palette: palette)).accessibilityAddTraits(showsDevices ? .isSelected : [])
             } else { Text("\(room.participants.count) devices").font(.system(size: 12)).foregroundStyle(palette.secondary) }
             RoomConnectionBadge(room: room, palette: palette)
-            Menu {
-                Text(model.account?.name ?? "Your account")
-                if room.connection == .failed { Button("Reconnect", action: room.reconnect) }
-                if isFloating { Button("Return player to window", action: closeFloatingPlayer) }
-                #if os(macOS)
-                Toggle("Notch player", isOn: $model.notchEnabled)
-                #endif
-                Divider()
-                Button("Sign out", action: model.signOut)
-            } label: { Image(systemName: "ellipsis").frame(width: 30, height: 30) }
-                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Room options")
+            if room.connection == .failed {
+                Button("Reconnect", action: room.reconnect).font(.system(size: 12))
+            }
+
         }
     }
     private var deviceRail: some View {

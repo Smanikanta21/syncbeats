@@ -36,11 +36,24 @@ model User {
   musicTaste                 MusicTasteProfile?
   recommendationEvents       RecommendationEvent[]
   playlists                  Playlist[]
+  nativeAuthCodes            NativeAuthCode[]
   invitesSent                RoomInvite[]      @relation("InvitesSent")
   invitesReceived            RoomInvite[]      @relation("InvitesReceived")
   feedbacks                  UserFeedback[]
 
   @@map("users")
+}
+
+model NativeAuthCode {
+  id            String   @id @default(cuid())
+  codeHash      String   @unique @map("code_hash")
+  codeChallenge String   @map("code_challenge")
+  userId        String   @map("user_id")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(6)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("native_auth_codes")
 }
 
 model Device {
@@ -222,6 +235,7 @@ model Song {
 model PlaylistTrack {
   id         String  @id @default(cuid())
   playlistId String  @map("playlist_id")
+  sourceId   String? @map("source_id") // Stable imported track identity within its source playlist
   songId     String? @map("song_id") // Link to global Song catalog (nullable for backward compat)
 
   // Denormalized fields kept for backward compat & fast reads (mirrors Song fields)
@@ -238,6 +252,7 @@ model PlaylistTrack {
 
   @@index([playlistId, position])
   @@index([songId])
+  @@unique([playlistId, sourceId])
   @@map("playlist_tracks")
 }
 

@@ -60,7 +60,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   keepScreenAwake: false,
   sidebarPosition: "left",
   islandCustomizer: {
-    glowColor: "violet",
+    glowColor: "none",
     autoShrinkDelaySec: 6,
     showAlbumArt: true,
   },

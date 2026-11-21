@@ -106,3 +106,8 @@ brag-output*/
 /scratch/
 *.dump
 *.backup
+
+# Local Mac beta downloads and Python packaging cache.
+/releases/macos/
+__pycache__/
+*.pyc

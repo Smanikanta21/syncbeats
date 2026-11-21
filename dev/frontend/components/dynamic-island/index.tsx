@@ -97,8 +97,8 @@ const GLOW_HEX: Record<string, string> = {
   cyan: "#06b6d4",
   emerald: "#10b981",
   amber: "#f59e0b",
-  dark: "#a855f7",
-  none: "#a855f7",
+  dark: "#d4d4d4",
+  none: "#d4d4d4",
 };
 const STUCK_HEX = "#f59e0b";
 
@@ -232,7 +232,7 @@ const SyncProgressBar = ({
   isStuck?: boolean;
   onSkip?: () => void;
 }) => {
-  const accent = useIslandAccent();
+  const accent = "#d4d4d4";
   const progress = activity.progress;
   const label = isStuck ? 'Taking longer · tap to skip' : activity.label;
 
@@ -964,7 +964,7 @@ export function DynamicIsland() {
   }, [deviceSyncProgress, activeSocketIds]);
   const reduceMotion = useReducedMotion();
   const { settings } = useSettings();
-  const islandCustomizer = settings.islandCustomizer || { glowColor: "violet", autoShrinkDelaySec: 6, showAlbumArt: true };
+  const islandCustomizer = settings.islandCustomizer || { glowColor: "none", autoShrinkDelaySec: 6, showAlbumArt: true };
 
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { Music2, Shuffle, Repeat, Repeat1, Plus, Trash2, RotateCcw, Star, MoreHorizontal } from "lucide-react";
+import { Music2, Shuffle, Repeat, Repeat1, Plus, Trash2, RotateCcw, Star, MoreHorizontal, Search } from "lucide-react";
 import type { TrackQueueItem } from "../../lib/types";
 import { SortableTrackItem, TrackItemRow, cleanTitle, ytThumb } from "../SortableTrackItem";
 import { ConfirmModal } from "../ConfirmModal";
@@ -29,6 +29,8 @@ import {
 } from "@dnd-kit/sortable";
 import { roomsApi } from "../../lib/api";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
+import { useRoomSearch } from "../../context/RoomSearchContext";
+import { AccountSongs, type AccountSong } from "./AccountSongs";
 import { cn } from "../../lib/utils";
 
 interface RoomQueueProps {
@@ -48,8 +50,11 @@ interface RoomQueueProps {
 
 export function RoomQueue({
   queue, isHost, roomId, onTrackSelect, onAddSong, onRemoveTrack,
-  shuffle, repeatMode, onToggleShuffle, onToggleRepeat, jumpingTrackId
+  shuffle, repeatMode, onToggleShuffle, onToggleRepeat, jumpingTrackId, isPlaying = false
 }: RoomQueueProps) {
+  const { query } = useRoomSearch(roomId);
+  const songsPanelId = `room-songs-${roomId}`;
+  const [view, setView] = useState<"queue" | "history" | "all">("queue");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [optimisticQueue, setOptimisticQueue] = useState(queue);
@@ -63,10 +68,10 @@ export function RoomQueue({
   }, []);
 
   const currentIndex = optimisticQueue.findIndex(q => q.isCurrent);
-  // History is what was actually played through, not what the pointer moved past. Jumping
-  // from track 5 to track 20 must leave 6–19 in the queue where they are.
-  const historyQueue = optimisticQueue.filter(q => q.playedAt && !q.isCurrent);
-  // Current song is separate — not draggable
+  const needle = query.trim().toLocaleLowerCase();
+  const matches = (item: TrackQueueItem) => !needle || `${cleanTitle(item.title)} ${item.artist || ""}`.toLocaleLowerCase().includes(needle);
+  const selectedSongs = view === "history" ? optimisticQueue.filter(q => q.playedAt && !q.isCurrent) : optimisticQueue.filter(q => q.isCurrent || !q.playedAt);
+  const visibleSongs = selectedSongs.filter(matches);
   const currentSong = currentIndex >= 0 ? optimisticQueue[currentIndex] : null;
   const draggableQueue = optimisticQueue.filter(q => !q.playedAt && !q.isCurrent);
 
@@ -161,6 +166,13 @@ export function RoomQueue({
     onConfirm: () => {},
   });
 
+  const accountSongToTrack = (song: AccountSong): TrackQueueItem => ({
+    id: `account-${song.id}`, title: song.title, artist: song.artist || undefined,
+    trackUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(song.youtubeId || '')}`,
+    fileName: song.title, queueIndex: 0, isCurrent: false, addedBy: '', createdAt: 0,
+    thumbnail: song.thumbnail || undefined,
+  });
+
   const [promptTrack, setPromptTrack] = useState<TrackQueueItem | null>(null);
 
   const executeEnqueueAndPlay = async (track: TrackQueueItem, playNow: boolean) => {
@@ -228,8 +240,32 @@ export function RoomQueue({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header Section */}
-      <div className="flex items-center justify-end px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
+      <div className="flex items-center gap-1 pb-3">
+        <div className="flex min-w-0" role="tablist" aria-label="Room songs">
+          {([['queue', 'Queue'], ['history', 'History'], ['all', 'All songs']] as const).map(([id, label], index, tabs) => (
+            <button key={id} id={`${songsPanelId}-${id}`} type="button" role="tab"
+              aria-selected={view === id} aria-controls={songsPanelId} tabIndex={view === id ? 0 : -1}
+              onClick={() => setView(id)}
+              onKeyDown={event => {
+                const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                  : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                setView(tabs[next][0]);
+                document.getElementById(`${songsPanelId}-${tabs[next][0]}`)?.focus();
+              }}
+              className={cn("min-h-10 px-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-foreground", view === id ? "bg-foreground/8 text-foreground" : "text-foreground/50 hover:text-foreground")}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button type="button" aria-label="Open Dynamic Island search" onClick={onAddSong}
+          className="ml-auto min-h-10 min-w-10 flex items-center justify-center rounded-lg hover:bg-foreground/5 cursor-pointer focus-visible:outline-2 focus-visible:outline-foreground">
+          <Search size={17} />
+        </button>
+      </div>
+      {view === "queue" && <div className="flex items-center justify-end px-3 pt-3 pb-2 shrink-0 border-b border-foreground/[0.06] mb-1">
         <div className="flex items-center gap-0.5 shrink-0">
           {/* Clear Queue (Single Click Lock + Halfway Load Animation) */}
           {draggableQueue.length > 0 && (
@@ -251,10 +287,37 @@ export function RoomQueue({
             </button>
           )}
         </div>
-      </div>
-
-      {optimisticQueue.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40 select-none px-6">
+      </div>}
+      {view !== "all" && <p role="status" className="text-xs text-foreground/50 mb-2">{query ? `${visibleSongs.length} matching ${visibleSongs.length === 1 ? 'song' : 'songs'}` : `${selectedSongs.length} ${selectedSongs.length === 1 ? 'song' : 'songs'}`}</p>}
+      {view === "all" ? (
+        <div id={songsPanelId} role="tabpanel" aria-labelledby={`${songsPanelId}-${view}`} className="flex-1 min-h-0 overflow-y-auto" data-lenis-prevent="true">
+          <AccountSongs query={query} onChooseSong={song => setPromptTrack(accountSongToTrack(song))} />
+        </div>
+      ) : view === "history" ? (
+        <div id={songsPanelId} role="tabpanel" aria-labelledby={`${songsPanelId}-${view}`} className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5" data-lenis-prevent="true">
+          {visibleSongs.length === 0 ? <p className="px-2 py-6 text-sm text-foreground/50">{query ? 'No history songs match your search.' : 'Songs appear here after they finish playing.'}</p> : visibleSongs.map(item => (
+            <SortableTrackItem key={item.id} item={item} idx={positionById.get(item.id) ?? 0}
+              isCurrent={false} isPlaying={false} isHovered={hoveredId === item.id} isHost={isHost}
+              onHoverStart={() => setHoveredId(item.id)} onHoverEnd={() => setHoveredId(null)}
+              onTrackSelect={track => setPromptTrack(track)} onAddTrack={track => executeEnqueueAndPlay(track, false)}
+              onRemoveTrack={handleRemoveTrack} disableDrag isHistory isJumping={jumpingTrackId === item.id} />
+          ))}
+        </div>
+      ) : needle ? (
+        <div id={songsPanelId} role="tabpanel" aria-labelledby={`${songsPanelId}-${view}`} className="flex-1 min-h-0 overflow-y-auto space-y-1" data-lenis-prevent="true">
+          {visibleSongs.length === 0 ? (
+            <p className="px-2 py-6 text-sm text-foreground/50">{query ? "No songs match your search." : "No songs here yet."}</p>
+          ) : visibleSongs.map(item => (
+            <TrackItemRow key={item.id} item={item} idx={positionById.get(item.id) ?? 0}
+              isCurrent={!!item.isCurrent} isPlaying={isPlaying} isHovered={hoveredId === item.id} isHost={isHost}
+              disableDrag searchQuery={query} isHistory={!!item.playedAt && !item.isCurrent} isJumping={jumpingTrackId === item.id}
+              onHoverStart={() => setHoveredId(item.id)} onHoverEnd={() => setHoveredId(null)}
+              onTrackSelect={track => track.playedAt && !track.isCurrent ? setPromptTrack(track) : onTrackSelect?.(track)}
+              onRemoveTrack={handleRemoveTrack} onAddTrack={track => executeEnqueueAndPlay(track, false)} />
+          ))}
+        </div>
+      ) : optimisticQueue.length === 0 ? (
+        <div id={songsPanelId} role="tabpanel" aria-labelledby={`${songsPanelId}-${view}`} className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40 select-none px-6">
           <Music2 className="w-10 h-10" />
           <p className="text-sm font-semibold text-center">Queue is empty</p>
           <button
@@ -275,45 +338,13 @@ export function RoomQueue({
         >
           <div
             ref={scrollRef}
+            id={songsPanelId}
+            role="tabpanel"
+            aria-labelledby={`${songsPanelId}-${view}`}
             className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 min-h-0"
             data-lenis-prevent="true"
             style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(128,128,128,0.15) transparent" }}
           >
-            {/* History Section */}
-            {historyQueue.length > 0 && (
-              <div className="space-y-1.5 mb-6 pb-4 border-b border-foreground/[0.06]">
-                <div className="flex items-center justify-between px-2 mb-3 mt-1">
-                  <h3 className="font-bold text-foreground text-sm">History</h3>
-                  <button 
-                    onClick={() => console.log('Clear history')} 
-                    className="text-foreground/50 text-xs hover:text-foreground font-semibold transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-                {historyQueue.map((item) => (
-                  <SortableTrackItem
-                    key={item.id}
-                    item={item}
-                    idx={positionById.get(item.id) ?? 0}
-                    isCurrent={false}
-                    isPlaying={false}
-                    isHovered={hoveredId === item.id}
-                    isHost={isHost}
-                    onHoverStart={() => setHoveredId(item.id)}
-                    onHoverEnd={() => setHoveredId(null)}
-                    onTrackSelect={onTrackSelect!}
-                    onAddTrack={setPromptTrack}
-                    onRemoveTrack={handleRemoveTrack}
-                    disableDrag={true}
-                    isHistory={true}
-                    isJumping={jumpingTrackId === item.id}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Currently Playing Header (Spotify-like) */}
             {currentSong && (
               <div className="mb-6 px-1 flex flex-col gap-4 relative z-10">
                 <div className="flex items-center gap-3">

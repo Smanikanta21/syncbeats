@@ -37,6 +37,11 @@ nonisolated struct AlbumArtworkRequest: Hashable, Sendable {
         return url
     }
 
+    /// Try every metadata field; an empty URL or a video frame must not hide a real cover.
+    static func firstCover(in candidates: [String?]) -> URL? {
+        candidates.compactMap { $0.flatMap(URL.init(string:)).flatMap(coverURL) }.first
+    }
+
     static func normalized(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: #"[^\p{L}\p{N}]"#, with: "", options: .regularExpression)
@@ -116,7 +121,13 @@ actor AlbumArtworkResolver {
         if let source = request.sourceID {
             if let known = sources[source] {
                 // Queue metadata can lose the artist after enqueueing; keep the discovered identity.
-                request = known
+                if request.artist.isEmpty || request.title.isEmpty {
+                    request = AlbumArtworkRequest(title: known.title.isEmpty ? request.title : known.title,
+                                                  artist: known.artist.isEmpty ? request.artist : known.artist,
+                                                  suppliedURL: request.suppliedURL ?? known.suppliedURL, sourceID: source)
+                }
+                // Preserve a complete identity when a later snapshot carries only a thumbnail.
+                sources[source] = request
             } else if request.suppliedURL != nil || (!request.title.isEmpty && !request.artist.isEmpty) {
                 if sources.count > 500 { sources.removeAll() }
                 sources[source] = request
@@ -133,16 +144,20 @@ actor AlbumArtworkResolver {
         if let lookup = lookups[request] { return await lookup.value }
         let session = session, endpoint = endpoint
         let lookup = Task<URL?, Never> {
-            var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
-            components.queryItems = [URLQueryItem(name: "term", value: request.artist + " " + request.title),
-                                     URLQueryItem(name: "entity", value: "song"), URLQueryItem(name: "media", value: "music"),
-                                     URLQueryItem(name: "limit", value: "25"), URLQueryItem(name: "country", value: "US")]
-            guard let url = components.url else { return nil }
-            var query = URLRequest(url: url); query.timeoutInterval = 12
-            guard let (data, response) = try? await session.data(for: query),
-                  let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let result = try? JSONDecoder().decode(AlbumArtworkSearchResponse.self, from: data) else { return nil }
-            return result.bestCover(for: request)
+            // A recording may be unavailable in one storefront. Match the identity in either.
+            for country in ["US", "IN"] {
+                var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+                components.queryItems = [URLQueryItem(name: "term", value: request.artist + " " + request.title),
+                                         URLQueryItem(name: "entity", value: "song"), URLQueryItem(name: "media", value: "music"),
+                                         URLQueryItem(name: "limit", value: "50"), URLQueryItem(name: "country", value: country)]
+                guard let url = components.url else { continue }
+                var query = URLRequest(url: url); query.timeoutInterval = 10
+                guard let (data, response) = try? await session.data(for: query),
+                      let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let result = try? JSONDecoder().decode(AlbumArtworkSearchResponse.self, from: data) else { continue }
+                if let cover = result.bestCover(for: request) { return cover }
+            }
+            return nil
         }
         lookups[request] = lookup
         let cover = await lookup.value
@@ -181,7 +196,17 @@ actor AlbumArtworkResolver {
     }
 
     func imageData(for request: AlbumArtworkRequest) async -> Data? {
-        guard let url = await coverURL(for: request) else { return nil }
+        let primary = await coverURL(for: request)
+        if let primary, let data = await imageData(at: primary) { return data }
+        let identity = await resolvedIdentity(for: request) ?? request
+        guard primary != nil || identity.suppliedURL != nil else { return nil }
+        // A sparse room snapshot can still use the complete identity found during discovery.
+        let fallback = AlbumArtworkRequest(title: identity.title, artist: identity.artist, suppliedURL: nil)
+        guard let url = await coverURL(for: fallback), url != primary else { return nil }
+        return await imageData(at: url)
+    }
+
+    func imageData(at url: URL) async -> Data? {
         if let data = images[url] { return data }
         if let download = downloads[url] { return await download.value }
         let session = session

@@ -1,86 +1,67 @@
 import Foundation
 import AuthenticationServices
+import CryptoKit
+import Security
 #if os(macOS)
 import AppKit
 #else
 import UIKit
 #endif
 
-/// Uses the existing Google web client and registered https://syncbeats.in redirect.
-/// HTTPS callbacks require the website's webcredentials association to be deployed.
+struct NativeGoogleGrant: Sendable { let code: String; let verifier: String }
+
+/// The website verifies Google identity and returns a single-use PKCE handoff.
+/// Custom-scheme callbacks work with Personal Teams; no Associated Domains required.
 final class GoogleSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
 
-    static func authorizationURL(clientID: String, state: String, nonce: String) -> URL {
-        var url = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        url.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "redirect_uri", value: AppConfiguration.website.absoluteString),
-            URLQueryItem(name: "response_type", value: "id_token"),
-            URLQueryItem(name: "scope", value: "openid email profile"),
-            URLQueryItem(name: "prompt", value: "select_account"),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "nonce", value: nonce)
-        ]
+    static func randomToken() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw AuthFailure.invalidResponse }
+        return base64URL(Data(bytes))
+    }
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+    static func challenge(for verifier: String) -> String { base64URL(Data(SHA256.hash(data: Data(verifier.utf8)))) }
+    static func authorizationURL(state: String, nonce: String, challenge: String) -> URL {
+        var url = URLComponents(url: AppConfiguration.website.appendingPathComponent("auth/native"), resolvingAgainstBaseURL: false)!
+        url.queryItems = [.init(name: "state", value: state), .init(name: "nonce", value: nonce), .init(name: "code_challenge", value: challenge)]
         return url.url!
     }
-
-    static func credential(from callback: URL, state: String, nonce: String) throws -> String {
-        guard callback.scheme == "https", callback.host == AppConfiguration.website.host,
-              callback.path.isEmpty || callback.path == "/",
-              let fragment = callback.fragment,
-              let items = URLComponents(string: "https://callback.invalid/?" + fragment)?.queryItems else {
-            throw AuthFailure.invalidInput("Google couldn't complete sign-in. Please try again.")
-        }
-        let values = Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
-        guard values["state"] == state, let credential = values["id_token"] else {
-            throw AuthFailure.invalidInput("Google returned an unexpected sign-in response. Please try again.")
-        }
-        let segments = credential.split(separator: ".")
-        guard segments.count == 3 else { throw AuthFailure.invalidResponse }
-        var base64 = String(segments[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
-        guard let data = Data(base64Encoded: base64),
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              payload["nonce"] as? String == nonce else {
+    static func code(from callback: URL, state: String) throws -> String {
+        guard callback.scheme == "syncbeats", callback.host == "google", callback.path == "/callback", callback.port == nil,
+              callback.user == nil, callback.password == nil, callback.fragment == nil,
+              let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false) else { throw AuthFailure.invalidResponse }
+        let values = parts.queryItems ?? []
+        guard values.filter({ $0.name == "state" }).count == 1,
+              values.first(where: { $0.name == "state" })?.value == state,
+              values.filter({ $0.name == "code" }).count == 1,
+              let code = values.first(where: { $0.name == "code" })?.value,
+              code.range(of: #"^[A-Za-z0-9_-]{43}$"#, options: .regularExpression) != nil else {
             throw AuthFailure.invalidInput("The Google sign-in request expired. Please try again.")
         }
-        // The backend verifies signature, audience, and expiry before issuing an app session.
-        return credential
+        return code
     }
-
-    func signIn() async throws -> String {
-        guard AppConfiguration.associatedDomainsEnabled else {
-            throw AuthFailure.invalidInput("Google sign-in is unavailable in this development build. Please use email login or create an account.")
-        }
-        let state = UUID().uuidString
-        let nonce = UUID().uuidString
+    func signIn() async throws -> NativeGoogleGrant {
+        let verifier = try Self.randomToken(), state = try Self.randomToken(), nonce = try Self.randomToken()
         return try await withCheckedThrowingContinuation { continuation in
-            let auth = ASWebAuthenticationSession(
-                url: Self.authorizationURL(clientID: AppConfiguration.googleClientID, state: state, nonce: nonce),
-                callback: .https(host: AppConfiguration.website.host!, path: "/")
-            ) { [weak self] callback, error in
+            let browser = ASWebAuthenticationSession(url: Self.authorizationURL(state: state, nonce: nonce, challenge: Self.challenge(for: verifier)), callbackURLScheme: "syncbeats") { [weak self] callback, error in
                 Task { @MainActor in
                     self?.session = nil
-                    if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
-                        continuation.resume(throwing: AuthFailure.cancelled)
-                    } else if let callback {
-                        do { continuation.resume(returning: try Self.credential(from: callback, state: state, nonce: nonce)) }
-                        catch { continuation.resume(throwing: error) }
-                    } else {
-                        continuation.resume(throwing: AuthFailure.invalidInput("Couldn't open Google sign-in. Please try again."))
-                    }
+                    if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin { continuation.resume(throwing: AuthFailure.cancelled); return }
+                    do {
+                        guard let callback else { throw AuthFailure.invalidInput("Couldn't finish Google sign-in. Please try again.") }
+                        continuation.resume(returning: NativeGoogleGrant(code: try Self.code(from: callback, state: state), verifier: verifier))
+                    } catch { continuation.resume(throwing: error) }
                 }
             }
-            auth.presentationContextProvider = self
-            self.session = auth
-            if !auth.start() {
-                self.session = nil
-                continuation.resume(throwing: AuthFailure.invalidInput("Couldn't open the secure sign-in browser."))
-            }
+            browser.presentationContextProvider = self
+            browser.prefersEphemeralWebBrowserSession = true
+            session = browser
+            if !browser.start() { session = nil; continuation.resume(throwing: AuthFailure.invalidInput("Couldn't open the secure sign-in browser.")) }
         }
     }
-
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         #if os(macOS)
         return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? NSWindow()

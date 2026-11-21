@@ -25,6 +25,7 @@ private struct FullScreenLyricsIdentity: Equatable {
 struct FullScreenRoomPlayer: View {
     @Bindable var room: RoomSession
     var onClose: () -> Void
+    var cameraTopInset: CGFloat = 0
     @State private var detail: FullScreenDetail = .lyrics
     @State private var compactPanel = false
     @State private var artworkOnly = false
@@ -42,7 +43,7 @@ struct FullScreenRoomPlayer: View {
             ZStack {
                 RoomAlbumAmbient(room: room)
                 VStack(spacing: 0) {
-                    header(wide: wide).padding(.horizontal, 28).padding(.top, 16)
+                    header(wide: wide).padding(.horizontal, 28).padding(.top, 16 + cameraTopInset)
                     if artworkOnly {
                         artwork(size: min(size.width * 0.6, max(120, size.height - dockHeight - 160)))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -70,6 +71,8 @@ struct FullScreenRoomPlayer: View {
                 }
             }.foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .ignoresSafeArea(.container, edges: .all)
+        .onExitCommand(perform: onClose)
         .task(id: FullScreenLyricsIdentity(request: room.currentTrack?.artworkRequest, duration: room.duration?.rounded())) {
             await lyrics.load(track: room.currentTrack, duration: room.duration)
         }

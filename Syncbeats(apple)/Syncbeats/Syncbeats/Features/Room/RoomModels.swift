@@ -13,7 +13,7 @@ struct RoomTrack: Decodable, Identifiable, Equatable {
 
     var artworkRequest: AlbumArtworkRequest {
         let embedded = URLComponents(string: trackUrl)?.queryItems?.first(where: { $0.name == "thumb" })?.value
-        return AlbumArtworkRequest(title: title, artist: artist, suppliedURL: (albumArt ?? thumbnail ?? embedded).flatMap(URL.init(string:)), sourceID: YouTubeIdentity.id(in: trackUrl))
+        return AlbumArtworkRequest(title: title, artist: artist, suppliedURL: AlbumArtworkRequest.firstCover(in: [albumArt, thumbnail, embedded]), sourceID: YouTubeIdentity.id(in: trackUrl))
     }
     var artworkURL: URL? { artworkRequest.suppliedURL }
     var playableDuration: Double? { durationSec.flatMap { $0 > 0 && $0.isFinite ? $0 : nil } }
@@ -66,7 +66,7 @@ struct RoomSearchResult: Decodable, Identifiable {
     let duration: Double?
     var id: String { url }
     var artworkRequest: AlbumArtworkRequest {
-        AlbumArtworkRequest(title: title, artist: uploaderName, suppliedURL: (albumArt ?? thumbnail).flatMap(URL.init(string:)), sourceID: YouTubeIdentity.id(in: url))
+        AlbumArtworkRequest(title: title, artist: uploaderName, suppliedURL: AlbumArtworkRequest.firstCover(in: [albumArt, thumbnail]), sourceID: YouTubeIdentity.id(in: url))
     }
     var artworkURL: URL? { artworkRequest.suppliedURL }
 }

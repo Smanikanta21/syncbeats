@@ -99,8 +99,25 @@ struct AuthAPI {
     func google(credential: String) async throws -> AuthSession {
         try await request("auth/google", body: ["credential": credential])
     }
+    func nativeGoogleAvailable() async throws {
+        struct Capability: Decodable { let version: Int }
+        do {
+            let capability: Capability = try await request("auth/native/google", method: "GET")
+            guard capability.version == 1 else { throw AuthFailure.invalidResponse }
+        } catch AuthFailure.response(404, _) {
+            throw AuthFailure.invalidInput("Google sign-in needs the updated SyncBeats server. Please update the server and website, then try again.")
+        }
+    }
+    func nativeGoogle(code: String, verifier: String) async throws -> AuthSession {
+        try await request("auth/native/google/exchange", body: ["code": code, "verifier": verifier])
+    }
     func me(token: String) async throws -> AuthSession {
         try await request("auth/me", method: "GET", token: token)
+    }
+    func updateProfile(name: String, token: String) async throws -> Account {
+        struct UpdatedProfile: Decodable { let user: Account }
+        let response: UpdatedProfile = try await request("auth/me", method: "PATCH", body: ["name": name], token: token)
+        return response.user
     }
     func resendVerification(email: String) async throws {
         let result: Ack = try await request("auth/verification/resend", body: ["email": email])

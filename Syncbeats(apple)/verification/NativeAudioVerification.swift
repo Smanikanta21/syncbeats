@@ -19,6 +19,10 @@ import Foundation
         for _ in 0..<8 { spectrum = analyzer.consume(tone) }
         let peak = spectrum.indices.max(by: { spectrum[$0] < spectrum[$1] })!
         check((15...17).contains(peak) && spectrum[peak] > 0.7, "Live FFT identifies a 3 kHz tone in its frequency band")
+        let compact = SpectrumMotion.compactBands(spectrum)
+        check(compact.count == 5 && compact.max()! > 0 && compact.min()! < compact.max()!, "Compact bars respond to measured FFT audio with distinct levels")
+        check(SpectrumMotion.compactBands(Array(repeating: 0, count: 32)) == Array(repeating: 0, count: 5), "Compact bars stay silent without audio")
+        check(SpectrumMotion.compactBands([.nan, .infinity, -1, 2, 0.4]) == [0, 0, 0, 1, 0.4], "Compact bars sanitize invalid levels")
         analyzer.reset()
         for channel in 0..<2 { for frame in 0..<1024 { tone.floatChannelData![channel][frame] = 0 } }
         check(analyzer.consume(tone).allSatisfy { $0 == 0 }, "Silence produces a flat spectrum without fabricated motion")
@@ -45,6 +49,10 @@ import Foundation
         check(smooth.bands[0] > 0 && smooth.bands[0] < attack, "Display spectrum decays smoothly between frames")
         smooth.update(target: fullSpectrum, time: 3.0 / 60, playing: false)
         check(smooth.bands.allSatisfy { $0 == 0 }, "Pausing immediately clears display spectrum")
+        if CommandLine.arguments.contains("--spectrum-only") {
+            print("\(checks) native spectrum checks passed")
+            return
+        }
         let safe = NativeEqualizer(enabled: true, gains: [.nan, 30, -30])
         check(safe.gains == [0, 12, -12, 0, 0], "Equalizer repairs invalid persisted gains and clamps boosts")
         check(safe.preamp == -12 && NativeEqualizer().preamp == 0, "Equalizer reserves boost headroom and defaults to bypass")

@@ -51,3 +51,17 @@ The asynchronous renderer now uses Default QoS, matching the Core Audio control 
 The spectrum previously analyzed only the first 1024 frames of each 2048-frame tap. A ring buffer now consumes every frame with 50% overlapping FFT windows, then applies sample-rate-based attack/release smoothing. The display interpolates the real 24-band values at animation frames, clears on pause, and respects Reduce Motion. UI reads use a separate short publication lock; the render tap skips publication if that lock is busy instead of waiting on the UI reader.
 
 Validation: Debug macOS build succeeded, 52 native audio checks and 56 room/notch checks passed. Audio checks cover a tone present only in the second half of a tap, interpolated attack/decay, pause clearing, equalizer processing/bypass, and real Socket.IO scheduling, seek, pause/resume and reconnect against local fixtures. A fixed-delay seek assertion failed under concurrent build load; it now waits for the asynchronous position publication within a bounded interval. In the relaunched app, Play/Pause changed correctly, the duration advanced, and the equalizer exposed Live audio spectrum during playback. Screenshot transport prevented a reliable visual judgement of smoothness.
+
+## Camera-wing fit refinement
+
+Closed SyncBeats through its app menu and opened the installed NotchNook reference. Its accessible tree exposes only an empty system dialog; the captured 3600 by 500 image is entirely white. Hover/open dimensions therefore could not be measured, and this change does not claim to match NotchNook. SyncBeats remains closed to allow the reference to be inspected without competing overlays.
+
+The collapsed cap now gives artwork and indicator dedicated 36-point wings with a 2-point clearance on each side of the camera. Previously each wing had only 19 usable points with a 16-point thumbnail. The attached island height now matches the hardware camera height, replacing the 2-point lower lip. For the 192 by 32 camera fixture, the closed frame is 268 by 32; hover keeps the existing 1.025 zoom, giving 274.7 by 32.8 with the same top-center anchor. Current source already has no closed-state shadow or outline.
+
+Debug macOS build and 58 room/notch checks passed. The updated app has not been relaunched because NotchNook is being inspected. Live appearance and reference hover comparison remain unverified.
+
+## Account monogram and Home header
+
+The signed-in header uses a 32-point circular name monogram with gold initials and no dropdown indicator. Clicking it opens the native Profile, Settings and Log out menu. Profile shows account identity and links to the existing music-interests editor. Settings uses persisted appearance and Dynamic Island visibility preferences. Log out uses AppModel.signOut and disconnects the room only after successful session clearing. The Home three-dot menu was removed; reconnect remains a contextual button when the connection fails.
+
+Validation: macOS Debug build succeeded. Live accessibility checks confirmed the account menu items, Profile account details, Settings appearance and Dynamic Island controls, dismissal back to Home, and removal of Room options from the Home header. Log out was not activated on the user's signed-in session. Screenshot transport did not support a visual appearance judgement.

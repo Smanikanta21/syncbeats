@@ -1,5 +1,13 @@
 # Native Mac app rebuild
 
+## Current macOS beta
+
+Beta development stays on **`macos-dev` only**. The current local package is **1.0 beta 1, build 2**, targeting **Apple Silicon and macOS 26.6+** with the production API at `https://api.syncbeats.in`. It is ad-hoc signed, not notarized, and supports email sign-in/registration; Google sign-in is disabled in this package. Installation on a second Mac and full production flows remain to be validated.
+
+See the [root README](../README.md#macos-beta--macos-dev-branch) for local DMG/ZIP paths and installation notes, and the [beta release guide](planning/MACOS_BETA_RELEASE.md) for packaging and verification. Source remains in the repository and is excluded from the downloads.
+
+## Development history and setup
+
 The old Swift application source was removed and backed up on 2026-11-15 at the user's request. Xcode configuration, package resolution, permissions, and artwork are retained. A new SwiftUI app now implements the approved first-launch and account flow.
 
 Implemented: a centered, skippable launch animation; three introduction cards; dark/light appearances with gold and bronze accents; email login/signup; email verification/resend; six-digit password reset; Keychain session storage and recovery; and direct entry into the user's native room. The room includes live Socket.IO snapshots, artwork, queue, YouTube search/enqueue, server-authoritative playback controls, and connected devices. The default Mac window is 960 × 720, with a 720 × 560 minimum. Small/short room windows keep transport controls visible while content scrolls.
@@ -20,7 +28,7 @@ The Debug macOS build passed, and 30 checks passed against a local Postman stand
 
 Debug builds omit Associated Domains so the app can be developed with a free Personal Team. A Debug macOS build with the existing Apple Development certificate succeeded on 2026-11-15, without signing overrides or provisioning-update flags; the signed app has no Associated Domains entitlement and keeps the sandbox enabled. UI, email authentication, and Keychain storage remain available. The Google button explains that this build does not enable its HTTPS return.
 
-Release builds retain `Syncbeats.entitlements` and enable Google sign-in. That capability requires a paid Apple Developer Program team and matching provisioning. Before live Google return can work, deploy [the website association route](../dev/frontend/app/.well-known/apple-app-site-association/route.ts) to `https://syncbeats.in/.well-known/apple-app-site-association`. No deployment was performed. To enable Google in a paid-team Debug build, set `CODE_SIGN_ENTITLEMENTS=Syncbeats/Syncbeats.entitlements` and add `SYNCBEATS_ASSOCIATED_DOMAINS` to `SWIFT_ACTIVE_COMPILATION_CONDITIONS` together. The build flag and entitlement must agree.
+Google sign-in in new source builds uses a browser callback and a short-lived PKCE code. Associated Domains and paid-team provisioning are no longer required in Debug or Release. Use your Personal Team and automatic signing; Xcode's usual Run action is supported. The currently packaged beta above predates this change. Deploy the native Google migration and updated backend/website before testing real account login; see [the setup notes](planning/MACOS_GOOGLE_SIGN_IN.md).
 
 Debug builds use `http://localhost:4000` by default; Release builds use `https://api.syncbeats.in`. Development launches can override `SYNCBEATS_API_URL` (HTTPS, or localhost HTTP) and `SYNCBEATS_GOOGLE_CLIENT_ID`. Start the backend with `npm run dev` in `dev/syncbeats-server`, then run the app in Xcode. Tokens stay in Keychain; UserDefaults stores appearance, introduction completion, notch visibility, and device identity.
 

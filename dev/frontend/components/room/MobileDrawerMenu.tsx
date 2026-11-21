@@ -3,7 +3,7 @@ import { X, Disc3, ListMusic, AudioLines, Radio, MessageSquare, Copy, QrCode, Sc
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "../ThemeToggle";
 
-export type MobileTab = "playing" | "queue" | "spatial" | "devices" | "chat";
+export type MobileTab = "playing" | "queue" | "spatial" | "devices" | "chat" | "connection";
 
 interface MobileDrawerMenuProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ const ALL_TABS = [
   { id: "spatial", icon: AudioLines, label: "Spatial · Beta" },
   { id: "devices", icon: Radio, label: "Devices" },
   { id: "chat", icon: MessageSquare, label: "Chat" },
+  { id: "connection", label: "Connection", icon: Radio },
 ];
 
 export function MobileDrawerMenu({ isOpen, onClose, activeTab, onChangeTab, onShowQR, onScanQR, onCopyLink, onProfile, onLogout, onGoToHub, showSpatialTab = false }: MobileDrawerMenuProps) {

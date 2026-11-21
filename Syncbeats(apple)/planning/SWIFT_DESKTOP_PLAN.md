@@ -94,7 +94,7 @@ Responsive refinement: a shared `EntryLayout` expands the composition using both
 
 Verification: Debug macOS build passed; 30 production-client/model checks passed against the local stand-in, including a real Keychain roundtrip. Frontend typecheck and association-route lint passed. Native app launch and introduction controls were observed through accessibility, but full rendered light/dark/resize/keyboard/reduced-motion review remains manual because image capture was not usable in this session. Live email/account flows and a live room response have not been verified.
 
-Google's secure HTTPS callback requires `webcredentials:syncbeats.in` and the website's association file. The entitlement and frontend route are prepared; deployment and matching paid-team provisioning remain release dependencies. Debug omits Associated Domains for free Personal Team development and explains the Google limitation before opening a browser. Release retains the entitlement. The Release compilation condition `SYNCBEATS_ASSOCIATED_DOMAINS` tracks this availability; other Xcode settings/assets are preserved.
+Google sign-in now uses the existing Google web OAuth client and website redirect, followed by a `syncbeats://google/callback` handoff. The backend verifies Google's token and request nonce, stores only a hashed short-lived code bound to a PKCE challenge, and issues the native session after a one-time exchange. Debug and Release no longer require Associated Domains or a paid Apple Developer team. The native Google migration and updated backend/website must be deployed before live testing.
 
 ## Apple Music library and audio sources
 
