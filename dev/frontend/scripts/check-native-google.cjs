@@ -27,12 +27,19 @@ const fragment = '#state=syncbeats-native:' + flow.state + '&id_token=fictional-
   for (const bad of [{ state: 'short', nonce: flow.nonce, code_challenge: flow.challenge }, { state: [flow.state, flow.state], nonce: flow.nonce, code_challenge: flow.challenge }]) check(api.nativeGoogleRequest(bad) === null, 'Malformed or duplicate native parameters are rejected');
   const authorization = new URL(api.googleNativeAuthorization(flow, 'fixture-client', 'https://syncbeats.in'));
   check(authorization.origin === 'https://accounts.google.com' && authorization.searchParams.get('redirect_uri') === 'https://syncbeats.in' && authorization.searchParams.get('nonce') === flow.nonce, 'Google uses the existing registered website redirect and request nonce');
+  for (const [origin, expected] of [['https://www.syncbeats.in', 'https://syncbeats.in'],
+    ['https://www.syncbeats.app', 'https://syncbeats.app'], ['http://localhost:3000', 'http://localhost:3000']]) {
+    const redirected = new URL(api.googleNativeAuthorization(flow, 'fixture-client', origin));
+    check(redirected.searchParams.get('redirect_uri') === expected, 'Native callback matches the registered root at ' + origin);
+  }
   check(api.isNativeGoogleReturn(fragment) && !api.isNativeGoogleReturn('#state=ordinary-web& id_token=fictional'), 'Ordinary web login remains separate from native handoffs');
   check(api.nativeGooglePending(fragment, record).credential === 'fictional-google-credential', 'The callback is bound to the pending native attempt');
   for (const [hash, saved] of [[fragment.replace(flow.state, 'wrong'), record], [fragment + '&state=other', record], [fragment + '&id_token=other', record], [fragment, null], [fragment, '{'], [fragment, JSON.stringify({ ...flow, createdAt: Date.now() - 600001 })]]) {
     assert.throws(() => api.nativeGooglePending(hash, saved)); checks++;
   }
+  window.location.origin = 'https://www.syncbeats.in';
   api.startNativeGoogle(flow);
+  check(new URL(destination).searchParams.get('redirect_uri') === 'https://syncbeats.in', 'Starting from the deployed www page uses the same Google callback as web login');
   check(new URL(destination).searchParams.get('state') === 'syncbeats-native:' + flow.state && values.size === 1, 'Starting sign-in persists only the session bindings');
   window.location.hash = fragment;
   await api.finishNativeGoogle();
