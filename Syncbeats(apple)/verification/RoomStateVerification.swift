@@ -11,6 +11,17 @@ struct RoomStateVerification {
             checks += 1
             print("PASS: \(message)")
         }
+        for size in [CGSize(width: 320, height: 320), CGSize(width: 320, height: 480),
+                     CGSize(width: 375, height: 568), CGSize(width: 390, height: 780),
+                     CGSize(width: 600, height: 600), CGSize(width: 650, height: 320),
+                     CGSize(width: 744, height: 1000), CGSize(width: 1024, height: 700),
+                     CGSize(width: 1194, height: 320)] {
+            let layout = MobilePlayerLayout(size: size)
+            check(layout.coverSize + layout.reservedHeight <= size.height,
+                  "Mobile artwork and control budget fits \(Int(size.width)) × \(Int(size.height))")
+            check(layout.coverSize >= 44 && layout.coverSize <= size.width * 0.72,
+                  "Mobile artwork remains visible without overflowing \(Int(size.width))pt window")
+        }
         let room = RoomSession()
         room.apply(try RoomFixtures.snapshot())
         check(room.currentTrack?.id == "one", "Server current-track selection")

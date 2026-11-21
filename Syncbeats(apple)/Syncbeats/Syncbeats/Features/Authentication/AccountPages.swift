@@ -152,6 +152,14 @@ struct AccountSettingsView: View {
                             AccountActionButton("Open Sound settings", palette: palette) {
                                 if let url = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension") { NSWorkspace.shared.open(url) }
                             }
+                            #else
+                            HStack {
+                                Text("Audio output").font(.system(size: 13))
+                                Spacer()
+                                MobileAudioRoutePicker().frame(width: 44, height: 44).accessibilityLabel("Choose audio output")
+                            }
+                            Text("AirPlay may add output latency. For the closest room sync, use the built-in speaker or wired headphones.")
+                                .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
                             #endif
                         }
                         AccountSection(title: "Account & app", palette: palette) {

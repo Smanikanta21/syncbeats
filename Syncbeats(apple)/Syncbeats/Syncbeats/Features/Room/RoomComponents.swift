@@ -48,14 +48,14 @@ struct RoomTransport: View {
             Button(action: room.togglePlayback) {
                 ZStack {
                     Circle().fill(palette.gold)
-                    Image(systemName: room.pendingPlay ? "stop.fill" : room.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: room.pendingPlay ? "stop.fill" : room.isPlaying && !room.localAudioSuspended ? "pause.fill" : "play.fill")
                         .font(.system(size: compact ? 16 : 20, weight: .medium))
                         .offset(x: !room.isPlaying && !room.pendingPlay ? 1 : 0)
                         .foregroundStyle(palette.buttonText)
                 }.frame(width: compact ? 40 : 56, height: compact ? 40 : 56)
             }.buttonStyle(.borderless)
                 .help(room.pendingPlay ? "Cancel playback request" : room.isPlaying ? "Pause room" : "Play room")
-                .accessibilityLabel(room.pendingPlay ? "Cancel playback request" : room.isPlaying ? "Pause room" : "Play room")
+                .accessibilityLabel(room.localAudioSuspended ? "Resume audio on this device" : room.pendingPlay ? "Cancel playback request" : room.isPlaying ? "Pause room" : "Play room")
             control("Next track", icon: "forward.end.fill", action: room.next)
             control("Repeat: \(room.repeatMode)", icon: room.repeatMode == "track" ? "repeat.1" : "repeat", selected: room.repeatMode != "off", action: room.cycleRepeat)
         }

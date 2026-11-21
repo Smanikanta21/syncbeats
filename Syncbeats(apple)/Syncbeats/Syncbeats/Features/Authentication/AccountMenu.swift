@@ -13,6 +13,9 @@ struct AccountMenu: View {
             AccountMonogram(name: model.account?.name ?? "", palette: palette, size: 32)
         }
         .buttonStyle(.plain)
+        #if os(iOS)
+        .frame(minWidth: 44, minHeight: 44)
+        #endif
         .accessibilityIdentifier("account-menu-button")
         .accessibilityLabel("Account menu for \(model.account?.name ?? "your account")")
         .accessibilityValue(isOpen ? "Open" : "Closed")

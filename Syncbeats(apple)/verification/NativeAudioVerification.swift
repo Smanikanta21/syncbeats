@@ -85,6 +85,7 @@ import Foundation
         check(abs((audio.duration ?? 0) - 3) < 0.001, "Duration comes from decoded sample count")
         audio.prepare(track: track("aaaaaaaaaaa"), baseURL: base)
         check(loaded == 1 && !audio.loading, "Same-track refresh reuses loaded audio")
+        let scheduledStart = ProcessInfo.processInfo.systemUptime + 0.25
         audio.follow(playing: true, position: 0, delay: 0.25)
         check(audio.rendering, "Playback is scheduled on the audio node")
         try await Task.sleep(for: .milliseconds(100))
@@ -93,6 +94,25 @@ import Foundation
         let first = audio.renderedPosition() ?? -1
         check(first > 0.1 && first < 0.7, "Audio samples advance after scheduled start")
         check(audio.meter.read().level > 0 && audio.meter.read().bass > 0, "Ambient energy measures rendered audio")
+        let steadyCorrections = audio.correctionCount
+        for _ in 0..<6 {
+            try await Task.sleep(for: .milliseconds(80))
+            audio.follow(playing: true, position: ProcessInfo.processInfo.systemUptime - scheduledStart,
+                         delay: 0, hardSeekMS: 15)
+        }
+        check(audio.correctionCount - steadyCorrections <= 1,
+              "Steady sample playback does not repeatedly seek against a monotonic timeline")
+        let correctionStarted = ProcessInfo.processInfo.systemUptime
+        audio.correct(to: 0.4, delay: 0)
+        try await Task.sleep(for: .milliseconds(12))
+        // Simulate delayed actor delivery during a background fade.
+        usleep(120_000)
+        try await Task.sleep(for: .milliseconds(140))
+        let delayedExpected = 0.4 + ProcessInfo.processInfo.systemUptime - correctionStarted
+        check(abs((audio.renderedPosition() ?? -10) - delayedExpected) < 0.055,
+              "Delayed correction follows elapsed time instead of assuming a 48 ms fade")
+        check(audio.meter.read().level > 0,
+              "Corrected output fades back into audible samples")
         audio.follow(playing: false, position: first, delay: 0)
         check(!audio.rendering && audio.meter.read().level == 0, "Pause stops rendering and clears ambient energy")
         audio.follow(playing: true, position: 1.2, delay: 0)
@@ -187,7 +207,39 @@ import Foundation
             let ready = calls.filter { $0["event"] as? String == "room:clientReady" }
             check(ready.count >= 2 && ready.allSatisfy { ($0["data"] as? [String: Any])?["isReady"] as? Bool == true }, "Ready messages carry the server-required flag after reconnect")
             check(calls.contains { $0["event"] as? String == "sync:ping" }, "Native room measures server clock offset")
+            session.pause()
+            for _ in 0..<40 { if !session.isPlaying { break }; try await Task.sleep(for: .milliseconds(50)) }
+            session.seek(to: 0)
+            for _ in 0..<40 { if session.position() < 0.01 { break }; try await Task.sleep(for: .milliseconds(50)) }
+            session.play()
+            for _ in 0..<40 { if session.audio.rendering { break }; try await Task.sleep(for: .milliseconds(50)) }
+            let interruptedAt = session.position()
+            session.suspendLocalAudio()
+            try await Task.sleep(for: .milliseconds(450))
+            check(session.localAudioSuspended && session.isPlaying && !session.audio.rendering,
+                  "Local interruption stops output without pausing the shared room")
+            check(session.position() > interruptedAt + 0.3 && session.audio.loadedKey == nil,
+                  "Drift loop cannot restart suspended output while room time continues")
+            session.play()
+            for _ in 0..<60 { if session.audio.rendering { break }; try await Task.sleep(for: .milliseconds(50)) }
+            check(!session.localAudioSuspended && session.isPlaying && session.audio.rendering,
+                  "Explicit Play resumes local output without toggling a playing room")
+            try await Task.sleep(for: .milliseconds(100))
+            check(abs((session.audio.renderedPosition() ?? -10) - session.position()) < 0.2,
+                  "Resumed output follows current server position instead of the interrupted offset")
+            session.recoverAudioOutput()
+            for _ in 0..<60 { if session.audio.rendering { break }; try await Task.sleep(for: .milliseconds(50)) }
+            check(session.audio.rendering && session.audio.error == nil,
+                  "Rebuilding invalidated audio objects restores room playback")
+            session.suspendLocalAudio()
+            session.pause()
+            for _ in 0..<40 { if !session.isPlaying { break }; try await Task.sleep(for: .milliseconds(50)) }
+            session.resumeLocalAudio()
+            for _ in 0..<60 { if session.audio.loadedKey != nil { break }; try await Task.sleep(for: .milliseconds(50)) }
+            check(!session.localAudioSuspended && !session.isPlaying && !session.audio.rendering,
+                  "Recovery respects a room paused during interruption")
             session.disconnect()
+            check(!session.localAudioSuspended, "Leaving a room clears interruption state")
             check(!session.audio.rendering && session.audio.loadedKey == nil, "Leaving room stops local rendering")
         }
         print("\(checks) native audio checks passed")

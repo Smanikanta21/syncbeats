@@ -13,7 +13,12 @@ nonisolated struct NativeAppleLibraryPreview: Sendable {
     static func read() async throws -> NativeAppleLibraryPreview {
         let status = await MusicAuthorization.request()
         guard status == .authorized else {
-            throw AuthFailure.invalidInput(status == .restricted ? "Apple Music access is restricted on this Mac." : "Allow Music access in System Settings → Privacy & Security → Media & Apple Music, then try again.")
+            #if os(macOS)
+            let instruction = "Allow Music access in System Settings → Privacy & Security → Media & Apple Music, then try again."
+            #else
+            let instruction = "Allow Music access in Settings → Privacy & Security → Media & Apple Music, then try again."
+            #endif
+            throw AuthFailure.invalidInput(status == .restricted ? "Apple Music access is restricted on \(NativeDevice.thisDevice)." : instruction)
         }
         var songRequest = MusicLibraryRequest<Song>(); songRequest.limit = 200
         var playlistRequest = MusicLibraryRequest<Playlist>(); playlistRequest.limit = 100

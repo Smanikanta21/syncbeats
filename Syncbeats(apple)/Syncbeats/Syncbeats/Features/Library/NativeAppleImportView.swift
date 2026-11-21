@@ -57,7 +57,7 @@ struct NativeAppleImportView: View {
                         if preview.skippedVideos > 0 { Text("\(preview.skippedVideos) music videos were skipped").font(.system(size: 12)).foregroundStyle(palette.secondary) }
                     }
                 }
-                Text("Copies names, artwork and playlist order to this Mac. Audio stays in Apple Music; songs need a room version before sharing. Re-importing updates your collection without duplicating songs.")
+                Text("Saves names, artwork and playlist order to your SyncBeats account, available on your other devices. Audio stays in Apple Music; songs need a room version before sharing. Re-importing updates your collection without duplicating songs.")
                     .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Cancel", action: onClose).disabled(importing)

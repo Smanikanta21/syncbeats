@@ -21,6 +21,10 @@ struct RoomHomeView: View {
                 }.padding(.horizontal, geometry.size.width < 600 ? 16 : 28).padding(.top, 4).padding(.bottom, 28)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            #if os(iOS)
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable { await room.loadMusicInterests(); await room.loadListeningHistory(); await room.loadDiscovery(.all, refresh: true) }
+            #endif
         }
         }
         .task(id: room.roomID) { if room.musicFeed == nil { await room.loadMusicInterests() } }
@@ -41,7 +45,11 @@ struct RoomHomeView: View {
             if !room.searchQuery.isEmpty {
                 Button { room.searchQuery = ""; didSearch = false; searchFocused = true } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(palette.quiet).accessibilityLabel("Clear search")
-            } else { Text("⌘ K").font(.system(size: 11)).foregroundStyle(palette.quiet) }
+            } else {
+                #if os(macOS)
+                Text("⌘ K").font(.system(size: 11)).foregroundStyle(palette.quiet)
+                #endif
+            }
             Button(room.isSearching ? "Searching…" : "Search", action: runSearch)
                 .font(.system(size: 12, weight: .medium)).buttonStyle(NativeButtonStyle(palette: palette))
                 .disabled(room.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || room.isSearching || !room.canControl)

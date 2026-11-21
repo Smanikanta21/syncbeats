@@ -82,6 +82,9 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
     private var scheduleID = UUID()
     private var segmentStart = 0.0
     private var tapInstalled = false
+    #if os(iOS)
+    private var sessionActive = false
+    #endif
     private struct PositionSnapshot { let generation: UUID; let scheduleID: UUID; let position: Double; let uptime: Double }
     private let snapshot = OSAllocatedUnfairLock<PositionSnapshot?>(initialState: nil)
     private var positionTimer: DispatchSourceTimer?
@@ -93,6 +96,9 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
         queue.async { [self] in
             self.generation = generation; scheduleID = UUID()
             player.stop(); engine.stop(); file = nil; meter.reset()
+            #if os(iOS)
+            sessionActive = false
+            #endif
             snapshot.withLock { $0 = nil }
         }
     }
@@ -119,7 +125,12 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
                         engine.mainMixerNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in meter.consume(buffer) }
                         tapInstalled = true
                     }
-                    engine.prepare(); try engine.start()
+                    engine.prepare()
+                    #if !os(iOS)
+                    try engine.start()
+                    #endif
+                    // iOS takes the audio session only when playback is scheduled,
+                    // so browsing a paused room does not interrupt another app.
                     if positionTimer == nil {
                         let timer = DispatchSource.makeTimerSource(queue: queue)
                         timer.schedule(deadline: .now(), repeating: .milliseconds(40))
@@ -132,38 +143,87 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
         }
     }
 
-    func follow(position: Double, deadline: Double, generation: UUID, scheduleID: UUID,
+    func follow(position: Double, deadline: Double, generation: UUID, scheduleID: UUID, fadeIn: Bool,
                 completion: @escaping @Sendable (String?) -> Void,
                 ended: @escaping @Sendable () -> Void) {
         queue.async { [self] in
             guard self.generation == generation, let file else { return }
             self.scheduleID = scheduleID
             snapshot.withLock { $0 = nil }
-            player.stop(); player.volume = 1; meter.reset()
-            do { if !engine.isRunning { try engine.start() } }
+            player.stop(); player.volume = fadeIn ? 0 : 1; meter.reset()
+            do { try activateOutput(); if !engine.isRunning { try engine.start() } }
             catch { completion(error.localizedDescription); return }
             let rate = file.processingFormat.sampleRate
-            let frame = min(max(0, AVAudioFramePosition(position * rate)), max(0, file.length - 1))
+            // Background delivery can lag. Position belongs to the requested
+            // deadline, so advance it by any time spent waiting for this worker.
+            let now = ProcessInfo.processInfo.systemUptime
+            let adjustedPosition = position + max(0, now - deadline)
+            let frame = min(max(0, AVAudioFramePosition(adjustedPosition * rate)), max(0, file.length - 1))
             let count = AVAudioFrameCount(min(Int64(UInt32.max), file.length - frame))
             segmentStart = Double(frame) / rate
             player.scheduleSegment(file, startingFrame: frame, frameCount: count, at: nil, completionCallbackType: .dataPlayedBack) { _ in ended() }
-            let delay = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+            let delay = max(0, deadline - now)
             let host = mach_absolute_time() + AVAudioTime.hostTime(forSeconds: delay)
             player.play(at: AVAudioTime(hostTime: host)); completion(nil)
+            if fadeIn {
+                for step in 1...6 {
+                    queue.asyncAfter(deadline: .now() + delay + Double(step) * 0.008) { [self] in
+                        guard self.generation == generation, self.scheduleID == scheduleID else { return }
+                        player.volume = Float(step) / 6
+                    }
+                }
+            }
         }
     }
 
     private func samplePosition() {
         guard player.isPlaying, let time = player.lastRenderTime,
               let rendered = player.playerTime(forNodeTime: time), rendered.sampleTime >= 0 else { return }
+        // sampleTime describes lastRenderTime, not the moment this timer fires.
+        // Dating it as "now" creates false drift on coalesced background timers.
+        let hostNow = mach_absolute_time()
+        guard time.isHostTimeValid else { return }
+        // Core Audio can provide the upcoming render quantum's host time.
+        let age = hostNow >= time.hostTime
+            ? AVAudioTime.seconds(forHostTime: hostNow - time.hostTime)
+            : -AVAudioTime.seconds(forHostTime: time.hostTime - hostNow)
         let value = PositionSnapshot(generation: generation, scheduleID: scheduleID,
             position: segmentStart + Double(rendered.sampleTime) / rendered.sampleRate,
-            uptime: ProcessInfo.processInfo.systemUptime)
+            uptime: ProcessInfo.processInfo.systemUptime - age)
         snapshot.withLock { $0 = value }
+    }
+    private func activateOutput() throws {
+        #if os(iOS)
+        guard !sessionActive else { return }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+        try session.setActive(true)
+        sessionActive = true
+        #endif
+    }
+    func rebuildOutput() {
+        queue.async { [self] in
+            player.stop(); engine.stop()
+            if tapInstalled { engine.mainMixerNode.removeTap(onBus: 0) }
+            engine = AVAudioEngine(); player = AVAudioPlayerNode()
+            equalizerNode = AVAudioUnitEQ(numberOfBands: NativeEqualizer.frequencies.count)
+            tapInstalled = false
+            #if os(iOS)
+            sessionActive = false
+            #endif
+        }
+    }
+    func releaseOutput() {
+        #if os(iOS)
+        queue.async { [self] in
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            sessionActive = false
+        }
+        #endif
     }
     func position(generation: UUID, scheduleID: UUID) -> Double? {
         guard let value = snapshot.withLock({ $0 }), value.generation == generation, value.scheduleID == scheduleID else { return nil }
-        return value.position + max(0, ProcessInfo.processInfo.systemUptime - value.uptime)
+        return max(0, value.position + ProcessInfo.processInfo.systemUptime - value.uptime)
     }
     func volume(_ value: Double) { queue.async { [self] in engine.mainMixerNode.outputVolume = Float(min(100, max(0, value)) / 100) } }
     func fade(_ value: Float, generation: UUID) { queue.async { [self] in if self.generation == generation { player.volume = value } } }
@@ -191,6 +251,10 @@ final class NativeRoomAudio {
     private(set) var loading = false
     private(set) var error: String?
     private(set) var rendering = false
+    @ObservationIgnored private(set) var correctionCount = 0
+    @ObservationIgnored private(set) var lastCorrectionMS = 0.0
+    func rebuildOutput() { reset(); renderer.rebuildOutput() }
+    func releaseOutput() { renderer.releaseOutput() }
     let meter = AudioEnergyMeter()
     @ObservationIgnored private lazy var renderer = NativeAudioRenderer(meter: meter)
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -233,6 +297,14 @@ final class NativeRoomAudio {
         let loadGeneration = generation
         loadTask = Task { [weak self] in
             guard let self else { return }
+            #if os(iOS)
+            let backgroundWork = NativeBackgroundAudioWork { [weak self] in
+                guard let self, self.generation == loadGeneration else { return }
+                self.reset()
+                self.error = "Open SyncBeats to finish preparing audio."
+            }
+            defer { backgroundWork.end() }
+            #endif
             do {
                 let source: URL
                 if let video = YouTubeIdentity.id(in: track.trackUrl) {
@@ -256,23 +328,26 @@ final class NativeRoomAudio {
                 guard self.generation == loadGeneration, !Task.isCancelled else { return }
                 loading = false; failedKey = key; preparedKey = nil
                 NativeDiagnostics.failure("Audio", "Prepare track", error: error)
-                self.error = "This Mac couldn't load the audio. \(error.localizedDescription)"
+                self.error = "Your \(NativeDevice.name) couldn't load the audio. \(error.localizedDescription)"
                 onFailure?(self.error!)
             }
         }
     }
 
-    func follow(playing: Bool, position: Double, delay: Double, hardSeekMS: Double = 15, force: Bool = false) {
+    func follow(playing: Bool, position: Double, delay: Double, hardSeekMS: Double = 15, force: Bool = false, fadeIn: Bool = false) {
         guard playing, loadedKey != nil else { pause(); return }
         if !force, rendering, delay < 0.02, let current = renderedPosition() {
-            if abs(current - position) * 1000 > hardSeekMS { correct(to: position, delay: delay) }
+            if abs(current - position) * 1000 > hardSeekMS {
+                if correctionTask == nil { lastCorrectionMS = (current - position) * 1000 }
+                correct(to: position, delay: delay)
+            }
             return
         }
         correctionTask?.cancel(); correctionTask = nil
         let id = UUID(), currentGeneration = generation
         scheduleID = id; rendering = true
         renderer.follow(position: position, deadline: ProcessInfo.processInfo.systemUptime + max(0, delay),
-                        generation: currentGeneration, scheduleID: id,
+                        generation: currentGeneration, scheduleID: id, fadeIn: fadeIn,
                         completion: { [weak self] message in
             Task { @MainActor [weak self] in
                 guard let self, self.generation == currentGeneration, self.scheduleID == id else { return }
@@ -294,6 +369,8 @@ final class NativeRoomAudio {
 
     func correct(to position: Double, delay: Double) {
         guard rendering, correctionTask == nil else { return }
+        correctionCount += 1
+        let deadline = ProcessInfo.processInfo.systemUptime + max(0, delay)
         correctionTask = Task { [weak self] in
             guard let self else { return }
             for step in (0...5).reversed() {
@@ -301,7 +378,10 @@ final class NativeRoomAudio {
                 try? await Task.sleep(for: .milliseconds(8))
                 if Task.isCancelled { return }
             }
-            correctionTask = nil; follow(playing: true, position: position + 0.048, delay: delay, force: true)
+            let now = ProcessInfo.processInfo.systemUptime
+            correctionTask = nil
+            follow(playing: true, position: position + max(0, now - deadline),
+                   delay: max(0, deadline - now), force: true, fadeIn: true)
         }
     }
     func setVolume(_ value: Double) { renderer.volume(value) }
@@ -313,6 +393,7 @@ final class NativeRoomAudio {
     func reset() {
         loadTask?.cancel(); loadTask = nil; correctionTask?.cancel(); correctionTask = nil
         generation = UUID(); scheduleID = UUID(); rendering = false
+        correctionCount = 0; lastCorrectionMS = 0
         renderer.reset(generation: generation)
         loadedKey = nil; failedKey = nil; preparedKey = nil; duration = nil; loading = false; error = nil
     }

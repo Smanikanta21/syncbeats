@@ -13,7 +13,13 @@ The backend verifies Google's token signature, audience, expiry, verified email 
 3. Keep the current Google web client ID and its existing `https://syncbeats.in` redirect. The website uses `NEXT_PUBLIC_GOOGLE_CLIENT_ID`; the backend verifies against `GOOGLE_CLIENT_ID`. No additional Google redirect URI or Apple website association is needed.
 4. Rebuild and run Syncbeats in Xcode, then click Continue with Google. Close an older running build first. If the server lacks the new endpoint, the app displays an update message.
 
-The live endpoint was still returning 404 when checked during implementation. No deployment or real Google account login was performed. The migration was applied only to an isolated local test database using the generated migration SQL; that test database has no baseline Prisma migration history, so migrate deploy correctly refused it without a reset.
+The backend and frontend are deployed. On 2026-11-21, `GET https://api.syncbeats.in/auth/native/google` returned the supported handoff version. A real Google account sign-in remains unverified.
+
+## Google redirect configuration
+
+Production redirects the website to `https://www.syncbeats.in`. Native Google authorization now normalizes that origin to `https://syncbeats.in`, matching ordinary website login. The correction is deployed from `main` commit `745ba426`; 23 browser-flow checks, TypeScript, targeted lint and the production frontend build passed.
+
+On 2026-11-21, the existing Web application client `1006171035854-cacohriuvvgpb7mu8q11iro8oq2dj2o1.apps.googleusercontent.com` was inspected in Google Cloud project `sync-beats-472708`. Its root redirect was already present, but the `www` redirect and root JavaScript origin were missing. Added `https://syncbeats.in` to Authorized JavaScript origins and `https://www.syncbeats.in` to Authorized redirect URIs. Google confirmed "OAuth client saved"; reopening the client confirmed both persisted. Existing origins and callbacks were retained. Google advises allowing five minutes to a few hours for propagation. Do not register `/auth/native` or `syncbeats://google/callback` as Google's redirect.
 
 ## Verification
 

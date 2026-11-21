@@ -8,6 +8,9 @@ struct RoomMiniPlayer: View {
     var onFloat: () -> Void
     var floating = false
     var body: some View {
+        #if os(iOS)
+        MobileRoomMiniPlayer(room: room, palette: palette, onExpand: onExpand, onQueue: onQueue)
+        #else
         VStack(spacing: 8) {
             HStack(spacing: 12) {
                 Button(action: onExpand) {
@@ -41,6 +44,7 @@ struct RoomMiniPlayer: View {
             RoomProgress(room: room, palette: palette)
         }.padding(.horizontal, floating ? 14 : 24).padding(.vertical, 12).background(palette.panel).foregroundStyle(palette.text)
             .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
+        #endif
     }
 }
 

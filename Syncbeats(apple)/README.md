@@ -1,8 +1,10 @@
-# Native Mac app rebuild
+# Native Apple app
+
+The macOS app and shared web/backend account-library work were merged into `main` on 2026-11-21 (`f55edda2`). iPhone and iPad development continues on `ios-ipados-dev`. See [iOS and iPad setup](IOS_IPADOS.md) for the mobile build, supported behavior and verification limits.
 
 ## Current macOS beta
 
-Beta development stays on **`macos-dev` only**. The current local package is **1.0 beta 1, build 2**, targeting **Apple Silicon and macOS 26.6+** with the production API at `https://api.syncbeats.in`. It is ad-hoc signed, not notarized, and supports email sign-in/registration; Google sign-in is disabled in this package. Installation on a second Mac and full production flows remain to be validated.
+The macOS beta source is now integrated into **`main`**; mobile development is on **`ios-ipados-dev`**. The current local package is **1.0 beta 1, build 2**, targeting **Apple Silicon and macOS 26.6+** with the production API at `https://api.syncbeats.in`. It is ad-hoc signed, not notarized, and supports email sign-in/registration; Google sign-in is disabled in this package. Installation on a second Mac and full production flows remain to be validated.
 
 See the [root README](../README.md#macos-beta--macos-dev-branch) for local DMG/ZIP paths and installation notes, and the [beta release guide](planning/MACOS_BETA_RELEASE.md) for packaging and verification. Source remains in the repository and is excluded from the downloads.
 

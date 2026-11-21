@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import SocketIO
+#if os(iOS)
+import UIKit
+#endif
 
 /// One server-authoritative room shared by the main window and notch.
 /// Local audio and every player view follow the server-authoritative timeline.
@@ -13,6 +16,7 @@ final class RoomSession {
     private(set) var currentTrackURL: String?
     private(set) var isPlaying = false
     private(set) var pendingPlay = false
+    private(set) var localAudioSuspended = false
     private(set) var shuffle = false
     private(set) var repeatMode = "off"
     private(set) var searchResults: [RoomSearchResult] = []
@@ -114,7 +118,7 @@ final class RoomSession {
             self.errorMessage = nil
             NativeDiagnostics.info("Socket", "Connected; joining room")
             self.socket?.emit("room:join", ["roomId": credentials.roomID,
-                "displayName": credentials.displayName + " · Mac", "userId": credentials.userID,
+                "displayName": credentials.displayName + " · " + NativeDevice.name, "userId": credentials.userID,
                 "deviceId": credentials.deviceID, "isReady": false] as [String: Any])
             self.startClockSync()
         }
@@ -185,6 +189,8 @@ final class RoomSession {
         driftTask?.cancel(); driftTask = nil
         syncProbes = [:]; syncSamples = []; serverOffset = 0; playbackEpoch = nil
         audio.reset()
+        localAudioSuspended = false
+        audio.releaseOutput()
         generation = UUID()
         discoveryGeneration = UUID()
         discoveryCache = [:]
@@ -268,8 +274,18 @@ final class RoomSession {
     }
 
     func retryAudio() { audio.reset(); synchronizeAudio() }
+    func recoverAudioOutput() { audio.rebuildOutput(); synchronizeAudio() }
+    func returnToForeground() {
+        guard credentials != nil else { return }
+        if canControl {
+            startClockSync()
+            synchronizeAudio()
+        } else if socket?.status == .disconnected || socket?.status == .notConnected {
+            socket?.connect()
+        }
+    }
 
-    private func recordPlaybackState() {
+    func recordPlaybackState() {
         #if DEBUG
         let energy = audio.meter.read()
         let state: [String: Any] = [
@@ -281,13 +297,22 @@ final class RoomSession {
             "ambientLevel": energy.level, "ambientBass": energy.bass, "ambientBeat": energy.transient,
             "position": position(), "updatedAt": Date().timeIntervalSince1970
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) {
+        var diagnostic = state
+        diagnostic["renderedPosition"] = audio.renderedPosition() ?? -1
+        diagnostic["correctionCount"] = audio.correctionCount
+        diagnostic["lastCorrectionMS"] = audio.lastCorrectionMS
+        diagnostic["clockOffsetMS"] = serverOffset
+        #if os(iOS)
+        diagnostic["applicationState"] = UIApplication.shared.applicationState.rawValue
+        #endif
+        if let data = try? JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]) {
             try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("syncbeats-native-playback-state.json"), options: .atomic)
         }
         #endif
     }
 
     private func synchronizeAudio() {
+        guard !localAudioSuspended else { audio.pause(); return }
         guard let credentials, let track = currentTrack else { audio.reset(); return }
         audio.onLoaded = { [weak self] key, duration in
             guard let self, self.currentTrackURL.map(YouTubeIdentity.key(for:)) == key else { return }
@@ -319,7 +344,7 @@ final class RoomSession {
     }
 
     private func followAudio() {
-        guard canControl else { audio.pause(); return }
+        guard canControl, !localAudioSuspended else { audio.pause(); return }
         if let local = participants.first(where: { $0.id == socket?.sid }) { audio.setVolume(local.volume ?? 100) }
         audio.follow(playing: isPlaying && !pendingPlay, position: position(), delay: secondsUntilStart,
                      hardSeekMS: syncParameters.hardSeekMS)
@@ -368,7 +393,24 @@ final class RoomSession {
         syncParameters = .forRTT(syncSamples.map(\.rtt).reduce(0, +) / Double(syncSamples.count))
     }
 
-    func togglePlayback() { guard currentTrack != nil else { return }; emit(PlaybackCommand.toggle(playing: isPlaying, pending: pendingPlay)) }
+    /// Calls and route loss suspend only this output. Room state stays authoritative.
+    func suspendLocalAudio() { localAudioSuspended = true; audio.reset() }
+    func resumeLocalAudio() {
+        guard localAudioSuspended else { return }
+        localAudioSuspended = false
+        retryAudio() // Rebuild the route, then follow the current server position.
+    }
+    func play() {
+        guard canControl, currentTrack != nil else { return }
+        resumeLocalAudio()
+        if !isPlaying && !pendingPlay { emit("playback:play") }
+    }
+    func pause() { if isPlaying || pendingPlay { emit("playback:pause") } }
+    func togglePlayback() {
+        guard currentTrack != nil else { return }
+        if localAudioSuspended { play(); return }
+        emit(PlaybackCommand.toggle(playing: isPlaying, pending: pendingPlay))
+    }
     func next() { emit("playback:next") }
     func previous() { emit("playback:prev") }
     func jump(to track: RoomTrack) { emit("playback:jumpTo", ["trackId": track.id]) }
