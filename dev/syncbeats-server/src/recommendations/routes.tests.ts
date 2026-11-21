@@ -15,6 +15,7 @@ async function main() {
   process.env.JWT_SECRET = randomUUID();
   const { createRecommendationRoutes } = await import('../handlers/RecommendationRoutes');
   const { createHistoryRoutes } = await import('../handlers/HistoryRoutes');
+  const { createSearchRoutes } = await import('../handlers/SearchRoutes');
   const db = new PrismaClient();
   const suffix = randomUUID();
   const alice = await db.user.create({ data: { name: 'Alice', email: `alice-${suffix}@example.test` } });
@@ -22,6 +23,7 @@ async function main() {
   const token = (user: typeof alice) => jwt.sign({ sub: user.id, email: user.email, name: user.name }, process.env.JWT_SECRET!, { expiresIn: '1h' });
   const app = express(); app.use(express.json());
   app.use('/recommendations', createRecommendationRoutes(db)); app.use('/history', createHistoryRoutes(db));
+  app.use('/search', createSearchRoutes());
   const unavailableDB = { musicTasteProfile: { findUnique: async () => {
     throw Object.assign(new Error('private-sql-fixture'), { code: 'P2021' });
   } } } as unknown as PrismaClient;
@@ -50,6 +52,7 @@ async function main() {
     } finally { console.error = originalError; }
     assert.equal((await request('/recommendations/feed', 'GET', undefined, alice, false)).status, 401);
     assert.equal((await request('/history/recent', 'GET', undefined, alice, false)).status, 401);
+    assert.equal((await request('/search/recommendations', 'GET', undefined, alice, false)).status, 401);
     const fresh = await request('/recommendations/feed');
     assert.equal(fresh.body.profile.onboardingStatus, 'NEW');
     assert.equal(fresh.body.sections[0].title, 'Starter picks');

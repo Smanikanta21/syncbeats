@@ -123,3 +123,8 @@ brag-output*/
 /GOOGLE_AUTH_SETUP.md
 *.dump
 *.backup
+
+# Local Mac beta downloads and Python packaging cache.
+/releases/macos/
+__pycache__/
+*.pyc

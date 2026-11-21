@@ -473,7 +473,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, loadRoom, async (req: Request, res: Response): Promise<void> => {
     try {
       const { youtubeUrl, title: customTitle, durationSec: suppliedDuration } = req.body as { youtubeUrl?: string; title?: string; durationSec?: unknown };
-      let durationSec = trackDuration(suppliedDuration);
+      const durationSec = trackDuration(suppliedDuration);
 
       if (!youtubeUrl) {
         fail(res, 400, 'Paste a YouTube link to add a song.');

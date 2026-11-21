@@ -1,14 +1,1 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <defs><linearGradient id="bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#141922"/><stop offset="1" stop-color="#05070B"/>
-  </linearGradient><linearGradient id="g" x1="150" y1="150" x2="880" y2="900" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#45F0AE"/><stop offset=".5" stop-color="#10B981"/><stop offset="1" stop-color="#0E9BD8"/>
-  </linearGradient></defs>
-  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
-  <rect x="96" y="470" width="832" height="84" rx="42" fill="#F7FAFC"/>
-  <rect x="148" y="430" width="96" height="164" rx="48" fill="url(#g)"/>
-  <rect x="306" y="300" width="96" height="424" rx="48" fill="url(#g)"/>
-  <rect x="464" y="160" width="96" height="704" rx="48" fill="url(#g)"/>
-  <rect x="622" y="330" width="96" height="364" rx="48" fill="url(#g)"/>
-  <rect x="780" y="452" width="96" height="120" rx="48" fill="url(#g)"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#171C1A"/><g fill="none" stroke-linejoin="round" stroke-width="5.5"><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" stroke="#F4F5EF"/><g transform="translate(12 7)"><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" stroke="#171C1A" stroke-width="10"/><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" stroke="#B7BAB5"/></g></g></svg>

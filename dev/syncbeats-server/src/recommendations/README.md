@@ -29,7 +29,7 @@ The deprecated `/search/recommendations` endpoint now uses authenticated ownersh
 
 ## Schema rollout and verification
 
-Migration: `prisma/migrations/20261119100000_recommendation_interests/migration.sql`. Deploy the migration before enabling the new clients. The remote database has not been modified during development.
+Migration: `prisma/migrations/20261119100000_recommendation_interests/migration.sql`. The configured development database received this migration on 2026-11-19. Deploy it to each other target environment before enabling the new clients.
 
 ```sh
 npm run prisma:generate

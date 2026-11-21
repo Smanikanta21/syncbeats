@@ -1,0 +1,27 @@
+purpose:
+  stands_in_for: Downloaded audio responses, including synthetic WAV, malformed data and HTTP 503.
+  unblocks: Native AVAudioEngine preparation and authoritative room playback/readiness recovery.
+assumptions:
+  - id: local-native-audio-and-room-recovery
+    status: supported
+    claim: The native client renders the synthetic audio and preserves server readiness across loaded snapshots, pause and reconnect in the exercised local room.
+    reason: Real URLSession and AVAudioEngine ran against the audio fixture, and real Socket.IO traffic used the production backend Room state object.
+    verification: On 2026-11-19, 41 checks passed with native-playback-room.cjs on port 4190 forwarding downloads to the simulation on port 4189. Loaded players remained ready and unblocked after snapshots settled, on pause and after reconnect. Failure/retry, seek, timing probes and stereo energy checks also passed. Real YouTube extraction, authenticated persistence, hardware latency and audible multi-device synchronization were not exercised.
+    source: NativeAudioVerification.swift; native-playback-room.cjs; NativeRoomAudio.swift; RoomSession.swift; /tmp/syncbeats-push-native-playback-checks.log; /tmp/syncbeats-push-native-audio.ndjson. Earlier evidence remains in native-audio.context.md.
+    updated_at: "2026-11-19"
+  - id: native-audio-account-library-push-review
+    status: supported
+    claim: The native audio client preserves preparation, duration, scheduled playback, seek and failure recovery while compact spectrum bars use measured audio in the exercised local scenarios.
+    reason: The real Swift caller and AVAudioEngine completed 40 checks against the existing repository audio fixture, including valid audio, HTTP 503 and malformed audio.
+    verification: On 2026-11-21, 40 native audio checks passed. The simulation recorded four download requests with three HTTP 200 responses and one HTTP 503; the successful responses included a deliberately malformed payload. Compact FFT bars, equalizer rendering, stereo energy and ambient geometry passed. Live YouTube extraction, authenticated room playback and multi-device hardware latency were not exercised in this run.
+    source: NativeAudioVerification.swift; postman/mocks/native-audio/default.js; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; ../Syncbeats/Syncbeats/Services/Audio/SpectrumMotion.swift; /tmp/syncbeats-push-native-audio-final.log; /tmp/syncbeats-push-audio-sim.ndjson
+    updated_at: "2026-11-21"
+fingerprints:
+  - id: native-audio-20261121-push-review
+    date: "2026-11-21"
+    commit: 1708b075 plus staged macos-dev app changes
+    cli: "1.80.0"
+  - id: macos-native-push-review
+    date: "2026-11-19"
+    commit: 4dc9a09c plus the staged native rebuild
+    cli: "1.80.0"

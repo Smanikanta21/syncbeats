@@ -5,6 +5,7 @@ import { DeviceRepository } from '../db/DeviceRepository';
 import { RoomPersistence } from '../core/RoomPersistence';
 
 import { UserRepository } from '../auth/UserRepository';
+import { registerAccountUpdates } from '../library/AccountUpdates';
 import {
   JoinPayload, LeavePayload, SeekPayload, PingPayload, RoomSnapshot, SetParticipantVolumePayload, ChatMessage, RepeatMode
 } from '../types';
@@ -138,6 +139,7 @@ export class SocketHandler {
   }
 
   register(socket: Socket): void {
+    registerAccountUpdates(socket);
     console.log(`[WS] connected: ${socket.id}`);
 
     // Refreshing a foreground tab must not leave/rejoin and pause a single-device room.

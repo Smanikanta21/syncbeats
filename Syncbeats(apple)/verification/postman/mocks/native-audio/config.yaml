@@ -1,0 +1,5 @@
+version: 1
+name: SyncBeats native audio
+origin: https://api.syncbeats.in
+interceptRequests: true
+mockSrc: default.js

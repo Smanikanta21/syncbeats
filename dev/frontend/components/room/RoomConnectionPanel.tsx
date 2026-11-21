@@ -1,10 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, QrCode, RefreshCw } from "lucide-react";
+import { Copy, QrCode, RefreshCw, ScanLine } from "lucide-react";
 import { useConnection } from "../../context/ConnectionContext";
 
-export function RoomConnectionPanel({ roomId, onShowQR }: { roomId: string; onShowQR: () => void }) {
+interface RoomConnectionPanelProps {
+  roomId: string;
+  isPrivate: boolean;
+  isHost: boolean;
+  onShowQR: () => void;
+  onScanQR: () => void;
+  onTogglePrivate: () => void;
+}
+
+export function RoomConnectionPanel({ roomId, isPrivate, isHost, onShowQR, onScanQR, onTogglePrivate }: RoomConnectionPanelProps) {
   const { isOnline, isServerReachable, isSocketConnected, checkConnection } = useConnection();
   const [copyStatus, setCopyStatus] = useState("");
   const [checking, setChecking] = useState(false);
@@ -24,6 +33,15 @@ export function RoomConnectionPanel({ roomId, onShowQR }: { roomId: string; onSh
       </div>
       {copyStatus && <p role="status" className="text-xs text-foreground/60 mt-2">{copyStatus}</p>}
       <button type="button" onClick={onShowQR} className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border border-foreground/10 py-3 text-sm font-medium hover:bg-foreground/5 cursor-pointer"><QrCode size={17} />Show room QR code</button>
+      <button type="button" onClick={onScanQR} className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl border border-foreground/10 py-3 text-sm font-medium hover:bg-foreground/5 cursor-pointer"><ScanLine size={17} />Scan or enter a room code</button>
+    </div>
+    <div>
+      <h3 className="text-sm font-semibold mb-2">Room privacy</h3>
+      <p className="text-xs text-foreground/60 mb-3">{isPrivate ? "Joining this room requires approval." : "Anyone with the room code can join."}</p>
+      {isHost ? <button type="button" onClick={onTogglePrivate} aria-pressed={isPrivate}
+        className="rounded-xl border border-foreground/10 px-4 py-3 text-sm font-medium hover:bg-foreground/5 cursor-pointer">
+        {isPrivate ? "Make room public" : "Make room private"}
+      </button> : <p className="text-sm text-foreground/65">{isPrivate ? "Private room" : "Public room"}</p>}
     </div>
     <div>
       <h3 className="text-sm font-semibold mb-3">Connection status</h3>

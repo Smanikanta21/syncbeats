@@ -1,4 +1,5 @@
 "use client";
+import { useAccountRevision } from "../../../lib/accountUpdates";
 
 import profileStyles from "./Profile.module.css";
 import { useState, useEffect, useCallback } from "react";
@@ -48,6 +49,7 @@ function getPlatformLabel(userAgent: string | null): string {
 }
 
 export default function ProfilePage() {
+  const accountRevision = useAccountRevision("all");
   const router = useRouter();
   const { user, device, logout, emailVerified, updateProfile, resendVerification } = useAuth();
   const { isOnline, isServerReachable, isSocketConnected } = useConnection();
@@ -121,7 +123,7 @@ export default function ProfilePage() {
     } else {
       setIsFetchingStats(false);
     }
-  }, [user?.id]);
+  }, [user?.id, accountRevision]);
 
   const handleLogout = () => {
     logout();

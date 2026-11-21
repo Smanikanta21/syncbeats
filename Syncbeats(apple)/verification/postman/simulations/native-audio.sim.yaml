@@ -1,0 +1,8 @@
+simulation: Native audio download verification
+routing: path
+mocks:
+  - name: SyncBeats native audio
+    routeKey: syncbeats-native-audio
+    origin:
+      - api.syncbeats.in
+    path: postman/mocks/native-audio

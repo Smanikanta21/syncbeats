@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SyncBeats — Loader components</title><style>.page {
+  --sync-loader-ink: #272c28;
+  --sync-loader-secondary: #5d665e;
+  --sync-loader-surface: #f7f5ef;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+  background: var(--sync-loader-surface);
+  color: var(--sync-loader-ink);
+}
+
+[data-theme="dark"] .page {
+  --sync-loader-ink: #f4f5ef;
+  --sync-loader-secondary: #b7bab5;
+  --sync-loader-surface: #171c1a;
+}
+
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding-block: 24px;
+  color: var(--sync-loader-ink, var(--foreground));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 320px;
+  text-align: center;
+}
+
+.signal { width: 64px; height: 64px; flex: none; overflow: visible; }
+.track { stroke: currentColor; opacity: 0.16; }
+.trace {
+  stroke: currentColor;
+  stroke-dasharray: 0.3 0.7;
+  animation: sync-loader-trace 1.8s linear infinite;
+}
+.second { color: var(--sync-loader-secondary, currentColor); }
+.second .trace { animation-delay: -0.18s; }
+.copy { display: flex; flex-direction: column; gap: 8px; }
+.title { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.4; }
+.detail { margin: 0; font-size: 13px; line-height: 1.7; color: var(--sync-loader-secondary, currentColor); }
+.progress { width: 176px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rail { width: 100%; height: 2px; background: color-mix(in srgb, currentColor 10%, transparent); border-radius: 1px; overflow: hidden; }
+.fill { height: 100%; background: currentColor; }
+.percentage { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sync-loader-secondary, currentColor); }
+.compact { padding-block: 4px; }
+.compact .content { flex-direction: row; gap: 12px; text-align: start; }
+.compact .signal { width: 28px; height: 28px; }
+.compact .title { font-size: 13px; }
+.compact .progress { width: 140px; }
+
+@keyframes sync-loader-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .trace { animation: none; stroke-dasharray: none; }
+}
+
+*{box-sizing:border-box}body{margin:0;background:var(--sync-loader-surface);color:var(--sync-loader-ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body[data-theme=dark]{--sync-loader-ink:#f4f5ef;--sync-loader-secondary:#b7bab5;--sync-loader-surface:#171c1a;--panel:#1c211f}
+body[data-theme=light]{--sync-loader-ink:#272c28;--sync-loader-secondary:#5d665e;--sync-loader-surface:#f7f5ef;--panel:#fffdf8}
+header{max-width:1000px;margin:auto;padding:24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid color-mix(in srgb,currentColor 10%,transparent)}header span{font-size:14px;font-weight:500}button{font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 16%,transparent);border-radius:8px;padding:8px 12px;cursor:pointer}button:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.specimens{max-width:1000px;margin:auto;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px}.specimen{padding:24px;background:var(--panel);border:1px solid color-mix(in srgb,currentColor 9%,transparent);border-radius:12px;display:flex;flex-direction:column;justify-content:center;min-height:280px}.hero{grid-column:1/-1;min-height:340px;background:transparent;border:0}.specimen h2{font-size:12px;font-weight:400;color:var(--sync-loader-secondary);margin:0 0 16px}.inline-example{grid-column:1/-1;min-height:120px}.inline-example .loader{align-items:flex-start}.frozen .trace{animation:none;stroke-dasharray:none}
+footer{padding:0 24px 24px;font-size:12px;color:var(--sync-loader-secondary);max-width:1000px;margin:auto}@media(max-width:600px){.specimens{grid-template-columns:1fr;gap:16px;padding:16px}.hero{min-height:280px}.specimen{padding:20px}.inline-example{grid-column:auto}.hero{grid-column:auto}}</style></head><body data-theme="dark"><header><span>SyncBeats · Loading states</span><div><button id="motion" aria-pressed="false">Pause motion</button> <button id="theme">Light theme</button></div></header><div class="specimens"><section class="specimen hero"><div class="loader  " aria-busy="true"><div class="content"><svg class="signal" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><mask id="_R_1_"><rect width="64" height="64" fill="white"></rect><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" transform="translate(12 7)" stroke="black" stroke-width="10" stroke-linejoin="round"></path></mask></defs><g stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round"><g mask="url(#_R_1_)"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g><g transform="translate(12 7)" class="second"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g></g></svg><div class="copy" role="status" aria-live="polite" aria-atomic="true"><p class="title">Opening your room</p><p class="detail">Getting your shared queue ready</p></div></div></div></section><section class="specimen"><h2>Within a section</h2><div class="loader  " aria-busy="true"><div class="content"><svg class="signal" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><mask id="_R_i_"><rect width="64" height="64" fill="white"></rect><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" transform="translate(12 7)" stroke="black" stroke-width="10" stroke-linejoin="round"></path></mask></defs><g stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round"><g mask="url(#_R_i_)"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g><g transform="translate(12 7)" class="second"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g></g></svg><div class="copy" role="status" aria-live="polite" aria-atomic="true"><p class="title">Finding music</p><p class="detail">Looking for songs for your room</p></div></div></div></section><section class="specimen"><h2>When progress is known</h2><div class="loader  " aria-busy="true"><div class="content"><svg class="signal" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><mask id="_R_j_"><rect width="64" height="64" fill="white"></rect><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" transform="translate(12 7)" stroke="black" stroke-width="10" stroke-linejoin="round"></path></mask></defs><g stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round"><g mask="url(#_R_j_)"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1" style="stroke-dasharray:0.37 1;stroke-dashoffset:0;animation:none"></path></g><g transform="translate(12 7)" class="second"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1" style="stroke-dasharray:0.37 1;stroke-dashoffset:0;animation:none"></path></g></g></svg><div class="copy" role="status" aria-live="polite" aria-atomic="true"><p class="title">Preparing this track</p><p class="detail">Progress example</p></div></div><div class="progress" role="progressbar" aria-label="Preparing this track" aria-valuemin="0" aria-valuemax="100" aria-valuenow="37"><div class="rail"><div class="fill" style="width:37%"></div></div><span class="percentage" aria-hidden="true">37%</span></div></div></section><section class="specimen inline-example"><h2>Beside existing content</h2><div class="loader compact " aria-busy="true"><div class="content"><svg class="signal" viewBox="0 0 64 64" fill="none" aria-hidden="true"><defs><mask id="_R_k_"><rect width="64" height="64" fill="white"></rect><path d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" transform="translate(12 7)" stroke="black" stroke-width="10" stroke-linejoin="round"></path></mask></defs><g stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round"><g mask="url(#_R_k_)"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g><g transform="translate(12 7)" class="second"><path class="track" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z"></path><path class="trace" d="M19 15.5C16.3 13.9 13 15.8 13 18.9V39.1C13 42.2 16.3 44.1 19 42.5L36.5 32.4C39.2 30.8 39.2 27 36.5 25.4Z" pathLength="1"></path></g></g></svg><div class="copy" role="status" aria-live="polite" aria-atomic="true"><p class="title">Loading your history</p></div></div></div></section></div><footer>The same Linked Play signal and timing in the web and Mac app. Percentages appear only when progress is known.</footer><script>document.getElementById('theme').onclick=()=>{const dark=document.body.dataset.theme==='dark';document.body.dataset.theme=dark?'light':'dark';document.getElementById('theme').textContent=dark?'Dark theme':'Light theme'};document.getElementById('motion').onclick=()=>{const frozen=document.body.classList.toggle('frozen');document.getElementById('motion').setAttribute('aria-pressed',String(frozen));document.getElementById('motion').textContent=frozen?'Resume motion':'Pause motion'};</script></body></html>

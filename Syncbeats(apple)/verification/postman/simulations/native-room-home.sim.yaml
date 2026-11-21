@@ -1,0 +1,15 @@
+# Simulation scaffold. Add fault-injection scenarios under each mock, e.g.:
+#   scenarios:
+#     - overrides:
+#         conditions:
+#           latency: { delay_ms: 500 }
+# Then serve it with: postman simulation run <this file>
+
+simulation: Native room home verification
+routing: path
+mocks:
+  - name: SyncBeats native room home
+    routeKey: syncbeats-native-room-home
+    origin:
+      - api.syncbeats.in
+    path: postman/mocks/native-room
