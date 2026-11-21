@@ -95,5 +95,29 @@ export function testPlayback(): void {
   const copy = RoomQueue.fromJSON(structuredClone(queue.toJSON()));
   assert.equal(copy.peekNext()!.id, target, 'persist the next shuffled lap with the queue');
   assert.equal(queue.next()!.id, target, 'advance to the published prefetch target');
-  console.log('Room playback: recovery, readiness, completion, repeat and shuffle checks passed');
+  const metadataRoom = roomWithTracks();
+  ready(metadataRoom); metadataRoom.play('a');
+  const beforeMetadata = metadataRoom.snapshot();
+  const currentMetadata = metadataRoom.getCurrentItem()!;
+  let metadataEvents = 0, metadataSchedules = 0;
+  metadataRoom.on('queueChanged', () => metadataEvents++);
+  metadataRoom.on('schedule', () => metadataSchedules++);
+  const enrichment = metadataRoom.addTracks([{
+    trackUrl: currentMetadata.trackUrl, title: 'Original Song - Reprise (Live)', artist: 'Original Artist',
+    thumbnail: 'https://example.invalid/album.jpg', metadataSource: 'library',
+  }], 'b');
+  assert.equal(enrichment.added.length, 0, 'library selection enriches the existing audio without duplication');
+  assert.equal(enrichment.first?.id, currentMetadata.id);
+  assert.equal(enrichment.first?.title, 'Original Song - Reprise (Live)');
+  assert.equal(enrichment.first?.artist, 'Original Artist');
+  assert.equal(metadataEvents, 1, 'metadata corrections broadcast to all room clients');
+  assert.equal(metadataSchedules, 0, 'metadata corrections do not reschedule audio');
+  assert.equal(metadataRoom.snapshot().startEpoch, beforeMetadata.startEpoch);
+  assert.equal(metadataRoom.snapshot().playbackInstanceId, beforeMetadata.playbackInstanceId);
+  metadataRoom.addTracks([{ trackUrl: currentMetadata.trackUrl, title: 'YouTube replacement' }], 'a');
+  assert.equal(currentMetadata.title, 'Original Song - Reprise (Live)', 'ordinary duplicate searches cannot downgrade library metadata');
+  const metadataCopy = RoomQueue.fromJSON(structuredClone(metadataRoom.getQueueState()));
+  assert.equal(metadataCopy.current()?.title, currentMetadata.title, 'canonical title survives queue persistence');
+  assert.equal(metadataCopy.current()?.thumbnail, currentMetadata.thumbnail);
+  console.log('Room playback: recovery, readiness, completion, repeat, shuffle and metadata checks passed');
 }

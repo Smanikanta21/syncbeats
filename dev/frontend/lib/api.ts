@@ -342,10 +342,10 @@ export const roomsApi = {
       body: JSON.stringify({ newHostEmail }),
     }, true),
 
-  enqueueYoutube: (roomId: string, youtubeUrl: string, title?: string) =>
+  enqueueYoutube: (roomId: string, youtubeUrl: string, title?: string, metadata?: { artist?: string; thumbnail?: string; metadataSource?: 'library' }) =>
     request<any>(`/rooms/${roomId}/enqueue-youtube`, {
       method: 'POST',
-      body: JSON.stringify({ youtubeUrl, title }),
+      body: JSON.stringify({ youtubeUrl, title, ...metadata }),
     }, true),
 
   enqueueMagnet: (roomId: string, magnetUri: string, title?: string, artist?: string) =>
