@@ -4,6 +4,9 @@ import SwiftUI
 struct SyncBeatsApp: App {
     @State private var model = AppModel()
     @State private var room = RoomSession()
+    #if os(iOS)
+    @State private var mobilePlayback = MobilePlaybackController()
+    #endif
     var body: some Scene {
         #if os(macOS)
         Window("SyncBeats", id: "main") {
@@ -22,7 +25,10 @@ struct SyncBeatsApp: App {
             }
         }
         #else
-        WindowGroup { NativeEntryView(model: model, room: room) }
+        WindowGroup {
+            NativeEntryView(model: model, room: room)
+                .task { mobilePlayback.start(room: room) }
+        }
         #endif
     }
 }
@@ -66,14 +72,18 @@ struct NativeEntryView: View {
             BrandMark().frame(width: 24, height: 24)
             Text("SyncBeats").font(.system(size: 12, weight: .medium))
             Spacer()
+            #if os(macOS)
             Text(model.phase == .signedIn ? "Your listening room" : "Welcome to SyncBeats")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
             Spacer()
+            #endif
             if model.phase == .signedIn {
+                #if os(macOS)
                 Button("Library") { model.accountPage = nil; model.workspaceSection = .songs }
                     .font(.system(size: 12, weight: .medium)).buttonStyle(NativeButtonStyle(palette: palette))
                     .foregroundStyle(model.workspaceSection == .home ? palette.secondary : palette.gold)
                     .accessibilityIdentifier("open-library")
+                #endif
                 AccountMenu(model: model, room: room, palette: palette)
             } else {
                 HStack(spacing: 2) {
@@ -90,11 +100,11 @@ struct NativeEntryView: View {
                 }.padding(2).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(palette.line))
             }
         }
-        .padding(.trailing, 28).padding(.vertical, 12)
+        .padding(.vertical, 12)
         #if os(macOS)
-        .padding(.leading, 28)
+        .padding(.horizontal, 28)
         #else
-        .padding(.leading, 20)
+        .padding(.horizontal, 20)
         #endif
         .background(palette.panel.opacity(0.5))
     }

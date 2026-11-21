@@ -16,6 +16,13 @@ assumptions:
     verification: On 2026-11-21, 40 native audio checks passed. The simulation recorded four download requests with three HTTP 200 responses and one HTTP 503; the successful responses included a deliberately malformed payload. Compact FFT bars, equalizer rendering, stereo energy and ambient geometry passed. Live YouTube extraction, authenticated room playback and multi-device hardware latency were not exercised in this run.
     source: NativeAudioVerification.swift; postman/mocks/native-audio/default.js; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; ../Syncbeats/Syncbeats/Services/Audio/SpectrumMotion.swift; /tmp/syncbeats-push-native-audio-final.log; /tmp/syncbeats-push-audio-sim.ndjson
     updated_at: "2026-11-21"
+  - id: mobile-local-interruption-and-recovery
+    status: supported
+    claim: In the exercised local room, suspended output stays silent while room time advances, and recovery follows the current authoritative timeline.
+    reason: The real Swift client, AVAudioEngine and Socket.IO client completed interruption and graph-reconstruction scenarios against the existing synthetic audio and production backend Room fixture.
+    verification: On 2026-11-21, 62 native audio checks passed, including suspension across drift ticks, explicit Play without toggling an already-playing room, resumed position alignment, rebuilt audio objects, and respecting a room pause during interruption. These ran on the Mac host. Actual iOS call notifications, headphones, remote-command UI, MusicKit, Google credentials and hardware synchronization remain unverified.
+    source: NativeAudioVerification.swift; native-playback-room.cjs; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; ../Syncbeats/Syncbeats/Features/Room/RoomSession.swift; /tmp/syncbeats-mobile-audio-checks.log; /tmp/syncbeats-mobile-audio-sim.ndjson
+    updated_at: "2026-11-21"
 fingerprints:
   - id: native-audio-20261121-push-review
     date: "2026-11-21"

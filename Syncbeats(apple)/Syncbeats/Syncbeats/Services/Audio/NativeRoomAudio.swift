@@ -82,6 +82,9 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
     private var scheduleID = UUID()
     private var segmentStart = 0.0
     private var tapInstalled = false
+    #if os(iOS)
+    private var sessionActive = false
+    #endif
     private struct PositionSnapshot { let generation: UUID; let scheduleID: UUID; let position: Double; let uptime: Double }
     private let snapshot = OSAllocatedUnfairLock<PositionSnapshot?>(initialState: nil)
     private var positionTimer: DispatchSourceTimer?
@@ -93,6 +96,9 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
         queue.async { [self] in
             self.generation = generation; scheduleID = UUID()
             player.stop(); engine.stop(); file = nil; meter.reset()
+            #if os(iOS)
+            sessionActive = false
+            #endif
             snapshot.withLock { $0 = nil }
         }
     }
@@ -119,7 +125,12 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
                         engine.mainMixerNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in meter.consume(buffer) }
                         tapInstalled = true
                     }
-                    engine.prepare(); try engine.start()
+                    engine.prepare()
+                    #if !os(iOS)
+                    try engine.start()
+                    #endif
+                    // iOS takes the audio session only when playback is scheduled,
+                    // so browsing a paused room does not interrupt another app.
                     if positionTimer == nil {
                         let timer = DispatchSource.makeTimerSource(queue: queue)
                         timer.schedule(deadline: .now(), repeating: .milliseconds(40))
@@ -140,7 +151,7 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
             self.scheduleID = scheduleID
             snapshot.withLock { $0 = nil }
             player.stop(); player.volume = 1; meter.reset()
-            do { if !engine.isRunning { try engine.start() } }
+            do { try activateOutput(); if !engine.isRunning { try engine.start() } }
             catch { completion(error.localizedDescription); return }
             let rate = file.processingFormat.sampleRate
             let frame = min(max(0, AVAudioFramePosition(position * rate)), max(0, file.length - 1))
@@ -160,6 +171,35 @@ nonisolated private final class NativeAudioRenderer: @unchecked Sendable {
             position: segmentStart + Double(rendered.sampleTime) / rendered.sampleRate,
             uptime: ProcessInfo.processInfo.systemUptime)
         snapshot.withLock { $0 = value }
+    }
+    private func activateOutput() throws {
+        #if os(iOS)
+        guard !sessionActive else { return }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+        try session.setActive(true)
+        sessionActive = true
+        #endif
+    }
+    func rebuildOutput() {
+        queue.async { [self] in
+            player.stop(); engine.stop()
+            if tapInstalled { engine.mainMixerNode.removeTap(onBus: 0) }
+            engine = AVAudioEngine(); player = AVAudioPlayerNode()
+            equalizerNode = AVAudioUnitEQ(numberOfBands: NativeEqualizer.frequencies.count)
+            tapInstalled = false
+            #if os(iOS)
+            sessionActive = false
+            #endif
+        }
+    }
+    func releaseOutput() {
+        #if os(iOS)
+        queue.async { [self] in
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            sessionActive = false
+        }
+        #endif
     }
     func position(generation: UUID, scheduleID: UUID) -> Double? {
         guard let value = snapshot.withLock({ $0 }), value.generation == generation, value.scheduleID == scheduleID else { return nil }
@@ -191,6 +231,8 @@ final class NativeRoomAudio {
     private(set) var loading = false
     private(set) var error: String?
     private(set) var rendering = false
+    func rebuildOutput() { reset(); renderer.rebuildOutput() }
+    func releaseOutput() { renderer.releaseOutput() }
     let meter = AudioEnergyMeter()
     @ObservationIgnored private lazy var renderer = NativeAudioRenderer(meter: meter)
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -256,7 +298,7 @@ final class NativeRoomAudio {
                 guard self.generation == loadGeneration, !Task.isCancelled else { return }
                 loading = false; failedKey = key; preparedKey = nil
                 NativeDiagnostics.failure("Audio", "Prepare track", error: error)
-                self.error = "This Mac couldn't load the audio. \(error.localizedDescription)"
+                self.error = "Your \(NativeDevice.name) couldn't load the audio. \(error.localizedDescription)"
                 onFailure?(self.error!)
             }
         }

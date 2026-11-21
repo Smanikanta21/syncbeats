@@ -1,6 +1,8 @@
 import SwiftUI
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 
 struct RoomWorkspaceView: View {
@@ -16,6 +18,13 @@ struct RoomWorkspaceView: View {
     @State private var showsPlayerQueue = false
     @State private var isFloating = false
     @State private var library = NativeLibraryStore()
+    private var showsHeaderRoomCode: Bool {
+        #if os(iOS)
+        model.accountPage == nil
+        #else
+        true
+        #endif
+    }
     #if os(macOS)
     @State private var floatingPlayer = FloatingPlayerController()
     @State private var fullScreenPlayer = FullScreenPlayerController()
@@ -45,14 +54,18 @@ struct RoomWorkspaceView: View {
                                 })
                             }
                         }
+                        #if os(macOS)
                         if showsDevices && presentation == .docked { deviceRail.frame(width: 270) }
+                        #endif
                     }.overlay(alignment: .trailing) {
+                        #if os(macOS)
                         if showsDevices && presentation == .drawer {
                             ZStack(alignment: .trailing) {
                                 palette.background.opacity(0.65).onTapGesture { showsDevices = false }.accessibilityHidden(true)
                                 deviceRail.frame(width: 280).shadow(color: .black.opacity(0.14), radius: 20, x: -8)
                             }
                         }
+                        #endif
                     }
                 }
                 if !showsPlayer && !isFloating {
@@ -60,6 +73,7 @@ struct RoomWorkspaceView: View {
                                    onQueue: { showsPlayerQueue = true; showsPlayer = true }, onFloat: floatPlayer)
                 }
             }.overlay {
+                #if os(macOS)
                 if showsPlayer {
                     RoomExpandedPlayer(room: room, palette: palette, showsQueue: $showsPlayerQueue,
                                        onClose: { showsPlayer = false }, onFloat: floatPlayer, onFullScreen: {
@@ -68,6 +82,7 @@ struct RoomWorkspaceView: View {
                         #endif
                     }).transition(.opacity)
                 }
+                #endif
             }.overlay(alignment: .bottom) {
                 if let message = room.statusMessage {
                     Text(message).font(.system(size: 12)).padding(.horizontal, 18).padding(.vertical, 12)
@@ -75,7 +90,9 @@ struct RoomWorkspaceView: View {
                         .accessibilityAddTraits(.updatesFrequently).allowsHitTesting(false)
                 }
             }.onChange(of: geometry.size.width) { _, width in
+                #if os(macOS)
                 if RoomLayout.devices(width: width) == .summary { showsDevices = false }
+                #endif
             }
         }.background(palette.background).foregroundStyle(palette.text)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: showsPlayer)
@@ -115,6 +132,14 @@ struct RoomWorkspaceView: View {
             }
         #if os(macOS)
             .onChange(of: palette.light) { _, _ in if isFloating { floatPlayer() } }
+        #else
+            .sheet(isPresented: $showsDevices) {
+                deviceRail.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                    .presentationBackground(palette.panel).foregroundStyle(palette.text)
+            }
+            .fullScreenCover(isPresented: $showsPlayer) {
+                FullScreenRoomPlayer(room: room, onClose: { showsPlayer = false }, startsWithQueue: showsPlayerQueue)
+            }
         #endif
     }
 
@@ -124,8 +149,12 @@ struct RoomWorkspaceView: View {
                 Button { model.accountPage = nil; model.workspaceSection = .home } label: { Label("Home", systemImage: "chevron.left") }
                     .font(.system(size: 13)).buttonStyle(NativeButtonStyle(palette: palette))
                     .accessibilityIdentifier("account-back-home")
-            } else { Text(model.workspaceSection.rawValue).font(.system(size: 15, weight: .medium)) }
-            if let code = model.roomID ?? room.roomID {
+            } else {
+                #if os(macOS)
+                Text(model.workspaceSection.rawValue).font(.system(size: 15, weight: .medium))
+                #endif
+            }
+            if showsHeaderRoomCode, let code = model.roomID ?? room.roomID {
                 Button { copyRoomCode(code) } label: {
                     HStack(spacing: 8) {
                         Text(code).font(.system(size: 12, weight: .medium, design: .monospaced))
@@ -136,12 +165,19 @@ struct RoomWorkspaceView: View {
                     .task(id: copied) { guard copied else { return }; try? await Task.sleep(for: .seconds(2)); if !Task.isCancelled { copied = false } }
             }
             Spacer(minLength: 0)
+            #if os(macOS)
             if presentation != .summary {
                 Button { showsDevices.toggle() } label: {
                     Label("Devices · \(room.participants.count)", systemImage: "hifispeaker.and.homepod").font(.system(size: 12)).padding(8)
                         .background(showsDevices ? palette.raised : .clear, in: RoundedRectangle(cornerRadius: 8))
                 }.buttonStyle(NativeButtonStyle(palette: palette)).accessibilityAddTraits(showsDevices ? .isSelected : [])
             } else { Text("\(room.participants.count) devices").font(.system(size: 12)).foregroundStyle(palette.secondary) }
+            #else
+            Button { showsDevices = true } label: {
+                Label("\(room.participants.count)", systemImage: "hifispeaker.and.homepod")
+                    .font(.system(size: 13)).frame(minWidth: 44, minHeight: 44)
+            }.buttonStyle(NativeButtonStyle(palette: palette)).accessibilityLabel("Open connected devices")
+            #endif
             RoomConnectionBadge(room: room, palette: palette)
             if room.connection == .failed {
                 Button("Reconnect", action: room.reconnect).font(.system(size: 12))
@@ -157,17 +193,24 @@ struct RoomWorkspaceView: View {
                 Button { showsDevices = false } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
                     .buttonStyle(NativeButtonStyle(palette: palette)).accessibilityLabel("Close devices")
             }
-            Text("This Mac plays audio alongside the connected devices.")
+            Text("Your \(NativeDevice.name) plays audio alongside the connected devices.")
                 .font(.system(size: 12)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
+            #if os(iOS)
+            HStack {
+                Text("Audio output").font(.system(size: 13))
+                Spacer()
+                MobileAudioRoutePicker().frame(width: 44, height: 44).accessibilityLabel("Choose audio output")
+            }
+            #endif
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     ForEach(room.participants) { participant in
                         let own = participant.id == room.ownSocketID
                         HStack(spacing: 12) {
-                            Image(systemName: own ? "macbook.gen2" : "hifispeaker.fill").font(.system(size: 18)).foregroundStyle(palette.secondary).frame(width: 26)
+                            Image(systemName: own ? NativeDevice.symbol : "hifispeaker.fill").font(.system(size: 18)).foregroundStyle(palette.secondary).frame(width: 26)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(participant.displayName).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                                Text(own ? (room.audio.loading ? "Preparing audio · this Mac" : room.audio.error != nil ? "Audio unavailable · this Mac" : "Local playback · this Mac") : participant.isReady ? "Ready to play" : participant.isBlocked == true ? "Enable audio on this device" : "Preparing audio")
+                                Text(own ? (room.localAudioSuspended ? "Audio interrupted · tap Play to resume" : room.audio.loading ? "Preparing audio · \(NativeDevice.thisDevice)" : room.audio.error != nil ? "Audio unavailable · \(NativeDevice.thisDevice)" : "Local playback · \(NativeDevice.thisDevice)") : participant.isReady ? "Ready to play" : participant.isBlocked == true ? "Enable audio on this device" : "Preparing audio")
                                     .font(.system(size: 11)).foregroundStyle(palette.quiet)
                                 if !own { RoomDeviceVolume(participant: participant, room: room, palette: palette) }
                             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -197,6 +240,8 @@ struct RoomWorkspaceView: View {
     private func copyRoomCode(_ code: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code, forType: .string)
+        #else
+        UIPasteboard.general.string = code
         #endif
         copied = true
     }
