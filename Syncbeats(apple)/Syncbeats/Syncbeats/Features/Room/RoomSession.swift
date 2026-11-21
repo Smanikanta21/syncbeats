@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import SocketIO
+#if os(iOS)
+import UIKit
+#endif
 
 /// One server-authoritative room shared by the main window and notch.
 /// Local audio and every player view follow the server-authoritative timeline.
@@ -296,6 +299,12 @@ final class RoomSession {
         ]
         var diagnostic = state
         diagnostic["renderedPosition"] = audio.renderedPosition() ?? -1
+        diagnostic["correctionCount"] = audio.correctionCount
+        diagnostic["lastCorrectionMS"] = audio.lastCorrectionMS
+        diagnostic["clockOffsetMS"] = serverOffset
+        #if os(iOS)
+        diagnostic["applicationState"] = UIApplication.shared.applicationState.rawValue
+        #endif
         if let data = try? JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]) {
             try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("syncbeats-native-playback-state.json"), options: .atomic)
         }

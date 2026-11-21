@@ -85,6 +85,7 @@ import Foundation
         check(abs((audio.duration ?? 0) - 3) < 0.001, "Duration comes from decoded sample count")
         audio.prepare(track: track("aaaaaaaaaaa"), baseURL: base)
         check(loaded == 1 && !audio.loading, "Same-track refresh reuses loaded audio")
+        let scheduledStart = ProcessInfo.processInfo.systemUptime + 0.25
         audio.follow(playing: true, position: 0, delay: 0.25)
         check(audio.rendering, "Playback is scheduled on the audio node")
         try await Task.sleep(for: .milliseconds(100))
@@ -93,6 +94,25 @@ import Foundation
         let first = audio.renderedPosition() ?? -1
         check(first > 0.1 && first < 0.7, "Audio samples advance after scheduled start")
         check(audio.meter.read().level > 0 && audio.meter.read().bass > 0, "Ambient energy measures rendered audio")
+        let steadyCorrections = audio.correctionCount
+        for _ in 0..<6 {
+            try await Task.sleep(for: .milliseconds(80))
+            audio.follow(playing: true, position: ProcessInfo.processInfo.systemUptime - scheduledStart,
+                         delay: 0, hardSeekMS: 15)
+        }
+        check(audio.correctionCount - steadyCorrections <= 1,
+              "Steady sample playback does not repeatedly seek against a monotonic timeline")
+        let correctionStarted = ProcessInfo.processInfo.systemUptime
+        audio.correct(to: 0.4, delay: 0)
+        try await Task.sleep(for: .milliseconds(12))
+        // Simulate delayed actor delivery during a background fade.
+        usleep(120_000)
+        try await Task.sleep(for: .milliseconds(140))
+        let delayedExpected = 0.4 + ProcessInfo.processInfo.systemUptime - correctionStarted
+        check(abs((audio.renderedPosition() ?? -10) - delayedExpected) < 0.055,
+              "Delayed correction follows elapsed time instead of assuming a 48 ms fade")
+        check(audio.meter.read().level > 0,
+              "Corrected output fades back into audible samples")
         audio.follow(playing: false, position: first, delay: 0)
         check(!audio.rendering && audio.meter.read().level == 0, "Pause stops rendering and clears ambient energy")
         audio.follow(playing: true, position: 1.2, delay: 0)

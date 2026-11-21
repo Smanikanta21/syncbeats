@@ -19,7 +19,7 @@ The backend and frontend are deployed. On 2026-11-21, `GET https://api.syncbeats
 
 Production redirects the website to `https://www.syncbeats.in`. Native Google authorization now normalizes that origin to `https://syncbeats.in`, matching ordinary website login. The correction is deployed from `main` commit `745ba426`; 23 browser-flow checks, TypeScript, targeted lint and the production frontend build passed.
 
-In Google Cloud project `sync-beats-472708`, inspect the existing Web application client `1006171035854-cacohriuvvgpb7mu8q11iro8oq2dj2o1.apps.googleusercontent.com`. Authorized JavaScript origins should include `https://syncbeats.in` and `https://www.syncbeats.in`. The authorized redirect URI must include the exact root URL `https://syncbeats.in`; optionally retain `https://www.syncbeats.in` for older browser flows. Do not register `/auth/native` or `syncbeats://google/callback` as Google's redirect. Console settings have not yet been inspected in the authenticated account.
+On 2026-11-21, the existing Web application client `1006171035854-cacohriuvvgpb7mu8q11iro8oq2dj2o1.apps.googleusercontent.com` was inspected in Google Cloud project `sync-beats-472708`. Its root redirect was already present, but the `www` redirect and root JavaScript origin were missing. Added `https://syncbeats.in` to Authorized JavaScript origins and `https://www.syncbeats.in` to Authorized redirect URIs. Google confirmed "OAuth client saved"; reopening the client confirmed both persisted. Existing origins and callbacks were retained. Google advises allowing five minutes to a few hours for propagation. Do not register `/auth/native` or `syncbeats://google/callback` as Google's redirect.
 
 ## Verification
 

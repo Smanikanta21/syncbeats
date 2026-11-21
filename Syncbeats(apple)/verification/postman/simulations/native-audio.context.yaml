@@ -23,7 +23,18 @@ assumptions:
     verification: On 2026-11-21, 62 native audio checks passed, including suspension across drift ticks, explicit Play without toggling an already-playing room, resumed position alignment, rebuilt audio objects, and respecting a room pause during interruption. These ran on the Mac host. Actual iOS call notifications, headphones, remote-command UI, MusicKit, Google credentials and hardware synchronization remain unverified.
     source: NativeAudioVerification.swift; native-playback-room.cjs; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; ../Syncbeats/Syncbeats/Features/Room/RoomSession.swift; /tmp/syncbeats-mobile-audio-checks.log; /tmp/syncbeats-mobile-audio-sim.ndjson
     updated_at: "2026-11-21"
+  - id: native-delayed-render-timing
+    status: supported
+    claim: With the existing synthetic downloaded audio, steady sample playback avoids repeated corrections and a delayed correction preserves the expected timeline.
+    reason: The real AVAudioEngine caller passed checks against a monotonic timeline and a fade with 120 ms of deliberately delayed actor delivery; the correction used elapsed time and rendered nonzero audio after fading back in.
+    verification: On 2026-11-21, 65 native audio checks passed against the existing Postman audio simulation on port 4189 and production Room fixture on port 4190. The simulation recorded successful downloads, HTTP 503 and malformed audio, and the real caller verified their outcomes. Signed iPhone and iPad builds passed and were installed. This Mac-host run does not establish glitch-free playback while physical screens are locked; the user reported occasional built-in-speaker glitches on the prior mobile build, and the revised build awaits a locked-screen retest.
+    source: NativeAudioVerification.swift; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; /tmp/syncbeats-locked-audio-checks.log; /tmp/syncbeats-locked-audio-sim.ndjson
+    updated_at: "2026-11-21"
 fingerprints:
+  - id: native-background-timing-20261121
+    date: "2026-11-21"
+    commit: 5fd89083 plus mobile timing corrections in the working tree
+    cli: "1.80.0"
   - id: native-audio-20261121-push-review
     date: "2026-11-21"
     commit: 1708b075 plus staged macos-dev app changes
