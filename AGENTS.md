@@ -11,7 +11,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - `dev/syncbeats-desktop/` — (Planned) Electron wrapper for Desktop (Windows/Mac) with Local Edge Node LAN server and multi-audio output routing.
 - `dev/db-visualizer/` — custom Next.js database-inspection app (its own Prisma client, not Prisma Studio)
 - `Syncbeats(apple)/` — Native Swift macOS/iOS App. Features: **Hybrid Cloud/LAN Relay** (acts as a local edge node while maintaining global sync), **Proximity Scanner** (Bonjour/BLE for instant local pairing), **AVAudioEngine** playback (download-first for millisecond-perfect sample scheduling), **MusicKit Integration** (native Apple Music library queueing), and high-speed prefetching. Uses a minimalist, colorless native SwiftUI component design (no Hub, direct Room entry).
-- `Syncbeats Android/` — Kotlin Android app
+- `Syncbeats Android/` — React Native + Expo Android client using the existing REST/Socket.IO backend and Apple-derived UI. See its README and nested AGENTS.md for run/build checks. Initial audio is foreground-only; sub-25ms native scheduling and LAN relay remain pending.
 - `docs/SYSTEM_DESIGN_DIAGRAMS.md` — architecture diagrams
 
 ## Commands

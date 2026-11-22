@@ -43,16 +43,46 @@ const fragment = '#state=syncbeats-native:' + flow.state + '&id_token=fictional-
   check(new URL(destination).searchParams.get('state') === 'syncbeats-native:' + flow.state && values.size === 1, 'Starting sign-in persists only the session bindings');
   window.location.hash = fragment;
   await api.finishNativeGoogle();
-  const callback = new URL(destination);
-  check(callback.protocol === 'syncbeats:' && callback.hostname === 'google' && callback.searchParams.get('code') === code && callback.searchParams.get('state') === flow.state, 'Success returns a fixed custom-scheme callback containing only a code');
+  const returned = new URL(destination, window.location.origin);
+  const callback = new URL(api.nativeGoogleReturnLink(Object.fromEntries(returned.searchParams)));
+  check(returned.pathname === '/auth/native/return' && callback.protocol === 'syncbeats:' && callback.hostname === 'google' && callback.searchParams.get('code') === code && callback.searchParams.get('state') === flow.state, 'Apple success retains an explicit app return link containing only a code');
   check(!destination.includes('credential') && calls[0].fragment === '' && values.size === 0, 'The Google credential is removed before the network exchange and never enters the callback');
   check(calls[0].endpoint === '/auth/native/google' && calls[0].body.codeChallenge === flow.challenge && calls[0].body.nonce === flow.nonce, 'The browser sends the identity and bindings to the existing account backend');
   fail = true; api.startNativeGoogle(flow); window.location.hash = fragment;
   await api.finishNativeGoogle();
-  check(new URL(destination).searchParams.get('error') === 'sign_in_failed' && !destination.includes(code), 'Failed identity verification returns no usable code');
+  check(new URL(destination, window.location.origin).searchParams.get('error') === 'sign_in_failed' && !destination.includes(code), 'Failed identity verification returns no usable code');
   fail = false; api.startNativeGoogle(flow); window.location.hash = '#state=syncbeats-native:' + flow.state + '&error=access_denied';
   await api.finishNativeGoogle();
-  check(new URL(destination).searchParams.get('error') === 'sign_in_failed', 'Cancelling Google returns control to the app');
+  check(new URL(destination, window.location.origin).searchParams.get('error') === 'sign_in_failed', 'Cancelling Google returns control to the app');
+  const android = { ...flow, client: 'android' };
+  const androidFragment = '#state=' + api.nativeGoogleState(android) + '&id_token=fictional-google-credential';
+  api.startNativeGoogle(android);
+  check(new URL(destination).searchParams.get('state') === 'syncbeats-native:android:' + flow.state, 'Android is identified in the Google OAuth state');
+  window.location.hash = androidFragment;
+  await api.finishNativeGoogle();
+  const androidReturn = new URL(destination, window.location.origin);
+  check(androidReturn.pathname === '/auth/native/return' && androidReturn.searchParams.get('client') === 'android' &&
+    api.nativeGoogleReturnLink(Object.fromEntries(androidReturn.searchParams)).startsWith('syncbeats-android://google/callback?'), 'Android returns to its own scheme through the manual-link fallback page');
+  assert.throws(() => api.nativeGooglePending(androidFragment, record)); checks++;
+  check(api.nativeGoogleRequest({ state: flow.state, nonce: flow.nonce, code_challenge: flow.challenge, client: 'https://attacker.test' }) === null, 'Request clients are allowlisted');
+  for (const invalid of [
+    { state: flow.state, code, client: 'https://attacker.test' },
+    { state: flow.state, code: [code, code], client: 'android' },
+    { state: flow.state, code, error: 'sign_in_failed', client: 'android' },
+    { state: flow.state, client: 'android' },
+  ]) check(api.nativeGoogleReturnLink(invalid) === null, 'Invalid return links cannot trigger app navigation');
   assert.throws(() => api.nativeGoogleCallback('wrong', code)); checks++;
+  const layout = fs.readFileSync(path.join(__dirname, '../app/layout.tsx'), 'utf8');
+  const launch = layout.match(/<Script id="standalone-room-launch"[\s\S]*?\{(`[^`]+`)\}/);
+  assert(launch, 'Standalone launch script exists');
+  const launchScript = vm.runInNewContext(launch[1]);
+  for (const [hash, expected] of [['', '/room/default'], [androidFragment, undefined], [fragment, undefined], ['#id_token=web-token&state=web-attempt', undefined]]) {
+    let redirected;
+    vm.runInNewContext(launchScript, { URLSearchParams, window: {
+      matchMedia: () => ({ matches: true }), navigator: {},
+      location: { pathname: '/', hash, replace: url => { redirected = url; } },
+    } });
+    check(redirected === expected, 'Standalone launch preserves OAuth returns while ordinary launches still enter the room');
+  }
   console.log(`${checks} native Google web flow checks passed; browser navigation and provider responses were simulated.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

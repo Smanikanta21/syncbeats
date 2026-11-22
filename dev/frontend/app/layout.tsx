@@ -126,7 +126,9 @@ export default function RootLayout({
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches
               || window.navigator.standalone === true;
             const path = window.location.pathname.replace(/\\/$/, '') || '/';
-            if (isStandalone && (path === '/' || path === '/intro')) {
+            const authReturn = new URLSearchParams(window.location.hash.slice(1));
+            const hasAuthReturn = authReturn.has('state') || authReturn.has('id_token') || authReturn.has('error');
+            if (isStandalone && !hasAuthReturn && (path === '/' || path === '/intro')) {
               window.location.replace('/room/default');
             }
           })();`}

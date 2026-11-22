@@ -168,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Native return codes are exchanged by the Mac, without creating a browser session.
+    // Native return codes are exchanged by the requesting app, without creating a browser session.
     if (isNativeGoogleReturn(window.location.hash)) {
       void finishNativeGoogle();
       return;

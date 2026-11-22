@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "SyncBeats",
+    "slug": "syncbeats-android",
+    "version": "0.1.0",
+    "scheme": [
+      "syncbeats-android",
+      "syncbeats"
+    ],
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "in.syncbeats.android",
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#171C1A"
+      },
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "in.syncbeats.reactnative",
+      "supportsTablet": true
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#171C1A",
+          "image": "./assets/icon.png",
+          "imageWidth": 96
+        }
+      ],
+      "expo-font",
+      "expo-asset",
+      "expo-web-browser"
+    ]
+  }
+}

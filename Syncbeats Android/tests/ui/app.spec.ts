@@ -1,0 +1,91 @@
+import { expect, test } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import { installBackend } from './backend';
+
+test('sign-in shows backend errors and enters the existing default room', async ({ page }) => {
+  const fixture = await installBackend(page, false);
+  await page.goto('/');
+  await expect(page.getByText('Sign in to your room')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Email', exact: true }).fill('listener@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('incorrect');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByText('Invalid email or password.')).toBeVisible();
+  await page.getByLabel('Password', { exact: true }).fill('correct-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByText('Find your next song.')).toBeVisible();
+  await expect(page.getByText('Room 123456', { exact: true })).toBeVisible();
+  expect(fixture.requests.some(request => request.path === '/rooms/default')).toBeTruthy();
+});
+
+test('queue, library and player round-trip through the existing protocol', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const fixture = await installBackend(page);
+  await page.goto('/');
+  await expect(page.getByText('Find your next song.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add Night Drive to queue', exact: true })).toBeEnabled();
+  await mkdir('verification', { recursive: true });
+  await page.screenshot({ path: 'verification/home-light.png', fullPage: false });
+  await page.getByRole('button', { name: 'Add Night Drive to queue', exact: true }).click();
+  await expect(page.getByText('Added to your room queue.')).toBeVisible();
+  await page.getByRole('tab', { name: 'Queue', exact: true }).click();
+  await expect(page.getByText('The shared queue')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Move Night Drive up', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Move Night Drive up', exact: true }).click();
+  await expect.poll(() => fixture.requests.find(request => request.path.endsWith('/queue/reorder'))?.body.newIndex).toBe(0);
+  fixture.hold(true);
+  await page.getByRole('button', { name: 'Play room', exact: true }).click();
+  await expect.poll(() => fixture.commands.filter(command => command.event === 'playback:play').length).toBe(1);
+  await expect(page.getByRole('button', { name: 'Play room', exact: true })).toBeVisible();
+  fixture.play(); fixture.hold(false);
+  await expect(page.getByRole('button', { name: 'Pause room', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Pause room', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Play room', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Library', exact: true }).click();
+  await expect(page.getByText('Your library', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Add Bloom to queue', exact: true }).click();
+  await expect.poll(() => fixture.requests.some(request => request.path === '/api/bridge/resolve')).toBeTruthy();
+  await expect.poll(() => fixture.state().queue.some(track => track.title === 'Bloom')).toBeTruthy();
+  expect(fixture.requests.find(request => request.path.endsWith('/enqueue-youtube') && request.body.title === 'Bloom')?.body.metadataSource).toBe('library');
+  await page.getByRole('tab', { name: 'Room', exact: true }).click();
+  await page.getByRole('button', { name: 'Use dark theme', exact: true }).click();
+  await page.getByRole('button', { name: 'Open player for Midnight City', exact: true }).click();
+  await expect(page.getByLabel('Playback position', { exact: true })).toBeVisible();
+  const volume = page.getByLabel('This device volume', { exact: true });
+  await expect(volume).toBeVisible();
+  const bounds = await volume.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.click(bounds!.x + bounds!.width * .35, bounds!.y + bounds!.height / 2);
+  await expect.poll(() => fixture.commands.some(command => command.event === 'room:setParticipantVolume' && command.body.targetSocketId === 'phone-test')).toBeTruthy();
+  fixture.volume(65);
+  await expect.poll(() => fixture.state().participants[0].volume).toBe(65);
+  await expect.poll(() => fixture.commands.some(command => command.event === 'room:clientReady' && command.body.isReady)).toBeTruthy();
+  await page.screenshot({ path: 'verification/player-dark.png', fullPage: false });
+  await page.getByRole('button', { name: 'Close player', exact: true }).click();
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.screenshot({ path: 'verification/room-compact.png', fullPage: false });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  expect(errors).toEqual([]);
+});
+
+test('slow search results cannot replace a newer search', async ({ page }) => {
+  await installBackend(page); await page.goto('/');
+  await expect(page.getByText('Find your next song.')).toBeVisible();
+  const search = page.getByRole('textbox', { name: 'Search songs', exact: true });
+  await search.fill('slow'); await search.press('Enter');
+  await search.fill('fast'); await search.press('Enter');
+  await expect(page.getByText('Search results', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play Bloom', exact: true })).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('button', { name: 'Play Bloom', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play Midnight City', exact: true })).toHaveCount(0);
+});
+
+test('private-room approval can be exited back to the permanent room', async ({ page }) => {
+  await installBackend(page); await page.goto('/');
+  await page.getByRole('tab', { name: 'Room', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Room code', exact: true }).fill('654321');
+  await page.getByRole('button', { name: 'Join room', exact: true }).click();
+  await expect(page.getByText('Waiting for the host', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Return to your room', exact: true }).click();
+  await expect(page.getByText('Room 123456', { exact: true })).toBeVisible();
+});

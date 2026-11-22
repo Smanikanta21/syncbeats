@@ -73,6 +73,7 @@ The landing-page demo works without provider accounts. Account registration and 
 | `dev/syncbeats-server/` | Express, Socket.IO, Prisma and PostgreSQL backend |
 | `dev/db-visualizer/` | Optional database inspection app; keep it on a trusted network |
 | `Syncbeats(apple)/` | Native Swift client in development |
+| [`Syncbeats Android/`](<Syncbeats Android/README.md>) | React Native/Expo Android client sharing the existing backend and Apple UI direction |
 | `docs/` | Architecture, roadmap, release checks and investigation notes |
 
 ## Branches and releases
