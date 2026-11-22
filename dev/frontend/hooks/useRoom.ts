@@ -5,6 +5,7 @@ import { currentBrowserDevice } from "../lib/browserDevice";
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAdaptiveSync, NetworkQuality } from './useAdaptiveSync';
 import { useSyncController } from './useSyncController';
+import { startPlaybackSyncLoop } from '../lib/playbackSyncLoop';
 import { useSyncTelemetry } from './useSyncTelemetry';
 import { getSocket } from '../lib/socket';
 import { roomJoinRetry } from '../lib/roomJoinRetry';
@@ -384,6 +385,8 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
     lastBurstRttsRef.current = rttSamples.slice();
 
     sync.resetClockBaseline();
+    // A playing client can regain clock trust without a new play command.
+    if (audioRef.current.isPlaying) sync.correctDrift();
     })().finally(() => {
       if (ntpPromiseRef.current === work) {
         ntpPromiseRef.current = null;
@@ -402,21 +405,23 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
     let timer: number | undefined;
 
     const scheduleNext = () => {
-      if (cancelled || document.visibilityState !== 'visible') return;
+      if (cancelled) return;
+      if (timer !== undefined) window.clearTimeout(timer);
       // Read delay fresh from adaptive params at scheduling time
       timer = window.setTimeout(async () => {
         timer = undefined;
         if (!cancelled) {
-          await runNtpBurst();
+          if (document.visibilityState === 'visible' || audioRef.current.isPlaying) await runNtpBurst();
           scheduleNext();
         }
-      }, paramsRef.current.NTP_RESYNC_INTERVAL_MS);
+      }, Math.max(document.visibilityState === 'visible' ? 0 : 15_000, paramsRef.current.NTP_RESYNC_INTERVAL_MS));
     };
 
     const handleVisibility = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
       if (document.visibilityState !== 'visible') {
-        if (timer !== undefined) window.clearTimeout(timer);
-        timer = undefined;
+        scheduleNext();
         return;
       }
       if (joinedRef.current && socket.connected) {
@@ -439,40 +444,11 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
   // Keep pitch fixed at 1.0; use a short crossfade for larger drift. A low-rate
   // timer avoids waking mobile browsers 20 times per second for tiny errors.
   useEffect(() => {
-    let timer: number | undefined;
-    let cancelled = false;
-    const tick = () => {
-      timer = undefined;
-      if (cancelled || document.visibilityState !== 'visible') return;
-      sync.correctDrift();
-      timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
-    };
-    const onVisibility = () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = undefined;
-      if (document.visibilityState === 'visible') {
-        sync.correctDrift();
-        timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
-      }
-    };
-    if (document.visibilityState === 'visible') {
-      timer = window.setTimeout(tick, Math.max(250, paramsRef.current.DRIFT_CHECK_INTERVAL_MS));
-    }
-    document.addEventListener('visibilitychange', onVisibility);
-
-    const handleYtBufferEnd = () => {
-      setTimeout(() => {
-        if (document.visibilityState === 'visible') sync.correctDrift();
-      }, 200);
-    };
-    document.addEventListener('ytBufferEnd', handleYtBufferEnd);
-
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-      document.removeEventListener('ytBufferEnd', handleYtBufferEnd);
-    };
+    return startPlaybackSyncLoop({
+      correctDrift: () => sync.correctDrift(),
+      isPlaying: () => audioRef.current.isPlaying,
+      getIntervalMs: () => paramsRef.current.DRIFT_CHECK_INTERVAL_MS,
+    });
   }, [sync, paramsRef]);
 
   useEffect(() => {

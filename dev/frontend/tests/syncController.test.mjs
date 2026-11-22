@@ -99,7 +99,7 @@ test('completed sources stay completed across duplicate/reconnect snapshots unti
   sync.reconcile({ ...snapshot, playbackInstanceId: 'instance-b', startEpoch: 20_000 });
   audio.isPlaying = false;
   sync.correctDrift();
-  assert.equal(calls.start.length, 1);
+  assert.equal(calls.schedule.length, 1);
 });
 
 test('clock recovery and autoplay unlock both gate local continuation', () => {
@@ -113,7 +113,7 @@ test('clock recovery and autoplay unlock both gate local continuation', () => {
   assert.equal(calls.start.length, 0);
   audio.audioUnlocked = true;
   sync.correctDrift();
-  assert.equal(calls.start.length, 1);
+  assert.equal(calls.schedule.length, 1);
 });
 
 test('drift recovery never changes playback rate to chase timing error', () => {
@@ -152,4 +152,89 @@ test('a delayed crossfade cannot revive a paused or replaced source, and restore
   await delay(45);
   assert.equal(calls.start.length, 0);
   assert.equal(calls.volume.at(-1), 0.8);
+});
+
+test('missed initial start recovers even when render position is unavailable', async () => {
+  const { sync, audio, snapshot, calls } = fixture();
+  sync.reconcile(snapshot);
+  sync.applyScheduleIfCurrent(sync.getGen(), snapshot, 0);
+  await delay(0);
+  calls.schedule.length = 0;
+  audio.getTruePosition = () => -1;
+  sync.getServerNow = () => 23_000;
+  sync.correctDrift();
+  assert.equal(calls.schedule.length, 1);
+  assert.equal(calls.schedule[0].startEpoch, snapshot.startEpoch);
+  assert.equal(calls.schedule[0].playbackInstanceId, snapshot.playbackInstanceId);
+  audio.isPlaying = true; audio.getTruePosition = () => 12.9;
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().correctionApplied, true);
+});
+
+test('start recovery waits for readiness, clock, unlock and scheduled epoch', () => {
+  const { sync, audio, snapshot, calls, readyClock } = fixture();
+  sync.reconcile(snapshot);
+  audio.isReady = false;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 0);
+  audio.isReady = true; readyClock.current = false;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 0);
+  readyClock.current = true; audio.audioUnlocked = false;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 0);
+  audio.audioUnlocked = true; sync.getServerNow = () => 9_000;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 0);
+  sync.pause(0); sync.getServerNow = () => 23_000;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 0);
+});
+
+test('recovery does not duplicate pending starts or restart queued future audio', async () => {
+  const { sync, audio, snapshot, calls } = fixture();
+  let finish;
+  audio.scheduleStart = value => { calls.schedule.push(value); return new Promise(resolve => { finish = resolve; }); };
+  sync.reconcile(snapshot);
+  sync.correctDrift();
+  sync.correctDrift();
+  assert.equal(calls.schedule.length, 1);
+  finish(); await delay(0);
+  sync.getServerNow = () => 20_500;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 1);
+  audio.isScheduled = true; sync.getServerNow = () => 23_000;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 1);
+  audio.isScheduled = false;
+  sync.correctDrift(); assert.equal(calls.schedule.length, 2);
+  finish();
+});
+
+test('already playing drift is corrected on initial tick without room pause/resume', () => {
+  const { sync, audio, snapshot } = fixture();
+  audio.isPlaying = true;
+  sync.reconcile(snapshot);
+  sync.correctDrift();
+  assert.equal(sync.getIntent().state, 'playing');
+  assert.equal(sync.getLastDrift().correctionApplied, true);
+  assert.equal(sync.getLastDrift().tier, 'crossfade');
+});
+
+test('crossfade restarts at the current room position after the fade, without leaving residual drift', async () => {
+  const { sync, audio, calls, snapshot } = fixture();
+  audio.isPlaying = true;
+  let now = 20_000;
+  let position = 9.91;
+  sync.getServerNow = () => now;
+  audio.getTruePosition = () => position;
+  audio.audioCtx = { currentTime: 1 };
+  audio.gainNode = { gain: {
+    cancelScheduledValues() {}, setValueAtTime() {}, linearRampToValueAtTime() {},
+  } };
+  audio.playNow = value => { position = value; calls.start.push(value); };
+  sync.reconcile(snapshot);
+
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().tier, 'crossfade');
+  now += 50;
+  await delay(75);
+
+  assert.ok(Math.abs(calls.start[0] - 10.05) < 0.001, `restart position was ${calls.start[0]}`);
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().tier, 'synced');
+  assert.equal(calls.start.length, 1);
 });
