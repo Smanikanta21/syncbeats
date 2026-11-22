@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getRestUrl } from '../lib/api';
+import { outputPlaybackPosition } from '../lib/audioOutputClock';
 import { getWebTorrentClient } from '../lib/webtorrent';
 import { getTrackThumbnailUrl } from '../lib/colorExtractor';
 import { ytId } from '../lib/youtube';
@@ -62,6 +63,7 @@ interface UseAudioPlayerReturn extends AudioPlayerState {
   playNow:     (expectedPosition: number) => void;
   pauseAt:     (position: number) => void;
   getTruePosition: () => number;
+  getOutputPosition: () => number | null;
   setPlaybackRate: (rate: number) => void;
   audioEl:     HTMLAudioElement | null;
   audioCtx?:   AudioContext | null;
@@ -120,7 +122,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const isLatencyAutoDetectedRef = useRef(false);
 
   const setOutputLatency = useCallback((v: number) => { outputLatencyRef.current = v; setOutputLatencyState(v); }, []);
-  const setManualLatency = useCallback((v: number) => { manualLatencyRef.current = v; setManualLatencyState(v); }, []);
+  const setManualLatency = useCallback((v: number) => {
+    const value = Number.isFinite(v) ? v : 0;
+    manualLatencyRef.current = value;
+    setManualLatencyState(value);
+  }, []);
   const setIsLatencyAutoDetected = useCallback((v: boolean) => { isLatencyAutoDetectedRef.current = v; setIsLatencyAutoDetectedState(v); }, []);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -320,6 +326,13 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const elapsed = ((Date.now() - startTimeRef.current) / 1000) * playbackRateRef.current;
     return pauseOffsetRef.current + elapsed;
   }, []); // no deps — uses only refs, always fresh
+
+  const getOutputPosition = useCallback(() => {
+    if (!isPlayingRef.current || !audioBufferRef.current) return null;
+    return outputPlaybackPosition(audioCtxRef.current, startTimeRef.current,
+      pauseOffsetRef.current, playbackRateRef.current, performance.now());
+  }, []);
+
 
   const setEqBand = useCallback((index: number, gain: number) => {
     if (eqNodesRef.current[index]) {
@@ -1394,7 +1407,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     cancelPendingStart,
     unlockAudio,
     setManualLatency,
-    scheduleStart, playNow, pauseAt,    getTruePosition,
+    scheduleStart, playNow, pauseAt,    getTruePosition, getOutputPosition,
     setPlaybackRate,
     audioEl: null,
     audioCtx: audioCtxRef.current,

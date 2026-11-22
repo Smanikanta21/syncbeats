@@ -452,6 +452,16 @@ export function useRoom({ roomId, displayName, userId, authLoading = false, conn
   }, [sync, paramsRef]);
 
   useEffect(() => {
+    const report = () => {
+      if (!socket.connected || !joinedRef.current || sync.getIntent().state !== 'playing') return;
+      socket.emit('sync:diagnostic', { roomId, ...sync.getDiagnostics(),
+        tabVisible: document.visibilityState === 'visible', deviceType: currentBrowserDevice().type });
+    };
+    const timer = window.setInterval(report, 10_000);
+    return () => window.clearInterval(timer);
+  }, [roomId, socket, sync]);
+
+  useEffect(() => {
     receivedSnapshotRef.current = false;
     joinedRef.current = false;
     hasClockSync.current = false;

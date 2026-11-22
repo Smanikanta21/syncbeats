@@ -214,6 +214,54 @@ test('already playing drift is corrected on initial tick without room pause/resu
   assert.equal(sync.getLastDrift().tier, 'crossfade');
 });
 
+test('output clock detects audible drift even when graph time matches the latency estimate', () => {
+  const { sync, audio, snapshot, calls } = fixture();
+  audio.isPlaying = true;
+  audio.outputLatency = 0.04;
+  let render = 10.04;
+  audio.getTruePosition = () => render;
+  audio.getOutputPosition = () => render - 0.14;
+  audio.playNow = position => { render = position; calls.start.push(position); };
+  sync.reconcile(snapshot);
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().correctionApplied, true);
+  assert.ok(Math.abs(calls.start[0] - 10.14) < 0.000001);
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().tier, 'synced');
+  assert.equal(calls.start.length, 1);
+});
+
+test('invalid manual offsets cannot poison continuous playback correction', () => {
+  const { sync, audio, snapshot, calls } = fixture();
+  audio.isPlaying = true;
+  audio.manualLatency = NaN;
+  audio.getTruePosition = () => 9.9;
+  sync.reconcile(snapshot);
+  sync.correctDrift();
+  assert.equal(sync.getLastDrift().correctionApplied, true);
+  assert.ok(Number.isFinite(calls.start[0]));
+});
+
+test('diagnostics expose a stalled correction gate instead of returning an old synced report', () => {
+  const { sync, audio, snapshot, readyClock } = fixture();
+  sync.reconcile(snapshot);
+  audio.isPlaying = true;
+  readyClock.current = false;
+  assert.equal(sync.getDiagnostics().status, 'clock-untrusted');
+  readyClock.current = true; audio.audioUnlocked = false;
+  assert.equal(sync.getDiagnostics().status, 'audio-locked');
+  audio.audioUnlocked = true; audio.isReady = false;
+  assert.equal(sync.getDiagnostics().status, 'audio-not-ready');
+  audio.isReady = true;
+  audio.getTruePosition = () => 10.04;
+  audio.outputLatency = 0.04;
+  audio.getOutputPosition = () => 9.9;
+  const diagnostic = sync.getDiagnostics();
+  assert.equal(diagnostic.status, 'active');
+  assert.equal(diagnostic.measuredLatencyMs, 140);
+  assert.equal(diagnostic.signedDriftMs, 100);
+});
+
 test('crossfade restarts at the current room position after the fade, without leaving residual drift', async () => {
   const { sync, audio, calls, snapshot } = fixture();
   audio.isPlaying = true;
