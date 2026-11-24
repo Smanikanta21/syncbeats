@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import { normalizeSyncDiagnostic } from '../utils/syncDiagnostics';
 import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { DeviceRepository } from '../db/DeviceRepository';
@@ -629,6 +630,17 @@ export class SocketHandler {
     socket.on('sync:ping', ({ t0, seq }: PingPayload) => {
       const now = Date.now();
       socket.emit('sync:pong', { t0, t1: now, t2: now, seq });
+    });
+
+    // Low-volume per-device evidence remains available when REST telemetry is empty.
+    let lastSyncDiagnosticAt = 0;
+    socket.on('sync:diagnostic', (raw: unknown) => {
+      const report = normalizeSyncDiagnostic(raw);
+      if (!report || !socket.rooms.has(report.roomId as string)) return;
+      const now = Date.now();
+      if (now - lastSyncDiagnosticAt < 30_000) return;
+      lastSyncDiagnosticAt = now;
+      console.info('[SyncDiagnostic]', JSON.stringify({ socketId: socket.id, ...report }));
     });
 
     socket.on('sync:stats', ({ roomId, latency, jitter }: { roomId: string, latency: number, jitter: number }) => {

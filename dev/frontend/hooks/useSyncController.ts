@@ -48,8 +48,10 @@ function computeDriftThresholds(params: AdaptiveParams): DriftThresholds {
 interface AudioHandle {
   isPlaying: boolean;
   isReady: boolean;
+  isScheduled?: boolean;
   audioUnlocked: boolean;
   getTruePosition: () => number;
+  getOutputPosition?: () => number | null;
   pauseAt: (position: number) => void;
   playNow: (expectedPosition: number) => void;
   scheduleStart: (payload: PlaybackSchedulePayload, clockOffset: number) => Promise<void>;
@@ -77,6 +79,7 @@ const CROSSFADE_IN_MS = 30;
 export class SyncController {
   // ── Playback intent ──
   private _endedGen: number | null = null;
+  private _startAttempt: { gen: number; startedAt: number; pending: boolean } | null = null;
   private _intent: PlaybackIntent = {
     playbackInstanceId: null,
     state: 'idle',
@@ -185,6 +188,42 @@ export class SyncController {
   getLastDrift(): Readonly<DriftReport> { return this._lastDriftReport; }
   isAudioUnlocked(): boolean { return this._audioRef?.current.audioUnlocked ?? false; }
   getCurrentRate(): number { return this._currentRate; }
+
+  /** Current gates and positions, including checks that never reach drift telemetry. */
+  getDiagnostics() {
+    const audio = this._audioRef?.current;
+    const render = audio?.getTruePosition() ?? null;
+    const output = audio?.getOutputPosition?.() ?? null;
+    const expected = this.getExpectedPosition();
+    const startAt = this._intent.startEpoch == null ? null
+      : this._intent.startEpoch + this._intent.pauseOffset * 1000;
+    const status = this._intent.state !== 'playing' ? this._intent.state
+      : this._endedGen === this._intent.gen ? 'ended'
+      : !this._hasClockSync?.current ? 'clock-untrusted'
+      : !audio?.audioUnlocked ? 'audio-locked'
+      : !audio.isReady ? 'audio-not-ready'
+      : !isSameTrack(audio.trackUrl, this._intent.trackUrl) ? 'track-mismatch'
+      : startAt != null && this.getServerNow() < startAt ? 'scheduled'
+      : !audio.isPlaying ? 'start-pending'
+      : render == null || !Number.isFinite(render) || render < 0 ? 'position-unavailable'
+      : 'active';
+    const measuredLatencyMs = render != null && output != null && Number.isFinite(render - output)
+      ? Math.round((render - output) * 1000) : null;
+    const signedDriftMs = audio && render != null && Number.isFinite(render)
+      ? Math.round((this._expectedRenderPosition(audio) - render) * 1000) : null;
+    return {
+      status, clockOffsetMs: Math.round(this._clockOffsetRef?.current ?? 0),
+      renderPositionSec: render != null && Number.isFinite(render) ? render : null,
+      outputPositionSec: output != null && Number.isFinite(output) ? output : null,
+      expectedPositionSec: Number.isFinite(expected) ? expected : null,
+      signedDriftMs: signedDriftMs != null && Number.isFinite(signedDriftMs) ? signedDriftMs : null,
+      measuredLatencyMs,
+      estimatedLatencyMs: audio && Number.isFinite(audio.outputLatency) ? Math.round(audio.outputLatency * 1000) : null,
+      manualLatencyMs: audio && Number.isFinite(audio.manualLatency) ? Math.round(audio.manualLatency * 1000) : null,
+      correction: this._lastDriftReport.tier,
+      thresholdMs: this._paramsRef?.current.DRIFT_HARD_SEEK_MS ?? null,
+    };
+  }
 
   getServerNow(): number {
     const perfElapsed = performance.now() - this._perfBaseline;
@@ -398,7 +437,11 @@ export class SyncController {
     if (this._intent.state !== 'playing') return;
     const audio = this._audioRef?.current;
     if (!audio) return;
-    audio.scheduleStart(payload, clockOffset);
+    const attempt = { gen: capturedGen, startedAt: this.getServerNow(), pending: true };
+    this._startAttempt = attempt;
+    void Promise.resolve(audio.scheduleStart(payload, clockOffset))
+      .catch(error => console.warn('[Sync] Local start failed; waiting for recovery', error))
+      .finally(() => { attempt.pending = false; });
   }
 
   /**
@@ -412,8 +455,16 @@ export class SyncController {
    */
   private _expectedRenderPosition(audio: AudioHandle): number {
     if (this._intent.startEpoch == null) return this._intent.pauseOffset;
-    const latency = (audio.outputLatency || 0) + (audio.manualLatency || 0);
-    return Math.max(0, (this.getServerNow() - this._intent.startEpoch) / 1000 + latency);
+    const outputPosition = audio.getOutputPosition?.();
+    const renderPosition = audio.getTruePosition();
+    // Calibrate graph time against the actual output clock. Estimates alone
+    // can report sync while sound at the device output is still delayed.
+    const measuredLatency = outputPosition != null && Number.isFinite(outputPosition) && Number.isFinite(renderPosition)
+      ? renderPosition - outputPosition : null;
+    const latency = measuredLatency != null && measuredLatency >= 0
+      ? measuredLatency : Number.isFinite(audio.outputLatency) ? audio.outputLatency : 0;
+    const manual = Number.isFinite(audio.manualLatency) ? audio.manualLatency : 0;
+    return Math.max(0, (this.getServerNow() - this._intent.startEpoch) / 1000 + latency + manual);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -456,21 +507,30 @@ export class SyncController {
     const startAtEpoch = this._intent.startEpoch + this._intent.pauseOffset * 1000;
     if (nowServer < startAtEpoch) return;
 
+    if (!audio.isPlaying) {
+      // A missed initial launch has no render position yet. Retry the room's
+      // existing schedule before asking the stopped graph to measure drift.
+      if (audio.isScheduled) return;
+      const attempt = this._startAttempt;
+      if (attempt?.gen === this._intent.gen &&
+          (attempt.pending || nowServer - attempt.startedAt < 1500)) return;
+      this.applyScheduleIfCurrent(this._intent.gen, {
+        roomId: this._room.roomId || '',
+        trackUrl: this._intent.trackUrl || undefined,
+        playbackInstanceId: this._intent.playbackInstanceId,
+        startEpoch: this._intent.startEpoch,
+        fromPosition: this._intent.pauseOffset,
+        atEpoch: startAtEpoch,
+      }, this._clockOffsetRef?.current ?? 0);
+      return;
+    }
+
     // Compare like with like: both sides are graph-render positions.
     const expected = this._expectedRenderPosition(audio);
     const actual = audio.getTruePosition();
 
     // Skip if buffering (getTruePosition returns -1)
-    if (actual < 0) return;
-
-    // If audio is paused but we should be playing, start it
-    if (!audio.isPlaying) {
-      audio.playNow(expected);
-      if (audio.setPlaybackRate) audio.setPlaybackRate(1);
-      this._currentRate = 1;
-      this._lastDriftReport = { driftMs: 0, tier: 'emergency', correctionApplied: true, playbackRate: 1 };
-      return;
-    }
+    if (!Number.isFinite(actual) || actual < 0 || !Number.isFinite(expected)) return;
 
     const drift = expected - actual; // positive = behind, negative = ahead
     const driftMs = Math.abs(drift) * 1000;
