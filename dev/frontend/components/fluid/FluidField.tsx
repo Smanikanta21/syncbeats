@@ -20,33 +20,47 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { useReducedMotion } from "framer-motion";
 
 import { useBeatEngine } from "../../context/BeatContext";
 import { useOptionalVisualizer } from "../../context/VisualizerContext";
 import { useDevicePerf } from "../../hooks/useDevicePerf";
 import { useSettings } from "../../hooks/useSettings";
-import { useAlbumPalette } from '../../hooks/useAlbumPalette';
-import { useAmbientMode } from '../../hooks/useAmbientMode';
-import { usePageVisible } from '../../hooks/usePageVisible';
+import { extractTwoColorsFromImage } from "../../lib/colorExtractor";
 import { cn } from "../../lib/utils";
 import {
   QUALITY_FOR_TIER,
+  beatIndexAt,
+  beatSplatPoint,
   createFluidSim,
   hexToRgb01,
   nextLowerQuality,
   type FluidSim,
   type Quality,
 } from "./sim";
-import { advanceImmersiveMotion, immersivePhase, INITIAL_IMMERSIVE_MOTION, type MusicBands } from "./music";
 
 /** Neutral slate idle palette, shared visually with the landing atmosphere. */
 const IDLE_DYE: [number, number, number] = hexToRgb01("#94a3b8");
 const IDLE_FIELD: [number, number, number] = hexToRgb01("#64748b");
 
+/**
+ * How coarsely a beat's moment is quantised into a shared index.
+ *
+ * Onset DETECTION is already synchronised for free: every device is playing the
+ * same audio within ~25ms, so their local FFTs see the same transient at the
+ * same time. What has to be agreed is only WHERE to put the ink, which comes
+ * from the beat's index off the room's shared `startEpoch`.
+ *
+ * ponytail: at 480ms quantum and ~25ms of clock spread, roughly 5% of beats
+ * land either side of a boundary and those devices splat in different places
+ * for one beat. Good enough — the shared blooms are the effect, and an
+ * occasional disagreement is invisible. The exact fix is the server stamping a
+ * beat index onto the schedule payload; do that if it ever reads as sloppy.
+ */
+const BEAT_QUANTUM_MS = 480;
+
 /** Below this measured frame rate, for SUSTAINED_MS, step down the ladder. */
-const TARGET_FPS = 30;
-const MIN_FPS = 22;
+const MIN_FPS = 45;
 const SUSTAINED_MS = 3000;
 
 type Props = {
@@ -83,42 +97,53 @@ export function FluidField({
   className,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const reduced = usePrefersReducedMotion();
-  // This renderer grades its own 30fps loop; the generic 35/48fps calibration
-  // would compete with its quality ladder and recreate an otherwise healthy field.
-  const { tier } = useDevicePerf({ calibrate: false, respectReducedMotion: false });
+  const reduced = useReducedMotion();
+  const { tier } = useDevicePerf();
   const { settings } = useSettings();
-  const { mode, immersiveIntensity } = useAmbientMode();
-  const visible = usePageVisible();
   const { subscribeToBeat } = useBeatEngine();
-  const visualizerDataRef = useOptionalVisualizer()?.dataRef;
+  const visualizer = useOptionalVisualizer();
 
   // Null until the solver is up; set to false if this device can't run it, which
   // switches the render below to the static gradient for good.
   const [canRun, setCanRun] = useState<boolean | null>(null);
 
+  const ambientOff = settings?.ambientEnabled === false;
   const wantSim =
-    mode === 'immersive' && visible && !reduced && !settings?.reducedMotion && QUALITY_FOR_TIER[tier] !== null;
-  const palette = useAlbumPalette(coverUrl, wantSim);
+    !reduced && !ambientOff && !settings?.reducedMotion && QUALITY_FOR_TIER[tier] !== null;
 
   // ── Dye palette ─────────────────────────────────────────────────────────────
   // Held in a ref so a new cover never re-renders the component; the RAF loop
   // just starts reading different numbers on its next frame.
   const inkRef = useRef<{ a: [number, number, number]; b: [number, number, number] }>({
-    a: [...IDLE_DYE],
-    b: [...IDLE_FIELD],
+    a: IDLE_DYE,
+    b: IDLE_FIELD,
   });
-  const wakeRef = useRef<(() => void) | null>(null);
   const inkTargetRef = useRef<{ a: [number, number, number]; b: [number, number, number] }>({
-    a: [...IDLE_DYE],
-    b: [...IDLE_FIELD],
+    a: IDLE_DYE,
+    b: IDLE_FIELD,
   });
 
   useEffect(() => {
-    const colors = palette ?? settings.gradientSettings.nodes.map(node => node.color);
-    inkTargetRef.current = { a: hexToRgb01(colors[0] || '#94a3b8'), b: hexToRgb01(colors[1] || colors[0] || '#64748b') };
-    wakeRef.current?.();
-  }, [palette, settings.gradientSettings.nodes]);
+    if (!isPlaying || !settings?.dynamicBackgroundColors || !coverUrl) {
+      // Keep a slate palette while idle, then let track colors enter gradually
+      // after playback starts.
+      inkRef.current = { a: IDLE_DYE, b: IDLE_FIELD };
+      inkTargetRef.current = { a: IDLE_DYE, b: IDLE_FIELD };
+      return;
+    }
+    let live = true;
+    extractTwoColorsFromImage(coverUrl)
+      .then(([primary, secondary]) => {
+        if (!live) return;
+        inkTargetRef.current = { a: hexToRgb01(primary), b: hexToRgb01(secondary) };
+      })
+      // Extraction already falls back internally; this only catches a rejected
+      // promise. Staying on the slate idle palette is the right fallback.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [coverUrl, isPlaying, settings?.dynamicBackgroundColors]);
 
   // ── Solver + render loop ────────────────────────────────────────────────────
   // One effect owns the whole lifecycle. It deliberately does NOT depend on
@@ -128,14 +153,12 @@ export function FluidField({
   const playingRef = useRef(isPlaying);
   const epochRef = useRef(startEpoch);
   const offsetRef = useRef(clockOffset);
-  const intensityRef = useRef(immersiveIntensity / 100);
 
   useLayoutEffect(() => {
     playingRef.current = isPlaying;
     epochRef.current = startEpoch;
     offsetRef.current = clockOffset;
-    intensityRef.current = immersiveIntensity / 100;
-  }, [isPlaying, startEpoch, clockOffset, immersiveIntensity]);
+  }, [isPlaying, startEpoch, clockOffset]);
 
   /**
    * Handle onto the running loop's `wake()`. The effect below owns the solver
@@ -147,6 +170,7 @@ export function FluidField({
    * every other resize listener on the page (Lenis, layout measurement) as a
    * side effect. A ref is the honest version.
    */
+  const wakeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!wantSim) {
@@ -157,9 +181,7 @@ export function FluidField({
     if (!canvas) return;
 
     let quality: Quality = QUALITY_FOR_TIER[tier]!;
-    let sim: FluidSim | null = null;
-    try { sim = createFluidSim(canvas, quality); }
-    catch { /* Shader/context failure uses the room's lighter background. */ }
+    let sim: FluidSim | null = createFluidSim(canvas, quality);
     if (!sim) {
       // No WebGL2, or no float render targets. Not an error — just this device.
       setCanRun(false);
@@ -169,38 +191,64 @@ export function FluidField({
 
     let raf = 0;
     let last = performance.now();
-    let motionState = INITIAL_IMMERSIVE_MOTION;
-    const onsets: MusicBands = [0, 0, 0];
-    let phase = immersivePhase(Date.now(), offsetRef.current, epochRef.current);
-    let frameEma = 1000 / TARGET_FPS;
+    let intensity = 0;
+    let frameEma = 16.7;
     let slowSince = 0;
     let asleep = false;
 
-    const dpr = () => Math.min(window.devicePixelRatio || 1, 1);
+    const dpr = () => Math.min(window.devicePixelRatio || 1, tier === "high" ? 1.75 : 1.25);
     const fit = () => sim?.resize(window.innerWidth, window.innerHeight, dpr());
     fit();
 
-    const onset = (band: number, strength: number) => {
-      if (!sim || !playingRef.current || document.hidden) return;
-      onsets[band] = Math.max(onsets[band], Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 0);
+    /** Stamp one beat. Position is shared; colour and force depend on the band. */
+    const splatBeat = (band: "bass" | "mid" | "treble", strength: number) => {
+      if (!sim || !playingRef.current) return;
       wake();
+
+      // Server clock, not this device's — see beatIndexAt. Null means the track
+      // isn't scheduled yet, so fall back to a local clock: the field still
+      // responds, it just isn't aligned across devices until the epoch lands.
+      const shared = beatIndexAt(Date.now(), offsetRef.current, epochRef.current, BEAT_QUANTUM_MS);
+      const idx = shared ?? Math.round(performance.now() / BEAT_QUANTUM_MS);
+
+      // Each band gets its own point on the spiral. Previously `mid` and
+      // `treble` shared one expression, so they stamped the same spot and their
+      // inks just piled up instead of spreading.
+      const seed = band === "bass" ? idx : band === "mid" ? idx * 2 + 1 : idx * 3 + 2;
+      const { x, y } = beatSplatPoint(seed);
+      // Push outward from frame centre, so a hit reads as expanding rather than
+      // as something falling in from off screen.
+      const ox = x - 0.5;
+      const oy = y - 0.5;
+      const mag = Math.hypot(ox, oy) || 1;
+
+      const force = band === "bass" ? 7000 : band === "mid" ? 3800 : 1700;
+      const radius = band === "bass" ? 0.012 : band === "mid" ? 0.006 : 0.0022;
+      const ink = band === "mid" ? inkRef.current.b : inkRef.current.a;
+      const gain = strength * (band === "treble" ? 0.35 : 1);
+
+      sim.splat(
+        x,
+        y,
+        (ox / mag) * force * gain,
+        (oy / mag) * force * gain,
+        [ink[0] * gain, ink[1] * gain, ink[2] * gain],
+        radius,
+      );
     };
+
     const unsub = [
-      subscribeToBeat('bass', strength => onset(0, strength)),
-      subscribeToBeat('mid', strength => onset(1, strength)),
-      subscribeToBeat('treble', strength => onset(2, strength)),
+      subscribeToBeat("bass", (i) => splatBeat("bass", Math.min(1, Math.max(0.35, i)))),
+      subscribeToBeat("mid", (i) => splatBeat("mid", Math.min(1, Math.max(0.3, i)))),
+      subscribeToBeat("treble", (i) => splatBeat("treble", Math.min(1, Math.max(0.25, i)))),
     ];
 
     function frame(now: number) {
-      if (!sim) return;
-      // Allow sub-millisecond timestamp rounding at 60/120 Hz, so a nominal
-      // 33.333 ms frame isn't accidentally skipped and mistaken for GPU lag.
-      if (now - last < 1000 / TARGET_FPS - 0.5) { raf = requestAnimationFrame(frame); return; }
       const dt = Math.max(0.001, (now - last) / 1000);
       last = now;
 
       // Frame-interval EMA as the load signal. It is a proxy — other work on the
-      // page moves it too — but a device that cannot hold 22fps with the field
+      // page moves it too — but a device that cannot hold 45fps with the field
       // up should drop quality regardless of who is to blame.
       //
       // Derived from `dt`, not from `now - last`: `last` is reassigned above, so
@@ -217,14 +265,11 @@ export function FluidField({
           if (next) {
             quality = next;
             sim!.setQuality(next);
-            frameEma = 1000 / TARGET_FPS;
+            frameEma = 16.7;
           } else {
             // Bottom of the ladder and still too slow. Give up rather than keep
             // a janky field up — the static gradient is a fine room background.
             setCanRun(false);
-            sim.dispose();
-            sim = null;
-            raf = 0;
             return;
           }
         }
@@ -232,41 +277,39 @@ export function FluidField({
         slowSince = 0;
       }
 
-      const v = visualizerDataRef?.current;
-      const playing = playingRef.current;
-      const energy: MusicBands = v ? [v.bassEnergy, v.midEnergy, v.trebleEnergy] : [0, 0, 0];
-      motionState = advanceImmersiveMotion(motionState, energy, onsets, playing, dt, intensityRef.current);
-      onsets.fill(0);
+      const v = visualizer?.dataRef.current;
+      const energy = v ? Math.min(1, v.bassEnergy * 0.6 + v.midEnergy * 0.3 + v.trebleEnergy * 0.1) : 0;
 
-      // Change covers gradually, including when the user changes tracks paused.
-      const paletteEase = 1 - Math.exp(-dt / 1.4);
-      let paletteDelta = 0;
+      // Album art can change at a track boundary. Ease the dye over the next
+      // couple seconds so the room blooms into the new palette instead of
+      // flashing to it on the first beat.
+      const paletteEase = 1 - Math.exp(-dt / 1.8);
       for (let channel = 0; channel < 3; channel++) {
-        for (const key of ['a', 'b'] as const) {
-          const delta = inkTargetRef.current[key][channel] - inkRef.current[key][channel];
-          paletteDelta = Math.max(paletteDelta, Math.abs(delta));
-          inkRef.current[key][channel] += delta * paletteEase;
+        inkRef.current.a[channel] += (inkTargetRef.current.a[channel] - inkRef.current.a[channel]) * paletteEase;
+        inkRef.current.b[channel] += (inkTargetRef.current.b[channel] - inkRef.current.b[channel]) * paletteEase;
+      }
+
+      const target = playingRef.current ? 0.55 + 0.45 * energy : 0;
+      intensity += (target - intensity) * Math.min(1, dt * 2.2);
+
+      if (!playingRef.current) {
+        // Paused: pull the ink out rather than freezing mid-swirl, which reads
+        // as a hung canvas. Once it is gone, stop burning frames entirely.
+        sim!.fadeOut(0.94);
+        if (intensity < 0.01) {
+          asleep = true;
+          raf = 0;
+          sim!.step(dt, 0);
+          return;
         }
       }
-      phase = playing ? immersivePhase(Date.now(), offsetRef.current, epochRef.current) : phase + dt * motionState.motion;
-      sim.step(dt, motionState.opacity, {
-        time: phase, motion: motionState.motion, bands: motionState.bands,
-        intensity: intensityRef.current, paletteA: inkRef.current.a, paletteB: inkRef.current.b,
-      });
 
-      // Let the last currents settle, then retain a quiet, static field.
-      if (!playing && motionState.motion < 0.015 && paletteDelta < 0.02
-        && Math.abs(motionState.opacity - 0.25 * intensityRef.current) < 0.005) {
-        asleep = true;
-        raf = 0;
-        return;
-      }
-
+      sim!.step(dt, intensity);
       raf = requestAnimationFrame(frame);
     }
 
     function wake() {
-      if (!sim || !asleep || document.hidden) return;
+      if (!asleep || document.hidden) return;
       asleep = false;
       last = performance.now();
       raf = requestAnimationFrame(frame);
@@ -302,19 +345,19 @@ export function FluidField({
     };
     // `isPlaying` / `startEpoch` / the ink palette are all read through refs on
     // purpose — see the note above the effect.
-  }, [wantSim, tier, subscribeToBeat, visualizerDataRef]);
+  }, [wantSim, tier, subscribeToBeat, visualizer]);
 
   // Resuming playback has to restart a loop that put itself to sleep while
   // paused. The effect above cannot see `isPlaying`, so reach in via the handle.
   useEffect(() => {
-    wakeRef.current?.();
-  }, [isPlaying, immersiveIntensity]);
+    if (isPlaying) wakeRef.current?.();
+  }, [isPlaying]);
 
   // Tell the room whether the solver really came up, so it can stand down its
   // own ambient layer (or keep it, as the fallback).
   useEffect(() => {
-    onActiveChange?.(wantSim && canRun === true);
-  }, [canRun, wantSim, onActiveChange]);
+    onActiveChange?.(canRun === true);
+  }, [canRun, onActiveChange]);
 
   return (
     <div
@@ -330,11 +373,10 @@ export function FluidField({
           strictly worse and more code. */}
       <canvas
         ref={canvasRef}
-        data-immersive-fluid
         className="absolute inset-0 h-full w-full transition-opacity duration-[2400ms] ease-out motion-reduce:transition-none"
         style={{
           display: canRun === true ? "block" : "none",
-          opacity: canRun === true ? 1 : 0,
+          opacity: isPlaying ? 1 : 0,
         }}
       />
     </div>

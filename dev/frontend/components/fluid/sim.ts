@@ -19,15 +19,12 @@ import {
   DISPLAY,
   DIVERGENCE,
   GRADIENT_SUBTRACT,
-  MUSIC_FLOW,
-  MUSIC_INK,
   PRESSURE,
   SPLAT,
   VERT,
   VORTICITY,
 } from "./shaders";
 import type { Quality } from "./math";
-import type { FluidDrive } from './music';
 
 // The maths lives in ./math.ts (a leaf module with no imports) so the self-check
 // can run it under bare node. Re-exported here so callers have one import site.
@@ -102,7 +99,7 @@ export type FluidSim = {
   /** Shove the velocity field and stain the dye field at one point. */
   splat: (x: number, y: number, dx: number, dy: number, color: [number, number, number], radius?: number) => void;
   /** Advance the solver by `dt` seconds and composite to the canvas. */
-  step: (dt: number, intensity: number, drive?: FluidDrive) => void;
+  step: (dt: number, intensity: number) => void;
   /** Match the drawing buffer to a new CSS size. Cheap; safe to call per resize. */
   resize: (cssWidth: number, cssHeight: number, dpr: number) => void;
   /** Rebuild targets at a new quality, keeping the canvas size. */
@@ -169,8 +166,6 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
     splat: program(gl, SPLAT, vert),
     clear: program(gl, CLEAR, vert),
     display: program(gl, DISPLAY, vert),
-    musicFlow: program(gl, MUSIC_FLOW, vert),
-    musicInk: program(gl, MUSIC_INK, vert),
   };
 
   // Everything is RGBA16F, including the three scalar fields (pressure,
@@ -305,27 +300,13 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
     dye.swap();
   }
 
-  function step(dt: number, intensity: number, drive?: FluidDrive) {
+  function step(dt: number, intensity: number) {
     // A tab that was backgrounded hands back a multi-second dt. Advection is
     // unconditionally stable so it would not explode, but the field would jump
     // a long way in one frame, which reads as a glitch. Clamp to ~2 frames.
     const h = Math.min(dt, 0.033);
 
     gl!.disable(gl!.BLEND);
-
-    if (drive) {
-      const music = programs.musicFlow;
-      gl!.useProgram(music.prog);
-      gl!.uniform1i(music.uniforms.uVelocity!, velocity.read.attach(0));
-      gl!.uniform3f(music.uniforms.uBands!, ...drive.bands);
-      gl!.uniform1f(music.uniforms.uTime!, drive.time);
-      gl!.uniform1f(music.uniforms.uDt!, h);
-      gl!.uniform1f(music.uniforms.uMotion!, drive.motion);
-      gl!.uniform1f(music.uniforms.uIntensity!, drive.intensity);
-      gl!.uniform1f(music.uniforms.uAspect!, canvas.width / Math.max(1, canvas.height));
-      blit(velocity.write);
-      velocity.swap();
-    }
 
     // curl -> vorticity
     let p = programs.curl;
@@ -339,7 +320,7 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
     gl!.uniform2f(p.uniforms.texelSize!, velocity.texelSizeX, velocity.texelSizeY);
     gl!.uniform1i(p.uniforms.uVelocity!, velocity.read.attach(0));
     gl!.uniform1i(p.uniforms.uCurl!, curl.attach(1));
-    gl!.uniform1f(p.uniforms.curl!, CURL_STRENGTH + (drive ? drive.bands[1] * drive.motion * drive.intensity * 16 : 0));
+    gl!.uniform1f(p.uniforms.curl!, CURL_STRENGTH);
     gl!.uniform1f(p.uniforms.dt!, h);
     blit(velocity.write);
     velocity.swap();
@@ -379,34 +360,19 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
     velocity.swap();
 
     // advect velocity, then dye
-    if (drive) {
-      const ink = programs.musicInk;
-      gl!.useProgram(ink.prog);
-      gl!.uniform1i(ink.uniforms.uSource!, dye.read.attach(0));
-      gl!.uniform3f(ink.uniforms.uPaletteA!, ...drive.paletteA);
-      gl!.uniform3f(ink.uniforms.uPaletteB!, ...drive.paletteB);
-      gl!.uniform3f(ink.uniforms.uBands!, ...drive.bands);
-      gl!.uniform1f(ink.uniforms.uTime!, drive.time);
-      gl!.uniform1f(ink.uniforms.uDt!, h);
-      gl!.uniform1f(ink.uniforms.uMotion!, drive.motion);
-      gl!.uniform1f(ink.uniforms.uIntensity!, drive.intensity);
-      gl!.uniform1f(ink.uniforms.uAspect!, canvas.width / Math.max(1, canvas.height));
-      blit(dye.write);
-      dye.swap();
-    }
     p = programs.advection;
     gl!.useProgram(p.prog);
     gl!.uniform2f(p.uniforms.texelSize!, velocity.texelSizeX, velocity.texelSizeY);
     gl!.uniform1i(p.uniforms.uVelocity!, velocity.read.attach(0));
     gl!.uniform1i(p.uniforms.uSource!, velocity.read.attach(0));
     gl!.uniform1f(p.uniforms.dt!, h);
-    gl!.uniform1f(p.uniforms.dissipation!, VELOCITY_DISSIPATION + (drive ? (1 - drive.motion) * 2.2 : 0));
+    gl!.uniform1f(p.uniforms.dissipation!, VELOCITY_DISSIPATION);
     blit(velocity.write);
     velocity.swap();
 
     gl!.uniform1i(p.uniforms.uVelocity!, velocity.read.attach(0));
     gl!.uniform1i(p.uniforms.uSource!, dye.read.attach(1));
-    gl!.uniform1f(p.uniforms.dissipation!, DENSITY_DISSIPATION * (drive ? 0.15 + drive.motion * 0.85 : 1));
+    gl!.uniform1f(p.uniforms.dissipation!, DENSITY_DISSIPATION);
     blit(dye.write);
     dye.swap();
 
@@ -437,9 +403,8 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
     fadeOut,
     quality: () => quality,
     resize(cssWidth, cssHeight, dpr) {
-      const scale = Math.min(dpr, 1, 1440 / Math.max(1, cssWidth, cssHeight));
-      const w = Math.max(1, Math.round(cssWidth * scale));
-      const h = Math.max(1, Math.round(cssHeight * scale));
+      const w = Math.max(1, Math.round(cssWidth * dpr));
+      const h = Math.max(1, Math.round(cssHeight * dpr));
       if (canvas.width === w && canvas.height === h) return;
       canvas.width = w;
       canvas.height = h;
@@ -449,24 +414,9 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
       // the ink every time a mobile browser's URL bar slides away.
     },
     setQuality(q) {
-      const previous = { velocity, pressure, dye, divergence, curl };
       quality = q;
+      release();
       allocate();
-      // Resample the current field so a downgrade does not erase the artwork.
-      gl.disable(gl.BLEND);
-      const copy = programs.clear;
-      gl.useProgram(copy.prog);
-      gl.uniform1f(copy.uniforms.value!, 1);
-      gl.uniform1i(copy.uniforms.uTexture!, previous.dye.read.attach(0));
-      blit(dye.read);
-      gl.uniform1i(copy.uniforms.uTexture!, previous.velocity.read.attach(0));
-      blit(velocity.read);
-      [previous.velocity, previous.pressure, previous.dye].forEach(target => {
-        destroyFBO(target.read);
-        destroyFBO(target.write);
-      });
-      destroyFBO(previous.divergence);
-      destroyFBO(previous.curl);
     },
     dispose() {
       release();
@@ -474,8 +424,7 @@ export function createFluidSim(canvas: HTMLCanvasElement, initial: Quality): Flu
       gl.deleteBuffer(quadIdx);
       Object.values(programs).forEach(({ prog }) => gl.deleteProgram(prog));
       gl.deleteShader(vert);
-      // React may reuse this canvas after visibility/accessibility changes.
-      // Release every resource without permanently losing its reusable context.
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     },
   };
 }

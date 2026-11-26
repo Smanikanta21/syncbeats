@@ -135,7 +135,7 @@ export function AccentEngine({ reduced = false }: { reduced?: boolean }) {
   return (
     <div
       aria-hidden="true"
-      className="gpu-accelerated pointer-events-none fixed -inset-32 z-0 overflow-hidden blur-[clamp(64px,5vmax,112px)]"
+      className="gpu-accelerated pointer-events-none fixed inset-0 z-0 overflow-hidden"
       style={{ opacity: ready ? 1 : 0, transition: "opacity 0.6s ease-out" }}
     >
       <div className="pointer-events-none absolute top-[20%] left-[24%] -translate-x-1/2 -translate-y-1/2">
@@ -149,7 +149,7 @@ export function AccentEngine({ reduced = false }: { reduced?: boolean }) {
             borderRadius: { duration: 11, repeat: Infinity, ease: "easeInOut" },
           }}
           style={{ background: `var(--accent-blob-1, ${STAGE_0.blob1})` }}
-          className="gpu-accelerated h-[115vmax] w-[130vmax] will-change-transform"
+          className="gpu-accelerated max-h-162.5 h-[55vw] w-[55vw] max-w-[650px] blur-[50px] will-change-transform md:blur-[80px]"
         />
       </div>
 
@@ -164,7 +164,7 @@ export function AccentEngine({ reduced = false }: { reduced?: boolean }) {
             borderRadius: { duration: 12, repeat: Infinity, ease: "easeInOut" },
           }}
           style={{ background: `var(--accent-blob-2, ${STAGE_0.blob2})` }}
-          className="gpu-accelerated h-[120vmax] w-[115vmax] will-change-transform"
+          className="gpu-accelerated h-[50vw] w-[50vw] max-h-[580px] max-w-[580px] blur-[50px] will-change-transform md:blur-[80px]"
         />
       </div>
 
@@ -186,7 +186,7 @@ export function AccentEngine({ reduced = false }: { reduced?: boolean }) {
             rotate: rot,
             background: `var(--accent-blob-1, ${STAGE_0.blob1})`,
           }}
-          className="gpu-accelerated h-[110vmax] w-[120vmax] will-change-transform"
+          className="gpu-accelerated h-[32vw] w-[32vw] max-h-[380px] max-w-[380px] blur-[44px] will-change-transform md:blur-[64px]"
         />
       </div>
     </div>

@@ -626,26 +626,9 @@
 
 /* Ambient page light: the gradients keep their soft edges while their large
    surfaces drift slowly across the fixed viewport behind the app. */
-/* Off removes the atmosphere on public pages as well as rooms. */
-html[data-ambient-mode="off"] .site-gradient-page::before {
-  display: none;
-}
-
-.ambient-blob-field {
-  filter: blur(clamp(64px, 5vmax, 112px));
-  -webkit-filter: blur(clamp(64px, 5vmax, 112px));
-}
-
-html[data-ambient-mode="immersive"] .ambient-blob-field {
-  opacity: 0.85;
-}
-html[data-ambient-mode="immersive"] .ambient-blob {
-  animation-duration: 18s;
-}
-
 .ambient-blob {
   position: absolute;
-  width: 125vmax;
+  width: clamp(30rem, 72vw, 74rem);
   aspect-ratio: 1;
   border-radius: 9999px;
   pointer-events: none;

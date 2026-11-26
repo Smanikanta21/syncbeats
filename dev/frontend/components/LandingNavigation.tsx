@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArrowUpRight, Grid2X2, X } from "lucide-react";
-import { BackgroundSettingsButton } from "./BackgroundSettingsButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandMark } from "./landing/BrandMark";
 import { useAuth } from "@/context/AuthContext";
@@ -104,8 +103,7 @@ export function LandingNavigation() {
             Join
           </Link>
           <span className="landing-dock-divider" aria-hidden="true" />
-          <BackgroundSettingsButton />
-        <ThemeToggle />
+          <ThemeToggle />
         </nav>
         <nav
           id="landing-page-menu"

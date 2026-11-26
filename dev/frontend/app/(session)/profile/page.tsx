@@ -5,7 +5,7 @@ import profileStyles from "./Profile.module.css";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, Tablet, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2, Palette
+  CheckCircle2, LogOut, Edit3, Smartphone, Laptop, Tablet, KeyRound, MonitorSmartphone, Settings, ArrowLeft, Shield, Copy, Check, Download, Trash2, AlertTriangle, Loader2, ChevronRight, Link2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
@@ -19,11 +19,10 @@ import { useLoadingTasks } from "../../../context/LoadingContext";
 import { MarqueeText } from "../../../components/MarqueeText";
 import { cn } from "../../../lib/utils";
 
-type TabId = 'settings' | 'appearance' | 'devices' | 'integrations' | 'security' | 'data';
+type TabId = 'settings' | 'devices' | 'integrations' | 'security' | 'data';
 
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
-  { id: 'settings',     label: 'Audio & playback', icon: Settings },
-  { id: 'appearance',   label: 'Appearance',       icon: Palette },
+  { id: 'settings',     label: 'Settings & audio', icon: Settings },
   { id: 'devices',      label: 'Devices',          icon: MonitorSmartphone },
   { id: 'integrations', label: 'Integrations',     icon: Link2 },
   { id: 'security',     label: 'Security',         icon: KeyRound },
@@ -375,7 +374,6 @@ export default function ProfilePage() {
               return (
                 <button
                   key={tab.id}
-                  aria-pressed={isActive}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     'relative w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-colors group',
@@ -420,14 +418,7 @@ export default function ProfilePage() {
               >
                 <SettingsPanel
                   isEmbedded={true}
-                  onlyAudio={true}
                 />
-              </motion.div>
-            )}
-
-            {activeTab === 'appearance' && (
-              <motion.div key="appearance" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} className="w-full flex flex-col min-h-150">
-                <SettingsPanel isEmbedded={true} onlyVisuals={true} />
               </motion.div>
             )}
 
