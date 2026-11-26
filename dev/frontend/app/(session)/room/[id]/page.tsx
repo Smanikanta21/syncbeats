@@ -14,11 +14,15 @@ import { useConnection } from "../../../../context/ConnectionContext";
 import { useLoadingTasks } from "../../../../context/LoadingContext";
 import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
-import { FluidField } from "../../../../components/fluid/FluidField";
+import dynamic from "next/dynamic";
+import { useAmbientMode } from "../../../../hooks/useAmbientMode";
 import { getTrackThumbnailUrl } from "../../../../lib/colorExtractor";
 import { cn } from "../../../../lib/utils";
 
+const FluidField = dynamic(() => import("../../../../components/fluid/FluidField").then(module => module.FluidField), { ssr: false });
+
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const { mode: ambientMode } = useAmbientMode();
   const router = useRouter();
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
@@ -269,15 +273,10 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
-      {/* Ambient background.
-          FluidField is the real one: a GPU fluid solver whose forces come from
-          the beat, so the background is displaced by the music rather than
-          decorated with it. It reports back whether it actually came up —
-          SpatialBeatNodes keeps its own gradient layer as the fallback for
-          devices that can't run a solver, and keeps its buffering aura either
-          way. */}
+      {/* Load the stronger effect only after this device explicitly opts in. */}
+      {ambientMode === "immersive" && (
       <FluidField
-        isPlaying={isPlaying || audio.isPlaying}
+        isPlaying={audio.isPlaying}
         startEpoch={snapshot?.startEpoch ?? null}
         clockOffset={clockOffset}
         coverUrl={getTrackThumbnailUrl(
@@ -285,9 +284,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         )}
         onActiveChange={setFluidActive}
       />
+      )}
 
       {/* Spatial Beat Nodes (Visual representation of beat pulses mapped behind room elements) */}
-      <SpatialBeatNodes suppressGradient={fluidActive} />
+      <SpatialBeatNodes
+        suppressGradient={ambientMode === "immersive" && fluidActive}
+        coverUrl={getTrackThumbnailUrl(snapshot?.queue?.find(q => q.isCurrent) ?? { trackUrl: snapshot?.trackUrl ?? audio.trackUrl ?? undefined })}
+      />
 
       {/* Main room UI — mounted once we have a snapshot, kept alive through reconnects */}
       {(isConnected || snapshot) && (

@@ -8,11 +8,13 @@ import { useSettings, GradientNode, DEFAULT_SETTINGS, type AppSettings } from ".
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../lib/utils";
 import { RoomPreview } from "./RoomPreview";
+import { AmbientModeControl } from "../room/AmbientModeControl";
 import { DEFAULT_NODE_POSITIONS, AUDIO_BAND_NAMES, GRADIENT_PRESETS, getVisiblePresets } from "./presets";
 
 interface SettingsPanelProps {
   onClose?: () => void;
   onlyVisuals?: boolean;
+  onlyAudio?: boolean;
   onInteractionStateChange?: (interacting: boolean) => void;
   isEmbedded?: boolean;
 }
@@ -40,6 +42,7 @@ function hexToHue(hex: string): number {
 export function SettingsPanel({
   onClose,
   onlyVisuals = false,
+  onlyAudio = false,
   onInteractionStateChange,
   isEmbedded = false,
 }: SettingsPanelProps) {
@@ -101,7 +104,8 @@ export function SettingsPanel({
   };
 
   const handleRestoreDefaults = () => {
-    updateSettings(DEFAULT_SETTINGS);
+    const { audioLatencyOffsetMs, syncAggressiveness, ...appearanceDefaults } = DEFAULT_SETTINGS;
+    updateSettings(onlyAudio ? { audioLatencyOffsetMs, syncAggressiveness } : onlyVisuals ? appearanceDefaults : DEFAULT_SETTINGS);
   };
 
   return (
@@ -110,7 +114,7 @@ export function SettingsPanel({
       <div className="shrink-0 w-full pb-3 mb-4 border-b border-foreground/10 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <Sliders className="w-5 h-5 text-foreground/80 shrink-0" />
-          <h2 className="text-lg sm:text-2xl font-semibold text-foreground truncate">{onlyVisuals ? 'Room visuals' : isEmbedded ? 'Settings & audio' : 'App settings'}</h2>
+          <h2 className="text-lg sm:text-2xl font-semibold text-foreground truncate">{onlyVisuals ? (isEmbedded ? 'Appearance' : 'Room visuals') : onlyAudio ? 'Audio & playback' : isEmbedded ? 'Settings & audio' : 'App settings'}</h2>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -187,6 +191,7 @@ export function SettingsPanel({
       >
 
         {/* Gradient & Lighting Theme Editor */}
+        {!onlyAudio && (
         <section className={cn(
           onlyVisuals
             ? 'pb-2'
@@ -208,6 +213,8 @@ export function SettingsPanel({
           <p className="text-xs text-foreground/60 mb-4">
             Choose a palette, adjust the room lighting, and preview your changes.
           </p>
+
+          <AmbientModeControl expanded={isEmbedded} />
 
           {/* Interactive Demo Room Canvas with Draggable 2D Light Nodes (Development or Static Node Mode Only) */}
           {showSpatialCanvas && (
@@ -581,6 +588,8 @@ export function SettingsPanel({
           </div>
         </section>
 
+        )}
+
         {!onlyVisuals && (
           /* Sync Settings */
           <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">
@@ -630,7 +639,7 @@ export function SettingsPanel({
           </section>
         )}
 
-        {!onlyVisuals && (
+        {!onlyAudio && (!onlyVisuals || isEmbedded) && (
           <>
             {/* Screen Awake Feature */}
             <section className="p-5 rounded-3xl bg-foreground/5 border border-foreground/10 shadow-lg">

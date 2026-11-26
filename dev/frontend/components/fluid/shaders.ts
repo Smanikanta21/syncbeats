@@ -294,13 +294,81 @@ export const DISPLAY = /* glsl */ `
   uniform float uVignette;
 
   void main () {
-    vec3 c = texture2D(uTexture, vUv).rgb;
-    float a = max(c.r, max(c.g, c.b));
+    vec3 raw = max(texture2D(uTexture, vUv).rgb, vec3(0.0));
+    vec3 c = raw / (1.0 + raw * 0.7);
+    float a = min(0.78, max(c.r, max(c.g, c.b)));
 
     vec2 d = vUv - 0.5;
     float vign = 1.0 - smoothstep(0.26, 0.72, length(d));
     vign = mix(1.0, vign, uVignette);
 
     gl_FragColor = vec4(c, a * uIntensity * vign);
+  }
+`;
+
+/** Broad bass waves, rotating midrange currents, and short treble ripples. */
+export const MUSIC_FLOW = /* glsl */ `
+  precision highp float;
+  precision highp sampler2D;
+  varying vec2 vUv;
+  uniform sampler2D uVelocity;
+  uniform vec3 uBands;
+  uniform float uTime;
+  uniform float uDt;
+  uniform float uMotion;
+  uniform float uIntensity;
+  uniform float uAspect;
+  void main () {
+    vec2 p = vUv - 0.5;
+    p.x *= uAspect;
+    // The centre wanders slowly, so the currents never form a fixed target.
+    p -= vec2(sin(uTime * 0.19), cos(uTime * 0.16)) * 0.1;
+    float r = max(length(p), 0.015);
+    vec2 outward = p / r;
+    vec2 tangent = vec2(-outward.y, outward.x);
+    float angle = atan(p.y, p.x);
+    float envelope = exp(-dot(p, p) * 3.0);
+    float bass = sin(r * 9.0 - uTime * 1.7) * uBands.x * 220.0;
+    float mids = (0.14 + uBands.y) * sin(uTime * 0.28 + r * 3.0) * 150.0;
+    float ripples = sin(r * 54.0 - uTime * 7.0) * uBands.z * 28.0;
+    // Angular variation survives incompressible pressure projection; a purely
+    // radial gradient would be cancelled before it could move the dye.
+    vec2 wave = outward * bass * (0.7 + 0.3 * sin(angle * 3.0 + uTime * 0.2)) + tangent * bass * 0.35;
+    vec2 detail = (tangent + outward * 0.18 * sin(angle * 7.0)) * ripples;
+    vec2 force = (wave + tangent * mids + detail) * envelope;
+    force.x /= max(uAspect, 0.25);
+    vec2 velocity = texture2D(uVelocity, vUv).xy;
+    gl_FragColor = vec4(velocity + force * uDt * uMotion * uIntensity, 0.0, 1.0);
+  }
+`;
+
+/** Feed the entire flowing field softly, blending existing dye into new art. */
+export const MUSIC_INK = /* glsl */ `
+  precision highp float;
+  precision highp sampler2D;
+  varying vec2 vUv;
+  uniform sampler2D uSource;
+  uniform vec3 uPaletteA;
+  uniform vec3 uPaletteB;
+  uniform vec3 uBands;
+  uniform float uTime;
+  uniform float uDt;
+  uniform float uMotion;
+  uniform float uIntensity;
+  uniform float uAspect;
+  void main () {
+    vec2 p = vUv - 0.5;
+    p.x *= uAspect;
+    vec3 source = texture2D(uSource, vUv).rgb;
+    float blend = 0.5 + 0.32 * sin(p.x * 3.2 + sin(p.y * 3.0 - uTime * 0.15)
+      + uTime * (0.06 + uBands.y * 0.08));
+    vec3 color = mix(uPaletteA, uPaletteB, blend);
+    float density = max(source.r, max(source.g, source.b));
+    vec3 tinted = color * density / max(0.15, max(color.r, max(color.g, color.b)));
+    source = mix(source, tinted, 1.0 - exp(-uDt * 0.55));
+    float field = exp(-dot(p, p) * 1.55);
+    float feed = 0.38 + dot(uBands, vec3(0.7, 0.5, 0.12));
+    source += color * field * feed * uDt * uMotion * uIntensity;
+    gl_FragColor = vec4(source, 1.0);
   }
 `;

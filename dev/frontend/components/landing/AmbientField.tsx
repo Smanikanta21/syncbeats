@@ -8,9 +8,12 @@
  */
 
 import { useReducedMotion } from "framer-motion";
+import { useAmbientMode } from "../../hooks/useAmbientMode";
 import { AccentEngine } from "./AccentEngine";
 
 export function AmbientField() {
   const reduced = useReducedMotion();
+  const { mode } = useAmbientMode();
+  if (mode === "off") return null;
   return <AccentEngine reduced={!!reduced} />;
 }
