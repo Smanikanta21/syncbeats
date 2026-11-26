@@ -1,0 +1,23 @@
+[
+  {
+    "url": "fixture:0",
+    "title": "Blinding Lights",
+    "uploaderName": "The Weeknd",
+    "duration": 200.046,
+    "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/6f/bc/e6/6fbce6c4-c38c-72d8-4fd0-66cfff32f679/20UMGIM12176.rgb.jpg/600x600bb.jpg"
+  },
+  {
+    "url": "fixture:1",
+    "title": "A Walk",
+    "uploaderName": "Tycho",
+    "duration": 316.919,
+    "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/46/be/ed/46beed8a-5d0f-1077-cbeb-aace15e69f44/cover.jpg/600x600bb.jpg"
+  },
+  {
+    "url": "fixture:2",
+    "title": "Maria También",
+    "uploaderName": "Khruangbin",
+    "duration": 190.999,
+    "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/17/67/2e/17672e3b-9d01-2d5e-9b43-38f44b40f654/656605145365.jpg/600x600bb.jpg"
+  }
+]

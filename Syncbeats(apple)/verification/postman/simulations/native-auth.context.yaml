@@ -1,0 +1,16 @@
+purpose:
+  stands_in_for: SyncBeats authentication and default-room HTTP routes with fictional accounts.
+  unblocks: Native Swift request serialization, failure handling and isolated Keychain/session recovery checks.
+assumptions:
+  - id: native-auth-client-contract
+    status: supported
+    claim: The real Swift client handles the modeled authentication responses, preserves device/session headers and restores its isolated Keychain session in the exercised scenarios.
+    reason: The native verification harness passed and the simulation recorded the expected authentication and default-room requests.
+    verification: On 2026-11-19, 30 checks passed with 20 recorded requests on port 5169, including invalid credentials, server errors, cancellation, callback validation and session recovery. Live Google, email delivery and production accounts were not exercised.
+    source: NativeAuthVerification.swift; run-native-auth.sh; postman/mocks/native-auth/default.js; /tmp/syncbeats-push-native-auth-checks.log; /tmp/syncbeats-push-native-auth.ndjson. Earlier evidence remains in native-auth.context.md.
+    updated_at: "2026-11-19"
+fingerprints:
+  - id: macos-native-push-review
+    date: "2026-11-19"
+    commit: 4dc9a09c plus the staged native rebuild
+    cli: "1.80.0"

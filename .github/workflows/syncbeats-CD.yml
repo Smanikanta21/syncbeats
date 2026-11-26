@@ -6,12 +6,13 @@ on:
     paths:
       - 'dev/syncbeats-server/**'
       - '.github/workflows/syncbeats-CD.yml'
+      - '.github/scripts/resolve_database_url.py'
   pull_request:
     types: [closed]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -62,6 +63,8 @@ jobs:
 
       - name: Install Backend Dependencies & Generate Prisma Client
         working-directory: ./dev/syncbeats-server
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           npm ci
           DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" npx prisma generate
@@ -154,8 +157,10 @@ jobs:
           UPDATES_FROM_EMAIL: ${{ vars.UPDATES_FROM_EMAIL || 'updates@syncbeats.in' }}
           ADMIN_PASSWORD: ${{ vars.ADMIN_PASSWORD || 'syncbeatsadmin' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           TELEMETRY_DATABASE_URL: ${{ secrets.TELEMETRY_DATABASE_URL }}
         run: |
+          DATABASE_URL="$(python3 .github/scripts/resolve_database_url.py)"
           cat <<EOF > .env.vm
           COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME
           IMAGE_TAG=${{ github.ref_name }}-latest

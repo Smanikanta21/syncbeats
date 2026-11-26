@@ -7,8 +7,10 @@ import {
   createContext, useContext, useEffect, useState, useCallback, useMemo,
   type ReactNode,
 } from "react";
+import { finishNativeGoogle, isNativeGoogleReturn } from "../lib/nativeGoogle";
 import { authApi, clearAuthToken, getAuthToken, setAuthToken, devicesApi, type Device, type User, ApiError } from "../lib/api";
 import { getSocket } from "../lib/socket";
+import { connectAccountUpdates } from "../lib/accountUpdates";
 
 interface AuthContextType {
   user:     User | null;
@@ -43,6 +45,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [sessionCheck, setSessionCheck] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    const stop = connectAccountUpdates(token, kind => {
+      if (kind === "profile" || kind === "all") {
+        authApi.me().then(updated => {
+          if (active) { setUser(updated.user); setEmailVerified(!!updated.user.email_verified_at); }
+        }).catch(() => {});
+      }
+      if (kind === "devices" || kind === "all") {
+        devicesApi.mine().then(({ devices }) => {
+          if (active) setDevice(current => devices.find(item => item.id === current?.id) ?? current);
+        }).catch(() => {});
+      }
+    });
+    return () => { active = false; stop(); };
+  }, [token]);
   const retrySession = useCallback(() => { setLoading(true); setSessionCheck(n => n + 1); }, []);
   const [serverError, setServerError] = useState<boolean>(false);
 
@@ -147,6 +167,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Handle Google OAuth 2.0 id_token redirect & postMessage globally
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // Native return codes are exchanged by the Mac, without creating a browser session.
+    if (isNativeGoogleReturn(window.location.hash)) {
+      void finishNativeGoogle();
+      return;
+    }
 
     // Inside popup window: notify parent window and close popup
     if (window.opener && window.location.hash.includes("id_token=")) {

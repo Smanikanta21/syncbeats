@@ -65,6 +65,10 @@ jobs:
         continue-on-error: true
         run: npm run lint
       - run: npm run typecheck
+      - name: Deployment database configuration
+        if: matrix.package == 'syncbeats-server'
+        working-directory: .
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Tests
         if: matrix.package != 'db-visualizer'
         run: npm test

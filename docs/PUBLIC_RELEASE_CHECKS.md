@@ -29,6 +29,16 @@ Collection: `dev/syncbeats-server/postman/collections/mac-beta.postman_collectio
 
 ## Live infrastructure observation
 
-Read-only Docker inspection on 20 November 2026 confirmed production (`sync-beats-server-1`, main image) uses PostgreSQL at `postgres:5432`, database `syncbeats`, in a persistent Docker volume on the VM. Staging (`syncbeats-staging-server-1`, nodejs-dev image) uses Neon in Azure East US 2. The additional local staging PostgreSQL container is not the database configured for that staging server. No database configuration or data was changed during this inspection.
+Read-only Docker inspection on 20 November 2026 confirmed production (`sync-beats-server-1`, main image) uses PostgreSQL at `postgres:5432`, database `syncbeats`, in a persistent Docker volume on the VM. Staging (`syncbeats-staging-server-1`, nodejs-dev image) uses Neon in Azure East US 2. Staging stores sync telemetry in its local PostgreSQL container via `TELEMETRY_DATABASE_URL`, while its application data and beta requests use Neon. No database configuration or data was changed during this inspection.
 
 These checks do not establish physical two-device speaker synchronization. Repeat the built-in-speaker playback test after deployment and inspect fresh sync telemetry before making timing guarantees.
+
+## Merge verification (21 November 2026)
+
+An isolated merge with current `main` preserves its JSON-LD graph structure, missing-room/error feedback, and lyric interpolation fixes together with the new nodejs-dev room/sync behavior. The unused public backend Sentry debug route was removed, and beta validation now runs in the default backend test command. All 62 frontend tests, frontend typecheck/build, and backend build/tests passed for the merged tree. Staging pages, `/health`, and beta validation returned the expected HTTP responses after deployment.
+
+## Deployment database guard
+
+A live rollout check found that the former deployment script reused the repository's staging `DATABASE_URL` secret for production. Production's original local PostgreSQL connection was restored after saving a database backup and applying the pending additive migrations. The resolver now defaults `main` to local PostgreSQL and requires a separate `PRODUCTION_DATABASE_URL` secret for an intentional remote production database. `nodejs-dev` retains its configured staging URL. Database-selection regression checks run in CI, including credentials with reserved URL characters.
+
+An aggregate audit found no new accounts, rooms, or beta requests in Neon during the temporary production cutover. Existing Neon/staging data was retained.

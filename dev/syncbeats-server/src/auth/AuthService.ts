@@ -20,6 +20,7 @@ const RESET_TOKEN_TTL_MS = 1000 * 60 * 30; // 30m
 const RESET_OTP_LENGTH = 6;
 
 export interface TokenPayload {
+  exp?: number;
   sub:   string;   // user id
   email: string;
   name:  string;
@@ -187,12 +188,16 @@ export class AuthService {
     return { user: loggedInUser, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false, defaultRoomId };
   }
 
-  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
+  async googleLogin(credential: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null, expectedNonce?: string): Promise<AuthResult> {
     const audience = process.env.GOOGLE_CLIENT_ID;
     if (!audience) throw new Error('GOOGLE_CLIENT_ID is not configured');
 
     const ticket = await this.googleClient.verifyIdToken({ idToken: credential, audience });
     const payload = ticket.getPayload();
+    if (expectedNonce && (payload as { nonce?: string } | undefined)?.nonce !== expectedNonce) {
+      throw new Error('The Google sign-in request expired. Please try again.');
+    }
+    if (expectedNonce && payload?.email_verified !== true) throw new Error('Google email could not be verified.');
 
     if (!payload?.email || !payload.sub) {
       throw new Error('Invalid Google token payload');
@@ -255,6 +260,15 @@ export class AuthService {
       last_login_at: row.last_login_at,
       created_at: row.created_at,
     }, false);
+  }
+
+  async nativeLogin(userId: string, deviceKey?: string | null, userAgent?: string | null, ip?: string | null): Promise<AuthResult> {
+    const user = await this.repo.findById(userId);
+    if (!user?.email_verified_at) throw new Error('Sign-in expired. Please try again.');
+    const token = this.signToken(user);
+    const defaultRoomId = await this.assignDefaultRoom(user.id);
+    const device = deviceKey ? await this.devices.ensureForUser(user.id, deviceKey, userAgent ?? null, user.name, ip ?? null) : null;
+    return { user, token, device: device?.device ?? null, needsDeviceRename: device?.created ?? false, defaultRoomId };
   }
 
   async verifyEmail(token: string, deviceKey?: string | null, userAgent?: string | null): Promise<AuthResult> {

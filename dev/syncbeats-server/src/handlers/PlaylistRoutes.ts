@@ -1,8 +1,41 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/authMiddleware';
 import prisma from '../db/prisma';
+import { addManagedPlaylistTracks, deleteManagedPlaylist, playlistName, PlaylistInputError } from '../library/PlaylistManagement';
+import { libraryCatalog, playlistIndex, playlistTrackPage } from '../library/LibraryPages';
+import { APPLE_IMPORT_LIMIT, appleImportInput, importAppleMusic } from '../library/AppleMusicImport';
 
 const router = Router();
+
+router.get('/apple-music/import', requireAuth, (_req, res) => {
+  res.json({ version: 1, maxTracks: APPLE_IMPORT_LIMIT });
+});
+router.post('/apple-music/import', requireAuth, async (req: any, res: any) => {
+  try { res.json(await importAppleMusic(req.user.sub, appleImportInput(req.body))); }
+  catch (error) {
+    res.status(error instanceof PlaylistInputError ? error.status : 500).json({ error: error instanceof PlaylistInputError ? error.message : 'This Apple Music batch was not saved. Retry the import to continue safely.' });
+  }
+});
+
+router.get('/catalog', requireAuth, async (req: any, res: any) => {
+  try { res.json(await libraryCatalog(req.user.sub, req.query)); }
+  catch (error) { res.status(error instanceof PlaylistInputError ? error.status : 500).json({ error: error instanceof PlaylistInputError ? error.message : 'Library could not be loaded.' }); }
+});
+router.get('/:id/tracks', requireAuth, async (req: any, res: any) => {
+  try { res.json(await playlistTrackPage(req.user.sub, req.params.id, req.query)); }
+  catch (error) { res.status(error instanceof PlaylistInputError ? error.status : 500).json({ error: error instanceof PlaylistInputError ? error.message : 'Playlist could not be loaded.' }); }
+});
+
+// A new client checks this before issuing a destructive request to an older server.
+router.get('/:id/management', requireAuth, async (req: any, res: any) => {
+  try {
+    const playlist = await prisma.playlist.findFirst({ where: { id: req.params.id, userId: req.user.sub }, select: { id: true } });
+    if (!playlist) return res.status(404).json({ error: 'Playlist not found.' });
+    res.json({ version: 1 });
+  } catch {
+    res.status(500).json({ error: 'Playlist management is unavailable.' });
+  }
+});
 
 // GET /api/playlists/:id - Fetch playlist and its tracks (with Song catalog data)
 router.get('/:id', requireAuth, async (req: any, res: any) => {
@@ -62,6 +95,7 @@ router.put('/:id', requireAuth, async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const { name, coverUrl } = req.body;
+    const cleanName = name === undefined ? undefined : playlistName(name);
     const userId = req.user.sub;
 
     const playlist = await prisma.playlist.findFirst({
@@ -72,16 +106,20 @@ router.put('/:id', requireAuth, async (req: any, res: any) => {
       return res.status(404).json({ error: 'Playlist not found.' });
     }
 
+    if (playlist.sourceType === 'SYNCBEATS' && cleanName === 'Liked Songs' && playlist.name !== 'Liked Songs') {
+      return res.status(400).json({ error: 'Liked Songs is reserved for your Library collection.' });
+    }
     const updated = await prisma.playlist.update({
       where: { id },
       data: {
-        name: name !== undefined ? name : playlist.name,
+        name: cleanName !== undefined ? cleanName : playlist.name,
         coverUrl: coverUrl !== undefined ? coverUrl : playlist.coverUrl
       }
     });
 
     res.json({ playlist: updated });
   } catch (error) {
+    if (error instanceof PlaylistInputError) return res.status(error.status).json({ error: error.message });
     console.error('[PlaylistRoutes] Update error:', error);
     res.status(500).json({ error: 'Failed to update playlist' });
   }
@@ -92,6 +130,11 @@ router.delete('/:id', requireAuth, async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const userId = req.user.sub;
+
+    // Legacy clients without a disposition retain the previous contract.
+    if (req.body?.songDisposition !== undefined) {
+      return res.json(await deleteManagedPlaylist(id, userId, req.body.songDisposition));
+    }
 
     const playlist = await prisma.playlist.findFirst({
       where: { id, userId }
@@ -108,6 +151,7 @@ router.delete('/:id', requireAuth, async (req: any, res: any) => {
 
     res.json({ success: true });
   } catch (error) {
+    if (error instanceof PlaylistInputError) return res.status(error.status).json({ error: error.message });
     console.error('[PlaylistRoutes] Delete error:', error);
     res.status(500).json({ error: 'Failed to delete playlist' });
   }
@@ -251,6 +295,9 @@ router.post('/:id/enrich', requireAuth, async (req: any, res: any) => {
 router.get('/', requireAuth, async (req: any, res: any) => {
   try {
     const userId = req.user.sub;
+    if (req.query.limit !== undefined || req.query.cursor !== undefined) {
+      return res.json(await playlistIndex(userId, req.query));
+    }
     const playlists = await prisma.playlist.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
@@ -268,7 +315,7 @@ router.get('/', requireAuth, async (req: any, res: any) => {
     });
   } catch (error) {
     console.error('[PlaylistRoutes] List error:', error);
-    res.status(500).json({ error: 'Failed to list playlists' });
+    res.status(error instanceof PlaylistInputError ? error.status : 500).json({ error: error instanceof PlaylistInputError ? error.message : 'Failed to list playlists' });
   }
 });
 
@@ -349,6 +396,17 @@ router.post('/library/tracks', requireAuth, async (req: any, res: any) => {
   } catch (error) {
     console.error('[PlaylistRoutes] Add to library error:', error);
     res.status(500).json({ error: 'Failed to add to library' });
+  }
+});
+
+// POST /api/playlists/:id/tracks/batch - Save selected metadata atomically.
+router.post('/:id/tracks/batch', requireAuth, async (req: any, res: any) => {
+  try {
+    res.json(await addManagedPlaylistTracks(req.params.id, req.user.sub, req.body?.tracks));
+  } catch (error) {
+    if (error instanceof PlaylistInputError) return res.status(error.status).json({ error: error.message });
+    console.error('[PlaylistRoutes] Batch add error:', error);
+    res.status(500).json({ error: 'The songs could not be added. Your playlist has not changed.' });
   }
 });
 

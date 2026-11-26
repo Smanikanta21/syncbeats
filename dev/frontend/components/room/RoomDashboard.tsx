@@ -465,7 +465,7 @@ export function RoomDashboard({
 
           <div className="flex-1 min-h-0 flex flex-col">
               {desktopRightTab === "connection" ? (
-              <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />
+              <RoomConnectionPanel roomId={roomId} isPrivate={isPrivate} isHost={isHost} onTogglePrivate={handleTogglePrivate} onShowQR={() => setShowQR(true)} onScanQR={() => setShowScanner(true)} />
             ) : desktopRightTab === "devices" ? (
               <DevicesPane
                 participants={participants}
@@ -722,7 +722,7 @@ export function RoomDashboard({
               </GlassCard>
             </motion.div>
           )}
-          {mobileTab === "connection" && <RoomConnectionPanel roomId={roomId} onShowQR={() => setShowQR(true)} />}
+          {mobileTab === "connection" && <RoomConnectionPanel roomId={roomId} isPrivate={isPrivate} isHost={isHost} onTogglePrivate={handleTogglePrivate} onShowQR={() => setShowQR(true)} onScanQR={() => setShowScanner(true)} />}
 
           {mobileTab === "chat" && (
             <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

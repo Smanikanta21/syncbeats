@@ -264,13 +264,14 @@ export class Room extends EventEmitter {
 
   addTracks(tracks: QueueTrackInput[], addedBy: string, mode: 'end' | 'next' = 'end') {
     const hadTrack = !!this.trackUrl;
+    const previousVersion = this.queue.version;
     const result = this.queue.add(tracks, addedBy, mode);
-    if (result.added.length > 0) {
+    if (this.queue.version !== previousVersion) {
       this.emitQueueChanged();
       // First track into an idle room gets loaded so clients have something to show,
       // but playback stays an explicit user action.
       const current = this.queue.current();
-      if (!hadTrack && current) this._loadItem(current, false);
+      if (result.added.length > 0 && !hadTrack && current) this._loadItem(current, false);
     }
     return result;
   }

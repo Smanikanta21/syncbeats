@@ -472,16 +472,32 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
   // POST /rooms/:roomId/enqueue-youtube
   router.post('/:roomId/enqueue-youtube', requireAuth, enqueueLimiter, loadRoom, async (req: Request, res: Response): Promise<void> => {
     try {
-      const { youtubeUrl, title: customTitle, durationSec: suppliedDuration } = req.body as { youtubeUrl?: string; title?: string; durationSec?: unknown };
-      let durationSec = trackDuration(suppliedDuration);
+      const { youtubeUrl, title: customTitle, durationSec: suppliedDuration, artist: suppliedArtist, thumbnail: suppliedThumbnail, metadataSource } = req.body as {
+        youtubeUrl?: string; title?: string; durationSec?: unknown; artist?: string; thumbnail?: string; metadataSource?: 'library';
+      };
+      const durationSec = trackDuration(suppliedDuration);
 
       if (!youtubeUrl) {
         fail(res, 400, 'Paste a YouTube link to add a song.');
         return;
       }
-      if (customTitle && customTitle.length > 255) {
-        fail(res, 400, 'That title is too long — keep it under 255 characters.');
+      if (typeof youtubeUrl !== 'string' || (customTitle !== undefined && (typeof customTitle !== 'string' || customTitle.length > (metadataSource === 'library' ? 500 : 255))) ||
+          (metadataSource !== undefined && metadataSource !== 'library') ||
+          (suppliedArtist !== undefined && (typeof suppliedArtist !== 'string' || suppliedArtist.length > 300))) {
+        fail(res, 400, 'Use a valid song title and artist.');
         return;
+      }
+      if (metadataSource === 'library' && !customTitle?.replace(/\0/g, '').trim()) {
+        fail(res, 400, 'Choose a song with a title.'); return;
+      }
+      let cover: string | undefined;
+      if (suppliedThumbnail !== undefined) {
+        try {
+          if (typeof suppliedThumbnail !== 'string' || suppliedThumbnail.length > 4096) throw new Error();
+          const parsed = new URL(suppliedThumbnail);
+          if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error();
+          cover = parsed.href;
+        } catch { fail(res, 400, 'Use a valid album artwork URL.'); return; }
       }
 
       const videoId =
@@ -493,7 +509,7 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
         return;
       }
 
-      let title = customTitle || 'YouTube Video';
+      let title = customTitle?.replace(/\0/g, '').trim() || 'YouTube Video';
       if (!customTitle) {
         try {
           const oembed = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
@@ -508,9 +524,9 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
       }
 
       // "Artist - Title" is the dominant YouTube music convention; split it if present.
-      let artist: string | undefined;
+      let artist: string | undefined = suppliedArtist?.replace(/\0/g, '').trim();
       let cleanTitle = title;
-      if (title.includes(' - ')) {
+      if (metadataSource !== 'library' && artist === undefined && title.includes(' - ')) {
         const parts = title.split(' - ');
         artist = parts[0].trim();
         cleanTitle = parts.slice(1).join(' - ').trim();
@@ -518,10 +534,12 @@ export function createRoomRoutes(roomManager: RoomManager, io: Server): Router {
 
       const room = liveRoom(roomManager, req);
       const { added, first } = room.addTracks([{
-        trackUrl:  withMeta(`youtube:${videoId}`, `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`),
+        trackUrl:  withMeta(`youtube:${videoId}`, cover || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`),
         title:     cleanTitle,
         durationSec,
         artist,
+        thumbnail: cover,
+        metadataSource,
         fileName:  `youtube_${videoId}.yt`,
       }], req.user!.sub);
 

@@ -59,6 +59,7 @@ export interface TrackQueueItem {
   addedBy:    string;
   addedByName?: string;
   thumbnail?: string;
+  metadataSource?: 'library';
   coverUrl?:  string;
   createdAt:  number;
   sizeBytes?: number; // used for smart prefetch timing

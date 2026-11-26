@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only --watch src --ignore-watch tmp,logs,scratch,uploads,dist,node_modules src/server.ts",
     "build": "tsc",
     "test:beta": "ts-node src/utils/betaSignup.test.ts",
-    "test": "ts-node src/core/RoomTests.ts && ts-node src/utils/clientDevice.test.ts",
+    "test": "ts-node src/core/RoomTests.ts && ts-node src/utils/clientDevice.test.ts && ts-node src/utils/betaSignup.test.ts",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
