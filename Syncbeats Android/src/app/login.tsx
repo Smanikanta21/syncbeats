@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, Linking, Platform, Pressable, Text, View } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { Button, Field, Label, Notice, Screen } from '../components/ui';
 import { useSession } from '../session/SessionProvider';
 import { useTheme } from '../theme/ThemeProvider';
@@ -21,15 +21,25 @@ export default function Login() {
   const nativeGoogle = Platform.OS !== 'web' && !expoGo;
   if (session.user) return <Redirect href="/home" />;
   async function submit() {
+    if (busy || !session.api) return;
     setError(null);
     if (!email.trim().match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { setError('Enter your email address.'); return; }
     if (!password || (mode === 'register' && password.length < 8)) { setError(mode === 'register' ? 'Choose a password with at least eight characters.' : 'Enter your password.'); return; }
     if (mode === 'register' && !name.trim()) { setError('Enter your name.'); return; }
     setBusy(true);
     try {
-      if (mode === 'register') { await session.api?.register(name, email, password); setRegistered(true); setMode('login'); setPassword(''); }
+      if (mode === 'register') { await session.api.register(name, email, password); setRegistered(true); setMode('login'); setPassword(''); }
       else await session.login(email, password);
-    } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message.startsWith('GOOGLE_AUTH_SETUP_PASSWORD:')) {
+        router.push({ pathname: '/password', params: { email: email.trim().toLowerCase(), sent: '1' } });
+        setRegistered(false);
+        setPassword('');
+      } else {
+        setError(message);
+      }
+    } finally { setBusy(false); }
   }
   return <Screen style={{ flexGrow: 1, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center', gap: 32 }}>
       <View style={{ gap: 24 }}>
@@ -53,10 +63,10 @@ export default function Login() {
         <Field accessibilityLabel="Email" placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={254} autoComplete="email" />
         <Field accessibilityLabel="Password" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} onSubmitEditing={() => void submit()} />
         <Button busy={busy} disabled={!session.api} onPress={() => void submit()}>{mode === 'register' ? 'Create account' : 'Sign in'}</Button>
-        {mode === 'login' && <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`${website}/forgot-password`)}><Label secondary style={{ textAlign: 'center', fontSize: 14 }}>Forgot your password?</Label></Pressable>}
+        {mode === 'login' && <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push({ pathname: '/password', params: { email: email.trim() } })}><Label secondary style={{ textAlign: 'center', fontSize: 14 }}>Forgot your password?</Label></Pressable>}
       </View>
       <View style={{ gap: 12 }}>
-        <Pressable accessibilityRole="button" onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}><Label style={{ textAlign: 'center', color: palette.gold }}>{mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</Label></Pressable>
+        <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}><Label style={{ textAlign: 'center', color: palette.gold }}>{mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</Label></Pressable>
         <Label secondary style={{ textAlign: 'center', fontSize: 12 }}>Use the same account as the Apple or web app.</Label>
       </View>
     </Screen>;
