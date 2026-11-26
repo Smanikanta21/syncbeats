@@ -16,7 +16,8 @@ import { RoomDashboard } from "../../../../components/room/RoomDashboard";
 import { SpatialBeatNodes } from "../../../../components/room/SpatialBeatNodes";
 
 import { AppFeedback } from "../../../../components/feedback/AppFeedback";
-import { FluidField } from "../../../../components/fluid/FluidField";
+import dynamic from "next/dynamic";
+import { useAmbientMode } from "../../../../hooks/useAmbientMode";
 import { getTrackThumbnailUrl } from "../../../../lib/colorExtractor";
 import { cn } from "../../../../lib/utils";
 
