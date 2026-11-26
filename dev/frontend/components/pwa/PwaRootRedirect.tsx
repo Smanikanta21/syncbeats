@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -10,8 +10,16 @@ import { useRouter } from "next/navigation";
  */
 export function PwaRootRedirect() {
   const router = useRouter();
+  const receivedOAuthReturn = useRef(false);
 
   useEffect(() => {
+    // AuthProvider consumes the fragment asynchronously. Remember this launch
+    // across effect replays so the PWA cannot interrupt the app handoff.
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    if (fragment.has("state") || fragment.has("id_token") || fragment.has("error")) {
+      receivedOAuthReturn.current = true;
+    }
+    if (receivedOAuthReturn.current) return;
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
