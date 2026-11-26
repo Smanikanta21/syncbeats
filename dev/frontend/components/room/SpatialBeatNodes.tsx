@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useBeatEngine } from "../../context/BeatContext";
 import { useSettings } from "../../hooks/useSettings";
-import { useDevicePerf } from "../../hooks/useDevicePerf";
+import { useAmbientMode } from '../../hooks/useAmbientMode';
+import { useAlbumPalette } from '../../hooks/useAlbumPalette';
+import { usePageVisible } from '../../hooks/usePageVisible';
 import { useSyncInfo } from "../../context/SyncContext";
 import { useOptionalAudio } from "../../context/AudioContext";
 import { cn } from "@/lib/utils";
@@ -14,12 +16,13 @@ interface BeatNodeProps {
   x: number; // percentage [0 - 100]
   y: number; // percentage [0 - 100]
   color: string;
-  blurClass?: string;
   liquidMotion?: boolean;
   index: number;
+  moving: boolean;
+  brightness: number;
 }
 
-function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100px]", liquidMotion = true, index }: BeatNodeProps) {
+function BeatNode({ beatType, x, y, color, liquidMotion = true, index, moving, brightness }: BeatNodeProps) {
   const reducedMotion = useReducedMotion();
   const { subscribeToBeat } = useBeatEngine();
   const blobRef = useRef<HTMLDivElement>(null);
@@ -43,16 +46,26 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
 
   // 1. Listen to real-time beat hits to boost deterministic radial beat intensity
   useEffect(() => {
+    if (!moving || reducedMotion) return;
     const cleanup = subscribeToBeat(beatType, (intensity) => {
       const bounded = Math.min(1, Math.max(0.35, intensity));
       targetIntensityRef.current = Math.max(targetIntensityRef.current, bounded);
     });
     return cleanup;
-  }, [beatType, subscribeToBeat]);
+  }, [beatType, subscribeToBeat, moving, reducedMotion]);
 
-  // 2. 60FPS Deterministic Spatial Orbital Drift & Radial Beat Swell Engine
+  // The normal background stays still when paused/hidden and renders at 30fps.
   useEffect(() => {
-    let animId: number;
+    if (!moving || reducedMotion) {
+      targetIntensityRef.current = beatIntensityRef.current = 0;
+      if (nodeContainerRef.current) nodeContainerRef.current.style.transform = 'translate(0, 0)';
+      if (blobRef.current) {
+        blobRef.current.style.transform = 'scale(1)';
+        blobRef.current.style.opacity = String(0.18 * brightness);
+      }
+      return;
+    }
+    let animId = 0;
     let lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     // Vector pointing radially away from center (50%, 50%) for outward beat swells
@@ -60,6 +73,7 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
     const radY = (y - 50) / 50; // -1 to +1
 
     const updatePhysics = (now: number) => {
+      if (now - lastTime < 1000 / 30 - 0.5) { animId = requestAnimationFrame(updatePhysics); return; }
       const delta = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
@@ -75,22 +89,22 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
         const time = now / 1000;
         
         // A. Smooth Harmonic Lissajous Orbital Motion
-        const orbitX = liquidMotion ? Math.sin(time * 0.75 + index * 1.5) * 18 : 0;
-        const orbitY = liquidMotion ? Math.cos(time * 0.55 + index * 1.5) * 14 : 0;
+        const orbitX = liquidMotion ? Math.sin(time * 0.45 + index * 1.5) * 6 : 0;
+        const orbitY = liquidMotion ? Math.cos(time * 0.35 + index * 1.5) * 5 : 0;
 
         // B. Radial Beat Swell (Pulsing outward along node's spatial vector)
-        const radialPulseDist = intensity * 24;
+        const radialPulseDist = intensity * 10;
         const totalX = orbitX + radX * radialPulseDist;
         const totalY = orbitY + radY * radialPulseDist;
 
         // C. Scale & Opacity Swell matching main branch aesthetics
-        const scaleBase = 1 + intensity * 0.65;
+        const scaleBase = 1 + intensity * 0.2;
 
         // Apply GPU Hardware-Accelerated Transforms (Zero Mac Lag)
-        container.style.transform = `translate3d(${totalX.toFixed(1)}px, ${totalY.toFixed(1)}px, 0)`;
+        container.style.transform = `translate(${totalX.toFixed(1)}px, ${totalY.toFixed(1)}px)`;
 
-        blob.style.transform = `translate3d(0, 0, 0) scale(${scaleBase.toFixed(3)})`;
-        blob.style.opacity = `${(0.4 + intensity * 0.45).toFixed(3)}`;
+        blob.style.transform = `scale(${scaleBase.toFixed(3)})`;
+        blob.style.opacity = `${Math.min(0.4, (0.18 + intensity * 0.1) * brightness).toFixed(3)}`;
       }
 
       animId = requestAnimationFrame(updatePhysics);
@@ -98,19 +112,17 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
 
     animId = requestAnimationFrame(updatePhysics);
     return () => cancelAnimationFrame(animId);
-  }, [liquidMotion, x, y, index]);
+  }, [liquidMotion, x, y, index, moving, reducedMotion, brightness]);
 
-  // Main branch responsive sizing according to frequency band type
+  // Broad, overlapping fields blend into a wash instead of isolated circles.
   const isBass = beatType === "bass";
   const isTreble = beatType === "treble";
 
   const sizeClasses = isBass
-    ? "w-[80vw] h-[80vw] -ml-[40vw] -mt-[40vw] md:w-[45vw] md:h-[45vw] md:-ml-[22.5vw] md:-mt-[22.5vw]"
+    ? "w-[130vmax] h-[105vmax] -ml-[65vmax] -mt-[52.5vmax]"
     : isTreble
-    ? "w-[90vw] h-[90vw] -ml-[45vw] -mt-[45vw] md:w-[50vw] md:h-[50vw] md:-ml-[25vw] md:-mt-[25vw]"
-    : "w-[70vw] h-[70vw] -ml-[35vw] -mt-[35vw] md:w-[40vw] md:h-[40vw] md:-ml-[20vw] md:-mt-[20vw]";
-
-  const maxDimension = isBass ? "600px" : isTreble ? "650px" : "500px";
+    ? "w-[120vmax] h-[110vmax] -ml-[60vmax] -mt-[55vmax]"
+    : "w-[115vmax] h-[100vmax] -ml-[57.5vmax] -mt-[50vmax]";
 
   return (
     <div
@@ -119,7 +131,6 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
       style={{
         left: `${arrived ? x : 50}%`,
         top: `${arrived ? y : 50}%`,
-        willChange: "transform",
         opacity: arrived ? 1 : 0,
         transition: reducedMotion
           ? "none"
@@ -127,17 +138,15 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
         transitionDelay: arrived ? `${index * 90}ms` : "0ms",
       }}
     >
-      {/* Main branch radial-gradient spatial light blob */}
+      {/* Soft ellipses have no bright core or visible circular edge. */}
       <div
         ref={blobRef}
-        className={`absolute rounded-full filter ${blurClass} ${sizeClasses} pointer-events-none opacity-40 will-change-transform`}
+        className={`absolute rounded-full ${sizeClasses} pointer-events-none`}
         style={{
-          maxWidth: maxDimension,
-          maxHeight: maxDimension,
-          mixBlendMode: "screen",
-          transform: "translate3d(0, 0, 0) scale(1)",
+          opacity: 0.18 * brightness,
+          transform: "scale(1)",
           transformOrigin: "center center",
-          background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+          background: `radial-gradient(ellipse at center, ${color} 0%, color-mix(in srgb, ${color} 55%, transparent) 22%, color-mix(in srgb, ${color} 18%, transparent) 48%, transparent 76%)`,
         }}
       />
     </div>
@@ -145,20 +154,20 @@ function BeatNode({ beatType, x, y, color, blurClass = "blur-[40px] md:blur-[100
 }
 
 /**
- * `suppressGradient` hides only the beat-driven gradient layer, which is what
- * FluidField replaces when the fluid solver is actually running — two ambient
- * systems stacked read as mud. The buffering aura below is a loading signal,
- * not ambience, so it is never suppressed.
+ * Normal and Auto reuse the app's music-reactive light layout. The GPU effect
+ * replaces these nodes entirely, rather than keeping two animation loops alive.
  */
-export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradient?: boolean }) {
+export function SpatialBeatNodes({ suppressGradient = false, coverUrl }: { suppressGradient?: boolean; coverUrl?: string | null }) {
   const { settings } = useSettings();
-  const { blurClass } = useDevicePerf();
+  const { mode } = useAmbientMode();
+  const visible = usePageVisible();
+  const palette = useAlbumPalette(coverUrl, mode === 'auto' || mode === 'immersive');
   const { isRoomPlaying } = useSyncInfo();
   const audioContext = useOptionalAudio();
 
-  const isPlaying = isRoomPlaying || (audioContext ? audioContext.isPlaying : false);
+  const isPlaying = audioContext?.isPlaying ?? isRoomPlaying;
 
-  if (settings.ambientEnabled === false) {
+  if (mode === 'off') {
     return null;
   }
 
@@ -169,6 +178,8 @@ export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradien
   const count = settings.activeLightCount || 3;
   const nodes = settings?.gradientSettings?.nodes || [];
   const liquidMotion = settings?.liquidMotion ?? true;
+  const moving = isPlaying && visible && !settings.reducedMotion;
+  const brightness = Math.max(0.2, Math.min(2, (settings.ambientBrightness ?? 100) / 100));
 
   // Default layout presets for 2, 3, 4, 5, 6 nodes
   const layoutPresets: Record<number, Array<{ x: number; y: number; beatType: "bass" | "mid" | "treble" }>> = {
@@ -208,32 +219,22 @@ export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradien
 
   return (
     <>
-      {/* 1. Slow Breathing Ambient Glow Aura during track loading / downloading */}
-      <div
+      {!suppressGradient && <div
+        data-room-ambient-wash
         className={cn(
-          "fixed inset-0 overflow-hidden pointer-events-none -z-10 transition-opacity duration-1200 ease-in-out flex items-center justify-center",
-          isBufferingOrDownloading ? "opacity-100" : "opacity-0"
-        )}
-      >
-        <div className="w-[75vw] h-[75vw] max-w-[850px] max-h-[850px] rounded-full bg-foreground/15 filter blur-[100px] animate-ambient-breathing pointer-events-none" />
-      </div>
-
-      {/* The saved node layout settles into place on room entry. While the fluid
-          renderer is active, keep this palette dimly present beneath it so the
-          user's positions still define the room's color composition. */}
-      <div
-        className={cn(
-          "fixed inset-0 overflow-hidden pointer-events-none -z-10 transition-opacity duration-[1800ms] ease-out",
+          "fixed -inset-32 overflow-hidden pointer-events-none z-0 transition-opacity duration-[1800ms] ease-out",
           isPlaying && !isBufferingOrDownloading
-            ? (suppressGradient ? "opacity-35" : "opacity-100")
+            ? "opacity-100"
             : "opacity-60"
         )}
+        // One shared blur pass blends the fields; each light stays unfiltered.
+        style={{ filter: 'blur(clamp(64px, 5vmax, 112px))', WebkitFilter: 'blur(clamp(64px, 5vmax, 112px))', viewTransitionName: 'none' }}
       >
       {activePreset.slice(0, Math.min(count, activePreset.length)).map((preset, idx) => {
         const node = nodes[idx];
         const savedColor = node?.color || (idx === 0 ? "#8b5cf6" : idx === 1 ? "#ec4899" : "#3b82f6");
         const idleSlate = ["#94a3b8", "#64748b", "#a8b3c2"][idx % 3];
-        const color = isPlaying ? savedColor : idleSlate;
+        const color = palette?.[idx % 2] ?? (isPlaying ? savedColor : idleSlate);
         const x = node?.x ?? preset.x;
         const y = node?.y ?? preset.y;
 
@@ -244,13 +245,14 @@ export function SpatialBeatNodes({ suppressGradient = false }: { suppressGradien
             x={x}
             y={y}
             color={color}
-            blurClass={blurClass}
             liquidMotion={liquidMotion}
             index={idx}
+            moving={moving}
+            brightness={brightness}
           />
         );
       })}
-      </div>
+      </div>}
     </>
   );
 }

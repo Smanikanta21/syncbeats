@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { AudioProvider } from "../context/AudioContext";
+import { AppAtmosphereBoundary } from "../components/AppAtmosphereBoundary";
 import { ThemeProvider } from "../context/ThemeProvider";
 import { PrivacyAnalytics } from "../components/PrivacyAnalytics";
 
@@ -135,6 +136,7 @@ export default function RootLayout({
 
       <body className="transition-colors duration-300 bg-background text-foreground">
         {/* --- GLOBAL DYNAMIC BACKGROUND & AMBIENT GLOWS --- */}
+        <AppAtmosphereBoundary>
         <div
           className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
           aria-hidden="true"
@@ -190,6 +192,7 @@ export default function RootLayout({
             />
           </div>
         </div>
+        </AppAtmosphereBoundary>
         <SmoothScrolling>
           <LoadingProvider>
             <NavigationProgress />
