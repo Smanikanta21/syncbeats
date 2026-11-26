@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { router } from 'expo-router';
 import { Alert, Platform, Pressable, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Button, Field, Heading, Icon, IconButton, Label, Notice, Screen } from '../../components/ui';
@@ -59,6 +60,7 @@ export default function Room() {
     <View style={{ gap: 12, borderTopWidth: 1, borderColor: palette.line, paddingTop: 24 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><View style={{ flex: 1 }}><Label>{session.user?.name}</Label><Label secondary style={{ fontSize: 12 }}>{session.user?.email}</Label></View>
         <IconButton icon={isDark ? 'sunny-outline' : 'moon-outline'} label={isDark ? 'Use light theme' : 'Use dark theme'} onPress={toggle} /></View>
+      <Button quiet onPress={() => router.push('/password')}>Set or reset password</Button>
       <Button quiet onPress={logout}>Sign out</Button>
     </View>
   </Screen>;
