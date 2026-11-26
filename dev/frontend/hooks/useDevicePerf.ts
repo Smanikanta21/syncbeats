@@ -16,15 +16,15 @@ import { useState, useEffect, useMemo, useRef } from "react";
 
 export type PerfTier = "low" | "mid" | "high";
 
-function detectInitialTier(): PerfTier {
+function detectInitialTier(respectReducedMotion: boolean): PerfTier {
   if (typeof window === "undefined") return "high"; // SSR — assume full quality
 
   // Respect user's explicit accessibility preference first
   const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (prefersReduced) return "low";
+  if (respectReducedMotion && prefersReduced) return "low";
 
   const cores = navigator.hardwareConcurrency ?? 4;
-  const memGb: number = (navigator as any).deviceMemory ?? 4;
+  const memGb = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   if (isMobile) {
@@ -37,7 +37,11 @@ function detectInitialTier(): PerfTier {
   return "high";
 }
 
-export function useDevicePerf(): {
+export function useDevicePerf({ calibrate = true, respectReducedMotion = true }: {
+  calibrate?: boolean;
+  /** Disable only when the caller handles live reduced-motion changes itself. */
+  respectReducedMotion?: boolean;
+} = {}): {
   tier: PerfTier;
   isLow: boolean;
   isMid: boolean;
@@ -51,14 +55,16 @@ export function useDevicePerf(): {
   /** Current measured real-time FPS */
   fps: number;
 } {
-  const [tier, setTier] = useState<PerfTier>(() => detectInitialTier());
+  const [tier, setTier] = useState<PerfTier>(() => detectInitialTier(respectReducedMotion));
   const [fps, setFps] = useState<number>(60);
   const frameTimesRef = useRef<number[]>([]);
-  const lastTimeRef = useRef<number>(typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const lastTimeRef = useRef<number>(0);
 
   // Calibrate performance tier on mount over a short 1.5-second window, then stop rAF loop to save CPU/battery
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!calibrate || typeof window === "undefined") return;
+
+    lastTimeRef.current = performance.now();
 
     let animId: number;
     let framesCount = 0;
@@ -97,7 +103,7 @@ export function useDevicePerf(): {
 
     animId = requestAnimationFrame(measureFps);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [calibrate]);
 
   return useMemo(() => ({
     tier,

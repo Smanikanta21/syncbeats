@@ -14,6 +14,7 @@ import { DevicesPane } from "./DevicesPane";
 import { RoomConnectionPanel } from "./RoomConnectionPanel";
 import { RoomSideRail } from "./RoomSideRail";
 import { AudioEQ } from "./AudioEQ";
+import { AmbientModeControl } from "./AmbientModeControl";
 import { RoomQueue } from "./RoomQueue";
 import { RoomChat } from "./RoomChat";
 import { RoomReactions } from "./RoomReactions";
@@ -391,6 +392,9 @@ export function RoomDashboard({
           ) : null}
 
           {/* Equalizer, Ambient Visualizer & Synced Lyrics Stage */}
+          <div className="shrink-0 rounded-2xl border border-foreground/10 bg-background/60 px-3 py-2 backdrop-blur-xl">
+            <AmbientModeControl compact />
+          </div>
           <GlassCard className="flex-1 min-h-0 p-4 flex flex-col" isPlaying={isPlaying}>
             <AudioEQ eqGains={audio.eqGains} setEqBand={audio.setEqBand} setAllEqBands={audio.setAllEqBands} onOpenVisuals={() => setShowVisualsPanel(true)} trackTitle={audio.trackTitle} trackArtist={audio.trackArtist} currentTime={audio.currentTime} duration={audio.duration} />
           </GlassCard>
@@ -578,6 +582,9 @@ export function RoomDashboard({
             /> */}
 
           </div>
+        </div>
+        <div className="mb-2 shrink-0 rounded-2xl border border-foreground/10 bg-background/60 px-3 py-2 backdrop-blur-xl">
+          <AmbientModeControl compact />
         </div>
         <AnimatePresence mode="wait">
           {mobileTab === "spatial" && (
