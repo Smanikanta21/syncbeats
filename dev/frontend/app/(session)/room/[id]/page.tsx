@@ -20,10 +20,7 @@ import { FluidField } from "../../../../components/fluid/FluidField";
 import { getTrackThumbnailUrl } from "../../../../lib/colorExtractor";
 import { cn } from "../../../../lib/utils";
 
-const FluidField = dynamic(() => import("../../../../components/fluid/FluidField").then(module => module.FluidField), { ssr: false });
-
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
-  const { mode: ambientMode } = useAmbientMode();
   const router = useRouter();
   const audio = useAudio();
   const { user, device, loading: authLoading } = useAuth();
@@ -290,8 +287,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
-      {/* Load the stronger effect only after this device explicitly opts in. */}
-      {ambientMode === "immersive" && (
       <FluidField
         isPlaying={audio.isPlaying}
         startEpoch={snapshot?.startEpoch ?? null}
@@ -301,11 +296,10 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         )}
         onActiveChange={setFluidActive}
       />
-      )}
 
       {/* Spatial Beat Nodes (Visual representation of beat pulses mapped behind room elements) */}
       <SpatialBeatNodes
-        suppressGradient={ambientMode === "immersive" && fluidActive}
+        suppressGradient={fluidActive}
         coverUrl={getTrackThumbnailUrl(snapshot?.queue?.find(q => q.isCurrent) ?? { trackUrl: snapshot?.trackUrl ?? audio.trackUrl ?? undefined })}
       />
 
