@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Exercises the real panel and display-link animation without a session or playback commands.
+/// Exercises the real panel without joining a room. SYNCBEATS_NOTCH_TONE_URL can point to the native-audio fixture's sustained tone.
 @main
 struct NotchWindowVerification {
     @MainActor static func main() throws {
@@ -22,7 +22,23 @@ struct NotchWindowVerification {
             checks += 1
             print("PASS: \(message)")
         }
-        func tick(_ seconds: Double) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+        func tick(_ seconds: Double) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline {
+                // AppKit delivers window visibility changes through its event queue.
+                if let event = NSApp.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true) {
+                    NSApp.sendEvent(event)
+                }
+            }
+        }
+        func eventually(timeout: Double = 3, _ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if condition() { return true }
+                tick(0.05)
+            }
+            return condition()
+        }
         func panel() -> NSWindow? {
             NSApplication.shared.windows.first {
                 $0.identifier?.rawValue == "syncbeats.notch" && $0.isVisible
@@ -60,7 +76,8 @@ struct NotchWindowVerification {
             for y in 0..<Int(controller.geometry.closedHeight * controller.presentationScale * sy) {
                 for x in Int(left * sx)..<Int(right * sx) {
                     if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-                       color.alphaComponent > 0.3, color.redComponent > 0.2 { count += 1 }
+                       color.alphaComponent > 0.3,
+                       max(color.redComponent, color.greenComponent, color.blueComponent) > 0.2 { count += 1 }
                 }
             }
             return count
@@ -152,6 +169,26 @@ struct NotchWindowVerification {
         room.apply(try RoomFixtures.snapshot(playing: true))
         tick(0.9)
         let silentBars = transportPixels()
+        if let source = ProcessInfo.processInfo.environment["SYNCBEATS_NOTCH_TONE_URL"] {
+            guard let toneURL = URL(string: source) else { preconditionFailure("Invalid test tone URL") }
+            let track = RoomTrack(id: "tone", trackUrl: source, title: "Test tone", artist: nil,
+                                  thumbnail: nil, durationSec: nil, isCurrent: true, queueIndex: 0)
+            let window = panel()!
+            room.audio.prepare(track: track, baseURL: toneURL.deletingLastPathComponent())
+            check(eventually(timeout: 5) { !room.audio.loading } && room.audio.loadedKey != nil, "Local spectrum test tone is ready")
+            room.audio.follow(playing: true, position: 0, delay: 0)
+            check(eventually { (room.audio.meter.read().spectrum.max() ?? 0) > 0.1 }, "Test tone reaches the audio meter")
+            check(!NSApp.isActive && !window.isKeyWindow && eventually { transportPixels() > silentBars },
+                  "Compact spectrum grows above its silent height while another app has focus")
+            room.audio.pause()
+            check(eventually { transportPixels() == silentBars }, "Pausing returns the spectrum to its silent height")
+            window.orderOut(nil)
+            check(eventually { !controller.panelVisible }, "Ordering out the panel suspends its presentation")
+            room.audio.follow(playing: true, position: 0, delay: 0)
+            window.orderFrontRegardless()
+            check(eventually { controller.panelVisible && transportPixels() > silentBars }, "Revealing the panel restores the live spectrum")
+            room.audio.pause()
+        }
         pointer = CGPoint(x: controller.geometry.centerX, y: controller.geometry.topY)
         controller.pointerMoved(to: pointer); tick(0.9)
         let pauseGlyph = transportPixels()
@@ -196,11 +233,11 @@ struct NotchWindowVerification {
         tick(0.9)
         check(openedRoom && controller.expansion == 0, "Open room invokes its action and closes the overlay")
         controller.hide()
-        check(panelFrame() == nil && controller.expansion == 0, "Hide removes the panel and resets presentation")
+        check(panelFrame() == nil && !controller.panelVisible && controller.expansion == 0, "Hide removes the panel and resets presentation")
         controller.show(room: room) { }
         clickCap()
         tick(0.9)
-        check(controller.expansion == 1, "Island can reopen after being hidden")
+        check(controller.expansion == 1 && controller.panelVisible, "Island can reopen after being hidden")
         let inside = CGPoint(x: panel()!.frame.midX, y: panel()!.frame.midY)
         let outside = CGPoint(x: panel()!.frame.minX - 30, y: panel()!.frame.midY)
         let corner = CGPoint(x: controller.presentationFrame.minX + 1, y: controller.presentationFrame.minY + 1)

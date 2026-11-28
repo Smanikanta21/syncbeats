@@ -38,6 +38,23 @@ struct RoomHomeAPI {
         guard newIndex >= 0 else { throw AuthFailure.invalidInput("Choose a valid queue position.") }
         _ = try await request(path: "rooms/\(credentials.roomID)/queue/reorder", method: "PUT", body: ["itemId": itemID, "newIndex": newIndex])
     }
+    func queue() async throws -> [RoomTrack] {
+        struct Response: Decodable { let queue: [RoomTrack] }
+        return try await JSONDecoder().decode(Response.self, from: request(path: "rooms/\(credentials.roomID)")).queue
+    }
+    func enqueueSequence(_ results: [RoomSearchResult]) async throws {
+        // Use the existing playlist route so one library selection isn't 30+ queue requests.
+        for start in stride(from: 0, to: results.count, by: 500) {
+            let tracks: [[String: Any]] = results[start..<min(start + 500, results.count)].map { result in
+                var row: [String: Any] = ["id": YouTubeIdentity.id(in: result.url) ?? "",
+                                         "title": result.title, "artist": result.uploaderName ?? "",
+                                         "durationSec": result.duration ?? 0]
+                if let cover = result.albumArt ?? result.thumbnail { row["thumbnail"] = cover }
+                return row
+            }
+            _ = try await request(path: "rooms/\(credentials.roomID)/enqueue-playlist", method: "POST", body: ["tracks": tracks])
+        }
+    }
     func enqueue(_ result: RoomSearchResult) async throws -> RoomTrack {
         struct Response: Decodable { let item: RoomTrack }
         var body: [String: Any] = ["youtubeUrl": result.url, "title": result.title, "durationSec": result.duration ?? 0]

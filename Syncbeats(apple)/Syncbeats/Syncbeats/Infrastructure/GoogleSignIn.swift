@@ -57,7 +57,8 @@ final class GoogleSignIn: NSObject, ASWebAuthenticationPresentationContextProvid
                 }
             }
             browser.presentationContextProvider = self
-            browser.prefersEphemeralWebBrowserSession = true
+            // Let Google's account picker reuse existing browser sign-ins.
+            browser.prefersEphemeralWebBrowserSession = false
             session = browser
             if !browser.start() { session = nil; continuation.resume(throwing: AuthFailure.invalidInput("Couldn't open the secure sign-in browser.")) }
         }

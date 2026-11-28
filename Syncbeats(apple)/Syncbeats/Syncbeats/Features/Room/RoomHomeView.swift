@@ -140,7 +140,7 @@ struct RoomHomeView: View {
                 Text(result.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                 Text(result.uploaderName ?? "YouTube").font(.system(size: 11)).foregroundStyle(palette.quiet).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Button { Task { await room.play(result) } } label: { Image(systemName: "play.fill").frame(width: 30, height: 30) }
+            Button { Task { await room.play(result, in: room.listeningHistory) } } label: { Image(systemName: "play.fill").frame(width: 30, height: 30) }
                 .buttonStyle(NativeButtonStyle(palette: palette)).disabled(!room.canControl || room.addingURLs.contains(result.url))
                 .accessibilityLabel("Play \(result.title) again")
         }.padding(12).background(palette.panel, in: RoundedRectangle(cornerRadius: 8))
@@ -188,7 +188,7 @@ private struct RoomDiscoveryCard: View {
     private var adding: Bool { room.addingURLs.contains(result.url) }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button { Task { await room.play(result) } } label: {
+            Button { Task { await room.play(result, in: room.searchResults) } } label: {
                 DiscoveryArtwork(source: .song(result.discoveryArtworkRequest), palette: palette, radius: 8).aspectRatio(1, contentMode: .fit)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "play.fill").font(.system(size: 12)).padding(10)

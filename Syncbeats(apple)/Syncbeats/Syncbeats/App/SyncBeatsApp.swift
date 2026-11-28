@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct SyncBeatsApp: App {
@@ -43,7 +46,7 @@ struct NativeEntryView: View {
         VStack(spacing: 0) {
             chrome
             Rectangle().fill(palette.line).frame(height: 1)
-            Group {
+            ZStack {
                 switch model.phase {
                 case .launch: LaunchView(model: model, palette: palette)
                 case .introduction: IntroductionView(model: model, palette: palette)
@@ -56,6 +59,8 @@ struct NativeEntryView: View {
                     }, entryError: model.errorMessage, allowsAccountNavigation: model.accountPage != nil || model.workspaceSection != .home).id(model.account?.id)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .nativePageTransition(value: model.phase)
+                .clipped()
         }
         .background(palette.background)
         .foregroundStyle(palette.text)
@@ -68,14 +73,21 @@ struct NativeEntryView: View {
             else { room.disconnect() }
         }
         #if os(iOS)
+        .onAppear { NativeDisplaySleep.allowForApplication() }
+        .onChange(of: model.phase) { NativeDisplaySleep.allowForApplication() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            NativeDisplaySleep.allowForApplication()
+        }
         .onChange(of: scenePhase) { _, phase in
+            NativeDisplaySleep.allowForApplication()
             if phase == .active, model.phase == .signedIn { room.returnToForeground() }
+            if phase == .background { room.enterBackground() }
         }
         #endif
     }
     private var chrome: some View {
         HStack(spacing: 8) {
-            BrandMark().frame(width: 24, height: 24)
+            BrandMark(palette: palette).frame(width: 24, height: 24)
             Text("SyncBeats").font(.system(size: 12, weight: .medium))
             Spacer()
             #if os(macOS)

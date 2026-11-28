@@ -95,12 +95,15 @@ nonisolated struct NativeImportedLibrary: Codable, Sendable {
             if updated.youtubeID == nil { updated.youtubeID = previous[song.id]?.youtubeID }
             return updated
         }
+        var songIndexes = Dictionary(songs.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        var playlistIndexes = Dictionary(playlists.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         for song in incoming.map(preservingMatch) {
-            if let index = songs.firstIndex(where: { $0.id == song.id }) { songs[index] = song }
-            else { songs.append(song) }
+            if let index = songIndexes[song.id] { songs[index] = song }
+            else { songIndexes[song.id] = songs.count; songs.append(song) }
         }
         for var playlist in incomingPlaylists {
-            if let edited = playlists.first(where: { $0.id == playlist.id }) {
+            if let index = playlistIndexes[playlist.id] {
+                let edited = playlists[index]
                 playlist.editedName = edited.editedName
                 if let name = edited.editedName { playlist.name = name }
                 playlist.addedSongIDs = edited.addedSongIDs
@@ -109,9 +112,11 @@ nonisolated struct NativeImportedLibrary: Codable, Sendable {
                 playlist.songs.append(contentsOf: edited.songs.filter { manual.contains($0.id) && !sourceIDs.contains($0.id) })
             }
             playlist.songs = playlist.songs.map(preservingMatch)
-            for song in playlist.songs where !songs.contains(where: { $0.id == song.id }) { songs.append(song) }
-            if let index = playlists.firstIndex(where: { $0.id == playlist.id }) { playlists[index] = playlist }
-            else { playlists.append(playlist) }
+            for song in playlist.songs where songIndexes[song.id] == nil {
+                songIndexes[song.id] = songs.count; songs.append(song)
+            }
+            if let index = playlistIndexes[playlist.id] { playlists[index] = playlist }
+            else { playlistIndexes[playlist.id] = playlists.count; playlists.append(playlist) }
         }
     }
 }
@@ -131,15 +136,39 @@ nonisolated enum NativeLibraryCollection {
         return unique
     }
     static func albums(_ songs: [NativeLibrarySong]) -> [NativeLibraryGroup] {
-        let known = songs.filter { !($0.album?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
-        return Dictionary(grouping: known) { AlbumArtworkRequest.normalized($0.album!) + ":" + AlbumArtworkRequest.normalized($0.artist) }
+        var albumKeys: [String: String] = [:], artistKeys: [String: String] = [:]
+        var groups: [String: [NativeLibrarySong]] = [:]
+        for song in songs {
+            guard let album = song.album else { continue }
+            let albumKey: String
+            if let cached = albumKeys[album] { albumKey = cached }
+            else {
+                guard !album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                albumKey = AlbumArtworkRequest.normalized(album); albumKeys[album] = albumKey
+            }
+            let artistKey = artistKeys[song.artist] ?? AlbumArtworkRequest.normalized(song.artist)
+            artistKeys[song.artist] = artistKey
+            groups[albumKey + ":" + artistKey, default: []].append(song)
+        }
+        return groups
             .map { key, tracks in .init(id: key, name: tracks[0].album!, subtitle: tracks[0].artist, songs: tracks) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     static func artists(_ songs: [NativeLibrarySong]) -> [NativeLibraryGroup] {
-        let known = songs.filter { !AlbumArtworkRequest.cleanArtist($0.artist).isEmpty }
-        return Dictionary(grouping: known) { AlbumArtworkRequest.normalized(AlbumArtworkRequest.cleanArtist($0.artist)) }
-            .map { key, tracks in .init(id: key, name: AlbumArtworkRequest.cleanArtist(tracks[0].artist), subtitle: "\(tracks.count) songs", songs: tracks) }
+        var identities: [String: (name: String, key: String)] = [:]
+        var groups: [String: [NativeLibrarySong]] = [:]
+        for song in songs {
+            let identity: (name: String, key: String)
+            if let cached = identities[song.artist] { identity = cached }
+            else {
+                let name = AlbumArtworkRequest.cleanArtist(song.artist)
+                identity = (name, AlbumArtworkRequest.normalized(name)); identities[song.artist] = identity
+            }
+            guard !identity.name.isEmpty else { continue }
+            groups[identity.key, default: []].append(song)
+        }
+        return groups
+            .map { key, tracks in .init(id: key, name: identities[tracks[0].artist]!.name, subtitle: "\(tracks.count) songs", songs: tracks) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }

@@ -28,6 +28,7 @@ final class AppModel {
     var notice: String?
     var email = ""
     var isWorking = false
+    private(set) var googleSignInStatus: String?
     var isLoadingRoom = false
     var appearance: String { didSet { preferences.set(appearance, forKey: "native.appearance") } }
     var notchEnabled: Bool { didSet { preferences.set(notchEnabled, forKey: "native.notchEnabled") } }
@@ -176,10 +177,15 @@ final class AppModel {
         guard !isWorking else { return }
         isWorking = true
         errorMessage = nil
-        defer { isWorking = false }
+        googleSignInStatus = "Opening Google…"
+        defer {
+            isWorking = false
+            googleSignInStatus = nil
+        }
         do {
             try await api.nativeGoogleAvailable()
             let grant = try await google.signIn()
+            googleSignInStatus = "Finishing Google sign-in…"
             try accept(try await api.nativeGoogle(code: grant.code, verifier: grant.verifier))
             phase = .signedIn
             await loadRoom()
@@ -204,12 +210,21 @@ final class AppModel {
         account = updated
     }
 
-    func refreshProfile() async {
+    @ObservationIgnored private var profileRefreshedAt: Date?
+    @ObservationIgnored private var profileRefreshAccount: String?
+    @ObservationIgnored private var refreshingProfile = false
+    func refreshProfile(ifOlderThan age: TimeInterval = 0) async {
         guard let activeToken = token, let activeID = account?.id else { return }
+        if refreshingProfile { return }
+        if age > 0, profileRefreshAccount == activeID, let profileRefreshedAt,
+           Date().timeIntervalSince(profileRefreshedAt) < age { return }
+        refreshingProfile = true
+        defer { refreshingProfile = false }
         do {
             let updated = try await api.me(token: activeToken).user
             guard token == activeToken, account?.id == activeID, updated.id == activeID else { return }
             account = updated
+            profileRefreshedAt = Date(); profileRefreshAccount = activeID
         } catch { NativeDiagnostics.failure("Account", "Refresh profile", error: error) }
     }
 

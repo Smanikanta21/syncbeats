@@ -13,7 +13,7 @@ if(!global[namespace]) {
 http.createServer((req,res)=>{
 const fixture=global[namespace];fixture.calls.push({path:req.url,method:req.method});
 if(req.url.startsWith('/__calls')) {res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(fixture.calls));}
-else if(req.url.startsWith('/tone.wav')||req.url.includes('videoId=aaaaaaaaaaa')){res.writeHead(200,{'content-type':'audio/wav'});res.end(fixture.wav);}
+else if(req.url.startsWith('/tone.wav')||/videoId=(aaaaaaaaaaa|ddddddddddd|eeeeeeeeeee|fffffffffff)/.test(req.url)){res.writeHead(200,{'content-type':'audio/wav'});res.end(fixture.wav);}
 else if(req.url.includes('videoId=bbbbbbbbbbb')){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'fixture unavailable'}));}
 else if(req.url.includes('videoId=ccccccccccc')){res.writeHead(200,{'content-type':'audio/mp4'});res.end('not an audio file');}
 else {res.writeHead(501,{'content-type':'application/json'});res.end(JSON.stringify({error:'unmodeled fixture path'}));}

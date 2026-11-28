@@ -166,7 +166,12 @@ struct AccountSettingsView: View {
                             settingValue("Signed in as", value: model.account?.email ?? "")
                             AccountActionButton("Open profile", palette: palette) { model.accountPage = .profile }
                             settingValue("SyncBeats", value: versionLabel)
-                            Link("SyncBeats website", destination: URL(string: "https://syncbeats.in")!).font(.system(size: 13)).foregroundStyle(palette.gold)
+                            #if os(macOS)
+                            Button { NSWorkspace.shared.activateFileViewerSelecting([NativeDiagnostics.logURL]) } label: {
+                                Label("Show playback logs", systemImage: "doc.text.magnifyingglass")
+                            }.accessibilityIdentifier("show-playback-logs")
+                            #endif
+                            Link("SyncBeats website", destination: AppConfiguration.website).font(.system(size: 13)).foregroundStyle(palette.gold)
                             AccountActionButton("Log out", palette: palette) { model.signOut(); if model.phase != .signedIn { room.disconnect() } }
 
                         }

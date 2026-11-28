@@ -8,10 +8,10 @@ struct MobileRoomMiniPlayer: View {
     let onExpand: () -> Void
     let onQueue: () -> Void
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             HStack(spacing: 4) {
                 Button(action: onExpand) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         RoomArtwork(request: room.currentTrack?.artworkRequest, palette: palette)
                             .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 4) {
@@ -21,6 +21,9 @@ struct MobileRoomMiniPlayer: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Open full player")
+                    .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+                        if PlayerGestures.expands(translation: value.translation, predicted: value.predictedEndTranslation) { onExpand() }
+                    })
                 Button(action: room.togglePlayback) {
                     Image(systemName: room.pendingPlay ? "stop.fill" : room.isPlaying && !room.localAudioSuspended ? "pause.fill" : "play.fill")
                         .font(.system(size: 20)).frame(width: 44, height: 44)
@@ -32,9 +35,8 @@ struct MobileRoomMiniPlayer: View {
                     .accessibilityLabel("Open shared queue")
             }.buttonStyle(.plain)
             RoomProgress(room: room, palette: palette)
-        }.padding(.horizontal, 16).padding(.vertical, 10)
-            .background(palette.panel).foregroundStyle(palette.text)
-            .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
+        }.padding(.horizontal, 16).padding(.vertical, 12)
+            .background(palette.background).foregroundStyle(palette.text)
     }
 }
 

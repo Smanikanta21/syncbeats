@@ -34,7 +34,8 @@ private final class GoogleHTTPFixture: URLProtocol, @unchecked Sendable {
         check(state.count == 43 && state != nonce, "Random session bindings have independent 256-bit entropy")
         let url = GoogleSignIn.authorizationURL(state: state, nonce: nonce, challenge: GoogleSignIn.challenge(for: verifier))
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
-        check(url.scheme == "https" && url.host == "syncbeats.in" && url.path == "/auth/native", "Sign-in opens the trusted website")
+        check(url.scheme == "https" && url.host == AppConfiguration.website.host &&
+              url.port == AppConfiguration.website.port && url.path == "/auth/native", "Sign-in opens the configured website over HTTPS")
         check(items.first { $0.name == "code_challenge" }?.value == GoogleSignIn.challenge(for: verifier) && !url.absoluteString.contains(verifier), "The private verifier never leaves the Mac during authorization")
         let code = String(repeating: "a", count: 43)
         let callback = "syncbeats://google/callback?state=\(state)&code=\(code)"

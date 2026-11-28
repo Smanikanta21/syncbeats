@@ -84,8 +84,12 @@ import UIKit
             Task { @MainActor [weak room] in
                 guard let room, room.currentTrack != nil else { return }
                 if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue {
-                    room.suspendLocalAudio()
-                    room.statusMessage = "Audio output disconnected. Tap Play to resume on this device."
+                    if room.audio.dualRouteEnabled {
+                        room.recoverAudioOutput()
+                    } else {
+                        room.suspendLocalAudio()
+                        room.statusMessage = "Audio output disconnected. Tap Play to resume on this device."
+                    }
                 } else if reason == AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue || reason == AVAudioSession.RouteChangeReason.override.rawValue {
                     room.recoverAudioOutput() // A new output may have a different sample rate.
                 }

@@ -51,7 +51,7 @@ struct AuthenticationView: View {
 
     private func story(compact: Bool, layout: EntryLayout) -> some View {
         VStack(alignment: .leading, spacing: compact ? 14 : layout.scaled(24, 32)) {
-            if !compact { BrandMark().frame(width: layout.scaled(49, 65), height: layout.scaled(49, 65)) }
+            if !compact { BrandMark(palette: palette).frame(width: layout.scaled(49, 65), height: layout.scaled(49, 65)) }
             Text(compact ? "Your music. Your people. One room." : "Your music.\nYour people.\nOne room.")
                 .font(.system(size: compact ? 28 : layout.scaled(38, 58), weight: .regular, design: .serif)).tracking(-0.8)
                 .fixedSize(horizontal: false, vertical: true)
@@ -107,7 +107,7 @@ struct AuthenticationView: View {
                     HStack(spacing: 8) {
                         Image("GoogleLogo").resizable().scaledToFit()
                             .frame(width: layout.scaled(15, 18), height: layout.scaled(15, 18)).accessibilityHidden(true)
-                        Text("Continue with Google").font(.system(size: layout.scaled(12, 14)))
+                        Text(model.googleSignInStatus ?? "Continue with Google").font(.system(size: layout.scaled(12, 14)))
                     }.frame(maxWidth: .infinity, minHeight: layout.scaled(38, 46))
                         .background(palette.raised, in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.line))
@@ -179,6 +179,7 @@ struct AuthenticationView: View {
         }
         .padding(layout.scaled(28, 32))
         .disabled(model.isWorking)
+        .nativePageTransition(value: model.accountMode)
     }
 
     private func tabs(layout: EntryLayout) -> some View {

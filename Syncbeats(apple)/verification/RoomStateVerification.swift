@@ -67,6 +67,20 @@ struct RoomStateVerification {
         check(named.shortDeviceName == "MacBook Pro", "Device names omit the owner in compact chips")
         let longNamed = RoomParticipant(socketId: "long-output", displayName: "Speaker", isReady: true, isBlocked: false, userId: nil, outputDeviceName: "Living room stereo speakers")
         check(longNamed.shortDeviceName.count == 14 && longNamed.shortDeviceName.hasSuffix("…"), "Long output names have a bounded compact label")
+        let ipad = try JSONDecoder().decode(RoomParticipant.self, from: Data(#"{"socketId":"ipad","displayName":"Abhinay Siraparapu · iPad","isReady":true,"outputDeviceType":"speakers"}"#.utf8))
+        check(ipad.deviceSymbol == "ipad", "A generic speaker output does not override the connected iPad identity")
+        var renamedTablet = longNamed
+        renamedTablet.outputDeviceType = " TABLET "
+        check(renamedTablet.deviceSymbol == "ipad", "A renamed tablet keeps its iPad icon from server metadata")
+        let legacyIPad = RoomParticipant(socketId: "old-ipad", displayName: "Abhinay · iPad", isReady: true, isBlocked: false, userId: nil, outputDeviceName: nil)
+        check(legacyIPad.deviceSymbol == "ipad", "Legacy native iPad clients are recognized without device-type metadata")
+        check(longNamed.deviceSymbol == "hifispeaker.fill", "An unidentified speaker keeps its speaker icon")
+        for name in ["Android", "Pixel 8", "Samsung Galaxy S24", "SM-S918B", "OnePlus 12", "Redmi Note 13"] {
+            let phone = RoomParticipant(socketId: "android", displayName: "Abhinay", isReady: true, isBlocked: false, userId: nil, outputDeviceName: name, outputDeviceType: "speakers")
+            check(phone.deviceSymbol == "smartphone", "Android device name \(name) overrides generic speaker metadata")
+        }
+        let renamedPhone = RoomParticipant(socketId: "renamed", displayName: "Abhinay", isReady: true, isBlocked: false, userId: nil, outputDeviceName: "My phone", outputDeviceType: "mobile")
+        check(renamedPhone.deviceSymbol == "smartphone", "Mobile metadata identifies a phone with a custom name")
 
         let notch = NotchGeometry.preview
         check(notch.cameraWidth == 192, "Camera gap derived from unobscured screen areas")
@@ -149,6 +163,11 @@ struct RoomStateVerification {
             check(abs(frame.midX - notch.centerX) < 0.001 && abs(frame.maxY - notch.topY) < 0.001,
                   "Animation keeps the notch anchored at progress \(progress)")
         }
+        check(PlayerGestures.dismisses(translation: .init(width: 8, height: 120), predicted: .init(width: 8, height: 140)), "Downward player drag dismisses")
+        check(PlayerGestures.dismisses(translation: .init(width: 4, height: 30), predicted: .init(width: 4, height: 200)), "Deliberate downward flick dismisses")
+        check(!PlayerGestures.dismisses(translation: .init(width: 140, height: 110), predicted: .init(width: 140, height: 220)) && !PlayerGestures.dismisses(translation: .init(width: 0, height: 12), predicted: .init(width: 0, height: 220)), "Horizontal and tiny accidental gestures cannot dismiss")
+        check(PlayerGestures.expands(translation: .init(width: 4, height: -70), predicted: .init(width: 4, height: -100)) && !PlayerGestures.expands(translation: .init(width: 100, height: -70), predicted: .init(width: 100, height: -160)), "Mini-player expansion requires an upward gesture")
+        check(PlayerGestures.goesBack(startX: 20, translation: .init(width: 100, height: 4), predicted: .init(width: 120, height: 4)) && !PlayerGestures.goesBack(startX: 120, translation: .init(width: 100, height: 4), predicted: .init(width: 120, height: 4)) && !PlayerGestures.goesBack(startX: 20, translation: .init(width: 100, height: 120), predicted: .init(width: 120, height: 140)), "Collection back requires a horizontal gesture beginning at the left edge")
         let presentation = FullScreenPlayerController.playerPresentationOptions(from: [.autoHideMenuBar, .autoHideDock])
         check(presentation.contains(.hideMenuBar) && presentation.contains(.hideDock)
               && !presentation.contains(.autoHideMenuBar) && !presentation.contains(.autoHideDock),

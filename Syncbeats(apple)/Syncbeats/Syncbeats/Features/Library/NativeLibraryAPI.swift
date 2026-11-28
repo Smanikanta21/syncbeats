@@ -123,7 +123,7 @@ struct NativeLibraryAPI: NativeLibraryServing {
         struct Index: Decodable { let playlists: [NativeLibraryPlaylistPayload] }
         let index: Index = try decode(await request("api/playlists"))
         let offset = Int(cursor ?? "0") ?? 0
-        // Without server paging, hydrate one saved playlist at a time, on view entry/Load more.
+        // Without server paging, hydrate one saved playlist at a time as its scroll sentinel appears.
         let candidates = Array(index.playlists.dropFirst(offset).prefix(1))
         var playlists: [NativeLibraryPlaylist] = []
         for entry in candidates { playlists.append(try await legacyPlaylist(entry.item)) }

@@ -11,7 +11,7 @@ struct LaunchView: View {
     var body: some View {
         ZStack {
             VStack(alignment: .center, spacing: 0) {
-                BrandMark(progress: first, secondProgress: second)
+                BrandMark(palette: palette, progress: first, secondProgress: second)
                     .frame(width: 88, height: 88)
                     .shadow(color: .black.opacity(palette.light ? 0.08 : 0.25), radius: 18, y: 12)
                 Text("SyncBeats").font(.system(size: 30, weight: .medium)).tracking(-0.7)
