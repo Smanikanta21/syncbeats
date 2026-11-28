@@ -2,6 +2,14 @@
 
 import { PlaybackState } from '../core/PlaybackState';
 
+export interface AudioOutput {
+  id?: string;
+  name: string;
+  type: 'builtIn' | 'bluetooth' | 'wired' | 'airPlay' | 'other';
+  selected: boolean;
+  volume?: number;
+}
+
 export interface Participant {
   socketId:    string;
   displayName: string;
@@ -14,6 +22,7 @@ export interface Participant {
   deviceName?: string;
   outputDeviceName?: string;
   outputDeviceType?: string;
+  audioOutputs?: AudioOutput[];
   latency?:    number;
   jitter?:     number;
 }
@@ -80,6 +89,7 @@ export interface RoomSnapshot {
   nextTrack?:             TrackQueueItem | null;
   shuffle:                boolean;
   repeatMode:             RepeatMode;
+  autoplay:               boolean;
 }
 
 export interface SpatialPosition {

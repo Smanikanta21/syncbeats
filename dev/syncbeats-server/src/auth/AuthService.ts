@@ -230,7 +230,7 @@ export class AuthService {
       } catch (roomErr) {
         console.error('[Auth] Failed to assign default room on google signup:', roomErr);
       }
-      await this.sendEmail(
+      void this.sendEmail(
         row.email,
         'Welcome to SyncBeats!',
         buildWelcomeHtml(row.name, `${this.getPublicAppUrl()}/hub`)

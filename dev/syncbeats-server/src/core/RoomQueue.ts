@@ -67,6 +67,7 @@ export class RoomQueue {
 
   shuffle = false;
   repeatMode: RepeatMode = 'off';
+  autoplay = true;
   /** Bumped on every mutation so clients can discard stale broadcasts. */
   version = 0;
 
@@ -315,6 +316,12 @@ export class RoomQueue {
     this.bump();
   }
 
+  setAutoplay(on: boolean): void {
+    if (this.autoplay === on) return;
+    this.autoplay = on;
+    this.bump();
+  }
+
   /**
    * Swap a placeholder url for its resolved one (spotify-lazy: → youtube:). If the resolved
    * track is already queued, the duplicate is dropped and the existing item survives.
@@ -357,6 +364,7 @@ export class RoomQueue {
       currentId: this.currentId,
       shuffle: this.shuffle,
       repeatMode: this.repeatMode,
+      autoplay: this.autoplay,
       nextOrder: this.nextOrder,
     };
   }
@@ -383,6 +391,7 @@ export class RoomQueue {
 
     q.currentId = data.currentId && known.has(data.currentId) ? data.currentId : null;
     q.shuffle = !!data.shuffle;
+    q.autoplay = typeof data.autoplay === 'boolean' ? data.autoplay : true;
     q.repeatMode = (['off', 'all', 'track'] as const).includes(data.repeatMode as RepeatMode)
       ? (data.repeatMode as RepeatMode)
       : 'off';

@@ -344,10 +344,23 @@ export class SocketHandler {
       }
     });
 
-    socket.on('room:updateDevice', ({ roomId, deviceName, deviceType }: { roomId: string, deviceName?: string, deviceType?: string }) => {
-      const room = this.roomManager.get(roomId);
+    socket.on('room:updateDevice', (payload?: { roomId?: unknown; deviceName?: unknown; deviceType?: unknown; audioOutputs?: unknown }) => {
+      if (typeof payload?.roomId !== 'string' || !socket.rooms.has(payload.roomId)) return;
+      const room = this.roomManager.get(payload.roomId);
       if (!room) return;
-      room.updateParticipantDevice(socket.id, deviceName, deviceType);
+      room.updateParticipantDevice(socket.id, payload.deviceName, payload.deviceType, payload.audioOutputs);
+    });
+
+    socket.on('room:setAudioOutputVolume', (payload?: { roomId?: unknown; targetSocketId?: unknown; outputId?: unknown; volume?: unknown }) => {
+      if (typeof payload?.roomId !== 'string' || !socket.rooms.has(payload.roomId) ||
+          typeof payload.targetSocketId !== 'string' || typeof payload.outputId !== 'string' ||
+          typeof payload.volume !== 'number' || !Number.isFinite(payload.volume)) return;
+      const room = this.roomManager.get(payload.roomId);
+      if (!room?.hasParticipant(socket.id) || !room.hasControllableAudioOutput(payload.targetSocketId, payload.outputId)) return;
+      this.io.to(payload.targetSocketId).emit('room:audioOutputVolume', {
+        roomId: payload.roomId, outputId: payload.outputId,
+        volume: Math.round(Math.min(100, Math.max(0, payload.volume))),
+      });
     });
 
     socket.on('device:register', ({ deviceKey }: { deviceKey: string }) => {
@@ -452,6 +465,13 @@ export class SocketHandler {
         return;
       }
       room.setRepeatMode(repeatMode);
+    });
+
+    socket.on('room:toggleAutoplay', ({ roomId, autoplay }: { roomId: string; autoplay: boolean }) => {
+      const room = this.roomManager.get(roomId);
+      if (room?.hasParticipant(socket.id) && typeof autoplay === 'boolean') {
+        room.setAutoplay(autoplay);
+      }
     });
 
     socket.on('room:reset', async ({ roomId }: { roomId: string }) => {
@@ -647,12 +667,34 @@ export class SocketHandler {
       console.info('[SyncDiagnostic]', JSON.stringify({ socketId: socket.id, ...report }));
     });
 
-    socket.on('sync:stats', ({ roomId, latency, jitter }: { roomId: string, latency: number, jitter: number }) => {
+    socket.on('sync:stats', (payload?: {
+      roomId: string;
+      latency: number;
+      jitter: number;
+      nativeTelemetry?: {
+        network?: { rttMS: number; jitterMS: number };
+        playback?: { epoch: number; errorMS: number };
+      };
+    }) => {
+      if (typeof payload?.roomId !== 'string') return;
+      const { roomId, latency, jitter, nativeTelemetry } = payload;
       const room = this.roomManager.get(roomId);
-      if (!room) return;
+      if (!room?.hasParticipant(socket.id) || !Number.isFinite(latency) || !Number.isFinite(jitter) || latency < 0 || jitter < 0) return;
+      room.setSyncQuality(socket.id, latency * 2, jitter * 2);
       room.updateParticipantStats(socket.id, latency, jitter);
-      // Broadcast this lightweight payload to other users in the room
-      socket.to(roomId).emit('room:participantStats', { socketId: socket.id, latency, jitter });
+      const stats: { socketId: string; latency: number; jitter: number; nativeTelemetry?: typeof nativeTelemetry } =
+        { socketId: socket.id, latency, jitter };
+      const network = nativeTelemetry?.network;
+      const playback = nativeTelemetry?.playback;
+      if (network && Number.isFinite(network.rttMS) && network.rttMS >= 0 && network.rttMS <= 5_000 &&
+          Number.isFinite(network.jitterMS) && network.jitterMS >= 0 && network.jitterMS <= 5_000) {
+        stats.nativeTelemetry = { network: { rttMS: network.rttMS, jitterMS: network.jitterMS } };
+        if (playback && Number.isFinite(playback.epoch) && playback.epoch >= 0 && playback.epoch <= 1e14 &&
+            Number.isFinite(playback.errorMS) && Math.abs(playback.errorMS) <= 120_000) {
+          stats.nativeTelemetry.playback = { epoch: playback.epoch, errorMS: playback.errorMS };
+        }
+      }
+      socket.to(roomId).emit('room:participantStats', stats);
     });
 
     // Spatial audio is parked as a beta. Keep the event name reserved so stale

@@ -3,7 +3,9 @@ import { randomUUID } from 'crypto';
 import { PlaybackState } from './PlaybackState';
 import { RoomQueue, trackKey } from './RoomQueue';
 import { ytId as extractYtId } from '../utils/youtube';
-import { Participant, RoomSnapshot, SpatialPosition, ChatMessage, QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
+import { AudioOutput, Participant, RoomSnapshot, SpatialPosition, ChatMessage, QueueItem, QueueTrackInput, RepeatMode, TrackQueueItem } from '../types';
+
+const outputTypes: ReadonlySet<unknown> = new Set<AudioOutput['type']>(['builtIn', 'bluetooth', 'wired', 'airPlay', 'other']);
 
 export class Room extends EventEmitter {
   private readonly instanceId = randomUUID();
@@ -12,6 +14,20 @@ export class Room extends EventEmitter {
   private trackUrl:     string | null          = null;
   private hostId:       string | null          = null; // kept for snapshot compat
   private participants: Map<string, Participant> = new Map();
+  private syncQuality: Map<string, { rtt: number; jitter: number; at: number }> = new Map();
+
+  setSyncQuality(socketId: string, rtt: number, jitter: number): void {
+    if (!this.hasParticipant(socketId) || !Number.isFinite(rtt) || !Number.isFinite(jitter) || rtt < 0 || jitter < 0) return;
+    this.syncQuality.set(socketId, { rtt: Math.min(rtt, 2000), jitter: Math.min(jitter, 500), at: Date.now() });
+  }
+  private scheduleLead(): number {
+    let lead = 150;
+    for (const [id, quality] of this.syncQuality) {
+      if (!this.hasParticipant(id) || this.participants.get(id)?.isBlocked || Date.now() - quality.at > 90_000) continue;
+      lead = Math.max(lead, quality.rtt * 0.75 + quality.jitter * 2 + 80);
+    }
+    return Math.min(1500, Math.ceil(lead));
+  }
   private queue:        RoomQueue              = new RoomQueue();
   private spatial:      Map<string, SpatialPosition> = new Map();
   private chatHistory:  ChatMessage[]          = [];
@@ -139,7 +155,7 @@ export class Room extends EventEmitter {
       clearTimeout(this.readyTimeout);
       this.readyTimeout = null;
     }
-    const scheduleDelay = 150; // Reduced from 800ms for snappier play button response
+    const scheduleDelay = this.scheduleLead();
     const atEpoch = Date.now() + scheduleDelay;
 
     this.timeline.startEpoch = atEpoch - this.timeline.pauseOffset * 1000;
@@ -227,7 +243,7 @@ export class Room extends EventEmitter {
     this.playbackInstanceId = null;
 
     if (this.timeline.isPlaying) {
-      const scheduleDelay = 150; // Reduced from 500ms for snappier seek response
+      const scheduleDelay = this.scheduleLead();
       const atEpoch = Date.now() + scheduleDelay;
       this.timeline.startEpoch = atEpoch - positionSec * 1000;
       this.playbackInstanceId = randomUUID();
@@ -310,7 +326,20 @@ export class Room extends EventEmitter {
 
   nextTrack(autoplay = true, manual = true): QueueItem | null {
     const item = this.queue.next(manual);
-    if (!item) { this.resetPlayback(); return null; }
+    if (!item) {
+      // Keep the finished selection so it can be replayed or sought from the player.
+      const current = this.queue.current();
+      if (!current) { this.resetPlayback(); return null; }
+      this.playbackInstanceId = null;
+      this.state = PlaybackState.PAUSED;
+      this.timeline.pauseOffset = current.durationSec ?? this.computeCurrentPosition() / 1000;
+      this.timeline.startEpoch = null;
+      this.timeline.isPlaying = false;
+      this.pendingPlay = false;
+      if (this.readyTimeout) { clearTimeout(this.readyTimeout); this.readyTimeout = null; }
+      this.emitQueueChanged();
+      return null;
+    }
     this._loadItem(item, autoplay);
     return item;
   }
@@ -324,6 +353,7 @@ export class Room extends EventEmitter {
 
   /** Instance-aware clients can finish short tracks and repeat-one without a time debounce. */
   handleTrackEnded(trackUrl: string, playbackInstanceId?: string): QueueItem | null {
+    if (!this.timeline.isPlaying) return null;
     if (!this.timeline.isPlaying || !this.playbackInstanceId || !this.trackUrl) return null;
     if (trackKey(trackUrl) !== trackKey(this.trackUrl)) return null;
     if (playbackInstanceId !== undefined) {
@@ -335,11 +365,21 @@ export class Room extends EventEmitter {
       if (duration && this.computeCurrentPosition() < duration * 1000 - 1000) return null;
     }
     this.playbackInstanceId = null; // consume before emitting any successor events
+    if (!this.queue.autoplay) {
+      const duration = this.queue.current()?.durationSec;
+      this.pause('system', duration == null ? undefined : duration * 1000);
+      return null;
+    }
     return this.nextTrack(true, false);
   }
 
   setShuffle(on: boolean): void {
     this.queue.setShuffle(on);
+    this.emitQueueChanged();
+  }
+
+  setAutoplay(on: boolean): void {
+    this.queue.setAutoplay(on);
     this.emitQueueChanged();
   }
 
@@ -450,12 +490,37 @@ export class Room extends EventEmitter {
     this.emit('stateChanged', this.snapshot());
   }
 
-  updateParticipantDevice(socketId: string, deviceName?: string, deviceType?: string): void {
+  updateParticipantDevice(socketId: string, deviceName?: unknown, deviceType?: unknown, outputs?: unknown): void {
     const p = this.participants.get(socketId);
     if (!p) return;
-    if (deviceName !== undefined) p.outputDeviceName = deviceName;
-    if (deviceType !== undefined) p.outputDeviceType = deviceType;
+    const name = typeof deviceName === 'string' ? deviceName.trim().slice(0, 120) : p.outputDeviceName;
+    const type = typeof deviceType === 'string' ? deviceType.trim().slice(0, 32) : p.outputDeviceType;
+    let audioOutputs = p.audioOutputs;
+    if (Array.isArray(outputs)) {
+      audioOutputs = outputs.slice(0, 16).flatMap((output): AudioOutput[] => {
+        if (!output || typeof output.name !== 'string' || !outputTypes.has(output.type) ||
+            typeof output.selected !== 'boolean') return [];
+        const name = output.name.trim().slice(0, 120);
+        if (!name) return [];
+        const result: AudioOutput = { name, type: output.type, selected: output.selected };
+        if (typeof output.id === 'string' && /^[0-9a-f-]{36}$/i.test(output.id) &&
+            typeof output.volume === 'number' && Number.isFinite(output.volume)) {
+          result.id = output.id;
+          result.volume = Math.round(Math.min(100, Math.max(0, output.volume)));
+        }
+        return [result];
+      });
+    }
+    if (name === p.outputDeviceName && type === p.outputDeviceType &&
+        JSON.stringify(audioOutputs) === JSON.stringify(p.audioOutputs)) return;
+    p.outputDeviceName = name;
+    p.outputDeviceType = type;
+    p.audioOutputs = audioOutputs;
     this.emit('stateChanged', this.snapshot());
+  }
+
+  hasControllableAudioOutput(socketId: string, outputId: string): boolean {
+    return this.participants.get(socketId)?.audioOutputs?.some(output => output.id === outputId) ?? false;
   }
 
   updateParticipantStats(socketId: string, latency: number, jitter: number): void {
@@ -512,6 +577,7 @@ export class Room extends EventEmitter {
   }
 
   removeParticipant(socketId: string): void {
+    this.syncQuality.delete(socketId);
     this.participants.delete(socketId);
 
     // If room is now empty (0 participants remaining):
@@ -621,6 +687,7 @@ export class Room extends EventEmitter {
       queueVersion:           this.queue.version,
       shuffle:                this.queue.shuffle,
       repeatMode:             this.queue.repeatMode,
+      autoplay:               this.queue.autoplay,
     };
   }
 
