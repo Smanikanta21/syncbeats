@@ -8,6 +8,7 @@ import os
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
@@ -41,8 +42,8 @@ readme = f"""SyncBeats 1.0 beta {args.beta} (build {args.build_number})
 
 Requirements
 - Apple Silicon Mac, macOS {minimum} or later. Intel Macs are not supported by this download.
-- Internet access. This beta connects to the live service at https://api.syncbeats.in.
-- Use a production SyncBeats account. A previous localhost login will not transfer.
+- Internet access. This beta connects to https://dev-api.syncbeats.in and opens browser flows on https://dev.syncbeats.in.
+- Use a SyncBeats account on the development service.
 
 Install
 DMG: open the disk image and drag Syncbeats.app onto Applications. Eject the image.
@@ -64,7 +65,7 @@ Known beta limitations
 - macOS will request only the permissions a feature needs. Apple Music permissions
   do not imply that all subscription tracks can be played directly.
 - Updates are manual: download the next beta and replace the app in Applications.
-- This is a beta on the production service: rooms and account changes are real.
+- This beta uses the development service for rooms and account changes.
 
 What to test
 Sign in; create/join a test room from a Mac and browser or another Mac; queue music;
@@ -101,8 +102,8 @@ with tempfile.TemporaryDirectory(prefix="syncbeats-beta-staging-") as temporary:
         raise SystemExit("Beta contains developer-team/debug-only entitlements")
     if not parsed.get("com.apple.security.network.client") or not parsed.get("com.apple.security.app-sandbox"):
         raise SystemExit("Required sandbox/network entitlements missing")
-    subprocess.run(["hdiutil", "create", "-volname", f"SyncBeats Beta {args.beta}", "-srcfolder", str(staging),
-                    "-format", "UDZO", "-fs", "HFS+", str(output / f"{label}.dmg")], check=True)
+    subprocess.run([sys.executable, str(distribution / "build-dmg.py"), "--app", str(app),
+                    "--output", str(output / f"{label}.dmg"), "--volume", f"SyncBeats Beta {args.beta}"], check=True)
     subprocess.run(["hdiutil", "verify", str(output / f"{label}.dmg")], check=True)
     (staging / "Applications").unlink()
     subprocess.run(["ditto", "-c", "-k", "--norsrc", "--noextattr", str(staging), str(output / f"{label}.zip")], check=True)
@@ -110,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix="syncbeats-beta-staging-") as temporary:
     subprocess.run(["ditto", "-x", "-k", str(output / f"{label}.zip"), str(extracted)], check=True)
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(extracted / "Syncbeats.app")], check=True)
 manifest = {"version": "1.0", "beta": int(args.beta), "build": args.build_number,
-            "architecture": "arm64", "minimumMacOS": minimum, "backend": "https://api.syncbeats.in",
+            "architecture": "arm64", "minimumMacOS": minimum, "backend": "https://dev-api.syncbeats.in",
             "signing": "ad-hoc; not Developer ID", "notarized": False, "googleSignIn": True, "googleSignInRequires": "native Google handoff server and website deployed", "files": {}}
 checksums = []
 for artifact in [output / f"{label}.dmg", output / f"{label}.zip"]:
