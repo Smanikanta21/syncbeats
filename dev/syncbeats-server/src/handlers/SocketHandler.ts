@@ -4,6 +4,7 @@ import { RoomManager }    from '../core/RoomManager';
 import { RoomRepository } from '../db/RoomRepository';
 import { DeviceRepository } from '../db/DeviceRepository';
 import { RoomPersistence } from '../core/RoomPersistence';
+import { HybridRelay } from './HybridRelay';
 
 import { UserRepository } from '../auth/UserRepository';
 import { registerAccountUpdates } from '../library/AccountUpdates';
@@ -22,12 +23,14 @@ export class SocketHandler {
   private deviceRepo = new DeviceRepository();
   private userRepo: UserRepository = new UserRepository();
   private readonly persistence: RoomPersistence;
+  private readonly hybrid: HybridRelay;
 
   constructor(
     private io:          Server,
     private roomManager: RoomManager,
     private roomRepo:    RoomRepository,
   ) {
+    this.hybrid = new HybridRelay(io, roomManager);
     this.persistence = new RoomPersistence(
       (roomId, state) => this.roomRepo.savePlaybackState(roomId, state),
       (roomId, error) => logErrorToFile(error, { source: 'Room persistence: ' + roomId }),
@@ -140,6 +143,7 @@ export class SocketHandler {
   }
 
   register(socket: Socket): void {
+    this.hybrid.register(socket);
     registerAccountUpdates(socket);
     console.log(`[WS] connected: ${socket.id}`);
 
