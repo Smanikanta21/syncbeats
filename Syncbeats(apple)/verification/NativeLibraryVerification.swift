@@ -23,6 +23,7 @@ nonisolated private final class LibraryDiskFixture: NativeLibraryPersisting, @un
     var entries: [NativeLibraryPlaylist] = []
     var delay: Duration = .zero
     var fails = false
+    var resolutionCalls = 0
     var importCalls: [[NativeLibrarySong]] = []
     var failImportAt: Int? = nil
     var unsupportedImport = false
@@ -47,6 +48,9 @@ nonisolated private final class LibraryDiskFixture: NativeLibraryPersisting, @un
     }
     var saves = 0
     var paged = false
+    var failsNextPage = false
+    var pageRequests = 0
+    var pageDelay: Duration = .zero
     func playlists() async throws -> [NativeLibraryPlaylist] {
         let captured = entries
         if delay != .zero { try await Task.sleep(for: delay) }
@@ -54,6 +58,9 @@ nonisolated private final class LibraryDiskFixture: NativeLibraryPersisting, @un
         return captured
     }
     func indexPage(cursor: String?) async throws -> NativeLibraryIndexPage {
+        pageRequests += 1
+        if pageDelay != .zero { try await Task.sleep(for: pageDelay) }
+        if cursor != nil && failsNextPage { throw NSError(domain: "LibraryFixture", code: 503) }
         let values = try await playlists()
         let offset = Int(cursor ?? "0") ?? 0
         let page = paged ? Array(values.dropFirst(offset).prefix(40)).map { playlist in
@@ -76,7 +83,7 @@ nonisolated private final class LibraryDiskFixture: NativeLibraryPersisting, @un
                      nextCursor: paged && values.count > offset + 60 ? String(offset + 60) : nil, total: values.count)
     }
     func save(_ result: RoomSearchResult) async throws { saves += 1 }
-    func resolve(_ song: NativeLibrarySong) async throws -> String { "abcdefghijk" }
+    func resolve(_ song: NativeLibrarySong) async throws -> String { resolutionCalls += 1; return "abcdefghijk" }
     func rename(_ playlist: NativeLibraryPlaylist, to name: String) async throws {
         if delay != .zero { try await Task.sleep(for: delay) }
         if fails { throw AuthFailure.invalidResponse }
@@ -216,7 +223,23 @@ nonisolated private final class LibraryHTTPFixture: URLProtocol, @unchecked Send
         check(pagedStore.songs.count == 60 && pagedStore.hasMore, "Songs view fetches only the first song page")
         await pagedStore.loadMore()
         check(pagedStore.songs.count == 120, "Song pagination appends the next page without duplicates")
-        await pagedStore.open(.playlists); await pagedStore.loadMore()
+        await pagedStore.open(.playlists)
+        pagingService.failsNextPage = true
+        await pagedStore.loadMore()
+        check(pagedStore.playlists.count == 40 && pagedStore.hasMore && pagedStore.error != nil && !pagedStore.loadingMore,
+              "Pagination failure preserves existing music and the retry cursor")
+        pagingService.failsNextPage = false
+        pagingService.pageDelay = .milliseconds(50)
+        let requestsBeforeMore = pagingService.pageRequests
+        let nextPage = Task { await pagedStore.loadMore() }
+        await Task.yield()
+        check(pagedStore.loadingMore && !pagedStore.loading && pagedStore.playlists.count == 40,
+              "Loading another page preserves content without full-page loading")
+        await pagedStore.loadMore()
+        await nextPage.value
+        check(pagingService.pageRequests == requestsBeforeMore + 1 && pagedStore.error == nil,
+              "Concurrent pagination requests coalesce and a successful retry clears the error")
+        pagingService.pageDelay = .zero
         check(pagedStore.playlists.count == 45, "Playlist pagination reaches later collections")
         let latePlaylist = pagedStore.playlists.last!
         await pagedStore.openDetail(latePlaylist)
@@ -263,6 +286,16 @@ nonisolated private final class LibraryHTTPFixture: URLProtocol, @unchecked Send
         check(restored.imported.songs[0].youtubeID == "abcdefghijk", "Imports and reviewed room versions survive store recreation")
         await restored.load(for: credentials("two"))
         check(restored.imported.songs.isEmpty, "A different account cannot see another account's local imports")
+        let automaticDisk = LibraryDiskFixture(), automaticService = LibraryServiceFixture()
+        let automatic = NativeLibraryStore(disk: automaticDisk, factory: { _ in automaticService })
+        try await seedLocal(automatic, disk: automaticDisk, songs: [apple], playlists: [], owner: "automatic")
+        let playable = try await automatic.resolveForPlayback(apple)
+        check(playable.result != nil && playable.title == apple.title && playable.artist == apple.artist,
+              "Selecting an unresolved Apple song returns a playable version with its original metadata")
+        check(automatic.imported.songs.first?.youtubeID == playable.youtubeID,
+              "Direct playback remembers the room version without a confirmation sheet")
+        _ = try await automatic.resolveForPlayback(automatic.imported.songs[0])
+        check(automaticService.resolutionCalls == 1, "Selecting a resolved song skips another provider lookup")
         service.fails = true; await store.refresh()
         check(store.remote.count == 2 && store.error != nil, "A failed refresh preserves the last complete collection and reports an error")
         service.fails = false

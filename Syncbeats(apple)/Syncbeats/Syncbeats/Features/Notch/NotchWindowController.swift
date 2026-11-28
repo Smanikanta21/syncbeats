@@ -59,7 +59,8 @@ private final class IslandHostingView<Content: View>: NSHostingView<Content> {
 }
 
 @MainActor @Observable
-final class NotchWindowController: NSObject {
+final class NotchWindowController: NSObject, NSWindowDelegate {
+    private(set) var panelVisible = false
     private(set) var expanded = false
     private(set) var expansion: Double = 0
     private(set) var hoverExpansion: Double = 0
@@ -144,7 +145,9 @@ final class NotchWindowController: NSObject {
         host.safeAreaRegions = []
         panel.contentView = host
         self.panel = panel
+        panel.delegate = self
         panel.orderFrontRegardless()
+        panelVisible = panel.occlusionState.contains(.visible)
         installPointerMonitors()
         panelFocusObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification,
                                                                     object: panel, queue: .main) { [weak self] _ in
@@ -174,6 +177,10 @@ final class NotchWindowController: NSObject {
         }
     }
 
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        panelVisible = panel?.occlusionState.contains(.visible) == true
+    }
+
     func hide() {
         removePointerMonitors()
         if let panelFocusObserver { NotificationCenter.default.removeObserver(panelFocusObserver) }
@@ -190,8 +197,10 @@ final class NotchWindowController: NSObject {
         screenObserver = nil
         panel?.onCapClick = nil
         panel?.onPlaybackClick = nil
+        panel?.delegate = nil
         panel?.close()
         panel = nil
+        panelVisible = false
         openRoomAction = nil
         playbackRoom = nil
         expanded = false

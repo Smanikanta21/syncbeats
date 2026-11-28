@@ -12,6 +12,30 @@ private struct EmptySessionStore: SessionPersisting {
 @main
 struct RenderNativeLayouts {
     @MainActor static func main() throws {
+        if CommandLine.arguments.contains("--player-surfaces-only") {
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            let output = URL(fileURLWithPath: "/tmp/syncbeats-player-surfaces", isDirectory: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            let room = RoomSession()
+            room.apply(try RoomFixtures.snapshot(playing: false, originalArtwork: true))
+            for light in [false, true] {
+                let palette = NativePalette(light: light)
+                let theme = light ? "light" : "dark"
+                for (width, height) in [(720, 560), (960, 720), (1512, 982)] {
+                    let player = FullScreenRoomPlayer(room: room, onClose: {})
+                        .environment(\.colorScheme, light ? .light : .dark)
+                    try render(player, name: "player-\(width)x\(height)-\(theme)",
+                               width: CGFloat(width), height: CGFloat(height), output: output)
+                }
+                let mini = VStack(spacing: 0) {
+                    Spacer()
+                    RoomMiniPlayer(room: room, palette: palette, onExpand: {}, onQueue: {}, onFloat: {})
+                }.background(palette.background)
+                    .environment(\.colorScheme, light ? .light : .dark)
+                try render(mini, name: "mini-player-\(theme)", width: 720, height: 240, output: output)
+            }
+            return
+        }
         if CommandLine.arguments.contains("--verify-ambient") {
             NSApplication.shared.setActivationPolicy(.accessory)
             verifyAmbient(); return

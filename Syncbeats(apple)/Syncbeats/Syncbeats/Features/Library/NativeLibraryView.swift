@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Native collection navigation, following the approved studio/gallery direction.
 /// Design process: unslop by Damir Sokolovsky (@heydamir), CC BY 4.0.
@@ -42,19 +45,24 @@ struct NativeCollectionWorkspace: View {
                         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(palette.panel)
                             .accessibilityIdentifier("library-server-update-notice")
                     }
-                    if section == .home {
-                        VStack(spacing: 0) {
-                            HStack {
-                                Spacer()
-                                Button { Task { await library.invalidate(); await room.loadDiscovery(.all, refresh: true) } } label: {
-                                    Label("Refresh", systemImage: "arrow.clockwise").font(.system(size: 12, weight: .medium))
-                                }.keyboardShortcut("r", modifiers: .command).disabled(library.managementBusy || room.isLoadingDiscovery)
-                                    .help("Refresh Home and Library · ⌘R")
-                            }.padding(.horizontal, 24).padding(.top, 8)
-                            RoomHomeView(room: room, palette: palette, onOpenPlayer: onOpenPlayer, onSaveSong: onSave,
-                                         savedSongIDs: library.savedYoutubeIDs)
+                    ZStack {
+                        if section == .home {
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Spacer()
+                                    Button { Task { await library.invalidate(); await room.loadDiscovery(.all, refresh: true) } } label: {
+                                        Label("Refresh", systemImage: "arrow.clockwise").font(.system(size: 12, weight: .medium))
+                                    }.keyboardShortcut("r", modifiers: .command).disabled(library.managementBusy || room.isLoadingDiscovery)
+                                        .help("Refresh Home and Library · ⌘R")
+                                }.padding(.horizontal, 24).padding(.top, 8)
+                                RoomHomeView(room: room, palette: palette, onOpenPlayer: onOpenPlayer, onSaveSong: onSave,
+                                             savedSongIDs: library.savedYoutubeIDs)
+                            }
+                        } else {
+                            NativeLibraryPage(section: $section, library: library, room: room, palette: palette)
                         }
-                    } else { NativeLibraryPage(section: $section, library: library, room: room, palette: palette) }
+                    }.nativePageTransition(value: section)
+                        .clipped()
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -105,31 +113,65 @@ struct NativeLibraryPage: View {
     @Bindable var room: RoomSession
     let palette: NativePalette
     @State private var query = ""
+    @State private var selectedSongID: String?
+    @AppStorage("native-library-song-layout") private var songLayout = "list"
+    @AppStorage("native-library-collection-layout") private var collectionLayout = "gallery"
     @State private var detailID: String?
     @State private var importing = false
-    @State private var matchCandidate: NativeLibrarySong?
-    @State private var playMatchedSong = false
     @State private var management: NativePlaylistSheet?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
-            let inset: CGFloat = geometry.size.width < 600 ? 16 : 28
+            let narrow = geometry.size.width < 480
+            let inset: CGFloat = geometry.size.width < 600 ? 16 : 24
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     Image(systemName: "magnifyingglass").foregroundStyle(palette.secondary)
                     TextField("Search your library", text: $query).textFieldStyle(.plain).font(.system(size: 14)).focused($searchFocused)
                         .accessibilityIdentifier("library-search")
                     if !query.isEmpty {
-                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).accessibilityLabel("Clear library search")
-                    } else { Text("⌘ K").font(.system(size: 11)).foregroundStyle(palette.quiet) }
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(minWidth: 44, minHeight: 44) }.buttonStyle(.plain).accessibilityLabel("Clear library search")
+                    }
+                    #if os(macOS)
+                    if query.isEmpty { Text("⌘ K").font(.system(size: 11)).foregroundStyle(palette.quiet) }
+                    #endif
                 Button { Task { await library.invalidate() } } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise").font(.system(size: 12, weight: .medium))
+                        Group {
+                            if narrow { Image(systemName: "arrow.clockwise") }
+                            else { Label("Refresh", systemImage: "arrow.clockwise") }
+                        }.font(.system(size: 12, weight: .medium)).frame(minWidth: 44, minHeight: 44)
                     }.keyboardShortcut("r", modifiers: .command).disabled(library.managementBusy)
                         .accessibilityLabel("Refresh Library").help("Fetch the latest collections · ⌘R")
-                }.padding(12).background(palette.panel, in: RoundedRectangle(cornerRadius: 10))
+                }.padding(.horizontal, 12).padding(.vertical, 4).background(palette.panel, in: RoundedRectangle(cornerRadius: 12))
                     .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(searchFocused ? palette.gold : palette.line) }
                     .padding(.horizontal, inset).padding(.vertical, 16)
+                HStack(spacing: 12) {
+                    if detailID != nil {
+                        Button(action: goBack) {
+                            Group {
+                                if narrow { Image(systemName: "chevron.left") }
+                                else { Label("Back", systemImage: "chevron.left") }
+                            }.frame(minWidth: 44, minHeight: 44)
+                        }.accessibilityLabel("Back to \(section.rawValue)")
+                            .buttonStyle(NativeButtonStyle(palette: palette))
+                            .background(palette.raised, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.line, lineWidth: 1))
+                            .keyboardShortcut("[", modifiers: .command)
+                            .help("Back to \(section.rawValue) · ⌘[")
+                            .accessibilityIdentifier("library-back")
+                    }
+                    Text(section.rawValue)
+                        .font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                    Spacer(minLength: 8)
+                    if supportsGallery {
+                        Picker("View", selection: layoutBinding) {
+                            Label("List", systemImage: "list.bullet").tag("list")
+                            Label("Gallery", systemImage: "square.grid.2x2").tag("gallery")
+                        }.pickerStyle(.segmented).frame(width: narrow ? 136 : 176)
+                            .accessibilityIdentifier("library-layout")
+                    }
+                }.padding(.horizontal, inset).padding(.bottom, 16)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         HStack(alignment: .center, spacing: 12) {
@@ -154,10 +196,16 @@ struct NativeLibraryPage: View {
                         if let message = library.message {
                             Text(message).font(.system(size: 12)).foregroundStyle(palette.secondary).accessibilityAddTraits(.updatesFrequently)
                         }
+                        if let playbackError = room.errorMessage {
+                            Text(playbackError).font(.system(size: 12)).foregroundStyle(palette.error)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if let playbackStatus = room.statusMessage {
+                            Text(playbackStatus).font(.system(size: 12)).foregroundStyle(palette.secondary)
+                                .accessibilityAddTraits(.updatesFrequently)
+                        }
                         if library.loading && library.songs.isEmpty && library.playlists.isEmpty {
                             NativeLoader(title: "Loading your library", detail: "Getting your saved playlists", palette: palette).frame(maxWidth: .infinity, minHeight: 160)
                         } else if let detail = selectedDetail {
-                            Button { detailID = nil; library.closeDetail() } label: { Label("Back to " + section.rawValue.lowercased(), systemImage: "chevron.left") }.font(.system(size: 12))
                             HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text(detail.name).font(.system(size: 24, weight: .medium)).fixedSize(horizontal: false, vertical: true)
@@ -170,7 +218,7 @@ struct NativeLibraryPage: View {
                             if section == .playlists, let playlist = library.playlists.first(where: { $0.id == detail.id }) {
                                 playlistActions(playlist)
                             }
-                            songList(filtered(detail.songs))
+                            songList(filtered(library.detailSongs ?? detail.songs))
                         } else {
                             switch section {
                             case .songs: songList(filtered(library.songs).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending })
@@ -180,20 +228,19 @@ struct NativeLibraryPage: View {
                             case .home: EmptyView()
                             }
                         }
-                    if library.hasMore {
-                            Button { Task { await library.loadMore() } } label: {
-                                HStack { if library.loadingMore { ProgressView().controlSize(.small) }; Text("Load more") }.frame(maxWidth: .infinity).padding(12)
-                            }.disabled(library.managementBusy).foregroundStyle(palette.gold)
-                        }
+                        paginationFooter
                         if let updated = library.lastUpdated {
                             Text("Updated \(updated.formatted(date: .omitted, time: .shortened))").font(.system(size: 11)).foregroundStyle(palette.secondary)
                         }
                     }.padding(.horizontal, inset).padding(.top, 4).padding(.bottom, 28).frame(maxWidth: .infinity, alignment: .leading)
+                        .nativePageTransition(value: detailID)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .refreshable { await library.refresh() }
             }.sheet(isPresented: $importing) {
                 NativeAppleImportView(library: library, palette: palette, onClose: { importing = false })
                     .frame(width: min(640, max(340, geometry.size.width - 32)), height: min(600, max(260, geometry.size.height - 16)))
-            }.sheet(item: $matchCandidate) { candidate in roomVersion(candidate) }
+            }
                 .sheet(item: $management) { action in
                     NativePlaylistManagementView(action: action, library: library, palette: palette, onClose: {
                         if case .delete(let playlist) = action, !library.playlists.contains(where: { $0.id == playlist.id }) { detailID = nil }
@@ -207,15 +254,65 @@ struct NativeLibraryPage: View {
                 guard !Task.isCancelled else { return }
                 await library.open(section, query: query)
             }
-            .onChange(of: section) { _, _ in detailID = nil; query = ""; library.message = nil; library.closeDetail() }
+            #if os(iOS)
+            .simultaneousGesture(DragGesture(minimumDistance: 20, coordinateSpace: .local).onEnded { value in
+                guard detailID != nil else { return }
+                if PlayerGestures.goesBack(startX: value.startLocation.x, translation: value.translation,
+                                          predicted: value.predictedEndTranslation) { goBack() }
+            })
+            #endif
+            .onChange(of: section) { _, _ in selectedSongID = nil; detailID = nil; query = ""; library.message = nil; library.closeDetail() }
             .background { Button("Search library") { searchFocused = true }.keyboardShortcut("k", modifiers: .command).frame(width: 0, height: 0).opacity(0).accessibilityHidden(true) }
+    }
+    private var displaysSongs: Bool { detailID != nil || section == .songs }
+    @ViewBuilder private var paginationFooter: some View {
+        if library.hasMore || library.loadingMore {
+            NativePaginationFooter(identity: "\(section.rawValue)|\(query)|\(detailID ?? "")",
+                cursor: library.hasMore ? library.paginationCursor : nil, loading: library.loadingMore,
+                busy: library.managementBusy, error: library.error, title: "Loading more music", palette: palette) {
+                    await library.loadMore()
+                }
+        }
+    }
+    private var layout: NativeLibraryLayout {
+        guard supportsGallery else { return .list }
+        return NativeLibraryLayout(rawValue: displaysSongs ? songLayout : collectionLayout) ?? (displaysSongs ? .list : .gallery)
+    }
+    private var supportsGallery: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom != .phone
+        #else
+        true
+        #endif
+    }
+    private var layoutBinding: Binding<String> {
+        Binding(get: { layout.rawValue }, set: { if displaysSongs { songLayout = $0 } else { collectionLayout = $0 } })
+    }
+    private func goBack() {
+        detailID = nil
+        selectedSongID = nil
+        library.closeDetail()
+    }
+    @ViewBuilder private func itemsLayout<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if layout == .gallery {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 18)], alignment: .leading, spacing: 18, content: content)
+        } else {
+            LazyVStack(spacing: 10, content: content)
+        }
     }
     private var summary: String {
         switch section {
-        case .songs: return "\(library.songs.count) saved songs"
-        case .playlists: return "\(library.playlists.count) playlists in your collection"
-        case .albums: return "\(library.albums.count) albums from your saved songs"
-        case .artists: return "\(library.artists.count) artists in your collection"
+        case .songs:
+            if let total = library.catalogTotal { return "\(total) \(query.isEmpty ? "saved" : "matching") songs" }
+            return library.hasMore ? "\(library.songs.count) songs loaded" : "\(library.songs.count) saved songs"
+        case .playlists:
+            return library.hasMorePlaylists ? "\(library.playlists.count) playlists loaded" : "\(library.playlists.count) playlists in your collection"
+        case .albums:
+            if let total = library.catalogTotal { return "\(total) albums from your saved songs" }
+            return library.hasMore ? "\(library.albums.count) albums loaded" : "\(library.albums.count) albums from your saved songs"
+        case .artists:
+            if let total = library.catalogTotal { return "\(total) artists in your collection" }
+            return library.hasMore ? "\(library.artists.count) artists loaded" : "\(library.artists.count) artists in your collection"
         case .home: return ""
         }
     }
@@ -255,19 +352,19 @@ struct NativeLibraryPage: View {
     private func filtered(_ songs: [NativeLibrarySong]) -> [NativeLibrarySong] {
         songs.filter { query.isEmpty || [$0.title, $0.artist, $0.album ?? ""].contains { $0.localizedCaseInsensitiveContains(query) } }
     }
+    private var playbackSongs: [NativeLibrarySong] {
+        let values = filtered(library.detailSongs ?? selectedDetail?.songs ?? library.songs)
+        return detailID == nil && section == .songs ? values.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending } : values
+    }
     @ViewBuilder private func songList(_ songs: [NativeLibrarySong]) -> some View {
         if songs.isEmpty { empty(query.isEmpty ? "No songs saved yet" : "No matching songs", detail: query.isEmpty ? "Save a song from Home, or import songs and playlists from Apple Music." : "Try another title, artist or album.") }
         else {
-            LazyVStack(spacing: 4) {
-                ForEach(Array(songs.enumerated()), id: \.offset) { _, song in
-                    HStack(spacing: 12) {
-                        DiscoveryArtwork(source: .song(song.discoveryRequest), palette: palette, radius: 6).frame(width: 44, height: 44)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(song.title).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                            Text(song.artist.isEmpty ? sourceName(song.source) : song.artist).font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
-                            if let album = song.album, !album.isEmpty { Text(album).font(.system(size: 11)).foregroundStyle(palette.quiet).lineLimit(1) }
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        if let duration = song.duration { Text(playbackTime(duration)).font(.system(size: 11, design: .monospaced)).foregroundStyle(palette.quiet) }
+            itemsLayout {
+                ForEach(songs) { song in
+                    NativeLibrarySongRow(song: song, palette: palette, layout: layout, selected: selectedSongID == song.id,
+                                         canPlay: room.canControl && !room.preparingLibraryPlayback && !library.matching.contains(song.id),
+                                         select: { selectedSongID = song.id },
+                                         play: { selectedSongID = song.id; choose(song, play: true) }) {
                         Button { management = .choose(song) } label: { Image(systemName: "text.badge.plus").frame(width: 28, height: 32) }
                             .disabled(library.managementBusy || library.playlists.isEmpty).accessibilityLabel("Add " + song.title + " to a playlist")
                         Button { choose(song, play: true) } label: {
@@ -276,7 +373,7 @@ struct NativeLibraryPage: View {
                             .accessibilityLabel(song.result == nil ? "Find room version for " + song.title : "Play " + song.title)
                         Button { choose(song, play: false) } label: { Image(systemName: "plus").frame(width: 28, height: 32) }
                             .disabled(!room.canControl || library.matching.contains(song.id)).accessibilityLabel("Add " + song.title + " to queue")
-                    }.padding(12).background(palette.panel.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
         }
@@ -286,14 +383,12 @@ struct NativeLibraryPage: View {
         return Group {
             if playlists.isEmpty { empty(query.isEmpty ? "No playlists yet" : "No matching playlists", detail: "Your saved SyncBeats playlists and Apple Music imports appear here.") }
             else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 260), spacing: 20)], alignment: .leading, spacing: 24) {
+                itemsLayout {
                     ForEach(playlists) { playlist in
                         Button { detailID = playlist.id; Task { await library.openDetail(playlist) } } label: {
-                            VStack(alignment: .leading, spacing: 12) {
-                                playlistArtwork(playlist).aspectRatio(1, contentMode: .fit)
-                                Text(playlist.name).font(.system(size: 14, weight: .medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                                Text("\(playlist.displayedCount) songs · \(sourceName(playlist.source))").font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(1)
-                            }
+                            NativeLibraryCollectionLabel(title: playlist.name,
+                                subtitle: "\(playlist.displayedCount) songs · \(sourceName(playlist.source))",
+                                layout: layout, palette: palette) { playlistArtwork(playlist) }
                         }.accessibilityLabel("Open playlist " + playlist.name)
                     }
                 }
@@ -313,16 +408,19 @@ struct NativeLibraryPage: View {
             empty(query.isEmpty ? (artists ? "No artists yet" : "No album information yet") : "No matches",
                   detail: artists ? "Artists appear when songs are saved to your collection." : "Albums appear when your saved songs have album information. Apple Music imports include it.")
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 260), spacing: 20)], alignment: .leading, spacing: 24) {
+            itemsLayout {
                 ForEach(visible) { group in
                     Button { detailID = group.id; Task { await library.openDetail(group) } } label: {
-                        VStack(alignment: .leading, spacing: 12) {
+                        NativeLibraryCollectionLabel(title: group.name,
+                            subtitle: artists ? group.subtitle : group.subtitle + " · \(group.total ?? group.songs.count) songs",
+                            layout: layout, palette: palette) {
                             if artists, let cover = group.artworkSong, cover.discoveryRequest.album.suppliedURL != nil {
-                                DiscoveryArtwork(source: .song(cover.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit)
-                            } else if artists { DiscoveryArtwork(source: .artist(group.name, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit) }
-                            else { DiscoveryArtwork(source: .album(name: group.name, artist: group.subtitle, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10).aspectRatio(1, contentMode: .fit) }
-                            Text(group.name).font(.system(size: 14, weight: .medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                            Text(artists ? group.subtitle : group.subtitle + " · \(group.songs.count) songs").font(.system(size: 12)).foregroundStyle(palette.secondary).lineLimit(2)
+                                DiscoveryArtwork(source: .song(cover.discoveryRequest), palette: palette, radius: 10)
+                            } else if artists {
+                                DiscoveryArtwork(source: .artist(group.name, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10)
+                            } else {
+                                DiscoveryArtwork(source: .album(name: group.name, artist: group.subtitle, preview: group.artworkSong?.discoveryRequest), palette: palette, radius: 10)
+                            }
                         }
                     }.accessibilityLabel("Open " + (artists ? "artist " : "album ") + group.name)
                 }
@@ -337,37 +435,20 @@ struct NativeLibraryPage: View {
         }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(palette.panel, in: RoundedRectangle(cornerRadius: 10))
     }
     private func choose(_ song: NativeLibrarySong, play: Bool) {
-        guard room.canControl else { return }
+        let context = playbackSongs
+        guard room.canControl, !room.preparingLibraryPlayback, !library.matching.contains(song.id) else { return }
         Task {
-            if let result = song.result { if play { await room.play(result) } else { await room.add(result) } }
-            else {
-                do { let candidate = try await library.prepareMatch(song); playMatchedSong = play; matchCandidate = candidate }
-                catch { if !(error is CancellationError) { library.error = error.localizedDescription } }
+            do {
+                let candidate = try await library.resolveForPlayback(song)
+                guard let result = candidate.result else { throw AuthFailure.invalidResponse }
+                if play {
+                    await room.playLibrary(candidate, in: context,
+                                           resolve: { try await library.resolveForPlayback($0) })
+                } else { await room.add(result) }
+            } catch {
+                if !(error is CancellationError) { library.error = error.localizedDescription }
             }
         }
-    }
-    private func roomVersion(_ candidate: NativeLibrarySong) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Choose a room version").font(.system(size: 24, weight: .medium))
-            Text(candidate.title).font(.system(size: 16, weight: .medium))
-            Text(candidate.artist).font(.system(size: 13)).foregroundStyle(palette.secondary)
-            Text("Your Apple Music audio stays in Music. SyncBeats found a YouTube version for the shared room; check it before using it.")
-                .font(.system(size: 13)).foregroundStyle(palette.secondary).fixedSize(horizontal: false, vertical: true)
-            if let url = candidate.result.flatMap({ URL(string: $0.url) }) { Link("Open the proposed version", destination: url).font(.system(size: 13)).foregroundStyle(palette.gold) }
-            HStack {
-                Button("Cancel") { matchCandidate = nil }
-                Spacer(minLength: 8)
-                Button(playMatchedSong ? "Use & play" : "Use & queue") {
-                    Task {
-                        do {
-                            try await library.acceptMatch(candidate)
-                            matchCandidate = nil
-                            if let result = candidate.result { if playMatchedSong { await room.play(result) } else { await room.add(result) } }
-                        } catch { library.error = error.localizedDescription; matchCandidate = nil }
-                    }
-                }.foregroundStyle(palette.gold)
-            }.font(.system(size: 13))
-        }.padding(24).frame(width: 360).foregroundStyle(palette.text).background(palette.background).buttonStyle(NativeButtonStyle(palette: palette))
     }
     private func sourceName(_ source: String) -> String { source == "APPLE_MUSIC" ? "Apple Music" : source.hasPrefix("SPOTIFY") ? "Spotify" : "SyncBeats" }
 }

@@ -22,6 +22,9 @@ struct RoomMiniPlayer: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.contentShape(Rectangle())
                 }.buttonStyle(NativeButtonStyle(palette: palette))
+                    .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+                        if PlayerGestures.expands(translation: value.translation, predicted: value.predictedEndTranslation) { onExpand() }
+                    })
                     #if os(macOS)
                     .accessibilityLabel("Open full-screen player")
                     #else
@@ -42,8 +45,8 @@ struct RoomMiniPlayer: View {
                 #endif
             }
             RoomProgress(room: room, palette: palette)
-        }.padding(.horizontal, floating ? 14 : 24).padding(.vertical, 12).background(palette.panel).foregroundStyle(palette.text)
-            .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
+        }.padding(.horizontal, floating ? 16 : 24).padding(.vertical, 12)
+            .background(floating ? palette.panel : palette.background).foregroundStyle(palette.text)
         #endif
     }
 }
@@ -83,6 +86,10 @@ struct RoomExpandedPlayer: View {
                         .buttonStyle(NativeButtonStyle(palette: palette)).accessibilityLabel("Float player above other windows")
                     #endif
                 }.padding(.horizontal, 24).padding(.vertical, 16)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+                        if PlayerGestures.dismisses(translation: value.translation, predicted: value.predictedEndTranslation) { onClose() }
+                    })
                 Rectangle().fill(palette.line).frame(height: 1)
                 Spacer(minLength: 0)
                 HStack(spacing: 24) {
@@ -139,13 +146,9 @@ struct RoomQueueView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             Rectangle().fill(palette.text.opacity(0.1)).frame(height: 1)
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(room.visibleQueue) { track in RoomQueueRow(track: track, room: room, palette: palette) }
-                }.padding(.vertical, 2)
-            }
+            SharedRoomQueue(room: room, palette: palette)
             .overlay {
-                if room.visibleQueue.isEmpty {
+                if room.visibleQueue.isEmpty && room.recentRoomTracks.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "music.note.list").font(.system(size: 26, weight: .light)).accessibilityHidden(true)
                         Text("Your queue starts here").font(.system(size: 14, weight: .medium))
@@ -214,68 +217,6 @@ private struct RoomQueueGlass: ViewModifier {
     }
 }
 
-private struct RoomQueueRow: View {
-    let track: RoomTrack
-    @Bindable var room: RoomSession
-    let palette: NativePalette
-    @State private var dropTarget = false
-    private var current: Bool { track.id == room.currentTrack?.id }
-    private var index: Int { room.queue.firstIndex(where: { $0.id == track.id }) ?? 0 }
-    private var firstUpcoming: Int { room.currentTrack.flatMap { item in room.queue.firstIndex(where: { $0.id == item.id }) }.map { $0 + 1 } ?? 0 }
-    var body: some View {
-        Group {
-            if current { row }
-            else { row.draggable(track.id) }
-        }.dropDestination(for: String.self) { ids, _ in
-            guard !current, !room.isReordering, let id = ids.first,
-                  let item = room.queue.first(where: { $0.id == id }), item.id != track.id else { return false }
-            Task { await room.reorder(item, to: index) }
-            return true
-        } isTargeted: { dropTarget = $0 }
-            .onKeyPress(keys: [.upArrow], phases: .down) { event in
-                guard event.modifiers.contains(.option), !current else { return .ignored }
-                Task { await room.move(track, by: -1) }; return .handled
-            }
-            .onKeyPress(keys: [.downArrow], phases: .down) { event in
-                guard event.modifiers.contains(.option), !current else { return .ignored }
-                Task { await room.move(track, by: 1) }; return .handled
-            }
-    }
-    private var row: some View {
-        HStack(spacing: 8) {
-            Button { room.jump(to: track) } label: {
-                HStack(spacing: 12) {
-                    RoomArtwork(request: track.artworkRequest, palette: palette).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.title).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                        Text(track.artistLabel).font(.system(size: 11)).foregroundStyle(palette.secondary).lineLimit(1)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.contentShape(Rectangle())
-            }.buttonStyle(RoomQueueButtonStyle(light: palette.light)).disabled(!room.canControl).accessibilityLabel("Play \(track.title) in the room")
-                .accessibilityValue(current ? (room.isPlaying ? "Now playing" : "Current track, paused") : "Upcoming track")
-            Text(room.duration(for: track).map(playbackTime) ?? "—:—").font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(palette.quiet).frame(width: 34, alignment: .trailing)
-            if current {
-                Image(systemName: room.isPlaying ? "waveform" : "pause.fill").font(.system(size: 12)).foregroundStyle(palette.gold)
-                    .frame(width: 24).accessibilityLabel(room.isPlaying ? "Now playing" : "Paused")
-            } else {
-                HStack(spacing: 0) {
-                    moveButton("Move \(track.title) earlier", icon: "chevron.up", delta: -1, disabled: index <= firstUpcoming)
-                    moveButton("Move \(track.title) later", icon: "chevron.down", delta: 1, disabled: index >= room.queue.count - 1)
-                    Button { room.remove(track) } label: { Image(systemName: "xmark").font(.system(size: 10)).frame(width: 22, height: 28) }
-                        .buttonStyle(RoomQueueButtonStyle(light: palette.light)).disabled(!room.canControl || room.isReordering).accessibilityLabel("Remove \(track.title) from queue")
-                }.foregroundStyle(palette.quiet)
-            }
-        }.padding(10)
-            .background(dropTarget ? palette.gold.opacity(0.14) : current ? palette.text.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 12))
-            .overlay { if current { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.text.opacity(0.12), lineWidth: 1) } }
-            .overlay(alignment: .top) { if dropTarget && !current { Rectangle().fill(palette.gold).frame(height: 2) } }
-    }
-    private func moveButton(_ label: String, icon: String, delta: Int, disabled: Bool) -> some View {
-        Button { Task { await room.move(track, by: delta) } } label: { Image(systemName: icon).font(.system(size: 10)).frame(width: 22, height: 28) }
-            .buttonStyle(RoomQueueButtonStyle(light: palette.light)).disabled(disabled || !room.canControl || room.isReordering).accessibilityLabel(label)
-    }
-}
 
 private struct RoomQueueButtonStyle: ButtonStyle {
     let light: Bool

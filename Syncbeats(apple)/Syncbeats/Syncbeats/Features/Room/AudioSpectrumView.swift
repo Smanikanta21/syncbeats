@@ -4,9 +4,10 @@ struct AudioSpectrumView: View {
     let audio: NativeRoomAudio
     var compact = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var motion = SpectrumMotion()
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : 1.0 / 60, paused: !audio.rendering)) { timeline in
+        TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : 1.0 / 60, paused: !audio.rendering || scenePhase == .background)) { timeline in
             let bands = compact ? SpectrumMotion.compactBands(motion.bands) : motion.bands
             Canvas { context, size in
                 let step = size.width / CGFloat(max(1, bands.count))

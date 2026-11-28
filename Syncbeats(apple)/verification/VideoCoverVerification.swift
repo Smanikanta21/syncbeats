@@ -15,11 +15,11 @@ struct VideoCoverVerification {
         let live = CommandLine.arguments.contains("--live")
         let videoID = "4NRXx6U8ABQ"
         precondition(VideoCoverDocument.html(videoID: "';alert(1)//", position: 0) == nil)
-        precondition(!VideoCoverDocument.canShow(videoID: videoID, playing: false, active: true, reducedMotion: false, size: 340))
+        precondition(VideoCoverDocument.canShow(videoID: videoID, playing: false, active: true, reducedMotion: false, size: 340))
         precondition(!VideoCoverDocument.canShow(videoID: videoID, playing: true, active: false, reducedMotion: false, size: 340))
         precondition(!VideoCoverDocument.canShow(videoID: videoID, playing: true, active: true, reducedMotion: true, size: 340))
-        precondition(!VideoCoverDocument.canShow(videoID: videoID, playing: true, active: true, reducedMotion: false, size: 180))
-        print("PASS: Video is ineligible while paused, inactive, reduced-motion or below the embed minimum")
+        precondition(!VideoCoverDocument.canShow(videoID: videoID, playing: true, active: true, reducedMotion: false, size: 140))
+        print("PASS: Paused video stays mounted; inactive, reduced-motion and tiny covers fall back")
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let probe = VideoCoverProbe()
@@ -40,7 +40,8 @@ struct VideoCoverVerification {
             <script>window.calls=[];window.YT={Player:class{
               constructor(id,options){this.options=options;this.time=0;this.state=1;queueMicrotask(()=>options.events.onReady({target:this}))}
               mute(){calls.push('mute')} seekTo(time){this.time=time;calls.push('seek:'+time)}
-              playVideo(){calls.push('play');this.options.events.onStateChange({data:1,target:this})}
+              playVideo(){this.state=1;calls.push('play');this.options.events.onStateChange({data:1,target:this})}
+              pauseVideo(){this.state=2;calls.push('pause');this.options.events.onStateChange({data:2,target:this})}
               getCurrentTime(){return this.time} getPlayerState(){return this.state}
             }};onYouTubeIframeAPIReady();</script>
             """
@@ -62,6 +63,12 @@ struct VideoCoverVerification {
             _ = try await view.evaluateJavaScript("syncCover(60); true")
             let corrected = try await view.evaluateJavaScript("window.calls") as! [String]
             precondition(corrected.suffix(2) == ["mute", "seek:60"])
+            _ = try await view.evaluateJavaScript("syncCover(80,false); true")
+            let paused = try await view.evaluateJavaScript("({state:player.state,time:player.time})") as! [String: Any]
+            precondition(paused["state"] as? Int == 2 && paused["time"] as? Int == 80)
+            _ = try await view.evaluateJavaScript("syncCover(82,true); true")
+            let resumed = try await view.evaluateJavaScript("player.state") as? Int
+            precondition(resumed == 1)
             _ = try await view.evaluateJavaScript("player.options.events.onError({data:150}); true")
             for _ in 0..<20 {
                 if probe.states.last == "unavailable" { break }

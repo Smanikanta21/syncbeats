@@ -19,5 +19,12 @@ import UIKit
         "macbook.gen2"
         #endif
     }
+    static var type: String {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad ? "tablet" : "mobile"
+        #else
+        "laptop"
+        #endif
+    }
     static var thisDevice: String { "this \(name)" }
 }

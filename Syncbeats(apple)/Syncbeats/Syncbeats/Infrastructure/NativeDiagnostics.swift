@@ -4,6 +4,11 @@ import OSLog
 /// Log operation metadata only: never headers, payloads, query strings or media URLs.
 enum NativeDiagnostics {
     private static let logger = Logger(subsystem: "in.syncbeats.native", category: "Lifecycle")
+    private static let fileQueue = DispatchQueue(label: "in.syncbeats.diagnostics")
+    static var logURL: URL {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Logs/SyncBeats/playback.log")
+    }
 
     static func info(_ category: String, _ message: String) {
         write(category, message, failed: false)
@@ -17,6 +22,22 @@ enum NativeDiagnostics {
         let line = "[SyncBeats][\(category)] \(message)"
         if failed { logger.error("\(line, privacy: .public)") }
         else { logger.notice("\(line, privacy: .public)") }
+        fileQueue.async {
+            let url = logURL
+            do {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 2_000_000 {
+                    let previous = url.deletingLastPathComponent().appendingPathComponent("playback.previous.log")
+                    try? FileManager.default.removeItem(at: previous)
+                    try FileManager.default.moveItem(at: url, to: previous)
+                }
+                if !FileManager.default.fileExists(atPath: url.path) { FileManager.default.createFile(atPath: url.path, contents: nil) }
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data((ISO8601DateFormatter().string(from: Date()) + " " + line + "\n").utf8))
+            } catch { logger.error("Could not write diagnostics file") }
+        }
         #if DEBUG
         // stderr also reaches Xcode when unified logging is hidden or filtered.
         FileHandle.standardError.write(Data((line + "\n").utf8))
@@ -43,6 +64,18 @@ enum NativeDiagnostics {
             failure("HTTP", operation, error: error)
             throw error
         }
+    }
+
+    static func download(for request: URLRequest, using session: URLSession, operation: String) async throws -> (URL, URLResponse) {
+        let started = ProcessInfo.processInfo.systemUptime
+        info("HTTP", "\(operation) started")
+        do {
+            let result = try await session.download(for: request)
+            let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+            let status = (result.1 as? HTTPURLResponse)?.statusCode ?? 0
+            write("HTTP", "\(operation) → \(status) (\(elapsed) ms)", failed: !(200..<300).contains(status))
+            return result
+        } catch { failure("HTTP", operation, error: error); throw error }
     }
 
     /// Keep only known API route segments; IDs and unrecognized segments are redacted.

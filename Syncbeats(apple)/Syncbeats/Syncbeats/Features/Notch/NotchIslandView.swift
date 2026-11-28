@@ -49,6 +49,8 @@ struct NotchIslandView: View {
         .clipShape(shape)
         .contentShape(shape)
         .foregroundStyle(palette.text)
+        // This AppKit panel stays onscreen while another app has focus and has no SwiftUI scene of its own.
+        .environment(\.scenePhase, controller.panelVisible ? .active : .background)
         .preferredColorScheme(.dark)
         .shadow(color: .black.opacity(0.16), radius: 5, x: 0, y: 3)
         .scaleEffect(scale, anchor: .top)
@@ -85,9 +87,10 @@ struct NotchIslandView: View {
             }.buttonStyle(.plain).accessibilityLabel("Open notch player")
             Button(action: controller.togglePlayback) {
                 ZStack {
-                    AudioSpectrumView(audio: room.audio, compact: true)
-                        .frame(width: 24, height: 18)
-                        .opacity(room.isPlaying && !controller.pointerInside ? 1 : 0)
+                    if room.isPlaying && !controller.pointerInside && compactReveal > 0 {
+                        AudioSpectrumView(audio: room.audio, compact: true)
+                            .frame(width: 24, height: 18)
+                    }
                     Image(systemName: room.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .opacity(!room.isPlaying || controller.pointerInside ? 1 : 0)
@@ -127,7 +130,9 @@ struct NotchIslandView: View {
                 HStack {
                     Label("Equalizer", systemImage: "slider.horizontal.3").font(.system(size: 11))
                     Spacer()
-                    AudioSpectrumView(audio: room.audio).frame(width: 100, height: 24)
+                    Color.clear.frame(width: 100, height: 24).overlay {
+                        if reveal > 0 { AudioSpectrumView(audio: room.audio) }
+                    }
                 }
             }.buttonStyle(.plain).accessibilityLabel("Open equalizer for this Mac")
                 .popover(isPresented: $showsEqualizer) { RoomEqualizerView(audio: room.audio) }

@@ -35,7 +35,7 @@ struct SessionRecoveryView: View {
                     NativeLoader(title: "Restoring your session", detail: "Returning to your room", palette: palette)
                 }
                 else {
-                    BrandMark().frame(width: 64, height: 64)
+                    BrandMark(palette: palette).frame(width: 64, height: 64)
                     Text("Reconnect to SyncBeats").font(.system(size: 28, weight: .medium))
                     Text("We couldn't restore your sign-in. Try again, or choose another account.")
                         .font(.system(size: 12)).foregroundStyle(palette.secondary).multilineTextAlignment(.center)

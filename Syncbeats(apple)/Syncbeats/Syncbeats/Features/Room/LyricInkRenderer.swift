@@ -4,6 +4,7 @@ import SwiftUI
 struct LyricInkRenderer: TextRenderer {
     var progress: Double
     var active: Bool
+    var inactiveOpacity: Double = 0.45
     var animatableData: Double {
         get { progress }
         set { progress = newValue }
@@ -14,7 +15,7 @@ struct LyricInkRenderer: TextRenderer {
         for (index, slice) in slices.enumerated() {
             var ink = context
             let amount = min(1, max(0, filled - Double(index)))
-            ink.opacity = active ? 0.44 + 0.56 * amount : 0.3
+            ink.opacity = active ? inactiveOpacity + (1 - inactiveOpacity) * amount : inactiveOpacity
             ink.draw(slice)
         }
     }

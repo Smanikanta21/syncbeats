@@ -61,10 +61,12 @@ nonisolated enum CoverPalette {
 struct RoomAlbumAmbient: View {
     @Bindable var room: RoomSession
     var light = false
+    var videoColors: [CoverColor]? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var colors = CoverPalette.fallback
     var body: some View {
-        AlbumAmbientBackground(colors: colors, meter: room.audio.meter, playing: room.audio.rendering, light: light)
+        AlbumAmbientBackground(colors: videoColors ?? colors, meter: room.audio.meter, playing: room.audio.rendering && scenePhase != .background, light: light)
             .task(id: room.currentTrack?.artworkRequest) {
                 guard let request = room.currentTrack?.artworkRequest,
                       let data = await AlbumArtworkResolver.shared.imageData(for: request) else { return }
@@ -142,96 +144,144 @@ struct AlbumAmbientBackground: View {
 }
 
 #if os(macOS)
-/// Cover the physical display, including the menu-bar strip on a notched Mac.
-/// AppKit normally constrains borderless windows to the desktop's visible frame.
-@MainActor final class FullScreenPlayerWindow: NSWindow {
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 @MainActor final class FullScreenPlayerController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
-    private var savedPresentationOptions: NSApplication.PresentationOptions?
-    private var observers: [NSObjectProtocol] = []
+    private weak var sourceWindow: NSWindow?
+    private var pendingPlayer: (room: RoomSession, light: Bool)?
+    private var sourceFullScreenTask: Task<Void, Never>?
+    private var transitioning = false
+    private var closeRequested = false
 
-    func show(room: RoomSession) {
+    func show(room: RoomSession, light: Bool) {
         if let window { window.makeKeyAndOrderFront(nil); return }
-        let screen = NSApp.keyWindow?.screen ?? NSScreen.main
-        let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
-        let window = FullScreenPlayerWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.title = "SyncBeats full-screen player"
-        window.identifier = NSUserInterfaceItemIdentifier("syncbeats.full-screen-player")
-        window.isReleasedWhenClosed = false
-        window.backgroundColor = .black
-        window.hasShadow = false
-        window.collectionBehavior = [.managed, .fullScreenAuxiliary]
-        window.delegate = self
-        let host = NSHostingView(rootView: FullScreenRoomPlayer(room: room, onClose: { [weak self] in self?.close() },
-                                                              cameraTopInset: screen?.safeAreaInsets.top ?? 0)
-            .ignoresSafeArea(.container, edges: .all))
-        window.contentView = host
-        window.setFrame(frame, display: false)
-        self.window = window
-        observePresentation()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        applyPresentation()
-    }
-
-    private func observePresentation() {
-        let center = NotificationCenter.default
-        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
-                     NSWindow.didBecomeKeyNotification, NSApplication.didChangeScreenParametersNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    if notification.name == NSApplication.didChangeScreenParametersNotification,
-                       let window = self.window, let screen = window.screen ?? NSScreen.main {
-                        window.setFrame(screen.frame, display: true)
-                    }
-                    self.applyPresentation()
-                }
-            })
-        }
-    }
-
-    private func applyPresentation() {
-        guard let window, window.isVisible, NSApp.isActive,
-              NSApp.keyWindow === window || NSApp.keyWindow is IslandPanel else {
-            restorePresentation()
+        guard pendingPlayer == nil else { return }
+        let sourceWindow = NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
+        self.sourceWindow = sourceWindow
+        guard let sourceWindow, !sourceWindow.styleMask.contains(.fullScreen) else {
+            openPlayer(room: room, light: light)
             return
         }
-        if savedPresentationOptions == nil { savedPresentationOptions = NSApp.presentationOptions }
-        NSApp.presentationOptions = Self.playerPresentationOptions(from: NSApp.presentationOptions)
+
+        pendingPlayer = (room, light)
+        NotificationCenter.default.addObserver(self, selector: #selector(sourceDidEnterFullScreen(_:)),
+                                               name: NSWindow.didEnterFullScreenNotification, object: sourceWindow)
+        // AppKit only reports a failed entry to the window's delegate, which SwiftUI owns.
+        sourceFullScreenTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.cancelPendingOpen()
+        }
+        NSApp.activate()
+        sourceWindow.makeKeyAndOrderFront(nil)
+        sourceWindow.toggleFullScreen(nil)
     }
 
-    static func playerPresentationOptions(from baseline: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
-        var options = baseline
-        options.subtract([.autoHideMenuBar, .autoHideDock])
-        options.formUnion([.hideMenuBar, .hideDock])
+    @objc private func sourceDidEnterFullScreen(_ notification: Notification) {
+        sourceFullScreenTask?.cancel()
+        // Start the player's Space transition after AppKit finishes handling the main window's.
+        sourceFullScreenTask = Task { [weak self] in
+            guard !Task.isCancelled, let self, let pendingPlayer else { return }
+            cancelPendingOpen()
+            openPlayer(room: pendingPlayer.room, light: pendingPlayer.light)
+        }
+    }
+
+    private func cancelPendingOpen() {
+        guard pendingPlayer != nil else { return }
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didEnterFullScreenNotification, object: sourceWindow)
+        sourceFullScreenTask?.cancel()
+        sourceFullScreenTask = nil
+        pendingPlayer = nil
+    }
+
+    private func openPlayer(room: RoomSession, light: Bool) {
+        let screen = sourceWindow?.screen ?? NSScreen.main
+        let frame = sourceWindow?.frame ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
+        // A primary, resizable window enters its own macOS full-screen Space.
+        // A borderless auxiliary window only covers the desktop.
+        let window = NSWindow(contentRect: frame,
+                              styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false, screen: screen)
+        window.title = "SyncBeats full-screen player"
+        window.identifier = NSUserInterfaceItemIdentifier("syncbeats.full-screen-player")
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.toolbar = nil
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(button)?.isHidden = true
+        }
+        window.isReleasedWhenClosed = false
+        window.isOpaque = true
+        window.backgroundColor = .black
+        window.hasShadow = false
+        window.tabbingMode = .disallowed
+        window.collectionBehavior = [.managed, .fullScreenPrimary]
+        window.delegate = self
+        window.contentView = NSHostingView(rootView: FullScreenRoomPlayer(room: room, onClose: { [weak self] in self?.close() })
+            .preferredColorScheme(light ? .light : .dark))
+        self.window = window
+        closeRequested = false
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        // AppKit may already put a newly shown window in full screen.
+        guard !transitioning, !window.styleMask.contains(.fullScreen) else { return }
+        transitioning = true
+        window.toggleFullScreen(nil)
+    }
+
+    func window(_ window: NSWindow,
+                willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
+        var options = proposedOptions
+        options.subtract([.hideMenuBar, .autoHideDock])
+        options.formUnion([.fullScreen, .hideDock, .autoHideToolbar])
         return options
     }
 
-    private func restorePresentation() {
-        if let savedPresentationOptions {
-            NSApp.presentationOptions = savedPresentationOptions
-            self.savedPresentationOptions = nil
-        }
+    func windowWillEnterFullScreen(_ notification: Notification) { transitioning = true }
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        transitioning = false
+        if closeRequested { close() }
+    }
+    func windowWillExitFullScreen(_ notification: Notification) { transitioning = true }
+    func windowDidExitFullScreen(_ notification: Notification) {
+        // Also return to the workspace when macOS's Exit Full Screen command is used.
+        transitioning = false
+        finishClosing()
+    }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        transitioning = false
+        finishClosing()
+    }
+    func windowDidFailToExitFullScreen(_ window: NSWindow) {
+        transitioning = false
+        closeRequested = false
     }
 
     func close() {
-        window?.orderOut(nil)
-        window?.close()
-        finishClosing()
+        cancelPendingOpen()
+        guard let window else { return }
+        closeRequested = true
+        // Let AppKit finish its animation before requesting the opposite transition.
+        guard !transitioning else { return }
+        if window.styleMask.contains(.fullScreen) {
+            transitioning = true
+            window.toggleFullScreen(nil)
+        } else {
+            finishClosing()
+        }
     }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { close(); return false }
     func windowWillClose(_ notification: Notification) { finishClosing() }
     private func finishClosing() {
-        window = nil
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers.removeAll()
-        restorePresentation()
+        guard let window else { return }
+        self.window = nil
+        transitioning = false
+        closeRequested = false
+        window.delegate = nil
+        window.orderOut(nil)
+        window.close()
+        if let sourceWindow, sourceWindow.isVisible { sourceWindow.makeKeyAndOrderFront(nil) }
+        sourceWindow = nil
     }
 }
-
 #endif

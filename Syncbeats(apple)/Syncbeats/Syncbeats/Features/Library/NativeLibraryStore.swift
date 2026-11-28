@@ -28,12 +28,12 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
 }
 
 @MainActor @Observable final class NativeLibraryStore {
-    private(set) var remote: [NativeLibraryPlaylist] = []
-    private(set) var imported = NativeImportedLibrary()
-    private var acknowledgedSaves: [NativeLibrarySong] = []
+    private(set) var remote: [NativeLibraryPlaylist] = [] { didSet { invalidateDerived() } }
+    private(set) var imported = NativeImportedLibrary() { didSet { invalidateDerived() } }
+    private var acknowledgedSaves: [NativeLibrarySong] = [] { didSet { invalidateDerived() } }
     private(set) var loading = false
     private(set) var artworkRefreshID = UUID()
-    private(set) var requiresServerUpdate = false
+    private(set) var requiresServerUpdate = false { didSet { invalidateDerived() } }
     private(set) var saving: Set<String> = []
     private(set) var matching: Set<String> = []
     private(set) var queuing = false
@@ -42,21 +42,39 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
     private(set) var loadingMore = false
     private(set) var lastUpdated: Date?
     private(set) var detailSongs: [NativeLibrarySong]?
-    private var remoteSongs: [NativeLibrarySong] = []
-    private var remoteAlbums: [NativeLibraryGroup] = []
-    private var remoteArtists: [NativeLibraryGroup] = []
-    private var remoteSavedIDs: Set<String> = []
+    private(set) var catalogTotal: Int?
+    private var remoteSongs: [NativeLibrarySong] = [] { didSet { invalidateDerived() } }
+    private var remoteAlbums: [NativeLibraryGroup] = [] { didSet { invalidateDerived() } }
+    private var remoteArtists: [NativeLibraryGroup] = [] { didSet { invalidateDerived() } }
+    private var remoteSavedIDs: Set<String> = [] { didSet { invalidateDerived() } }
+    private var contentRevision: UInt = 0
+    @ObservationIgnored private var cachedSongs: [NativeLibrarySong]?
+    @ObservationIgnored private var cachedLocalSongs: [NativeLibrarySong]?
+    @ObservationIgnored private var cachedAlbums: [NativeLibraryGroup]?
+    @ObservationIgnored private var cachedArtists: [NativeLibraryGroup]?
+    @ObservationIgnored private var cachedSavedIDs: Set<String>?
+    private func invalidateDerived() {
+        contentRevision &+= 1
+        cachedSongs = nil; cachedLocalSongs = nil; cachedAlbums = nil; cachedArtists = nil; cachedSavedIDs = nil
+    }
     private var indexCursor: String?
     private var catalogCursor: String?
     private var detailCursor: String?
+    var paginationCursor: String? { detailCursor ?? catalogCursor ?? indexCursor }
     private var section: NativeLibrarySection = .home
     private var query = ""
     private(set) var detailPlaylist: NativeLibraryPlaylist?
     private(set) var detailGroup: NativeLibraryGroup?
     private var revision = UUID()
     var managementBusy: Bool { editing || loading || loadingMore || writing || !saving.isEmpty }
-    var savedYoutubeIDs: Set<String> { remoteSavedIDs.union((requiresServerUpdate ? remoteSongs.compactMap(\.youtubeID) : [])).union((imported.songs + imported.playlists.flatMap(\.songs) + acknowledgedSaves).compactMap(\.youtubeID)) }
+    var savedYoutubeIDs: Set<String> {
+        _ = contentRevision
+        if let cachedSavedIDs { return cachedSavedIDs }
+        let value = remoteSavedIDs.union((requiresServerUpdate ? remoteSongs.compactMap(\.youtubeID) : [])).union((imported.songs + imported.playlists.flatMap(\.songs) + acknowledgedSaves).compactMap(\.youtubeID))
+        cachedSavedIDs = value; return value
+    }
     var hasMorePlaylists: Bool { indexCursor != nil }
+    var playlistPaginationCursor: String? { indexCursor }
     var hasMore: Bool { detailPlaylist != nil || detailGroup != nil ? detailCursor != nil : section == .playlists || section == .home ? indexCursor != nil : catalogCursor != nil }
     var error: String?
     var message: String?
@@ -72,10 +90,30 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         self.disk = disk; self.factory = factory
     }
     var playlists: [NativeLibraryPlaylist] { remote + imported.playlists }
-    var songs: [NativeLibrarySong] { NativeLibraryCollection.songs(playlists: [], imported: remoteSongs + imported.songs + imported.playlists.flatMap(\.songs) + acknowledgedSaves) }
-    private var localSongs: [NativeLibrarySong] { NativeLibraryCollection.songs(playlists: imported.playlists, imported: imported.songs + acknowledgedSaves) }
-    var albums: [NativeLibraryGroup] { mergedGroups(remoteAlbums, local: NativeLibraryCollection.albums(localSongs)) }
-    var artists: [NativeLibraryGroup] { mergedGroups(remoteArtists, local: NativeLibraryCollection.artists(localSongs)) }
+    var songs: [NativeLibrarySong] {
+        _ = contentRevision
+        if let cachedSongs { return cachedSongs }
+        let value = NativeLibraryCollection.songs(playlists: [], imported: remoteSongs + imported.songs + imported.playlists.flatMap(\.songs) + acknowledgedSaves)
+        cachedSongs = value; return value
+    }
+    private var localSongs: [NativeLibrarySong] {
+        _ = contentRevision
+        if let cachedLocalSongs { return cachedLocalSongs }
+        let value = NativeLibraryCollection.songs(playlists: imported.playlists, imported: imported.songs + acknowledgedSaves)
+        cachedLocalSongs = value; return value
+    }
+    var albums: [NativeLibraryGroup] {
+        _ = contentRevision
+        if let cachedAlbums { return cachedAlbums }
+        let value = mergedGroups(remoteAlbums, local: NativeLibraryCollection.albums(localSongs))
+        cachedAlbums = value; return value
+    }
+    var artists: [NativeLibraryGroup] {
+        _ = contentRevision
+        if let cachedArtists { return cachedArtists }
+        let value = mergedGroups(remoteArtists, local: NativeLibraryCollection.artists(localSongs))
+        cachedArtists = value; return value
+    }
     private func mergedGroups(_ remote: [NativeLibraryGroup], local: [NativeLibraryGroup]) -> [NativeLibraryGroup] {
         var groups = Dictionary(local.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for group in remote {
@@ -96,7 +134,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
             credentials = incoming; return
         }
         generation = UUID(); credentials = incoming
-        revision = UUID(); requiresServerUpdate = false; remoteSongs = []; remoteAlbums = []; remoteArtists = []; remoteSavedIDs = []; detailSongs = nil; detailPlaylist = nil; detailGroup = nil; lastUpdated = nil; loadingMore = false; indexCursor = nil; catalogCursor = nil; detailCursor = nil
+        revision = UUID(); requiresServerUpdate = false; remoteSongs = []; remoteAlbums = []; remoteArtists = []; remoteSavedIDs = []; detailSongs = nil; detailPlaylist = nil; detailGroup = nil; lastUpdated = nil; loadingMore = false; indexCursor = nil; catalogCursor = nil; detailCursor = nil; catalogTotal = nil
         remote = []; imported = .init(); acknowledgedSaves = []; error = nil; message = nil; loading = false; saving = []; matching = []; queuing = false; editing = false; importProgress = nil; diskReadFailed = false; refreshAgain = false; writing = false
         guard let key = accountKey else { return }
         let active = generation, disk = disk
@@ -111,8 +149,9 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         }
         await refresh()
     }
-    func refresh() async {
+    func refresh(ifOlderThan age: TimeInterval = 0) async {
         guard let credentials else { return }
+        if age > 0, let lastUpdated, Date().timeIntervalSince(lastUpdated) < age { return }
         if loading || loadingMore || editing { refreshAgain = true; return }
         let active = generation, requested = revision, currentSection = section, currentQuery = query
         loading = true
@@ -122,11 +161,6 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
                 if refreshAgain { refreshAgain = false; Task { await refresh() } }
             }
         }
-        await AlbumArtworkResolver.shared.retryMissing()
-        await DiscoverySongArtworkResolver.shared.retryMissing()
-        await ArtistArtworkResolver.shared.retryMissing()
-        guard generation == active, revision == requested, !Task.isCancelled else { return }
-        artworkRefreshID = UUID()
         do {
             let api = factory(credentials)
             let index = try await api.indexPage(cursor: nil)
@@ -170,6 +204,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
     }
     private func apply(_ page: NativeLibraryCatalogPage, section: NativeLibrarySection, append: Bool) {
         catalogCursor = page.nextCursor
+        catalogTotal = requiresServerUpdate ? nil : page.total
         switch section {
         case .songs: remoteSongs = append ? NativeLibraryCollection.songs(playlists: [], imported: remoteSongs + page.songs) : page.songs
         case .albums: remoteAlbums = append ? remoteAlbums + page.groups : page.groups
@@ -178,8 +213,8 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         }
     }
     func open(_ target: NativeLibrarySection, query incomingQuery: String = "") async {
-        guard target != section || incomingQuery != query || lastUpdated == nil else { await invalidate(); return }
-        section = target; query = incomingQuery; revision = UUID(); detailPlaylist = nil; detailGroup = nil; detailSongs = nil; detailCursor = nil
+        guard target != section || incomingQuery != query || lastUpdated == nil else { await refresh(ifOlderThan: 120); return }
+        section = target; query = incomingQuery; revision = UUID(); detailPlaylist = nil; detailGroup = nil; detailSongs = nil; detailCursor = nil; catalogTotal = nil
         await refresh()
     }
     func openDetail(_ playlist: NativeLibraryPlaylist) async {
@@ -199,6 +234,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         guard let credentials, hasMore, !managementBusy else { return }
         let active = generation, requested = revision
         loadingMore = true
+        error = nil
         defer {
             if generation == active { loadingMore = false; if refreshAgain { refreshAgain = false; Task { await refresh() } } }
         }
@@ -228,6 +264,7 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
         guard let credentials, let cursor = indexCursor, !managementBusy else { return }
         let active = generation, requested = revision
         loadingMore = true
+        error = nil
         defer {
             if generation == active {
                 loadingMore = false
@@ -440,6 +477,13 @@ nonisolated struct NativeLibraryDisk: NativeLibraryPersisting {
                 var copy = playlist; copy.songs = copy.songs.map { $0.id == candidate.id ? candidate : $0 }; return copy
             }
         }
+    }
+    func resolveForPlayback(_ song: NativeLibrarySong) async throws -> NativeLibrarySong {
+        if song.result != nil { return song }
+        if let cached = songs.first(where: { $0.id == song.id }), cached.result != nil { return cached }
+        let candidate = try await prepareMatch(song)
+        try await acceptMatch(candidate)
+        return candidate
     }
     func pickerPage(query: String, cursor: String?) async throws -> NativeLibraryResultPage<NativeLibrarySong> {
         guard let credentials else { throw AuthFailure.cancelled }

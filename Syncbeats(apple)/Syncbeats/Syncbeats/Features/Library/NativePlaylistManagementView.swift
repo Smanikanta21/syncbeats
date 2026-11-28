@@ -42,13 +42,6 @@ struct NativePlaylistManagementView: View {
                 Button { onClose() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
                     .accessibilityLabel("Close playlist dialog").disabled(library.editing)
             }
-            if case .addSongs = action {
-                if pickerLoading { ProgressView().controlSize(.small) }
-                if pickerCursor != nil { Button("Load more songs") { Task { await loadPicker(reset: false) } }.disabled(pickerLoading) }
-            }
-            if case .choose = action, library.hasMorePlaylists {
-                Button("Load more playlists") { Task { await library.loadMorePlaylists() } }.disabled(library.managementBusy)
-            }
             if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(palette.error).fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.updatesFrequently) }
             switch action {
             case .rename(let playlist):
@@ -92,6 +85,9 @@ struct NativePlaylistManagementView: View {
                             }.disabled(added || library.managementBusy).accessibilityLabel(playlist.name + (added ? ", already contains song" : ", add song"))
                         }
                         if library.playlists.isEmpty { Text("Import a playlist from Apple Music to get started.").foregroundStyle(palette.secondary).padding(.vertical, 24) }
+                        NativePaginationFooter(identity: action.id, cursor: library.playlistPaginationCursor,
+                            loading: library.loadingMore, busy: library.managementBusy, error: library.error,
+                            title: "Loading playlists", palette: palette) { await library.loadMorePlaylists() }
                     }
                 }
             }
@@ -116,6 +112,7 @@ struct NativePlaylistManagementView: View {
         guard !pickerLoading || reset else { return }
         let request = UUID(); pickerRevision = request
         let search = query
+        failure = nil
         pickerLoading = true
         defer { if pickerRevision == request { pickerLoading = false } }
         do {
@@ -161,6 +158,9 @@ struct NativePlaylistManagementView: View {
                             .accessibilityAddTraits(checked || added ? .isSelected : [])
                     }
                     if visible.isEmpty { Text(query.isEmpty ? "Save songs to Library first." : "No matching songs").font(.system(size: 13)).foregroundStyle(palette.secondary).padding(.vertical, 24) }
+                    NativePaginationFooter(identity: action.id + "|" + query, cursor: pickerCursor,
+                        loading: pickerLoading, busy: library.editing, error: failure,
+                        title: "Loading songs", palette: palette) { await loadPicker(reset: false) }
                 }
             }
         }

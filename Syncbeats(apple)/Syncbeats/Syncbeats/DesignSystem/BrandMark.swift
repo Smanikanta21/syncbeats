@@ -16,20 +16,21 @@ struct LinkedPlayLoop: Shape {
 
 /// Vector equivalent of the retained Linked Play asset, with independently drawn loops.
 struct BrandMark: View {
+    let palette: NativePalette
     var progress: CGFloat = 1
     var secondProgress: CGFloat = 1
     var body: some View {
         GeometryReader { geometry in
             let size = min(geometry.size.width, geometry.size.height)
-            let background = Color(hex: 0x171C1A)
+            let background = palette.background
             ZStack {
                 RoundedRectangle(cornerRadius: size * 15 / 64).fill(background)
                 LinkedPlayLoop().trim(from: 0, to: progress)
-                    .stroke(Color(hex: 0xF4F5EF), style: StrokeStyle(lineWidth: size * 5.5 / 64, lineJoin: .round))
+                    .stroke(palette.light ? palette.gold : palette.text, style: StrokeStyle(lineWidth: size * 5.5 / 64, lineJoin: .round))
                 LinkedPlayLoop().stroke(background, style: StrokeStyle(lineWidth: size * 10 / 64, lineJoin: .round))
                     .offset(x: size * 12 / 64, y: size * 7 / 64)
                 LinkedPlayLoop().trim(from: 0, to: secondProgress)
-                    .stroke(Color(hex: 0xB7BAB5), style: StrokeStyle(lineWidth: size * 5.5 / 64, lineJoin: .round))
+                    .stroke(palette.secondary, style: StrokeStyle(lineWidth: size * 5.5 / 64, lineJoin: .round))
                     .offset(x: size * 12 / 64, y: size * 7 / 64)
             }
             .frame(width: size, height: size)

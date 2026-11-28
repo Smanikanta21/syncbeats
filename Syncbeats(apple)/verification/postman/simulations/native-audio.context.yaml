@@ -2,6 +2,26 @@ purpose:
   stands_in_for: Downloaded audio responses, including synthetic WAV, malformed data and HTTP 503.
   unblocks: Native AVAudioEngine preparation and authoritative room playback/readiness recovery.
 assumptions:
+  - id: hybrid-http-fallback-20261123
+    status: supported
+    claim: In the exercised loopback hybrid scenario, a missing local peer cache falls back to the existing HTTP audio download, while concurrent local consumers share one owned peer file.
+    reason: The production Swift downloader and peer protocol ran against real TLS loopback connections and the existing repository synthetic-audio HTTP mock.
+    verification: On 2026-11-23, 39 hybrid checks and 93 native audio checks passed, including strict Mac clock-source identification. Simulation request logs confirm tone downloads and the HTTP fallback. Production Bonjour/relay code was exercised with injected loopback addresses; physical LAN attempts timed out or reported discovery unavailable. BLE radio behavior, real extraction, cross-device audible timing and battery savings were not established.
+    source: NativeHybridVerification.swift; NativeAudioVerification.swift; ../Syncbeats/Syncbeats/Services/Hybrid; ../Syncbeats/Syncbeats/Services/Audio/NativeAudioPrefetch.swift; HYBRID_SYNC_2026-11-23.md; /tmp/syncbeats-hybrid-checks.log; /tmp/syncbeats-hybrid-audio-regression.log; /tmp/syncbeats-hybrid-sim.ndjson
+    updated_at: "2026-11-23"
+  - id: disk-audio-cache-20261122
+    status: supported
+    claim: In a fresh local Room fixture, shared on-disk audio downloads preserve playback, pause/resume, seek, recovery, queue authority and cancellation. Cache eviction preserves files held by active readers.
+    verification: 93 native audio and real local Socket.IO checks passed after restarting the fixture to clear request history. Simulation supplied synthetic audio, malformed audio and HTTP failures. Live extraction, physical device Auto-Lock, battery savings and audible multi-device timing were not exercised.
+    source: NativeAudioVerification.swift; native-playback-room.cjs; ../Syncbeats/Syncbeats/Services/Audio/NativeAudioFile.swift; ../Syncbeats/Syncbeats/Services/Audio/NativeAudioPrefetch.swift; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; /tmp/syncbeats-performance-2026-11-22/final-audio-room-checks.log; /tmp/syncbeats-performance-2026-11-22/optimize-audio-sim.ndjson
+    updated_at: "2026-11-22"
+  - id: direct-library-playback-20261122
+    status: supported
+    claim: In the local fixture, the selected library song renders before a following Apple song finishes resolving, queue preparation allows another selection, and a new selection cancels the old delayed queue addition.
+    reason: The real Swift RoomSession and AVAudioEngine used real Socket.IO with the backend Room state object and synthetic WAV downloads served by the simulation.
+    verification: On 2026-11-22, 79 audio checks and 98 library checks passed. The slow following-song resolver observed selected-track rendering before returning. A replacement selection prevented the delayed old song from entering the authoritative queue. Real Apple matching quality and audible multi-device timing were not exercised.
+    source: NativeAudioVerification.swift; NativeLibraryVerification.swift; native-playback-room.cjs; RoomSession.swift; NativeLibraryStore.swift; /tmp/syncbeats-direct-play-source; /tmp/syncbeats-direct-play-audio-checks.log; /tmp/syncbeats-direct-play-library-checks.log; /tmp/syncbeats-direct-play-sim.ndjson
+    updated_at: "2026-11-22"
   - id: local-native-audio-and-room-recovery
     status: supported
     claim: The native client renders the synthetic audio and preserves server readiness across loaded snapshots, pause and reconnect in the exercised local room.
@@ -31,6 +51,14 @@ assumptions:
     source: NativeAudioVerification.swift; ../Syncbeats/Syncbeats/Services/Audio/NativeRoomAudio.swift; /tmp/syncbeats-locked-audio-checks.log; /tmp/syncbeats-locked-audio-sim.ndjson
     updated_at: "2026-11-21"
 fingerprints:
+  - id: native-hybrid-20261123
+    date: "2026-11-23"
+    commit: fc4724aa plus native hybrid and backend scheduling changes in the dirty macos-dev working tree
+    cli: "1.80.0"
+  - id: disk-audio-cache-performance-20261122
+    date: "2026-11-22"
+    commit: fc4724aa plus low-resource native changes in the macos-dev working tree
+    cli: "1.80.0"
   - id: native-background-timing-20261121
     date: "2026-11-21"
     commit: 5fd89083 plus mobile timing corrections in the working tree

@@ -20,6 +20,31 @@ struct RoomTrack: Decodable, Identifiable, Equatable {
     var artistLabel: String { artist.flatMap { $0.isEmpty ? nil : $0 } ?? "Shared with your room" }
 }
 
+nonisolated struct RoomAudioOutput: Codable, Equatable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case builtIn, bluetooth, wired, airPlay, other
+
+        init(from decoder: Decoder) throws {
+            self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .other
+        }
+    }
+
+    let name: String
+    let type: Kind
+    let selected: Bool
+    var id: String? = nil
+    var volume: Double? = nil
+
+    var announcement: [String: Any] {
+        var result: [String: Any] = ["name": name, "type": type.rawValue, "selected": selected]
+        if let id, let volume {
+            result["id"] = id
+            result["volume"] = volume
+        }
+        return result
+    }
+}
+
 struct RoomParticipant: Decodable, Identifiable {
     let socketId: String
     let displayName: String
@@ -27,8 +52,36 @@ struct RoomParticipant: Decodable, Identifiable {
     let isBlocked: Bool?
     let userId: String?
     let outputDeviceName: String?
+    var outputDeviceType: String? = nil
     var volume: Double? = nil
+    var audioOutputs: [RoomAudioOutput]? = nil
     var id: String { socketId }
+    var deviceSymbol: String {
+        let type = outputDeviceType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // A generic audio-output type must not hide a known iPad identity.
+        let name = [outputDeviceName, displayName].compactMap { $0 }.joined(separator: " ").lowercased()
+        if name.contains("ipad") || type == "tablet" || type == "ipad" { return "ipad" }
+        let androidName = name.range(of: #"\b(android|pixel|samsung|galaxy|sm-[a-z][0-9][a-z0-9-]*|oneplus|redmi|poco|oppo|vivo|realme|motorola|moto|huawei|honor|nokia|xperia|zenfone|nothing phone|tecno|infinix)\b"#, options: .regularExpression) != nil
+        if androidName && type != "headphones" { return name.contains("tablet") ? "ipad" : "smartphone" }
+        if name.contains("iphone") || name.contains("ipod") { return "iphone" }
+        switch type {
+        case "tablet", "ipad": return "ipad"
+        case "mobile", "phone", "android": return "smartphone"
+        case "iphone": return "iphone"
+        case "mac", "macos", "laptop": return "macbook.gen2"
+        case "desktop", "computer", "windows", "linux": return "desktopcomputer"
+        case "headphones": return "headphones"
+        case "speaker", "speakers": return "hifispeaker.fill"
+        default: break
+        }
+        // Native clients previously advertised their platform only in the display name.
+        if name.contains("ipad") || name.contains("tablet") { return "ipad" }
+        if name.contains("iphone") || name.contains("phone") || name.contains("android") { return "iphone" }
+        if name.contains("mac") || name.contains("laptop") { return "macbook.gen2" }
+        if name.contains("windows") || name.contains("linux") { return "desktopcomputer" }
+        if name.contains("airpods") || name.contains("headphone") { return "headphones" }
+        return "hifispeaker.fill"
+    }
     var shortDeviceName: String {
         let full = (outputDeviceName ?? displayName).trimmingCharacters(in: .whitespacesAndNewlines)
         let unowned = full.components(separatedBy: "’s ").last?.components(separatedBy: "'s ").last ?? full
@@ -49,6 +102,7 @@ struct RoomSnapshot: Decodable {
     let isPlaying: Bool?
     let pendingPlay: Bool?
     var playbackInstanceId: String? = nil
+    var autoplay: Bool? = nil
     var startEpoch: Double? = nil
     var pauseOffset: Double? = nil
     var timeline: RoomTimeline? = nil
@@ -103,7 +157,7 @@ struct ListeningHistory: Decodable {
 enum YouTubeIdentity {
     static func key(for value: String) -> String { id(in: value).map { "youtube:\($0)" } ?? value }
     static func id(in value: String) -> String? {
-        let patterns = ["^ws-p2p:yt:([A-Za-z0-9_-]{11})_[0-9]{10,13}", "(?:youtube:|youtu\\.be/|[?&]v=|youtube_)([A-Za-z0-9_-]{11})(?=[^A-Za-z0-9_-]|$)"]
+        let patterns = ["^ws-p2p:yt:([A-Za-z0-9_-]{11})(?=[^A-Za-z0-9_-]|_|$)", "(?:youtube:|youtu\\.be/|[?&]v=|youtube_)([A-Za-z0-9_-]{11})(?=[^A-Za-z0-9_-]|$)"]
         for pattern in patterns {
             guard let expression = try? NSRegularExpression(pattern: pattern),
                   let match = expression.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),

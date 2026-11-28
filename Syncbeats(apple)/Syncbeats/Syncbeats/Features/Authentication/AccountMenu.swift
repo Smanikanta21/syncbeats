@@ -20,7 +20,7 @@ struct AccountMenu: View {
         .accessibilityLabel("Account menu for \(model.account?.name ?? "your account")")
         .accessibilityValue(isOpen ? "Open" : "Closed")
         .help("Profile and settings")
-        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+        .popover(isPresented: $isOpen, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     AccountMonogram(name: model.account?.name ?? "", palette: palette, size: 40)
